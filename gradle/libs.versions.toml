@@ -31,7 +31,7 @@ ktor = "3.3.3"
 slf4j = "1.7.36"
 kotlinxDatetime = "0.7.1"
 lifecycleRuntimeKtx = "2.10.0"
-composeBom = "2025.12.01"
+composeBom = "2026.01.00"
 playServicesBase = "18.9.0"
 
 [libraries]
