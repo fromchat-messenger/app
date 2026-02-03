@@ -8,6 +8,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -67,6 +69,7 @@ import ru.fromchat.api.WebSocketUpdatesData
 import ru.fromchat.back
 import ru.fromchat.core.Logger
 import ru.fromchat.ui.LocalNavController
+import ru.fromchat.ui.chat.Avatar
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalHazeMaterialsApi::class)
 @Composable
@@ -155,14 +158,16 @@ fun ChatScreen(
                         val updatesMessage = json.decodeFromJsonElement<WebSocketUpdatesData>(data)
                         Logger.d("ChatScreen", "Updates message parsed: ${updatesMessage.updates.size} updates")
                         // Process each update in the batch
-                        updatesMessage.updates.forEach { update ->
+                    updatesMessage.updates.forEach { update ->
                             Logger.d("ChatScreen", "Processing update: type=${update.type}, data=${update.data != null}")
                             val wsMessage = WebSocketMessage(
                                 type = update.type,
                                 data = update.data
                             )
                             when (update.type) {
-                                "newMessage", "messageEdited", "messageDeleted", "typing", "stopTyping", "statusUpdate", "suspended", "account_deleted" -> {
+                                "newMessage", "messageEdited", "messageDeleted",
+                                "dmNew", "dmEdited", "dmDeleted",
+                                "typing", "stopTyping", "statusUpdate", "suspended", "account_deleted" -> {
                                     Logger.d("ChatScreen", "Launching handleWebSocketMessage for ${update.type}")
                                     scope.launch {
                                         try {
@@ -179,7 +184,7 @@ fun ChatScreen(
                         e.printStackTrace()
                     }
                 }
-                "newMessage", "messageEdited", "messageDeleted" -> {
+                "newMessage", "messageEdited", "messageDeleted", "dmNew", "dmEdited", "dmDeleted" -> {
                     scope.launch {
                         panel.handleWebSocketMessage(message)
                     }
@@ -205,24 +210,37 @@ fun ChatScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column(Modifier.fillMaxWidth()) {
-                        Text(
-                            text = panelState.title,
-                            style = MaterialTheme.typography.titleLarge
-                        )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        panelState.titleAvatar?.let { avatar ->
+                            Avatar(
+                                profilePictureUrl = avatar.profilePictureUrl,
+                                displayName = avatar.displayName,
+                                size = 36.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
 
-                        AnimatedContent(
-                            targetState = currentTypingUsers.isNotEmpty(),
-                            transitionSpec = {
-                                fadeIn() togetherWith fadeOut()
-                            },
-                            label = "typing_status"
-                        ) { hasTyping ->
-                            if (hasTyping) {
-                                TypingIndicator(
-                                    typingUsers = currentTypingUsers.map { it.username },
-                                    modifier = Modifier.padding(top = 2.dp)
-                                )
+                        Column(Modifier.fillMaxWidth()) {
+                            Text(
+                                text = panelState.title,
+                                style = MaterialTheme.typography.titleLarge
+                            )
+
+                            AnimatedContent(
+                                targetState = currentTypingUsers.isNotEmpty(),
+                                transitionSpec = {
+                                    fadeIn() togetherWith fadeOut()
+                                },
+                                label = "typing_status"
+                            ) { hasTyping ->
+                                if (hasTyping) {
+                                    TypingIndicator(
+                                        typingUsers = currentTypingUsers.map { it.username },
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -360,7 +378,8 @@ fun ChatScreen(
                                 },
                                 onTapPosition = { offset ->
                                     tapOffset = offset
-                                }
+                                },
+                                showUsername = panel.showUsernamesInMessages
                             )
                         }
                     }

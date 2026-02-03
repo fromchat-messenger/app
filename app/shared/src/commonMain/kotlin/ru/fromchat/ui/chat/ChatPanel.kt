@@ -23,7 +23,14 @@ data class ChatPanelState(
     val isLoading: Boolean = false,
     val hasMoreMessages: Boolean = false,
     val isLoadingMore: Boolean = false,
-    val typingUsers: List<TypingUser> = emptyList()
+    val typingUsers: List<TypingUser> = emptyList(),
+    val titleAvatar: AvatarInfo? = null
+)
+
+@Serializable
+data class AvatarInfo(
+    val displayName: String,
+    val profilePictureUrl: String? = null
 )
 
 /**
@@ -308,5 +315,8 @@ abstract class ChatPanel(
     // Abstract UI control methods
     abstract fun showCallButton(): Boolean
     abstract fun getTypingHandler(): TypingHandler
+
+    open val showUsernamesInMessages: Boolean
+        get() = true
 }
 

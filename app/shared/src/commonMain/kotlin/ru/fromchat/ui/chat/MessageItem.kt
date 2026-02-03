@@ -49,7 +49,8 @@ fun MessageItem(
     isAuthor: Boolean,
     onLongPress: () -> Unit,
     onTapPosition: (Offset) -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showUsername: Boolean = true
 ) {
     AnimatedVisibility(
         visible = true,
@@ -78,8 +79,7 @@ fun MessageItem(
             horizontalArrangement = if (isAuthor) Arrangement.End else Arrangement.Start,
             verticalAlignment = Alignment.Bottom
         ) {
-            if (!isAuthor) {
-                // Avatar at bottom
+            if (!isAuthor && showUsername) {
                 Avatar(
                     profilePictureUrl = message.profile_picture,
                     displayName = message.username,
@@ -132,7 +132,7 @@ fun MessageItem(
                 ) {
                     Column {
                         // Username inside bubble (for received messages)
-                        if (!isAuthor) {
+                        if (showUsername && !isAuthor) {
                             Text(
                                 text = message.username,
                                 style = MaterialTheme.typography.labelMedium,
@@ -172,13 +172,15 @@ fun MessageItem(
                                     Column(
                                         Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
                                     ) {
-                                        Text(
-                                            text = replyTo.username,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            fontSize = 11.sp
-                                        )
+                                        if (showUsername) {
+                                            Text(
+                                                text = replyTo.username,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                fontSize = 11.sp
+                                            )
+                                        }
                                         Text(
                                             text = replyTo.content.take(50) + if (replyTo.content.length > 50) "..." else "",
                                             style = MaterialTheme.typography.bodySmall,

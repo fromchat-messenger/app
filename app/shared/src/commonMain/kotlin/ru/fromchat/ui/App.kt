@@ -188,8 +188,7 @@ fun App(scrollToMessageId: Int? = null, startAtPublicChat: Boolean = false) {
                     composable("dm/{otherUserId}") { backStackEntry ->
                         val otherUserId = backStackEntry.arguments?.getString("otherUserId")?.toIntOrNull() ?: 0
                         DmScreen(
-                            otherUserId = otherUserId,
-                            onBack = { navController.navigateUp() }
+                            otherUserId = otherUserId
                         )
                     }
 
