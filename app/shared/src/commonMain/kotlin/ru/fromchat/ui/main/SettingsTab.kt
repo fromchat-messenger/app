@@ -214,6 +214,31 @@ fun SettingsTab(
                         }
                     )
 
+                    val currentUserId = ApiClient.user?.id ?: 0
+                    ListItem(
+                        headline = "Profile screen",
+                        supportingText = "Show your profile with chat/link actions",
+                        onClick = {
+                            if (currentUserId != 0) {
+                                navController.navigate("profile/$currentUserId")
+                            }
+                        },
+                        divider = true,
+                        dividerColor = MaterialTheme.colorScheme.surface,
+                        dividerThickness = 2.dp
+                    )
+
+                    ListItem(
+                        headline = "DM screen (user 2)",
+                        supportingText = "Open DM flow with another user",
+                        onClick = {
+                            navController.navigate("dm/2")
+                        },
+                        divider = true,
+                        dividerColor = MaterialTheme.colorScheme.surface,
+                        dividerThickness = 2.dp
+                    )
+
                     ListItem(
                         headline = stringResource(Res.string.logout),
                         leadingContent = {
