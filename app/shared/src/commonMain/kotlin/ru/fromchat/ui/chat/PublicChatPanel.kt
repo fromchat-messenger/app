@@ -91,7 +91,7 @@ class PublicChatPanel(
         }
     }
 
-    private fun handleSingleUpdate(updateMessage: WebSocketMessage) {
+    private suspend fun handleSingleUpdate(updateMessage: WebSocketMessage) {
         val json = ApiClient.json
         when (updateMessage.type) {
             "newMessage" -> {
@@ -154,7 +154,7 @@ class PublicChatPanel(
             val data = message.data ?: return
             val updatesData = json.decodeFromJsonElement(WebSocketUpdatesData.serializer(), data)
             Logger.d("PublicChatPanel", "Received ${updatesData.updates.size} batched updates (seq: ${updatesData.seq})")
-            updatesData.updates.forEach { update ->
+            for (update in updatesData.updates) {
                 handleSingleUpdate(update)
             }
         } else {

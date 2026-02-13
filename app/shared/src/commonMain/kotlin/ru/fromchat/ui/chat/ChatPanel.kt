@@ -5,6 +5,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import ru.fromchat.api.Message
 import ru.fromchat.api.WebSocketMessage
@@ -79,21 +81,25 @@ abstract class ChatPanel(
         }
     }
 
+    private val addMessageMutex = Mutex()
+
     /**
-     * Add message to list
+     * Add message to list. Mutex prevents duplicate adds when same update
+     * is processed concurrently from multiple WebSocket connections.
      */
-    protected fun addMessage(message: Message) {
-        val messageExists = _state.messages.any { it.id == message.id }
-        if (!messageExists) {
-            Logger.d("ChatPanel", "Adding message: id=${message.id}, content=${message.content.take(50)}")
-            // Add message and sort by timestamp (ISO 8601 strings sort correctly lexicographically)
-            updateState { currentState ->
-                val newMessages = (currentState.messages + message).sortedBy { it.timestamp }
-                Logger.d("ChatPanel", "Messages count after add: ${newMessages.size}")
-                currentState.copy(messages = newMessages)
+    protected suspend fun addMessage(message: Message) {
+        addMessageMutex.withLock {
+            val messageExists = _state.messages.any { it.id == message.id }
+            if (!messageExists) {
+                Logger.d("ChatPanel", "Adding message: id=${message.id}, content=${message.content.take(50)}")
+                updateState { currentState ->
+                    val newMessages = (currentState.messages + message).sortedBy { it.timestamp }
+                    Logger.d("ChatPanel", "Messages count after add: ${newMessages.size}")
+                    currentState.copy(messages = newMessages)
+                }
+            } else {
+                Logger.d("ChatPanel", "Message already exists: id=${message.id}")
             }
-        } else {
-            Logger.d("ChatPanel", "Message already exists: id=${message.id}")
         }
     }
 
