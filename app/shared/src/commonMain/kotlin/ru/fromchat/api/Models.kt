@@ -217,7 +217,8 @@ data class SendDmRequest(
     @SerialName("sender_public_key_b64") val senderPublicKeyB64: String,
     @SerialName("recipient_public_key_b64") val recipientPublicKeyB64: String,
     @SerialName("reply_to_id") val replyToId: Int? = null,
-    @SerialName("transport_files") val transportFiles: List<SendDmFile> = emptyList()
+    @SerialName("transport_files") val transportFiles: List<SendDmFile> = emptyList(),
+    @SerialName("uploaded_file_ids") val uploadedFileIds: List<String> = emptyList()
 )
 
 @Serializable
@@ -234,6 +235,47 @@ data class TransportKeyResponse(
     @SerialName("key_id") val keyId: String,
     @SerialName("public_key_b64") val publicKeyB64: String,
     @SerialName("created_at") val createdAt: Double? = null
+)
+
+@Serializable
+data class DmUploadInitRequest(
+    val filename: String,
+    @SerialName("total_size") val totalSize: Long,
+    @SerialName("recipient_id") val recipientId: Int,
+    @SerialName("chunk_size") val chunkSize: Int? = null
+)
+
+@Serializable
+data class DmUploadInitResponse(
+    @SerialName("upload_id") val uploadId: String,
+    @SerialName("chunk_size") val chunkSize: Int,
+    val offset: Long = 0L
+)
+
+@Serializable
+data class DmUploadStatusResponse(
+    @SerialName("upload_id") val uploadId: String,
+    val filename: String,
+    @SerialName("total_size") val totalSize: Long,
+    val offset: Long,
+    val complete: Boolean
+)
+
+@Serializable
+data class DmUploadChunkRequest(
+    val offset: Long,
+    @SerialName("data_b64") val dataB64: String
+)
+
+@Serializable
+data class DmUploadChunkResponse(
+    @SerialName("offset_received") val offsetReceived: Long
+)
+
+@Serializable
+data class DmUploadCompleteResponse(
+    @SerialName("file_id") val fileId: String,
+    @SerialName("upload_id") val uploadId: String
 )
 
 // Batched updates message

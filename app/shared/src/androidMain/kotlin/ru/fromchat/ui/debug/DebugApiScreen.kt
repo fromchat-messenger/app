@@ -28,11 +28,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.pr0gramm3r101.utils.crypto.Base64
 import com.pr0gramm3r101.utils.settings.settings
 import kotlinx.coroutines.launch
 import ru.fromchat.api.ApiClient
+import ru.fromchat.api.SendDmFile
 import ru.fromchat.crypto.IdentityKeyManager
 import ru.fromchat.crypto.decryptEnvelope
+import ru.fromchat.crypto.transport.TransportCrypto
 import ru.fromchat.ui.LocalNavController
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -226,6 +229,44 @@ actual fun DebugApiScreen() {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(text = "Send DM")
+            }
+
+            Text(
+                text = "Phase 1: File Protocol Test",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Button(
+                onClick = {
+                    scope.launch {
+                        runCatching {
+                            val fileBytes = "test file".encodeToByteArray()
+                            val transportKey = ApiClient.getTransportPublicKey()
+                            val transportBlob = TransportCrypto.encryptFileForTransport(
+                                fileBytes = fileBytes,
+                                transportPublicKeyB64 = transportKey.publicKeyB64
+                            )
+                            val sendFile = SendDmFile(
+                                encryptedFileDataB64 = Base64.encode(transportBlob),
+                                filename = "test.txt",
+                                fileSize = fileBytes.size.toLong()
+                            )
+                            ApiClient.sendDm(
+                                recipientId = 2,
+                                plaintext = "test file",
+                                transportFiles = listOf(sendFile)
+                            )
+                        }.onSuccess {
+                            statusMessage = "Protocol test file sent to user 2"
+                        }.onFailure {
+                            statusMessage = it.message ?: "Failed to send protocol test file"
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = "Send test.txt to user 2")
             }
 
             HorizontalDivider(

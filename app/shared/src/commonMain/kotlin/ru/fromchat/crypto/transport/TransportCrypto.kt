@@ -17,12 +17,25 @@ data class TransportCiphertext(
 /**
  * Platform-specific NaCl box-compatible transport crypto.
  *
- * Android provides a real implementation; iOS currently provides a stub.
+ * Android and iOS provide real implementations.
  */
 expect object TransportCrypto {
     suspend fun encryptWithTransportKey(
         plaintext: String,
         transportPublicKeyB64: String
     ): TransportCiphertext
+
+    /**
+     * Encrypt raw file bytes for transport using the server's transport public key
+     * and the client's long-term identity private key.
+     *
+     * This mirrors the Web client's behaviour for `transport_files`:
+     * - Uses NaCl box with (server transport public key, identity private key)
+     * - Returns a blob formatted as `nonce || ciphertext`
+     */
+    suspend fun encryptFileForTransport(
+        fileBytes: ByteArray,
+        transportPublicKeyB64: String
+    ): ByteArray
 }
 

@@ -15,7 +15,9 @@ import io.ktor.client.plugins.logging.SIMPLE
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.pingInterval
 import io.ktor.client.request.bearerAuth
+import io.ktor.client.request.delete
 import io.ktor.client.request.get
+import io.ktor.client.request.patch
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -229,7 +231,7 @@ object ApiClient {
             }
             .body()
 
-    private suspend fun getTransportPublicKey(): TransportKeyResponse =
+    suspend fun getTransportPublicKey(): TransportKeyResponse =
         http
             .get("${Config.apiBaseUrl}/dm/key/transport/public") {
                 contentType(ContentType.Application.Json)
@@ -242,7 +244,9 @@ object ApiClient {
     suspend fun sendDm(
         recipientId: Int,
         plaintext: String,
-        replyToId: Int? = null
+        replyToId: Int? = null,
+        transportFiles: List<SendDmFile> = emptyList(),
+        uploadedFileIds: List<String> = emptyList()
     ) {
         val keys = IdentityKeyManager.getCurrentKeys()
             ?: IdentityKeyManager.restoreFromLocal()
@@ -267,12 +271,63 @@ object ApiClient {
             senderPublicKeyB64 = senderPublicKeyB64,
             recipientPublicKeyB64 = recipientPublicKey,
             replyToId = replyToId,
-            transportFiles = emptyList()
+            transportFiles = transportFiles,
+            uploadedFileIds = uploadedFileIds
         )
 
         http.post("${Config.apiBaseUrl}/dm/send") {
             contentType(ContentType.Application.Json)
             setBody(body)
+        }
+    }
+
+    suspend fun initDmUpload(
+        filename: String,
+        totalSize: Long,
+        recipientId: Int,
+        chunkSize: Int? = null
+    ): DmUploadInitResponse =
+        http.post("${Config.apiBaseUrl}/dm/upload/init") {
+            contentType(ContentType.Application.Json)
+            setBody(
+                DmUploadInitRequest(
+                    filename = filename,
+                    totalSize = totalSize,
+                    recipientId = recipientId,
+                    chunkSize = chunkSize
+                )
+            )
+        }.body()
+
+    suspend fun getDmUploadStatus(uploadId: String): DmUploadStatusResponse =
+        http.get("${Config.apiBaseUrl}/dm/upload/$uploadId") {
+            contentType(ContentType.Application.Json)
+        }.body()
+
+    suspend fun uploadDmChunk(
+        uploadId: String,
+        offset: Long,
+        dataB64: String
+    ): DmUploadChunkResponse =
+        http.patch("${Config.apiBaseUrl}/dm/upload/$uploadId") {
+            contentType(ContentType.Application.Json)
+            setBody(
+                DmUploadChunkRequest(
+                    offset = offset,
+                    dataB64 = dataB64
+                )
+            )
+        }.body()
+
+    suspend fun completeDmUpload(uploadId: String): DmUploadCompleteResponse =
+        http.post("${Config.apiBaseUrl}/dm/upload/$uploadId/complete") {
+            contentType(ContentType.Application.Json)
+            setBody(mapOf("upload_id" to uploadId))
+        }.body()
+
+    suspend fun abortDmUpload(uploadId: String) {
+        http.delete("${Config.apiBaseUrl}/dm/upload/$uploadId") {
+            contentType(ContentType.Application.Json)
         }
     }
 

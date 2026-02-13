@@ -39,6 +39,7 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
             implementation(libs.androidx.activity.compose)
+            implementation(libs.androidx.work.runtime.ktx)
             // NaCl box implementation for transport encryption (Android/JVM only)
             implementation("org.purejava:tweetnacl-java:1.1.3")
         }
