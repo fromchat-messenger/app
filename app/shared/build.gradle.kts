@@ -53,6 +53,7 @@ kotlin {
             implementation(libs.constraintlayout)
             implementation(libs.navigation.compose)
             implementation(libs.compose.materialIconsExtended)
+            implementation("androidx.compose.animation:animation:1.8.4")
             implementation(libs.haze)
             implementation(libs.haze.materials)
             implementation(libs.androidx.core.ktx)

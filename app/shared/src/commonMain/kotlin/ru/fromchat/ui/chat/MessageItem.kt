@@ -1,6 +1,8 @@
 package ru.fromchat.ui.chat
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -44,10 +46,6 @@ import ru.fromchat.api.Message
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 
-private fun isImageFilename(name: String): Boolean =
-    name.endsWith(".png", true) || name.endsWith(".jpg", true) ||
-        name.endsWith(".jpeg", true) || name.endsWith(".gif", true) || name.endsWith(".webp", true)
-
 private fun isMessageCorrupted(message: Message): Boolean {
     val files = message.files ?: return false
     return files.withIndex().any { (index, file) ->
@@ -65,6 +63,9 @@ fun MessageItem(
     isAuthor: Boolean,
     onLongPress: () -> Unit,
     onTapPosition: (Offset) -> Unit = {},
+    onImageClick: ((Message, Int) -> Unit)? = null,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
     modifier: Modifier = Modifier,
     showUsername: Boolean = true,
     currentUserId: Int? = null
@@ -239,6 +240,7 @@ fun MessageItem(
                                     )
                                 }
                                 message.files?.forEachIndexed { index, file ->
+                                    val isImage = isImageFilename(file.name)
                                     AttachmentPreview(
                                         file = file,
                                         dmEnvelope = message.dmEnvelope,
@@ -248,8 +250,17 @@ fun MessageItem(
                                         fileThumbnail = message.fileThumbnails?.getOrNull(index)?.takeIf { it.isNotBlank() },
                                         fileAspectRatio = message.fileAspectRatios?.getOrNull(index)?.takeIf { it > 0f },
                                         fileSizeBytes = message.fileSizes?.getOrNull(index),
+                                        messageId = if (isImage) message.id else null,
+                                        fileIndex = if (isImage) index else null,
                                         isAuthor = isAuthor,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                        onImageClick = if (isImage) { { onImageClick?.invoke(message, index) } } else null,
+                                        sharedImageKey = if (isImage && sharedTransitionScope != null && animatedVisibilityScope != null) "img_${message.id}_$index" else null,
+                                        sharedTransitionScope = sharedTransitionScope,
+                                        animatedVisibilityScope = animatedVisibilityScope,
+                                        modifier = Modifier.padding(
+                                            horizontal = if (isImage) 2.dp else 12.dp,
+                                            vertical = if (isImage) 2.dp else 4.dp
+                                        )
                                     )
                                 }
                             }

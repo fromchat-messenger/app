@@ -1,6 +1,8 @@
 package ru.fromchat.ui.chat
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -53,17 +55,13 @@ import coil3.compose.AsyncImage
 import coil3.compose.rememberAsyncImagePainter
 import com.pr0gramm3r101.utils.conditional
 import com.pr0gramm3r101.utils.crypto.Base64
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import ru.fromchat.api.DmEnvelope
 import ru.fromchat.api.DmFile
-import ru.fromchat.core.Logger
-import ru.fromchat.crypto.decryptFile
 
 private val IMAGE_SIZE = 160.dp
 private val IMAGE_RADIUS = 8.dp
 
-private fun isImageFilename(name: String): Boolean =
+internal fun isImageFilename(name: String): Boolean =
     name.endsWith(".png", true) || name.endsWith(".jpg", true) ||
         name.endsWith(".jpeg", true) || name.endsWith(".gif", true) || name.endsWith(".webp", true)
 
@@ -77,7 +75,13 @@ fun AttachmentPreview(
     fileThumbnail: String? = null,
     fileAspectRatio: Float? = null,
     fileSizeBytes: Long? = null,
+    messageId: Int? = null,
+    fileIndex: Int? = null,
     onFileClick: (() -> Unit)? = null,
+    onImageClick: (() -> Unit)? = null,
+    sharedImageKey: Any? = null,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
     isAuthor: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -118,30 +122,48 @@ fun AttachmentPreview(
             )
         }
         isImageWithThumb -> {
+            var isFullyLoaded by remember { mutableStateOf(false) }
+            val sharedModifier = if (sharedImageKey != null && sharedTransitionScope != null && animatedVisibilityScope != null) {
+                with(sharedTransitionScope) {
+                    Modifier.sharedElement(
+                        rememberSharedContentState(key = sharedImageKey),
+                        animatedVisibilityScope = animatedVisibilityScope
+                    )
+                }
+            } else Modifier
             Box(
                 modifier = modifier
+                    .then(
+                        if (onImageClick != null && isFullyLoaded) Modifier.clickable(onClick = onImageClick)
+                        else Modifier
+                    )
                     .conditional(
                         fileAspectRatio != null && fileAspectRatio > 0f,
                         `if` = {
                             Modifier
                                 .aspectRatio(fileAspectRatio!!)
                                 .sizeIn(maxWidth = IMAGE_SIZE, maxHeight = IMAGE_SIZE)
-                                .clip(RoundedCornerShape(IMAGE_RADIUS))
                         },
                         `else` = {
-                            Modifier
-                                .size(IMAGE_SIZE)
-                                .clip(RoundedCornerShape(IMAGE_RADIUS))
+                            Modifier.size(IMAGE_SIZE)
                         }
-                    ),
+                    )
+                    .then(sharedModifier)
+                    .clip(RoundedCornerShape(IMAGE_RADIUS)),
                 contentAlignment = Alignment.Center
             ) {
                 DecryptedImageContent(
+                    messageId = messageId ?: -1,
+                    fileIndex = fileIndex ?: 0,
                     file = file,
                     envelope = dmEnvelope,
                     currentUserId = currentUserId,
                     thumbnailBase64 = fileThumbnail,
-                    aspectRatio = fileAspectRatio
+                    aspectRatio = fileAspectRatio,
+                    sharedImageKey = sharedImageKey,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
+                    onFullyLoaded = { isFullyLoaded = it }
                 )
             }
         }
@@ -235,23 +257,30 @@ private fun InfiniteCircularProgress() {
 
 @Composable
 private fun DecryptedImageContent(
+    messageId: Int,
+    fileIndex: Int,
     file: DmFile,
     envelope: DmEnvelope,
     currentUserId: Int?,
     thumbnailBase64: String,
-    aspectRatio: Float?
+    aspectRatio: Float?,
+    sharedImageKey: Any? = null,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
+    onFullyLoaded: (Boolean) -> Unit = {}
 ) {
-    var fullBytes by remember(file.path) { mutableStateOf<ByteArray?>(null) }
+    var fullBytes by remember(messageId, fileIndex, file.path) {
+        mutableStateOf(DecryptedImageCache.getCached(messageId, fileIndex, file.path))
+    }
     val thumbnailBytes = remember(thumbnailBase64) {
         runCatching { Base64.decode(thumbnailBase64) }.getOrNull()
     }
 
-    LaunchedEffect(file.path) {
-        Logger.d("AttachmentPreview", "DecryptedImageContent: fetching full image path=${file.path}")
-        withContext(Dispatchers.Default) {
-            fullBytes = runCatching { decryptFile(file, envelope, currentUserId) }.getOrNull()
-            Logger.d("AttachmentPreview", "DecryptedImageContent: full image fetch done path=${file.path} success=${fullBytes != null} size=${fullBytes?.size ?: 0}")
-        }
+    LaunchedEffect(messageId, fileIndex, file.path, envelope) {
+        fullBytes = DecryptedImageCache.getOrDecrypt(messageId, fileIndex, file, envelope, currentUserId)
+    }
+    LaunchedEffect(fullBytes) {
+        onFullyLoaded(fullBytes != null)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -270,8 +299,9 @@ private fun DecryptedImageContent(
                     contentScale = ContentScale.Crop
                 )
                 val thumbState by thumbPainter.state.collectAsState()
-                when (thumbState) {
-                    is coil3.compose.AsyncImagePainter.State.Loading -> {
+                val showThumbnailLoading = fullBytes == null && thumbState is coil3.compose.AsyncImagePainter.State.Loading
+                when {
+                    showThumbnailLoading -> {
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
@@ -279,7 +309,7 @@ private fun DecryptedImageContent(
                             InfiniteCircularProgress()
                         }
                     }
-                    is coil3.compose.AsyncImagePainter.State.Success -> {
+                    thumbState is coil3.compose.AsyncImagePainter.State.Success -> {
                         Image(
                             painter = thumbPainter,
                             contentDescription = file.name,
@@ -292,7 +322,7 @@ private fun DecryptedImageContent(
                         if (fullBytes != null) {
                             val fullPainter = rememberAsyncImagePainter(
                                 model = fullBytes,
-                                contentScale = ContentScale.Crop
+                                contentScale = ContentScale.FillWidth
                             )
                             val fullState by fullPainter.state.collectAsState()
                             when (fullState) {
@@ -308,7 +338,7 @@ private fun DecryptedImageContent(
                                             .fillMaxSize()
                                             .clip(RoundedCornerShape(IMAGE_RADIUS))
                                             .alpha(alpha.value),
-                                        contentScale = ContentScale.Crop
+                                        contentScale = ContentScale.FillWidth
                                     )
                                 }
                                 else -> { }
@@ -316,11 +346,15 @@ private fun DecryptedImageContent(
                         }
                     }
                     else -> {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            InfiniteCircularProgress()
+                        if (fullBytes != null) {
+                            Box(modifier = Modifier.fillMaxSize())
+                        } else {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                InfiniteCircularProgress()
+                            }
                         }
                     }
                 }

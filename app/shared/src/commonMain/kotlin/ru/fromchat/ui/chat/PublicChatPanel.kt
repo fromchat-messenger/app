@@ -108,11 +108,13 @@ class PublicChatPanel(
             "messageEdited" -> {
                 val data = updateMessage.data ?: return
                 val editedMsg = json.decodeFromJsonElement(Message.serializer(), data)
+                DecryptedImageCache.invalidateForMessage(editedMsg.id)
                 updateMessage(editedMsg.id) { editedMsg }
             }
             "messageDeleted" -> {
                 val data = updateMessage.data ?: return
                 val deletedData = json.decodeFromJsonElement(MessageDeletedData.serializer(), data)
+                DecryptedImageCache.invalidateForMessage(deletedData.message_id)
                 removeMessage(deletedData.message_id)
             }
             "reactionUpdate" -> {

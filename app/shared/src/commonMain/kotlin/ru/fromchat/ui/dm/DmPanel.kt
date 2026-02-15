@@ -19,6 +19,7 @@ import ru.fromchat.api.WebSocketMessage
 import ru.fromchat.core.Logger
 import ru.fromchat.crypto.decryptEnvelope
 import ru.fromchat.ui.chat.ChatPanel
+import ru.fromchat.ui.chat.DecryptedImageCache
 import ru.fromchat.ui.chat.DmTypingHandler
 import ru.fromchat.ui.chat.TypingHandler
 import ru.fromchat.ui.chat.TypingUser
@@ -174,6 +175,7 @@ class DmPanel(
         }.getOrNull() ?: return
         if (envelope.senderId != otherUserId && envelope.recipientId != otherUserId) return
         scope.launch(Dispatchers.Default) {
+            DecryptedImageCache.invalidateForMessage(envelope.id)
             val plaintext = runCatching { decryptEnvelope(envelope, currentUserId) }.getOrNull()
             if (plaintext != null) {
                 val dec = parseDecryptedContent(plaintext)
