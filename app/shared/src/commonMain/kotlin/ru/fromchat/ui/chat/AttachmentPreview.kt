@@ -94,7 +94,7 @@ fun AttachmentPreview(
     when {
         isFile -> {
             FileIconContent(
-                filename = file!!.name,
+                filename = file.name,
                 sizeBytes = fileSizeBytes,
                 onClick = onFileClick,
                 isAuthor = isAuthor,
@@ -114,7 +114,7 @@ fun AttachmentPreview(
             Box(
                 modifier = modifier
                     .conditional(
-                        fileAspectRatio != null && fileAspectRatio!! > 0f,
+                        fileAspectRatio != null && fileAspectRatio > 0f,
                         `if` = {
                             Modifier
                                 .aspectRatio(fileAspectRatio!!)
@@ -130,10 +130,10 @@ fun AttachmentPreview(
                 contentAlignment = Alignment.Center
             ) {
                 DecryptedImageContent(
-                    file = file!!,
-                    envelope = dmEnvelope!!,
+                    file = file,
+                    envelope = dmEnvelope,
                     currentUserId = currentUserId,
-                    thumbnailBase64 = fileThumbnail!!,
+                    thumbnailBase64 = fileThumbnail,
                     aspectRatio = fileAspectRatio
                 )
             }
@@ -142,7 +142,7 @@ fun AttachmentPreview(
             Box(
                 modifier = modifier
                     .conditional(
-                        fileAspectRatio != null && fileAspectRatio!! > 0f,
+                        fileAspectRatio != null && fileAspectRatio > 0f,
                         `if` = {
                             Modifier
                                 .aspectRatio(fileAspectRatio!!)
@@ -158,7 +158,7 @@ fun AttachmentPreview(
                 contentAlignment = Alignment.Center
             ) {
                 PendingImageContent(
-                    uri = pendingFileUri!!,
+                    uri = pendingFileUri,
                     isUploading = isUploading,
                     isImage = true
                 )
