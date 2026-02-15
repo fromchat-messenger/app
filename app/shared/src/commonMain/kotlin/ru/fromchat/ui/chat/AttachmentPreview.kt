@@ -21,7 +21,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AttachFile
-import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -38,7 +38,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.withSaveLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -350,16 +357,37 @@ private fun FileIconContent(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            modifier = Modifier
-                .size(40.dp)
-                .background(circleBackground, RoundedCornerShape(20.dp)),
+            modifier = Modifier.size(40.dp).then(
+                if (isAuthor) {
+                    Modifier
+                        .graphicsLayer {
+                            compositingStrategy = CompositingStrategy.Offscreen
+                        }
+                        .drawWithContent {
+                            drawCircle(
+                                color = circleBackground,
+                                radius = size.minDimension / 2f,
+                                center = center
+                            )
+                            drawContext.canvas.withSaveLayer(
+                                bounds = Rect(0f, 0f, size.width, size.height),
+                                paint = Paint().apply { blendMode = BlendMode.DstOut }
+                            ) {
+                                drawContent()
+                            }
+                        }
+                } else {
+                    Modifier
+                        .background(circleBackground, RoundedCornerShape(20.dp))
+                }
+            ),
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Default.Download,
+                imageVector = Icons.Rounded.Download,
                 contentDescription = null,
                 modifier = Modifier.size(22.dp),
-                tint = iconTint
+                tint = if (isAuthor) Color.White else iconTint
             )
         }
         Column(
