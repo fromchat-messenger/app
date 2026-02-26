@@ -223,10 +223,6 @@ fun ImageFullscreenPreview(
                     val cornerRadiusAnim = remember { Animatable(initial.cornerRadius) }
                     val density = LocalDensity.current
                     val bottomInsetPx = WindowInsets.safeDrawing.getBottom(density)
-                    val backGestureEdgeWidthPx: Float? = WindowInsets.safeDrawing
-                        .getLeft(density, androidx.compose.ui.unit.LayoutDirection.Ltr)
-                        .toFloat()
-                        .takeIf { it > 0f }
                     var isTransformInProgress by remember { mutableStateOf(false) }
                     var gestureEndJob by remember { mutableStateOf<Job?>(null) }
                     val scope = rememberCoroutineScope()
@@ -435,7 +431,7 @@ fun ImageFullscreenPreview(
                                 if (isTransitioning) Modifier
                                 else Modifier.pointerInput(
                                     containerWidth, containerHeight, contentHeightAtScale1,
-                                    bottomInsetPx, scope, backGestureEdgeWidthPx
+                                    bottomInsetPx, scope
                                 ) {
                                     detectTransformGestures(
                                         panZoomLock = true,
@@ -456,15 +452,6 @@ fun ImageFullscreenPreview(
 
                                         val centerX = containerWidth / 2f
                                         val centerY = containerHeight / 2f
-
-                                        // If this looks like a system back swipe from the left edge, ignore it
-                                        if (zoomChange == 1f && backGestureEdgeWidthPx != null) {
-                                            val absDx = abs(panChange.x)
-                                            val absDy = abs(panChange.y)
-                                            if (absDx > absDy && centroid.x < backGestureEdgeWidthPx) {
-                                                return@detectTransformGestures
-                                            }
-                                        }
 
                                         if (zoomChange != 1f) {
                                             isDragToDismiss = false
