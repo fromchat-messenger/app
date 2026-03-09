@@ -35,7 +35,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -47,10 +46,6 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeEffect
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
-import dev.chrisbanes.haze.materials.HazeMaterials
 import ru.fromchat.api.Message
 import ru.fromchat.ui.scaleOnPress
 
@@ -60,7 +55,6 @@ data class ContextMenuState(
     val position: IntOffset = IntOffset(0, 0)
 )
 
-@OptIn(ExperimentalHazeMaterialsApi::class)
 @Suppress("AssignedValueIsNeverRead")
 @Composable
 fun MessageContextMenu(
@@ -70,7 +64,6 @@ fun MessageContextMenu(
     onReply: (Message) -> Unit,
     onEdit: (Message) -> Unit,
     onDelete: (Message) -> Unit,
-    hazeState: HazeState,
     screenWidthPx: Int,
     screenHeightPx: Int,
     modifier: Modifier = Modifier,
@@ -106,7 +99,6 @@ fun MessageContextMenu(
     if (shouldShowPopup && state.message != null) {
         var measuredSize by remember(state.message) { mutableStateOf(IntSize.Zero) }
 
-        // Off-screen measurement pass using a lightweight, non-animated version
         SubcomposeLayout(Modifier.size(0.dp)) { _ ->
             val looseConstraints = Constraints(
                 minWidth = 0,
@@ -206,7 +198,6 @@ fun MessageContextMenu(
                         onDelete(it)
                         onDismiss()
                     },
-                    hazeState = hazeState,
                     modifier = modifier,
                     animated = true,
                     scale = scale,
@@ -219,7 +210,6 @@ fun MessageContextMenu(
     }
 }
 
-@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 private fun ContextMenuContent(
     message: Message,
@@ -229,7 +219,6 @@ private fun ContextMenuContent(
     onDelete: (Message) -> Unit,
     modifier: Modifier,
     animated: Boolean,
-    hazeState: HazeState? = null,
     withShadow: Boolean = true,
     scale: Float = 1f,
     alpha: Float = 1f,
@@ -246,10 +235,7 @@ private fun ContextMenuContent(
     }
 
     val baseModifier = modifier.width(IntrinsicSize.Max)
-
-    // Container that scales around the finger pivot and owns the material
-    // bounds (shape + clipping) so the blur region exactly matches the card.
-    val animatedContainerModifier =
+    val containerModifier =
         if (animated) {
             baseModifier.graphicsLayer(
                 scaleX = scale,
@@ -268,59 +254,37 @@ private fun ContextMenuContent(
             )
         }
 
-    // Blur matches the material bounds from the parent, without its own transforms.
-    // Use a prebuilt material style, but with a transparent container color so we
-    // only get the blur characteristics, not an extra color wash.
-    val blurModifier =
-        if (hazeState != null) {
-            Modifier.hazeEffect(
-                state = hazeState,
-                style = HazeMaterials.thin(containerColor = Color.Transparent)
-            ) {
-                noiseFactor = 0f
-            }
-        } else {
-            Modifier
-        }
-
-    // Fully transparent tint so we only see the material blur underneath.
-    val contentBackgroundColor = MaterialTheme.colorScheme.surface.copy(alpha = 0f)
+    val menuColor = MaterialTheme.colorScheme.surfaceContainer
     val edgePadding = 8.dp
     val itemSpacing = 2.dp
 
-    Box(modifier = animatedContainerModifier) {
-        Box(
-            modifier = blurModifier
-                .background(contentBackgroundColor)
+    Box(modifier = containerModifier) {
+        Box(modifier = Modifier.matchParentSize().background(menuColor, menuShape))
+        Column(
+            modifier = Modifier
+                .padding(horizontal = edgePadding, vertical = edgePadding)
+                .verticalScroll(menuScrollState),
+            verticalArrangement = Arrangement.spacedBy(itemSpacing)
         ) {
-            Column(
-                modifier = Modifier
-                    .padding(horizontal = edgePadding, vertical = edgePadding)
-                    .verticalScroll(menuScrollState),
-                verticalArrangement = Arrangement.spacedBy(itemSpacing)
-            ) {
+            ContextMenuItem(
+                icon = Icons.AutoMirrored.Filled.Reply,
+                text = "Reply",
+                onClick = { onReply(message) }
+            )
+            if (isAuthor) {
                 ContextMenuItem(
-                    icon = Icons.AutoMirrored.Filled.Reply,
-                    text = "Reply",
-                    onClick = {
-                        onReply(message)
-                    }
+                    icon = Icons.Default.Edit,
+                    text = "Edit",
+                    onClick = { onEdit(message) }
                 )
-                if (isAuthor) {
-                    ContextMenuItem(
-                        icon = Icons.Default.Edit,
-                        text = "Edit",
-                        onClick = { onEdit(message) }
-                    )
-                }
-                if (isAuthor) {
-                    ContextMenuItem(
-                        icon = Icons.Default.Delete,
-                        text = "Delete",
-                        onClick = { onDelete(message) },
-                        isError = true
-                    )
-                }
+            }
+            if (isAuthor) {
+                ContextMenuItem(
+                    icon = Icons.Default.Delete,
+                    text = "Delete",
+                    onClick = { onDelete(message) },
+                    isError = true
+                )
             }
         }
     }

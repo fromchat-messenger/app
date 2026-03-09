@@ -598,7 +598,6 @@ fun ChatScreen(
                     MessageContextMenu(
                         state = contextMenuState,
                         isAuthor = contextMenuState.message?.user_id == currentUserId,
-                        hazeState = hazeState,
                         screenWidthPx = screenWidthPx,
                         screenHeightPx = screenHeightPx,
                         onDismiss = { contextMenuState = contextMenuState.copy(isOpen = false) },
