@@ -445,6 +445,7 @@ object ApiClient {
         settings.remove("current_user_id")
         token = null
         user = null
+        runCatching { ProfileCache.clear() }
     }
 
     fun getTokenSafely() = token ?: throw IllegalStateException("Not authenticated")

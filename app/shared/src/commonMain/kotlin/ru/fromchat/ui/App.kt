@@ -22,6 +22,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import ru.fromchat.api.ApiClient
+import ru.fromchat.api.ProfileCache
 import ru.fromchat.api.UpdateSyncManager
 import ru.fromchat.api.WebSocketManager
 import ru.fromchat.net.NetworkConnectivity
@@ -52,6 +53,8 @@ fun App(scrollToMessageId: Int? = null, startAtPublicChat: Boolean = false) {
 
         // Load persisted token and user data
         ApiClient.loadPersistedData()
+
+        runCatching { ProfileCache.hydrateFromDisk() }
 
         // Initialize update sync state for the current user (if any)
         runCatching {

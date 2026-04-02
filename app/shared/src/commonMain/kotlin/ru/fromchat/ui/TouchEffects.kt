@@ -1,5 +1,6 @@
 package ru.fromchat.ui
 
+import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Indication
@@ -29,13 +30,15 @@ import kotlinx.coroutines.launch
  * When [interactionSource] is non-null: uses it for scale only (caller adds clickable on child so ripple scales with content).
  * [indication] when non-null is used for the clickable (e.g. ripple); null = no indication.
  * [clipShape] when non-null clips the scaled result.
+ * [animationSpec] drives the scale transition (default is a spring).
  */
 fun Modifier.scaleOnPress(
     scale: Float = 0.96f,
     onClick: (() -> Unit)? = null,
     indication: Indication? = null,
     clipShape: Shape? = null,
-    interactionSource: MutableInteractionSource? = null
+    interactionSource: MutableInteractionSource? = null,
+    animationSpec: AnimationSpec<Float> = spring()
 ): Modifier = composed {
     val source = interactionSource ?: remember { MutableInteractionSource() }
     var pressed by remember { mutableStateOf(false) }
@@ -62,7 +65,7 @@ fun Modifier.scaleOnPress(
 
     val scaleValue by animateFloatAsState(
         targetValue = if (pressed) scale else 1f,
-        animationSpec = spring(),
+        animationSpec = animationSpec,
         label = "scaleOnPress"
     )
 

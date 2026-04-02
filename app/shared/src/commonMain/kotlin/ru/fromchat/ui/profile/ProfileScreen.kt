@@ -1,5 +1,7 @@
 package ru.fromchat.ui.profile
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.LocalIndication
@@ -45,7 +47,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
@@ -76,6 +82,12 @@ private data class ProfileUiState(
     val linkStatus: String? = null
 )
 
+private val profileActionCardPressSpring = spring<Float>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = Spring.StiffnessLow,
+    visibilityThreshold = 0.001f
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
@@ -95,10 +107,11 @@ fun ProfileScreen(
     val navController = LocalNavController.current
     val hideBackButton = navController.currentDestination?.route == "chat"
     val targetUserId = userId.takeIf { it != null && it > 0 }
-    val fetchKey = targetUserId ?: 0
+    val ownUserId = ApiClient.user?.id?.takeIf { it > 0 }
+    val cacheLookupId = targetUserId ?: ownUserId
 
-    var state by remember(fetchKey) {
-        val cached = targetUserId?.let { ProfileCache.get(it) }
+    var state by remember(targetUserId, ownUserId) {
+        val cached = cacheLookupId?.let { ProfileCache.get(it) }
         mutableStateOf(
             ProfileUiState(
                 profile = cached,
@@ -108,21 +121,33 @@ fun ProfileScreen(
         )
     }
 
-    LaunchedEffect(fetchKey) {
-        runCatching {
-            if (targetUserId == null) {
-                ApiClient.getOwnProfile()
-            } else {
-                ApiClient.getProfileById(targetUserId)
+    val latestUi by rememberUpdatedState(state)
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    LaunchedEffect(cacheLookupId, targetUserId, lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            runCatching {
+                if (targetUserId == null) {
+                    ApiClient.getOwnProfile()
+                } else {
+                    ApiClient.getProfileById(targetUserId)
+                }
+            }.onSuccess { profile ->
+                ProfileCache.put(profile)
+                state = latestUi.copy(profile = profile, isLoading = false, error = null)
+            }.onFailure { err ->
+                val fallbackId = targetUserId ?: ownUserId
+                val fallback = fallbackId?.let { ProfileCache.get(it) }
+                state = latestUi.copy(
+                    error = if (latestUi.profile == null && fallback == null) {
+                        err.message ?: "Unable to load profile"
+                    } else {
+                        null
+                    },
+                    profile = latestUi.profile ?: fallback,
+                    isLoading = false
+                )
             }
-        }.onSuccess { profile ->
-            ProfileCache.put(profile)
-            state = state.copy(profile = profile, isLoading = false, error = null)
-        }.onFailure {
-            state = state.copy(
-                error = if (state.profile == null) it.message ?: "Unable to load profile" else null,
-                isLoading = false
-            )
         }
     }
 
@@ -154,9 +179,7 @@ fun ProfileScreen(
         }
     ) { innerPadding ->
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
+            modifier = Modifier.fillMaxSize()
         ) {
             val errorMessage = state.error
             val profile = state.profile
@@ -171,9 +194,9 @@ fun ProfileScreen(
 
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    ,
+                    .padding(innerPadding),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 when {
@@ -267,7 +290,7 @@ fun ProfileScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(36.dp))
 
                         Row(
                             modifier = Modifier
@@ -292,7 +315,8 @@ fun ProfileScreen(
                                     .scaleOnPress(
                                         scale = 0.90f,
                                         interactionSource = primarySource,
-                                        clipShape = MaterialTheme.shapes.extraLarge
+                                        clipShape = MaterialTheme.shapes.extraLarge,
+                                        animationSpec = profileActionCardPressSpring
                                     ),
                                 shape = MaterialTheme.shapes.extraLarge,
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
@@ -331,7 +355,8 @@ fun ProfileScreen(
                                     .scaleOnPress(
                                         scale = 0.90f,
                                         interactionSource = linkSource,
-                                        clipShape = MaterialTheme.shapes.extraLarge
+                                        clipShape = MaterialTheme.shapes.extraLarge,
+                                        animationSpec = profileActionCardPressSpring
                                     ),
                                 shape = MaterialTheme.shapes.extraLarge,
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)

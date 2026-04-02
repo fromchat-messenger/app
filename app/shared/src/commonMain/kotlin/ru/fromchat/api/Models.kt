@@ -48,7 +48,12 @@ data class UserProfile(
     val verified: Boolean? = null,
     val suspended: Boolean? = null,
     @SerialName("suspension_reason") val suspensionReason: String? = null,
-    val deleted: Boolean? = null
+    val deleted: Boolean? = null,
+    /**
+     * Client-only: true when this row was built from public-chat message metadata, not a full
+     * `/user/...` response. The backend does not send this key.
+     */
+    @SerialName("client_preview_only") val isClientPreviewOnly: Boolean = false
 )
 
 @Serializable

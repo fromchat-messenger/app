@@ -3,6 +3,7 @@ package ru.fromchat.ui.main
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
@@ -101,8 +102,9 @@ fun SettingsTab(
         ) { innerPadding ->
             Column(
                 Modifier
-                    .padding(innerPadding)
+                    .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
+                    .padding(innerPadding)
             ) {
                 var materialYouSwitch by remember {
                     mutableStateOf(
