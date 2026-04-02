@@ -48,6 +48,10 @@ deleteMessagesForConversation:
 DELETE FROM message
 WHERE conversationId = ?;
 
+deleteMessageByClientMessageId:
+DELETE FROM message
+WHERE conversationId = ? AND clientMessageId = ?;
+
 upsertMessage:
 INSERT OR REPLACE INTO message(
     id,

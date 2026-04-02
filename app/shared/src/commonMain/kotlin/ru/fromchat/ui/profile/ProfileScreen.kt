@@ -65,6 +65,7 @@ import kotlinx.coroutines.withContext
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.ProfileCache
 import ru.fromchat.api.UserProfile
+import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.chat.Avatar
 import ru.fromchat.ui.scaleOnPress
 
@@ -91,6 +92,8 @@ fun ProfileScreen(
     onOpenSettings: () -> Unit = {}
 ) {
     val clipboardManager: ClipboardManager = LocalClipboardManager.current
+    val navController = LocalNavController.current
+    val hideBackButton = navController.currentDestination?.route == "chat"
     val targetUserId = userId.takeIf { it != null && it > 0 }
     val fetchKey = targetUserId ?: 0
 
@@ -131,17 +134,19 @@ fun ProfileScreen(
             MediumTopAppBar(
                 title = { Text("Profile") },
                 navigationIcon = {
-                    Box(
-                        modifier = Modifier
-                            .scaleOnPress(0.96f, onClick = onBack)
-                            .padding(12.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            modifier = Modifier.size(24.dp)
-                        )
+                    if (!hideBackButton) {
+                        Box(
+                            modifier = Modifier
+                                .scaleOnPress(0.96f, onClick = onBack)
+                                .padding(12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
                     }
                 },
                 scrollBehavior = scrollBehavior

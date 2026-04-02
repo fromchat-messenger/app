@@ -24,6 +24,7 @@ import androidx.navigation.compose.rememberNavController
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.UpdateSyncManager
 import ru.fromchat.api.WebSocketManager
+import ru.fromchat.net.NetworkConnectivity
 import ru.fromchat.core.config.Config
 import ru.fromchat.ui.auth.LoginScreen
 import ru.fromchat.ui.auth.RegisterScreen
@@ -46,6 +47,8 @@ fun App(scrollToMessageId: Int? = null, startAtPublicChat: Boolean = false) {
         runCatching {
             Config.initialize()
         }
+
+        runCatching { NetworkConnectivity.ensureStarted() }
 
         // Load persisted token and user data
         ApiClient.loadPersistedData()

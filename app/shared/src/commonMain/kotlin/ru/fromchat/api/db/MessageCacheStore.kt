@@ -33,7 +33,21 @@ object MessageCacheStore {
     }
 
     suspend fun replacePublicMessages(messages: List<Message>) {
-        replaceMessages(conversationIdForPublic(), messages)
+        val pending = loadPublicMessages().filter { it.id < 0 }
+        val stillPending = pending.filter { p ->
+            val cid = p.client_message_id
+            cid == null || messages.none { it.client_message_id == cid }
+        }
+        val merged = (messages + stillPending)
+            .distinctBy { msg ->
+                when {
+                    msg.id > 0 -> "i:${msg.id}"
+                    msg.client_message_id != null -> "c:${msg.client_message_id}"
+                    else -> "i:${msg.id}"
+                }
+            }
+            .sortedBy { it.timestamp }
+        replaceMessages(conversationIdForPublic(), merged)
     }
 
     suspend fun loadDmMessages(otherUserId: Int): List<Message> {
@@ -41,7 +55,89 @@ object MessageCacheStore {
     }
 
     suspend fun replaceDmMessages(otherUserId: Int, messages: List<Message>) {
-        replaceMessages(conversationIdForDm(otherUserId), messages)
+        val convId = conversationIdForDm(otherUserId)
+        val pending = loadDmMessages(otherUserId).filter { it.id < 0 }
+        val stillPending = pending.filter { p ->
+            val cid = p.client_message_id
+            cid == null || messages.none { it.client_message_id == cid }
+        }
+        val merged = (messages + stillPending)
+            .distinctBy { msg ->
+                when {
+                    msg.id > 0 -> "i:${msg.id}"
+                    msg.client_message_id != null -> "c:${msg.client_message_id}"
+                    else -> "i:${msg.id}"
+                }
+            }
+            .sortedBy { it.timestamp }
+        replaceMessages(convId, merged)
+    }
+
+    suspend fun upsertPublicMessage(message: Message) {
+        upsertSingle(conversationIdForPublic(), message)
+    }
+
+    suspend fun upsertDmMessage(otherUserId: Int, message: Message) {
+        upsertSingle(conversationIdForDm(otherUserId), message)
+    }
+
+    suspend fun deletePublicMessageByClientMessageId(clientMessageId: String) {
+        deleteByClientMessageId(conversationIdForPublic(), clientMessageId)
+    }
+
+    suspend fun deleteDmMessageByClientMessageId(otherUserId: Int, clientMessageId: String) {
+        deleteByClientMessageId(conversationIdForDm(otherUserId), clientMessageId)
+    }
+
+    suspend fun confirmPublicMessage(clientMessageId: String, confirmed: Message) {
+        confirmMessage(conversationIdForPublic(), clientMessageId, confirmed)
+    }
+
+    suspend fun confirmDmMessage(otherUserId: Int, clientMessageId: String, confirmed: Message) {
+        confirmMessage(conversationIdForDm(otherUserId), clientMessageId, confirmed)
+    }
+
+    private suspend fun deleteByClientMessageId(conversationId: String, clientMessageId: String) {
+        withContext(Dispatchers.Default) {
+            db.messageDatabaseQueries.deleteMessageByClientMessageId(conversationId, clientMessageId)
+        }
+    }
+
+    private suspend fun upsertSingle(conversationId: String, msg: Message) {
+        withContext(Dispatchers.Default) {
+            db.messageDatabaseQueries.upsertMessage(
+                id = msg.id.toLong(),
+                conversationId = conversationId,
+                userId = msg.user_id.toLong(),
+                content = msg.content,
+                timestamp = msg.timestamp,
+                isRead = if (msg.is_read) 1L else 0L,
+                isEdited = if (msg.is_edited) 1L else 0L,
+                replyToId = msg.reply_to?.id?.toLong(),
+                clientMessageId = msg.client_message_id,
+                deletedFlag = 0L
+            )
+        }
+    }
+
+    private suspend fun confirmMessage(conversationId: String, clientMessageId: String, confirmed: Message) {
+        withContext(Dispatchers.Default) {
+            db.messageDatabaseQueries.transaction {
+                db.messageDatabaseQueries.deleteMessageByClientMessageId(conversationId, clientMessageId)
+                db.messageDatabaseQueries.upsertMessage(
+                    id = confirmed.id.toLong(),
+                    conversationId = conversationId,
+                    userId = confirmed.user_id.toLong(),
+                    content = confirmed.content,
+                    timestamp = confirmed.timestamp,
+                    isRead = if (confirmed.is_read) 1L else 0L,
+                    isEdited = if (confirmed.is_edited) 1L else 0L,
+                    replyToId = confirmed.reply_to?.id?.toLong(),
+                    clientMessageId = confirmed.client_message_id,
+                    deletedFlag = 0L
+                )
+            }
+        }
     }
 
     private suspend fun loadMessages(conversationId: String): List<Message> =

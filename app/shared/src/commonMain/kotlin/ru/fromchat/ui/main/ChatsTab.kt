@@ -7,8 +7,11 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MediumTopAppBar
 import androidx.compose.material3.Scaffold
@@ -21,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.style.TextOverflow
@@ -33,6 +37,8 @@ import ru.fromchat.api.db.CachedConversation
 import ru.fromchat.api.db.MessageCacheStore
 import ru.fromchat.chat_last_mesaage
 import ru.fromchat.public_chat
+import ru.fromchat.net.NetworkConnectivity
+import ru.fromchat.ui.ConnectingEllipsis
 import ru.fromchat.ui.LocalNavController
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -41,6 +47,7 @@ fun ChatsTab() {
     val navController = LocalNavController.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val connectionStatus by ConnectionStateStore.status.collectAsState()
+    val online by NetworkConnectivity.isOnline.collectAsState(initial = true)
     var dmConversations by remember { mutableStateOf<List<CachedConversation>>(emptyList()) }
 
     LaunchedEffect(Unit) {
@@ -60,10 +67,11 @@ fun ChatsTab() {
         }
     }
 
-    val titleText = when (connectionStatus) {
-        ConnectionStatus.UPDATING -> "Updating..."
-        ConnectionStatus.CONNECTING -> "Connecting..."
-        ConnectionStatus.CONNECTED -> "FromChat"
+    val titleKey = when {
+        !online -> "connecting"
+        connectionStatus == ConnectionStatus.UPDATING -> "updating"
+        connectionStatus == ConnectionStatus.CONNECTING -> "connecting"
+        else -> "fromchat"
     }
 
     Scaffold(
@@ -72,18 +80,50 @@ fun ChatsTab() {
             MediumTopAppBar(
                 title = {
                     AnimatedContent(
-                        targetState = titleText,
+                        targetState = titleKey,
                         transitionSpec = {
                             (slideInVertically { it / 2 } + fadeIn()) togetherWith
                                 (slideOutVertically { -it / 2 } + fadeOut())
                         },
                         label = "chats_title"
-                    ) { text ->
-                        Text(
-                            text = text,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                    ) { key ->
+                        when (key) {
+                            "connecting" -> {
+                                val style = MaterialTheme.typography.headlineSmall
+                                val color = MaterialTheme.colorScheme.onSurface
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Start
+                                ) {
+                                    Text(
+                                        text = "Connecting",
+                                        style = style,
+                                        color = color,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    ConnectingEllipsis(
+                                        fontSize = style.fontSize,
+                                        color = color,
+                                        baseStyle = style
+                                    )
+                                }
+                            }
+                            "updating" -> {
+                                Text(
+                                    text = "Updating...",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            else -> {
+                                Text(
+                                    text = "FromChat",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
                     }
                 },
                 scrollBehavior = scrollBehavior

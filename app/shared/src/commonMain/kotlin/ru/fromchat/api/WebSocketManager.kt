@@ -30,6 +30,8 @@ import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
 object WebSocketManager {
+    private const val RECONNECT_DELAY_MS = 1_000L
+
     // Config
     private val scope = CoroutineScope(Dispatchers.IO)
     private val json = Json { ignoreUnknownKeys = true }
@@ -72,21 +74,26 @@ object WebSocketManager {
         return session != null
     }
 
-    fun connect() {
-        Logger.d("WebSocketManager", "connect() called. current session=${session != null}, connecting=$connecting")
+    fun connect(forceRestart: Boolean = false) {
+        Logger.d(
+            "WebSocketManager",
+            "connect(forceRestart=$forceRestart) called. current session=${session != null}, connecting=$connecting"
+        )
 
-        val existingJob = connectionJob
-        if (existingJob != null && existingJob.isActive) {
-            Logger.d("WebSocketManager", "connect() ignored: connectionJob already running")
-            return
+        if (forceRestart) {
+            connectionJob?.cancel()
+            connectionJob = null
+        } else {
+            val existingJob = connectionJob
+            if (existingJob != null && existingJob.isActive) {
+                Logger.d("WebSocketManager", "connect() ignored: connectionJob already running")
+                return
+            }
         }
 
-        // Always reflect that we are trying to connect while this loop is active
         ConnectionStateStore.onConnecting()
 
         connectionJob = scope.launch {
-            var backoffMs = 1_000L
-
             while (isActive) {
                 Logger.d("WebSocketManager", "Connection loop active. isActive=$isActive")
 
@@ -94,7 +101,7 @@ object WebSocketManager {
                 if (token.isNullOrEmpty()) {
                     Logger.d("WebSocketManager", "No auth token available; staying in CONNECTING and retrying later")
                     ConnectionStateStore.onConnecting()
-                    delay(backoffMs.coerceAtMost(5_000L))
+                    delay(RECONNECT_DELAY_MS)
                     continue
                 }
 
@@ -112,7 +119,6 @@ object WebSocketManager {
                     ) {
                         session = this
                         connecting = false
-                        backoffMs = 1_000L
                         Logger.d("WebSocketManager", "WebSocket connected. connecting set to false")
                         ConnectionStateStore.onConnected()
 
@@ -188,9 +194,8 @@ object WebSocketManager {
                     ConnectionStateStore.onConnecting()
 
                     if (isActive) {
-                        Logger.d("WebSocketManager", "Reconnecting in ${backoffMs}ms...")
-                        delay(backoffMs)
-                        backoffMs = (backoffMs * 2).coerceAtMost(15_000L)
+                        Logger.d("WebSocketManager", "Reconnecting in ${RECONNECT_DELAY_MS}ms...")
+                        delay(RECONNECT_DELAY_MS)
                     }
                 }
             }
@@ -267,5 +272,20 @@ object WebSocketManager {
         session = null
         connecting = false
         Logger.d("WebSocketManager", "Disconnected. session set to null, connecting set to false")
+    }
+
+    /** OS reported loss of network: fail fast and show connecting until back online. */
+    fun onNetworkLost() {
+        Logger.d("WebSocketManager", "onNetworkLost")
+        connectionJob?.cancel()
+        connectionJob = null
+        disconnect()
+        ConnectionStateStore.onConnecting()
+    }
+
+    /** OS reported network available: restart the 1s reconnect loop immediately. */
+    fun onNetworkAvailable() {
+        Logger.d("WebSocketManager", "onNetworkAvailable")
+        connect(forceRestart = true)
     }
 }

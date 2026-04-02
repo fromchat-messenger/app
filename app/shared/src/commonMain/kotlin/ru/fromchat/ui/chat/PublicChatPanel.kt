@@ -45,6 +45,19 @@ class PublicChatPanel(
         ApiClient.sendMessage(content, replyToId, clientMessageId)
     }
 
+    override suspend fun persistOptimisticMessage(message: Message) {
+        MessageCacheStore.upsertPublicMessage(message)
+    }
+
+    override suspend fun removeOptimisticFromCache(message: Message) {
+        val cid = message.client_message_id ?: return
+        MessageCacheStore.deletePublicMessageByClientMessageId(cid)
+    }
+
+    override suspend fun onOptimisticMessageConfirmed(clientMessageId: String, confirmed: Message) {
+        MessageCacheStore.confirmPublicMessage(clientMessageId, confirmed)
+    }
+
     override suspend fun loadMessages() {
         if (messagesLoaded) return
 

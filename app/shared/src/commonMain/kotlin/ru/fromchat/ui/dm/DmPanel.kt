@@ -96,6 +96,19 @@ class DmPanel(
         )
     }
 
+    override suspend fun persistOptimisticMessage(message: Message) {
+        MessageCacheStore.upsertDmMessage(otherUserId, message)
+    }
+
+    override suspend fun removeOptimisticFromCache(message: Message) {
+        val cid = message.client_message_id ?: return
+        MessageCacheStore.deleteDmMessageByClientMessageId(otherUserId, cid)
+    }
+
+    override suspend fun onOptimisticMessageConfirmed(clientMessageId: String, confirmed: Message) {
+        MessageCacheStore.confirmDmMessage(otherUserId, clientMessageId, confirmed)
+    }
+
     override suspend fun loadMessages() {
         setLoading(true)
         try {
@@ -221,19 +234,25 @@ class DmPanel(
 
         updateState { currentState ->
             val existingRealIndex = currentState.messages.indexOfFirst { it.id == envelope.id }
+            val byClientIdIndex = currentState.messages.indexOfFirst { message ->
+                message.id < 0 &&
+                    message.user_id == currentUserId &&
+                    envelope.clientMessageId != null &&
+                    (message.client_message_id == envelope.clientMessageId || message.uploadJobId == envelope.clientMessageId)
+            }
             val exactOptimisticIndex = currentState.messages.indexOfFirst { message ->
                 message.user_id == currentUserId &&
                     message.pendingFileUri != null &&
                     envelope.clientMessageId != null &&
                     (message.client_message_id == envelope.clientMessageId || message.uploadJobId == envelope.clientMessageId)
             }
-            val optimisticIndex = if (exactOptimisticIndex >= 0) {
-                exactOptimisticIndex
-            } else {
-                currentState.messages.indexOfFirst { message ->
-                message.id < 0 &&
-                    message.user_id == currentUserId &&
-                    (message.pendingFileUri != null) == hasAttachments
+            val optimisticIndex = when {
+                byClientIdIndex >= 0 -> byClientIdIndex
+                exactOptimisticIndex >= 0 -> exactOptimisticIndex
+                else -> currentState.messages.indexOfFirst { message ->
+                    message.id < 0 &&
+                        message.user_id == currentUserId &&
+                        (message.pendingFileUri != null) == hasAttachments
                 }
             }
 

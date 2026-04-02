@@ -94,7 +94,14 @@ abstract class ChatPanel(
      */
     suspend fun addMessage(message: Message) {
         addMessageMutex.withLock {
-            val messageExists = _state.messages.any { it.id == message.id }
+            val messageExists = when {
+                message.id > 0 -> _state.messages.any { it.id == message.id }
+                else -> {
+                    val cid = message.client_message_id
+                    if (cid != null) _state.messages.any { it.client_message_id == cid }
+                    else _state.messages.any { it.id == message.id }
+                }
+            }
             if (!messageExists) {
                 Logger.d("ChatPanel", "Adding message: id=${message.id}, content=${message.content.take(50)}")
                 updateState { currentState ->
@@ -116,7 +123,14 @@ abstract class ChatPanel(
         if (messages.isEmpty()) return
         addMessageMutex.withLock {
             val existingIds = _state.messages.mapTo(mutableSetOf()) { it.id }
-            val newOnes = messages.filter { it.id !in existingIds }
+            val existingClientIds = _state.messages.mapNotNullTo(mutableSetOf()) { it.client_message_id }
+            val newOnes = messages.filter { msg ->
+                when {
+                    msg.id > 0 -> msg.id !in existingIds
+                    msg.client_message_id != null -> msg.client_message_id !in existingClientIds
+                    else -> msg.id !in existingIds
+                }
+            }
             if (newOnes.isNotEmpty()) {
                 updateState { currentState ->
                     val newMessages = (currentState.messages + newOnes).sortedBy { it.timestamp }
@@ -148,6 +162,12 @@ abstract class ChatPanel(
      */
     protected fun removeMessage(messageId: Int) {
         updateState { it.copy(messages = it.messages.filter { msg -> msg.id != messageId }) }
+    }
+
+    protected fun removeMessageByClientMessageId(clientMessageId: String) {
+        updateState {
+            it.copy(messages = it.messages.filter { msg -> msg.client_message_id != clientMessageId })
+        }
     }
 
     /**
@@ -185,22 +205,30 @@ abstract class ChatPanel(
         val pending = pendingMessages.remove(tempId)
         pending?.first?.cancel()
 
-        // Replace temporary message with confirmed one
         updateState { currentState ->
-            currentState.copy(
-                messages = currentState.messages.map { msg ->
-                    // Check if this is the temp message (negative ID)
-                    if (msg.id < 0) {
-                        // Try to match by content or other criteria
-                        // For now, we'll replace based on tempId stored in pendingMessages
-                        confirmedMessage
-                    } else {
-                        msg
-                    }
-                }
-            )
+            val withoutDupReal = if (confirmedMessage.id > 0) {
+                currentState.messages.filter { it.id != confirmedMessage.id }
+            } else {
+                currentState.messages
+            }
+            val hadTemp = withoutDupReal.any { it.client_message_id == tempId }
+            val mapped = withoutDupReal.map { msg ->
+                if (msg.client_message_id == tempId) confirmedMessage else msg
+            }
+            val messages = when {
+                hadTemp -> mapped
+                confirmedMessage.id > 0 && mapped.none { it.id == confirmedMessage.id } ->
+                    mapped + confirmedMessage
+                else -> mapped
+            }
+            currentState.copy(messages = messages)
+        }
+        scope.launch(Dispatchers.Default) {
+            runCatching { onOptimisticMessageConfirmed(tempId, confirmedMessage) }
         }
     }
+
+    protected open suspend fun onOptimisticMessageConfirmed(clientMessageId: String, confirmed: Message) {}
 
     /**
      * Retry failed message
@@ -209,42 +237,40 @@ abstract class ChatPanel(
     suspend fun retryMessage(messageId: Int) {
         val message = _state.messages.find { it.id == messageId } ?: return
 
-        // Create new temp ID for retry
         val tempId = "temp_${Clock.System.now().toEpochMilliseconds()}_${(0..999999).random()}"
+        val newOptimistic = message.copy(
+            id = uniqueOptimisticMessageId(),
+            client_message_id = tempId
+        )
 
-        // Create temp message for retry
-        val tempMessage = message.copy(id = -1)
-
-        // Update message to sending state
         updateState { currentState ->
             currentState.copy(
                 messages = currentState.messages.map { msg ->
-                    if (msg.id == messageId) {
-                        tempMessage
-                    } else {
-                        msg
-                    }
+                    if (msg.id == messageId) newOptimistic else msg
                 }
             )
         }
 
-        // Set up timeout
         val timeoutJob = scope.launch {
-            delay(10000) // 10 seconds
+            delay(10000)
             handleMessageTimeout(tempId)
         }
 
-        pendingMessages[tempId] = timeoutJob to tempMessage
+        pendingMessages[tempId] = timeoutJob to newOptimistic
 
-        // Retry sending
+        scope.launch(Dispatchers.Default) {
+            runCatching { persistOptimisticMessage(newOptimistic) }
+        }
+
         try {
-            // Extract content from message
-            sendMessage(message.content, message.reply_to?.id, message.client_message_id)
-        } catch (e: Exception) {
+            sendMessage(message.content, message.reply_to?.id, tempId)
+        } catch (_: Exception) {
             timeoutJob.cancel()
             pendingMessages.remove(tempId)
-            // Mark as failed
-            updateMessage(-1) { it.copy() }
+            removeMessageByClientMessageId(tempId)
+            scope.launch(Dispatchers.Default) {
+                runCatching { removeOptimisticFromCache(newOptimistic) }
+            }
         }
     }
 
@@ -254,21 +280,6 @@ abstract class ChatPanel(
     private fun handleMessageTimeout(tempId: String) {
         val pending = pendingMessages.remove(tempId)
         pending?.first?.cancel()
-
-        // Mark message as failed
-        updateState { currentState ->
-            currentState.copy(
-                messages = currentState.messages.map { msg ->
-                    if (msg.id < 0) {
-                        // Mark as failed - we'll need to add a status field to Message
-                        // For now, just keep it
-                        msg
-                    } else {
-                        msg
-                    }
-                }
-            )
-        }
     }
 
     /**
@@ -301,8 +312,9 @@ abstract class ChatPanel(
             }
         )
 
-        // Add message immediately
-        addMessage(tempMessage)
+        // Unique negative id avoids duplicate LazyColumn keys and bad merge logic.
+        val optimistic = tempMessage.copy(id = uniqueOptimisticMessageId())
+        addMessage(optimistic)
 
         // Set up timeout for failure
         val timeoutJob = scope.launch {
@@ -311,19 +323,38 @@ abstract class ChatPanel(
         }
 
         // Store pending message
-        pendingMessages[tempId] = timeoutJob to tempMessage
+        pendingMessages[tempId] = timeoutJob to optimistic
+
+        scope.launch(Dispatchers.Default) {
+            runCatching { persistOptimisticMessage(optimistic) }
+        }
 
         // Actually send the message
         try {
             sendMessage(content, replyToId, tempId)
             // Message sent successfully - will be updated when WebSocket confirms
         } catch (error: Exception) {
-            // Remove the temporary message from display
-            removeMessage(-1)
+            removeMessageByClientMessageId(tempId)
             pendingMessages.remove(tempId)
             timeoutJob.cancel()
+            scope.launch(Dispatchers.Default) {
+                runCatching { removeOptimisticFromCache(optimistic) }
+            }
         }
     }
+
+    private suspend fun uniqueOptimisticMessageId(): Int = addMessageMutex.withLock {
+        var id: Int
+        do {
+            id = -kotlin.random.Random.nextInt(1, Int.MAX_VALUE)
+        } while (_state.messages.any { it.id == id })
+        id
+    }
+
+    /** Persist optimistic row for offline / process death; no-op by default. */
+    protected open suspend fun persistOptimisticMessage(message: Message) {}
+
+    protected open suspend fun removeOptimisticFromCache(message: Message) {}
 
     /**
      * Clean up pending messages

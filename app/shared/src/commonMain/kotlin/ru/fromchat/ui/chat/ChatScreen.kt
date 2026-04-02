@@ -12,6 +12,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -85,6 +86,8 @@ import ru.fromchat.api.WebSocketMessage
 import ru.fromchat.api.WebSocketUpdatesData
 import ru.fromchat.back
 import ru.fromchat.core.Logger
+import ru.fromchat.net.NetworkConnectivity
+import ru.fromchat.ui.ConnectingEllipsis
 import ru.fromchat.ui.HapticFeedbackEvent
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.rememberHapticFeedback
@@ -142,6 +145,7 @@ fun ChatScreen(
     val currentTypingUsers = panelState.typingUsers // Directly use from panelState
     val statusMap by UserStatusStore.status.collectAsState()
     val connectionStatus by ConnectionStateStore.status.collectAsState()
+    val online by NetworkConnectivity.isOnline.collectAsState(initial = true)
     LaunchedEffect(currentTypingUsers) {
         Logger.d("ChatScreen", "currentTypingUsers updated (from panelState): ${currentTypingUsers.map { it.username }}")
     }
@@ -394,6 +398,7 @@ fun ChatScreen(
                                 )
 
                                 val subtitleKey = when {
+                                    !online -> "connecting"
                                     connectionStatus == ConnectionStatus.UPDATING -> "updating"
                                     connectionStatus != ConnectionStatus.CONNECTED -> "connecting"
                                     currentTypingUsers.isNotEmpty() -> "typing"
@@ -429,12 +434,23 @@ fun ChatScreen(
                                             )
                                         }
                                         key == "connecting" -> {
-                                            Text(
-                                                text = "Connecting...",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.padding(top = 2.dp)
-                                            )
+                                            val st = MaterialTheme.typography.bodySmall
+                                            val col = MaterialTheme.colorScheme.onSurfaceVariant
+                                            Row(
+                                                modifier = Modifier.padding(top = 2.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "Connecting",
+                                                    style = st,
+                                                    color = col
+                                                )
+                                                ConnectingEllipsis(
+                                                    fontSize = st.fontSize,
+                                                    color = col,
+                                                    baseStyle = st
+                                                )
+                                            }
                                         }
                                         key == "typing" -> {
                                             TypingIndicator(
@@ -617,7 +633,9 @@ fun ChatScreen(
 
                         items(
                             items = panelState.messages,
-                            key = { it.uploadJobId ?: it.id.toString() }
+                            key = { msg ->
+                                msg.client_message_id ?: "id_${msg.id}_${msg.timestamp}"
+                            }
                         ) { message ->
                             var tapPositionInRoot by remember { mutableStateOf(IntOffset(0, 0)) }
 
