@@ -44,6 +44,21 @@ FROM message
 WHERE conversationId = ? AND deletedFlag = 0
 ORDER BY timestamp ASC;
 
+-- Last N rows for a conversation (newest first in SQL; reverse in Kotlin for chronological UI).
+selectRecentMessagesByConversation:
+SELECT *
+FROM message
+WHERE conversationId = ? AND deletedFlag = 0
+ORDER BY timestamp DESC
+LIMIT :limit;
+
+-- Optimistic rows only (avoid scanning the full conversation on replace).
+selectPendingMessagesByConversation:
+SELECT *
+FROM message
+WHERE conversationId = ? AND deletedFlag = 0 AND id < 0
+ORDER BY timestamp ASC;
+
 deleteMessagesForConversation:
 DELETE FROM message
 WHERE conversationId = ?;

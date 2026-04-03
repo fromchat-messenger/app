@@ -1,7 +1,9 @@
 package ru.fromchat.ui.chat
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.Message
 import ru.fromchat.api.MessageDeletedData
@@ -23,6 +25,25 @@ class PublicChatPanel(
 ) {
     private val typingHandler = PublicChatTypingHandler(scope)
     private var messagesLoaded = false
+
+    /**
+     * Whether replacing the list would change **structure or message body** (content / edited).
+     * Intentionally ignores username, avatar, reactions, read, verified: cache vs API often differ
+     * there while ids + text match; comparing those forced a useless clear/re-add and JIT spike.
+     */
+    private fun publicHistoryDiffersForUi(shown: List<Message>, fromNetwork: List<Message>): Boolean {
+        val order = compareBy<Message> { it.timestamp }.thenBy { it.id }
+        val a = shown.sortedWith(order)
+        val b = fromNetwork.sortedWith(order)
+        if (a.size != b.size) return true
+        for (i in a.indices) {
+            val x = a[i]
+            val y = b[i]
+            if (x.id != y.id) return true
+            if (x.content != y.content || x.is_edited != y.is_edited) return true
+        }
+        return false
+    }
 
     override val supportsNavigateToSenderProfile: Boolean
         get() = true
@@ -49,50 +70,83 @@ class PublicChatPanel(
     }
 
     override suspend fun persistOptimisticMessage(message: Message) {
-        MessageCacheStore.upsertPublicMessage(message)
+        withContext(Dispatchers.Default) {
+            MessageCacheStore.upsertPublicMessage(message)
+        }
     }
 
     override suspend fun removeOptimisticFromCache(message: Message) {
         val cid = message.client_message_id ?: return
-        MessageCacheStore.deletePublicMessageByClientMessageId(cid)
+        withContext(Dispatchers.Default) {
+            MessageCacheStore.deletePublicMessageByClientMessageId(cid)
+        }
     }
 
     override suspend fun onOptimisticMessageConfirmed(clientMessageId: String, confirmed: Message) {
-        MessageCacheStore.confirmPublicMessage(clientMessageId, confirmed)
+        withContext(Dispatchers.Default) {
+            MessageCacheStore.confirmPublicMessage(clientMessageId, confirmed)
+        }
     }
 
     override suspend fun loadMessages() {
         if (messagesLoaded) return
 
-        setLoading(true)
-        try {
-            // First, try to show cached messages immediately for offline / fast startup.
-            runCatching {
-                val cached = MessageCacheStore.loadPublicMessages()
-                if (cached.isNotEmpty()) {
+        messagesLoaded = true
+
+        // 1) Read cache off main first. Do NOT setLoading(true) before this: that forced an extra
+        //    frame (spinner + msgs=0) and a second heavy recomposition before the cached list applied.
+        val cached = withContext(Dispatchers.Default) {
+            // Bounded read: public conversation can accumulate many rows; SQLDelight is thin — the cost is SQLite I/O.
+            runCatching { MessageCacheStore.loadRecentPublicMessages(limit = 128) }.getOrDefault(emptyList())
+        }
+        if (cached.isNotEmpty()) {
+            withContext(Dispatchers.Main) {
+                batchStateUpdates {
                     clearMessages()
-                    cached.forEach { message ->
-                        addMessage(message)
+                    addMessages(cached)
+                    setLoading(false)
+                }
+            }
+        } else {
+            withContext(Dispatchers.Main) {
+                setLoading(true)
+            }
+        }
+
+        // 2) Refresh from network; this may be fast or slow, but runs entirely off main.
+        val response = withContext(Dispatchers.Default) {
+            runCatching { ApiClient.getMessages(limit = 50) }.getOrNull()
+        }
+        if (response != null && response.messages.isNotEmpty()) {
+            withContext(Dispatchers.Main) {
+                val shown = _state.messages
+                if (shown.isNotEmpty() && !publicHistoryDiffersForUi(shown, response.messages)) {
+                    Logger.d("PublicChatPanel", "Network history matches UI; skip clear/re-add")
+                    if (_state.hasMoreMessages) setHasMoreMessages(false)
+                    if (_state.isLoading) setLoading(false)
+                } else {
+                    batchStateUpdates {
+                        clearMessages()
+                        addMessages(response.messages)
+                        setHasMoreMessages(false) // TODO: Implement has_more from API
+                        setLoading(false)
                     }
                 }
             }
-
-            // Then refresh from network when available.
-            val response = ApiClient.getMessages(limit = 50)
-            if (response.messages.isNotEmpty()) {
-                clearMessages()
-                response.messages.forEach { message ->
-                    addMessage(message)
-                }
-                // Persist fresh messages to cache for offline use.
+            withContext(Dispatchers.Default) {
                 MessageCacheStore.replacePublicMessages(response.messages)
             }
-            setHasMoreMessages(false) // TODO: Implement has_more from API
-            messagesLoaded = true
-        } catch (_: Exception) {
-            // Keep whatever cached state we have; no-op on error.
-        } finally {
-            setLoading(false)
+        } else if (cached.isEmpty()) {
+            // Nothing to show at all; hide spinner so the user is not stuck.
+            withContext(Dispatchers.Main) {
+                if (_state.isLoading) setLoading(false)
+                if (_state.hasMoreMessages) setHasMoreMessages(false)
+            }
+        } else {
+            // We already displayed cached messages; just mark pagination state.
+            withContext(Dispatchers.Main) {
+                if (_state.hasMoreMessages) setHasMoreMessages(false)
+            }
         }
     }
 
@@ -105,7 +159,9 @@ class PublicChatPanel(
         val oldestMessage = messages.first()
         setLoadingMore(true)
         try {
-            val response = ApiClient.getMessages(limit = 50, beforeId = oldestMessage.id)
+            val response = withContext(Dispatchers.Default) {
+                ApiClient.getMessages(limit = 50, beforeId = oldestMessage.id)
+            }
             if (response.messages.isNotEmpty()) {
                 // Prepend older messages (they come in reverse chronological order)
                 updateState { currentState ->
@@ -141,24 +197,27 @@ class PublicChatPanel(
                 val editedMsg = json.decodeFromJsonElement(Message.serializer(), data)
                 DecryptedImageCache.invalidateForMessage(editedMsg.id)
                 updateMessage(editedMsg.id) { editedMsg }
-                // Update cache to reflect edit
-                MessageCacheStore.replacePublicMessages(_state.messages)
+                withContext(Dispatchers.Default) {
+                    MessageCacheStore.replacePublicMessages(_state.messages)
+                }
             }
             "messageDeleted" -> {
                 val data = updateMessage.data ?: return
                 val deletedData = json.decodeFromJsonElement(MessageDeletedData.serializer(), data)
                 DecryptedImageCache.invalidateForMessage(deletedData.message_id)
                 removeMessage(deletedData.message_id)
-                // Mark deleted in cache
-                MessageCacheStore.markMessageDeleted("public", deletedData.message_id)
-                MessageCacheStore.replacePublicMessages(_state.messages)
+                withContext(Dispatchers.Default) {
+                    MessageCacheStore.markMessageDeleted("public", deletedData.message_id)
+                    MessageCacheStore.replacePublicMessages(_state.messages)
+                }
             }
             "reactionUpdate" -> {
                 val data = updateMessage.data ?: return
                 val reactionUpdate = json.decodeFromJsonElement(ReactionUpdateData.serializer(), data)
                 handleReactionUpdate(reactionUpdate)
-                // Re-write cache so reactions are updated
-                MessageCacheStore.replacePublicMessages(_state.messages)
+                withContext(Dispatchers.Default) {
+                    MessageCacheStore.replacePublicMessages(_state.messages)
+                }
             }
             "typing" -> {
                 val data = updateMessage.data ?: return

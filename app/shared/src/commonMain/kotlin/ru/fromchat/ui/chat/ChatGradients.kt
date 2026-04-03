@@ -79,19 +79,19 @@ fun generateGradientFromName(name: String): Brush {
  * Get initials from display name (first 2 words, first letter of each)
  */
 fun getInitials(displayName: String): String {
-    val words = displayName.trim().split("\\s+".toRegex())
+    val words = displayName.trim().split("\\s+".toRegex()).filter { it.isNotBlank() }
     return when {
-        words.isEmpty() -> "?"
+        words.isEmpty() -> ""
         words.size == 1 -> {
             val word = words[0]
             if (word.length >= 2) {
                 word.take(2).uppercase()
             } else {
-                word.uppercase() + "?"
+                (word + word).take(2).uppercase()
             }
         }
         else -> {
-            words.take(2).joinToString("") { it.firstOrNull()?.uppercase() ?: "" }
+            words.take(2).joinToString("") { it.firstOrNull()?.uppercaseChar()?.toString() ?: "" }
         }
     }
 }

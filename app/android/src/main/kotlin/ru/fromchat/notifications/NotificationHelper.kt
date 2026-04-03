@@ -49,11 +49,14 @@ object NotificationHelper {
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
 
+    private fun notificationReplyAction(context: Context) =
+        "${context.packageName}.NOTIFICATION_REPLY"
+
     private fun createReplyIntent(context: Context) = PendingIntent.getBroadcast(
         context,
         SUMMARY_NOTIFICATION_ID,
         Intent(context, NotificationReplyReceiver::class.java).apply {
-            action = "ru.fromchat.NOTIFICATION_REPLY"
+            action = notificationReplyAction(context)
             putExtra("notification_id", SUMMARY_NOTIFICATION_ID)
         },
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE

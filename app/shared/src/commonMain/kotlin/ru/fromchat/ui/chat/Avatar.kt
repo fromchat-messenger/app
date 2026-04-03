@@ -64,37 +64,37 @@ fun Avatar(
         if (imageLoadFailed || profilePictureUrl == null) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val radius = size.minDimension / 2f
-                // Background gradient circle
                 drawCircle(
                     brush = gradient,
                     radius = radius,
                     center = center
                 )
 
-                // Letters sized relative to radius
-                val fontPx = radius * 0.7f
-                val fontSp = (fontPx / density).sp
+                if (initials.isNotBlank()) {
+                    val fontPx = radius * 0.7f
+                    val fontSp = (fontPx / density).sp
 
-                val textLayout = textMeasurer.measure(
-                    text = initials,
-                    style = TextStyle(
-                        color = Color.White,
-                        fontSize = fontSp,
-                        fontWeight = FontWeight.SemiBold
+                    val textLayout = textMeasurer.measure(
+                        text = initials,
+                        style = TextStyle(
+                            color = Color.White,
+                            fontSize = fontSp,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     )
-                )
 
-                val textWidth = textLayout.size.width.toFloat()
-                val textHeight = textLayout.size.height.toFloat()
-                val topLeft = Offset(
-                    x = (size.width - textWidth) / 2f,
-                    y = (size.height - textHeight) / 2f
-                )
+                    val textWidth = textLayout.size.width.toFloat()
+                    val textHeight = textLayout.size.height.toFloat()
+                    val topLeft = Offset(
+                        x = (size.width - textWidth) / 2f,
+                        y = (size.height - textHeight) / 2f
+                    )
 
-                drawText(
-                    textLayoutResult = textLayout,
-                    topLeft = topLeft
-                )
+                    drawText(
+                        textLayoutResult = textLayout,
+                        topLeft = topLeft
+                    )
+                }
             }
         }
     }

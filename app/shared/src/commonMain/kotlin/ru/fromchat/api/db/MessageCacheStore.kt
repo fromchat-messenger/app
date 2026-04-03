@@ -2,8 +2,10 @@ package ru.fromchat.api.db
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import ru.fromchat.api.ApiClient
 import ru.fromchat.api.DmConversation
 import ru.fromchat.api.Message
+import ru.fromchat.api.ProfileCache
 import ru.fromchat.db.Conversation
 import ru.fromchat.db.MessageDatabase
 import ru.fromchat.db.Message as DbMessage
@@ -28,12 +30,23 @@ object MessageCacheStore {
     private fun conversationIdForPublic(): String = "public"
     private fun conversationIdForDm(otherUserId: Int): String = "dm:$otherUserId"
 
+    /**
+     * Full history for a conversation (unbounded). Prefer [loadRecentPublicMessages] when opening UI.
+     */
     suspend fun loadPublicMessages(): List<Message> {
         return loadMessages(conversationIdForPublic())
     }
 
+    /**
+     * Most recent [limit] messages for public chat, chronological (oldest → newest).
+     * Avoids reading the entire `"public"` thread from SQLite when the cache has grown large.
+     */
+    suspend fun loadRecentPublicMessages(limit: Long): List<Message> {
+        return loadRecentMessages(conversationIdForPublic(), limit)
+    }
+
     suspend fun replacePublicMessages(messages: List<Message>) {
-        val pending = loadPublicMessages().filter { it.id < 0 }
+        val pending = loadPendingMessages(conversationIdForPublic())
         val stillPending = pending.filter { p ->
             val cid = p.client_message_id
             cid == null || messages.none { it.client_message_id == cid }
@@ -56,7 +69,7 @@ object MessageCacheStore {
 
     suspend fun replaceDmMessages(otherUserId: Int, messages: List<Message>) {
         val convId = conversationIdForDm(otherUserId)
-        val pending = loadDmMessages(otherUserId).filter { it.id < 0 }
+        val pending = loadPendingMessages(convId)
         val stillPending = pending.filter { p ->
             val cid = p.client_message_id
             cid == null || messages.none { it.client_message_id == cid }
@@ -145,24 +158,56 @@ object MessageCacheStore {
             db.messageDatabaseQueries
                 .selectMessagesByConversation(conversationId)
                 .executeAsList()
-                .map { row: DbMessage ->
-                    Message(
-                        id = row.id.toInt(),
-                        user_id = row.userId.toInt(),
-                        content = row.content,
-                        timestamp = row.timestamp,
-                        is_read = row.isRead != 0L,
-                        is_edited = row.isEdited != 0L,
-                        username = "", // Filled from network; cache focuses on content & ordering.
-                        profile_picture = null,
-                        verified = null,
-                        reply_to = null,
-                        client_message_id = row.clientMessageId,
-                        reactions = null,
-                        files = null
-                    )
-                }
+                .map { row: DbMessage -> row.toAppMessage() }
         }
+
+    private suspend fun loadRecentMessages(conversationId: String, limit: Long): List<Message> =
+        withContext(Dispatchers.Default) {
+            db.messageDatabaseQueries
+                .selectRecentMessagesByConversation(conversationId, limit)
+                .executeAsList()
+                .map { row: DbMessage -> row.toAppMessage() }
+                .reversed()
+        }
+
+    private suspend fun loadPendingMessages(conversationId: String): List<Message> =
+        withContext(Dispatchers.Default) {
+            db.messageDatabaseQueries
+                .selectPendingMessagesByConversation(conversationId)
+                .executeAsList()
+                .map { row: DbMessage -> row.toAppMessage() }
+        }
+
+    private fun DbMessage.toAppMessage(): Message {
+        val uid = userId.toInt()
+        val self = ApiClient.user
+        val profile = ProfileCache.get(uid)
+        val usernameResolved = when {
+            self != null && uid == self.id -> self.username
+            else -> profile?.username?.takeIf { it.isNotBlank() }
+                ?: profile?.displayName?.takeIf { it.isNotBlank() }
+                ?: ""
+        }
+        val pictureResolved = when {
+            self != null && uid == self.id -> self.profile_picture
+            else -> profile?.profilePicture?.takeIf { it.isNotBlank() }
+        }
+        return Message(
+            id = id.toInt(),
+            user_id = uid,
+            content = content,
+            timestamp = timestamp,
+            is_read = isRead != 0L,
+            is_edited = isEdited != 0L,
+            username = usernameResolved,
+            profile_picture = pictureResolved,
+            verified = profile?.verified,
+            reply_to = null,
+            client_message_id = clientMessageId,
+            reactions = null,
+            files = null
+        )
+    }
 
     private suspend fun replaceMessages(conversationId: String, messages: List<Message>) {
         withContext(Dispatchers.Default) {

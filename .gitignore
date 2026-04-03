@@ -19,8 +19,9 @@ build
 local.properties
 
 app/android/keys
-releases
-release
+/releases
+app/android/release
+app/android/debug
 
 *.xcuserstate
 xcuserdata

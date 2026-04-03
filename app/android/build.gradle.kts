@@ -1,6 +1,5 @@
 
 import com.android.build.api.dsl.ApplicationExtension
-import java.io.FileInputStream
 import java.util.Properties
 
 plugins {
@@ -68,20 +67,34 @@ extensions.configure<ApplicationExtension> {
     }
 
     signingConfigs {
-        create("release") {
-            val keystoreProperties = Properties().apply {
-                load(FileInputStream(file("keys/keystore.properties")))
-            }
+        val keystoreProperties = Properties().apply {
+            load(file("keys/keystore.properties").inputStream())
+        }
 
+        create("release") {
             storeFile = file("keys/release.jks")
             keyAlias = "key0"
-            storePassword = keystoreProperties["storePassword"].toString()
-            keyPassword = keystoreProperties["keyPassword"].toString()
+            storePassword = keystoreProperties["releaseStorePassword"].toString()
+            keyPassword = keystoreProperties["releaseKeyPassword"].toString()
+            enableV3Signing = true
+        }
+
+        getByName("debug") {
+            storeFile = file("keys/debug.jks")
+            keyAlias = "debug"
+            storePassword = keystoreProperties["debugStorePassword"].toString()
+            keyPassword = keystoreProperties["debugKeyPassword"].toString()
             enableV3Signing = true
         }
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".beta"
+            versionNameSuffix = "-beta"
+            signingConfig = signingConfigs.getByName("debug")
+        }
+
         release {
             isMinifyEnabled = true
             isShrinkResources = true

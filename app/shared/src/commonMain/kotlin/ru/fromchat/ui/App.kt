@@ -2,6 +2,7 @@ package ru.fromchat.ui
 
 import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection.Companion.End
 import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection.Companion.Start
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -18,9 +19,11 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.ProfileCache
 import ru.fromchat.api.UpdateSyncManager
@@ -93,64 +96,63 @@ fun App(scrollToMessageId: Int? = null, startAtPublicChat: Boolean = false) {
     }
 
     FromChatTheme {
-        val navController = rememberNavController()
+        SharedTransitionLayout {
+            val navController = rememberNavController()
 
-        // Handle navigation to public chat when requested (e.g., from notification)
-        LaunchedEffect(startAtPublicChat) {
-            if (startAtPublicChat && navController.currentDestination?.route != "chats/publicChat") {
-                navController.navigate("chats/publicChat") {
-                    launchSingleTop = true
-                }
-            }
-        }
-
-
-
-        // Set up global auth error handler
-        LaunchedEffect(navController) {
-            ApiClient.onAuthError = {
-                ru.fromchat.core.Logger.d("App", "Global auth error handler triggered, navigating to login")
-                navController.navigate("login") {
-                    popUpTo("chat") { inclusive = true }
-                }
-            }
-        }
-
-        CompositionLocalProvider(
-            LocalNavController provides navController,
-            LocalSystemBarsVisibility provides rememberSystemBarsController()
-        ) {
-            if (startDestination != null) {
-                val animationSpec = tween<IntOffset>(400)
-
-                NavHost(
-                    navController = navController,
-                    startDestination = startDestination!!,
-                    enterTransition = {
-                        slideIntoContainer(
-                            Start,
-                            animationSpec = animationSpec
-                        )
-                    },
-                    exitTransition = {
-                        slideOutOfContainer(
-                            Start,
-                            animationSpec = animationSpec
-                        )
-                    },
-                    popEnterTransition = {
-                        slideIntoContainer(
-                            End,
-                            animationSpec = animationSpec
-                        )
-                    },
-                    popExitTransition = {
-                        slideOutOfContainer(
-                            End,
-                            animationSpec = animationSpec
-                        )
+            // Handle navigation to public chat when requested (e.g., from notification)
+            LaunchedEffect(startAtPublicChat) {
+                if (startAtPublicChat && navController.currentDestination?.route != "chats/publicChat") {
+                    navController.navigate("chats/publicChat") {
+                        launchSingleTop = true
                     }
-                ) {
+                }
+            }
+
+            // Set up global auth error handler
+            LaunchedEffect(navController) {
+                ApiClient.onAuthError = {
+                    ru.fromchat.core.Logger.d("App", "Global auth error handler triggered, navigating to login")
+                    navController.navigate("login") {
+                        popUpTo("chat") { inclusive = true }
+                    }
+                }
+            }
+
+            CompositionLocalProvider(
+                LocalNavController provides navController,
+                LocalSystemBarsVisibility provides rememberSystemBarsController()
+            ) {
+                if (startDestination != null) {
+                    val animationSpec = tween<IntOffset>(400)
+
+                    NavHost(
+                        navController = navController,
+                        startDestination = startDestination!!,
+                        enterTransition = {
+                            slideIntoContainer(
+                                Start,
+                                animationSpec = animationSpec
+                            )
+                        },
+                        exitTransition = {
+                            slideOutOfContainer(
+                                Start,
+                                animationSpec = animationSpec
+                            )
+                        },
+                        popEnterTransition = {
+                            slideIntoContainer(
+                                End,
+                                animationSpec = animationSpec
+                            )
+                        },
+                        popExitTransition = {
+                            slideOutOfContainer(
+                                End,
+                                animationSpec = animationSpec
+                            )
+                        }
+                    ) {
                     composable("serverConfig") {
                         ServerConfigScreen()
                     }
@@ -187,19 +189,43 @@ fun App(scrollToMessageId: Int? = null, startAtPublicChat: Boolean = false) {
                     }
 
                     composable("chats/publicChat") {
-                        PublicChatScreen(scrollToMessageId = scrollToMessageId)
+                        PublicChatScreen(
+                            scrollToMessageId = scrollToMessageId,
+                            sharedTransitionScope = this@SharedTransitionLayout,
+                            animatedContentScope = this@composable
+                        )
                     }
 
                     composable("debug") {
                         DebugApiScreen()
                     }
 
-                    composable("profile/{userId}") { backStackEntry ->
-                        val userId = backStackEntry.savedStateHandle.get<String>("userId")?.toIntOrNull()
+                    composable(
+                        route = "profile/{userId}?useSharedElement={useSharedElement}&sourceMessageId={sourceMessageId}",
+                        arguments = listOf(
+                            navArgument("userId") { type = NavType.StringType },
+                            navArgument("useSharedElement") {
+                                type = NavType.StringType
+                                defaultValue = "false"
+                            },
+                            navArgument("sourceMessageId") {
+                                type = NavType.StringType
+                                defaultValue = "-1"
+                            }
+                        )
+                    ) { backStackEntry ->
+                        val handle = backStackEntry.savedStateHandle
+                        val userId = handle.get<String>("userId")?.toIntOrNull()
+                        val useSharedElement = handle.get<String>("useSharedElement") == "true"
+                        val sourceMessageId = handle.get<String>("sourceMessageId")?.toIntOrNull() ?: -1
                         ProfileScreen(
                             userId = userId,
                             onBack = { navController.navigateUp() },
-                            onChat = { navController.navigate("dm/$it") }
+                            onChat = { navController.navigate("dm/$it") },
+                            sharedTransitionScope = this@SharedTransitionLayout,
+                            animatedVisibilityScope = this@composable,
+                            useSharedElementFromNavigation = useSharedElement,
+                            sharedSourceMessageId = sourceMessageId
                         )
                     }
 
@@ -213,6 +239,7 @@ fun App(scrollToMessageId: Int? = null, startAtPublicChat: Boolean = false) {
 
                     composable("about") {
                         AboutScreen()
+                    }
                     }
                 }
             }

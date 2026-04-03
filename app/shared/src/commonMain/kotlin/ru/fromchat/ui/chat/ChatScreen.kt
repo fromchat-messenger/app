@@ -50,6 +50,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
@@ -126,11 +127,6 @@ fun ChatScreen(
         panelState = panel.getState()
     }
     
-    // Debug: Log state changes
-    LaunchedEffect(panelState.messages.size) {
-        Logger.d("ChatScreen", "Messages count changed: ${panelState.messages.size}")
-    }
-
     LaunchedEffect(panelState.titleAvatar) {
         onTitleAvatarChange?.invoke(panelState.titleAvatar)
     }
@@ -141,7 +137,9 @@ fun ChatScreen(
     val haptic = rememberHapticFeedback()
     val navController = LocalNavController.current
     val profileUserId = panelState.profileUserId
-    val hazeState = rememberHazeState(blurEnabled = true)
+    val hazeState = rememberHazeState(
+        blurEnabled = !(panelState.isLoading && panelState.messages.isEmpty())
+    )
 
     val currentTypingUsers = panelState.typingUsers // Directly use from panelState
     val statusMap by UserStatusStore.status.collectAsState()
@@ -171,10 +169,9 @@ fun ChatScreen(
             val messageIndex = messages.indexOfFirst { it.id == messageId }
             if (messageIndex != -1) {
                 scope.launch {
-                    listState.animateScrollToItem(
-                        index = messages.size - 1 - messageIndex,
-                        scrollOffset = 0
-                    )
+                    // reverseLayout list: index 0 = bottom spacer, 1..n = newest..oldest
+                    val lazyIndex = 1 + (messages.size - 1 - messageIndex)
+                    listState.animateScrollToItem(index = lazyIndex, scrollOffset = 0)
                 }
             }
         }
@@ -270,32 +267,30 @@ fun ChatScreen(
     }
 
     // Scroll to bottom when new messages arrive.
-    // - Initial composition: jump (no animation) to avoid jank.
-    // - Subsequent messages: always scroll when we sent (last message is ours); otherwise only if near bottom.
-    // - Scroll to last item (totalItemsCount - 1) so new message appears at bottom; delay to allow layout.
+    // LazyColumn uses reverseLayout + chronological messages asReversed(): index 0 is bottom inset, 1..n newest→oldest.
+    // - Initial: after one frame, scrollToItem(0) so the first list composition/layout is not merged with scroll in one VSYNC.
+    // - Later: same anchor; "near bottom" = smallest visible index is near 0.
     var didInitialScroll by remember(panel) { mutableStateOf(false) }
     LaunchedEffect(panelState.messages.size, panelState.messages.lastOrNull()?.id, panelState.messages.lastOrNull()?.pendingFileAspectRatio) {
         if (panelState.messages.isEmpty()) return@LaunchedEffect
 
         val lastMessage = panelState.messages.lastOrNull()
         val lastIsOurs = lastMessage?.user_id == currentUserId
-        val totalItems = 2 + panelState.messages.size // top spacer + messages + bottom spacer
-        val lastIndex = totalItems - 1
 
         if (!didInitialScroll) {
             didInitialScroll = true
-            listState.scrollToItem(lastIndex)
+            withFrameNanos { }
+            listState.scrollToItem(0)
             return@LaunchedEffect
         }
 
-        val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-        val isNearBottom = lastVisibleIndex >= (totalItems - 3)
+        val minVisibleIndex = listState.layoutInfo.visibleItemsInfo.minOfOrNull { it.index } ?: Int.MAX_VALUE
+        val isNearBottom = minVisibleIndex <= 2
         if (lastIsOurs || isNearBottom) {
-            delay(100) // Allow new item to be composed and laid out
-            listState.animateScrollToItem(lastIndex)
-            // Re-scroll after layout may change (e.g. aspect ratio update)
+            delay(100)
+            listState.animateScrollToItem(0)
             delay(150)
-            listState.animateScrollToItem(lastIndex)
+            listState.animateScrollToItem(0)
         }
     }
 
@@ -340,7 +335,7 @@ fun ChatScreen(
                                     val avatar = panelState.titleAvatar
                                     val displayName = avatar?.displayName?.takeIf { it.isNotBlank() }
                                         ?: panelState.title.takeIf { it.isNotBlank() }
-                                        ?: "?"
+                                        ?: ""
                                     with(sharedTransitionScope) {
                                         Avatar(
                                             profilePictureUrl = avatar?.profilePictureUrl,
@@ -626,62 +621,83 @@ fun ChatScreen(
                 } else {
                     LazyColumn(
                         state = listState,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .hazeSource(hazeState),
                         userScrollEnabled = !contextMenuState.isOpen,
-                        verticalArrangement = Arrangement.spacedBy(4.dp, alignment = Alignment.Bottom)
+                        reverseLayout = true,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        item { Spacer(Modifier.height(innerPadding.calculateTopPadding())) }
+                        item { Spacer(Modifier.height(innerPadding.calculateBottomPadding())) }
 
                         items(
-                            items = panelState.messages,
+                            items = panelState.messages.asReversed(),
                             key = { msg ->
                                 msg.client_message_id ?: "id_${msg.id}_${msg.timestamp}"
                             }
                         ) { message ->
                             var tapPositionInRoot by remember { mutableStateOf(IntOffset(0, 0)) }
 
-                            Box(modifier = Modifier.hazeSource(hazeState)) {
-                                MessageItem(
-                                    message = message,
-                                    isAuthor = message.user_id == currentUserId,
-                                    isContextMenuOpen = contextMenuState.isOpen,
-                                    isContextMenuForThisMessage = contextMenuState.isOpen && contextMenuState.message?.id == message.id,
-                                    onLongPress = {
-                                        haptic(HapticFeedbackEvent.ContextMenuOpened)
-                                        contextMenuState = ContextMenuState(
-                                            isOpen = true,
-                                            message = message,
-                                            position = tapPositionInRoot
+                            MessageItem(
+                                message = message,
+                                isAuthor = message.user_id == currentUserId,
+                                isContextMenuOpen = contextMenuState.isOpen,
+                                isContextMenuForThisMessage = contextMenuState.isOpen && contextMenuState.message?.id == message.id,
+                                onLongPress = {
+                                    haptic(HapticFeedbackEvent.ContextMenuOpened)
+                                    contextMenuState = ContextMenuState(
+                                        isOpen = true,
+                                        message = message,
+                                        position = tapPositionInRoot
+                                    )
+                                },
+                                onTapPosition = { offset ->
+                                    tapPositionInRoot = IntOffset(offset.x.toInt(), offset.y.toInt())
+                                },
+                                onUsernameClick =
+                                    if (panel.supportsNavigateToSenderProfile &&
+                                        message.user_id != currentUserId &&
+                                        message.user_id > 0
+                                    ) {
+                                        {
+                                            ProfileCache.mergePreviewFromPublicMessage(message)
+                                            navController.navigate(
+                                                "profile/${message.user_id}" +
+                                                    "?useSharedElement=true&sourceMessageId=${message.id}"
+                                            )
+                                        }
+                                    } else {
+                                        null
+                                    },
+                                onImageClick = { msg, idx -> expandedImage = msg to idx },
+                                onImageBounds = { key, rect ->
+                                    imageThumbBounds[key] = rect
+                                },
+                                expandedImageKey = expandedImageKey,
+                                isImageClosing = isImageClosing,
+                                showUsername = panel.showUsernamesInMessages,
+                                currentUserId = currentUserId,
+                                sharedTransitionScope = sharedTransitionScope,
+                                animatedVisibilityScope = animatedVisibilityScope,
+                                sharedAvatarNavKey =
+                                    if (
+                                        panel.supportsNavigateToSenderProfile &&
+                                        sharedTransitionScope != null &&
+                                        animatedVisibilityScope != null &&
+                                        message.user_id != currentUserId &&
+                                        message.user_id > 0
+                                    ) {
+                                        publicChatProfileSharedAvatarKey(
+                                            message.user_id,
+                                            message.id
                                         )
-                                    },
-                                    onTapPosition = { offset ->
-                                        tapPositionInRoot = IntOffset(offset.x.toInt(), offset.y.toInt())
-                                    },
-                                    onUsernameClick =
-                                        if (panel.supportsNavigateToSenderProfile &&
-                                            message.user_id != currentUserId &&
-                                            message.user_id > 0
-                                        ) {
-                                            {
-                                                ProfileCache.mergePreviewFromPublicMessage(message)
-                                                navController.navigate("profile/${message.user_id}")
-                                            }
-                                        } else {
-                                            null
-                                        },
-                                    onImageClick = { msg, idx -> expandedImage = msg to idx },
-                                    onImageBounds = { key, rect ->
-                                        imageThumbBounds[key] = rect
-                                    },
-                                    expandedImageKey = expandedImageKey,
-                                    isImageClosing = isImageClosing,
-                                    showUsername = panel.showUsernamesInMessages,
-                                    currentUserId = currentUserId
-                                )
-                            }
+                                    } else {
+                                        null
+                                    }
+                            )
                         }
 
-                        item { Spacer(Modifier.height(innerPadding.calculateBottomPadding())) }
+                        item { Spacer(Modifier.height(innerPadding.calculateTopPadding())) }
                     }
                 }
 

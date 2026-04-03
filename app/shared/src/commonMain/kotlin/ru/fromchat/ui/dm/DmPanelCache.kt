@@ -26,4 +26,9 @@ object DmPanelCache {
     fun remove(otherUserId: Int) {
         panels.remove(otherUserId)?.destroy()
     }
+
+    fun clearAll() {
+        panels.values.forEach { it.destroy() }
+        panels.clear()
+    }
 }

@@ -73,6 +73,7 @@ import ru.fromchat.api.ProfileCache
 import ru.fromchat.api.UserProfile
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.chat.Avatar
+import ru.fromchat.ui.chat.publicChatProfileSharedAvatarKey
 import ru.fromchat.ui.scaleOnPress
 
 private data class ProfileUiState(
@@ -100,6 +101,9 @@ fun ProfileScreen(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     sharedAvatarKey: Any? = null,
+    /** When true (Nav from public chat), [sharedSourceMessageId] pairs with [targetUserId] for the avatar key. */
+    useSharedElementFromNavigation: Boolean = false,
+    sharedSourceMessageId: Int = -1,
     initialDisplayName: String? = null,
     onOpenSettings: () -> Unit = {}
 ) {
@@ -188,9 +192,17 @@ fun ProfileScreen(
                 ?: initialDisplayName?.takeIf { it.isNotBlank() }
                 ?: "?"
 
+            val navSharedAvatarKey =
+                if (useSharedElementFromNavigation && targetUserId != null && sharedSourceMessageId != -1) {
+                    publicChatProfileSharedAvatarKey(targetUserId, sharedSourceMessageId)
+                } else {
+                    null
+                }
+            val effectiveSharedAvatarKey: Any? = sharedAvatarKey ?: navSharedAvatarKey
+
             val useSharedAvatar = sharedTransitionScope != null &&
                 animatedVisibilityScope != null &&
-                sharedAvatarKey != null
+                effectiveSharedAvatarKey != null
 
             Column(
                 modifier = Modifier
@@ -201,15 +213,18 @@ fun ProfileScreen(
             ) {
                 when {
                     useSharedAvatar -> {
-                        with(sharedTransitionScope) {
+                        val sharedKey = checkNotNull(effectiveSharedAvatarKey)
+                        val stScope = checkNotNull(sharedTransitionScope)
+                        val visScope = checkNotNull(animatedVisibilityScope)
+                        with(stScope) {
                             Avatar(
                                 profilePictureUrl = profile?.profilePicture,
                                 displayName = displayName,
                                 modifier = Modifier
                                     .padding(top = 16.dp)
                                     .sharedElement(
-                                        rememberSharedContentState(key = sharedAvatarKey),
-                                        animatedVisibilityScope = animatedVisibilityScope
+                                        rememberSharedContentState(key = sharedKey),
+                                        animatedVisibilityScope = visScope
                                     )
                                     .size(128.dp)
                             )

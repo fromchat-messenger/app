@@ -39,7 +39,7 @@
             android:name=".notifications.NotificationReplyReceiver"
             android:exported="false">
             <intent-filter>
-                <action android:name="ru.fromchat.NOTIFICATION_REPLY" />
+                <action android:name="${applicationId}.NOTIFICATION_REPLY" />
             </intent-filter>
         </receiver>
     </application>

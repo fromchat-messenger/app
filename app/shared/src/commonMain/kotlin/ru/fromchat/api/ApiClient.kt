@@ -30,6 +30,8 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.encodeToJsonElement
 import ru.fromchat.core.config.Config
+import ru.fromchat.ui.chat.PublicChatPanelCache
+import ru.fromchat.ui.dm.DmPanelCache
 import ru.fromchat.fcm.uploadPendingFcmTokenIfAvailable
 import kotlin.concurrent.Volatile
 import kotlin.time.Duration.Companion.milliseconds
@@ -446,6 +448,8 @@ object ApiClient {
         token = null
         user = null
         runCatching { ProfileCache.clear() }
+        runCatching { DmPanelCache.clearAll() }
+        runCatching { PublicChatPanelCache.clear() }
     }
 
     fun getTokenSafely() = token ?: throw IllegalStateException("Not authenticated")

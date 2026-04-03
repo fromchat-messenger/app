@@ -51,6 +51,8 @@ abstract class ChatPanel(
 
     private val pendingMessages = mutableMapOf<String, Pair<Job, Message>>()
     private var onStateChange: ((ChatPanelState) -> Unit)? = null
+    private var batchDepth: Int = 0
+    private var pendingBatchedState: ChatPanelState? = null
 
     /**
      * Set state change callback
@@ -74,9 +76,40 @@ abstract class ChatPanel(
         val newState = _state.copy()
         Logger.d("ChatPanel", "State updated: messages=${newState.messages.size}, callback=${callback != null}")
         if (callback != null) {
-            scope.launch(Dispatchers.Main) {
-                Logger.d("ChatPanel", "Calling state change callback with ${newState.messages.size} messages")
-                callback(newState)
+            if (batchDepth > 0) {
+                pendingBatchedState = newState
+            } else {
+                scope.launch(Dispatchers.Main) {
+                    Logger.d("ChatPanel", "Calling state change callback with ${newState.messages.size} messages")
+                    callback(newState)
+                }
+            }
+        }
+    }
+
+    /**
+     * Coalesce multiple [updateState] calls into a single [onStateChange] delivery (last state wins).
+     * Use for bulk loads so the main thread is not spammed with recompositions.
+     */
+    protected suspend fun <R> batchStateUpdates(block: suspend () -> R): R {
+        batchDepth++
+        try {
+            return block()
+        } finally {
+            batchDepth--
+            if (batchDepth == 0) {
+                val callback = onStateChange
+                val stateToSend = pendingBatchedState
+                pendingBatchedState = null
+                if (callback != null && stateToSend != null) {
+                    scope.launch(Dispatchers.Main) {
+                        Logger.d(
+                            "ChatPanel",
+                            "Calling batched state change callback with ${stateToSend.messages.size} messages"
+                        )
+                        callback(stateToSend)
+                    }
+                }
             }
         }
     }
