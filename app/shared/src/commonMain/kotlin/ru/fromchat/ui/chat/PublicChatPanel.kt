@@ -8,6 +8,7 @@ import ru.fromchat.api.ApiClient
 import ru.fromchat.api.Message
 import ru.fromchat.api.MessageDeletedData
 import ru.fromchat.api.ReactionUpdateData
+import ru.fromchat.api.SendMessageResponse
 import ru.fromchat.api.TypingUpdateData
 import ru.fromchat.api.WebSocketMessage
 import ru.fromchat.api.WebSocketUpdatesData
@@ -62,6 +63,42 @@ class PublicChatPanel(
     private fun handleReactionUpdate(reactionUpdate: ReactionUpdateData) {
         updateMessage(reactionUpdate.message_id) { message ->
             message.copy(reactions = reactionUpdate.reactions)
+        }
+    }
+
+    /**
+     * Server often omits [Message.client_message_id] on broadcast [newMessage] / [SendMessageResponse.message].
+     * Match the oldest pending optimistic row (same user, text, reply) and replace it; otherwise append.
+     */
+    private suspend fun confirmIncomingOwnMessageOrAdd(newMsg: Message) {
+        val uid = currentUserId
+        if (uid == null) {
+            addMessage(newMsg)
+            return
+        }
+        if (newMsg.user_id != uid) {
+            addMessage(newMsg)
+            return
+        }
+        if (newMsg.client_message_id != null) {
+            handleMessageConfirmed(newMsg.client_message_id, newMsg)
+            return
+        }
+        if (newMsg.id <= 0) {
+            addMessage(newMsg)
+            return
+        }
+        val pending = _state.messages.firstOrNull { msg ->
+            msg.id < 0 &&
+                msg.user_id == uid &&
+                msg.client_message_id != null &&
+                msg.content == newMsg.content &&
+                msg.reply_to?.id == newMsg.reply_to?.id
+        }
+        if (pending?.client_message_id != null) {
+            handleMessageConfirmed(pending.client_message_id, newMsg)
+        } else {
+            addMessage(newMsg)
         }
     }
 
@@ -185,12 +222,18 @@ class PublicChatPanel(
                 val data = updateMessage.data ?: return
                 val newMsg = json.decodeFromJsonElement(Message.serializer(), data)
                 Logger.d("PublicChatPanel", "New message received: id=${newMsg.id}, content=${newMsg.content.take(50)}")
-
-                if (newMsg.client_message_id != null && newMsg.user_id == currentUserId) {
-                    handleMessageConfirmed(newMsg.client_message_id, newMsg)
-                } else {
-                    addMessage(newMsg)
-                }
+                confirmIncomingOwnMessageOrAdd(newMsg)
+            }
+            "sendMessage" -> {
+                val data = updateMessage.data ?: return
+                val resp = json.decodeFromJsonElement(SendMessageResponse.serializer(), data)
+                if (!resp.status.equals("success", ignoreCase = true)) return
+                val confirmed = resp.message
+                Logger.d(
+                    "PublicChatPanel",
+                    "sendMessage ack: id=${confirmed.id}, clientId=${confirmed.client_message_id}"
+                )
+                confirmIncomingOwnMessageOrAdd(confirmed)
             }
             "messageEdited" -> {
                 val data = updateMessage.data ?: return

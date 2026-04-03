@@ -111,7 +111,7 @@ fun ListItem(
     onClick: (() -> Unit)? = null,
     bodyOnClick: (() -> Unit)? = null,
     leadingAndBodyShared: Boolean = false,
-    bottomContent: (@Composable ConstraintLayoutScope.() -> Unit)? = null
+    bottomContent: (@Composable () -> Unit)? = null
 ) {
     Column {
         @Composable
@@ -244,7 +244,7 @@ fun ListItem(
                     )
                 }
                 if (bottomContent != null) {
-                    ConstraintLayout(
+                    Box(
                         modifier = Modifier
                             .constrainAs(btm) {
                                 bottom link parent.bottom
@@ -252,9 +252,10 @@ fun ListItem(
                                 right link parent.right
                                 width = Dimension.fillToConstraints
                             }
-                            .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
-                        content = bottomContent
-                    )
+                            .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
+                    ) {
+                        bottomContent()
+                    }
                 }
             }
         }
@@ -304,11 +305,17 @@ inline fun SwitchListItem(
         supportingText = supportingText,
         leadingContent = leadingContent,
         trailingContent = {
+            val (sw) = createRefs()
             Switch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
                 interactionSource = interactionSource,
-                enabled = enabled
+                enabled = enabled,
+                modifier = Modifier.constrainAs(sw) {
+                    top link parent.top
+                    bottom link parent.bottom
+                    right link parent.right
+                }
             )
         },
         divider = divider,

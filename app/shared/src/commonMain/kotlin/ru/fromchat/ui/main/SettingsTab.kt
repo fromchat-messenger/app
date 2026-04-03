@@ -111,6 +111,7 @@ fun SettingsTab(
                         Settings.materialYou && materialYouAvailable
                     )
                 }
+                var themeChipIndex by remember { mutableIntStateOf(Settings.theme.ordinal) }
 
                 Category(Modifier.padding(top = 16.dp)) {
                     // Material You
@@ -146,7 +147,6 @@ fun SettingsTab(
                         },
                         bottomContent = {
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                var selectedIndex by remember { mutableIntStateOf(Settings.theme.ordinal) }
                                 val options = listOf(
                                     stringResource(Res.string.as_system),
                                     stringResource(Res.string.light),
@@ -155,11 +155,11 @@ fun SettingsTab(
                                 options.forEachIndexed { index, label ->
                                     FilterChip(
                                         onClick = {
-                                            selectedIndex = index
+                                            themeChipIndex = index
                                             Settings.theme = Theme.entries[index]
                                             theme = Theme.entries[index]
                                         },
-                                        selected = index == selectedIndex,
+                                        selected = index == themeChipIndex,
                                         leadingIcon = {
                                             if (index == 0) {
                                                 Spacer(Modifier.width(16.dp))

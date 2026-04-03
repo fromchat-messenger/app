@@ -231,13 +231,11 @@ fun ChatScreen(
                                 "newMessage", "messageEdited", "messageDeleted",
                                 "dmNew", "dmEdited", "dmDeleted",
                                 "typing", "stopTyping", "dmTyping", "stopDmTyping", "suspended", "account_deleted" -> {
-                                    Logger.d("ChatScreen", "Launching handleWebSocketMessage for ${update.type}")
-                                    scope.launch {
-                                        try {
-                                            panel.handleWebSocketMessage(wsMessage)
-                                        } catch (e: Exception) {
-                                            Logger.e("ChatScreen", "Error handling WebSocket message: ${e.message}", e)
-                                        }
+                                    Logger.d("ChatScreen", "handleWebSocketMessage for ${update.type}")
+                                    try {
+                                        panel.handleWebSocketMessage(wsMessage)
+                                    } catch (e: Exception) {
+                                        Logger.e("ChatScreen", "Error handling WebSocket message: ${e.message}", e)
                                     }
                                 }
                             }
@@ -255,6 +253,11 @@ fun ChatScreen(
                 }
                 "newMessage", "messageEdited", "messageDeleted", "dmNew", "dmEdited", "dmDeleted",
                 "dmTyping", "stopDmTyping" -> {
+                    scope.launch {
+                        panel.handleWebSocketMessage(message)
+                    }
+                }
+                "sendMessage" -> {
                     scope.launch {
                         panel.handleWebSocketMessage(message)
                     }
