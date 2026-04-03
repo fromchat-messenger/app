@@ -18,6 +18,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import ru.fromchat.AppForeground
 import androidx.navigation.NavController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -73,18 +74,22 @@ fun App(scrollToMessageId: Int? = null, startAtPublicChat: Boolean = false) {
         }
     }
 
-    // Observe lifecycle events to manage WebSocket connection
+    // Foreground → WebSocket reconnect; background → pause reconnect attempts (see [WebSocketManager]).
     val lifecycleOwner: LifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
+        fun syncForeground() {
+            AppForeground.setForeground(
+                lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+            )
+        }
+        syncForeground()
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_RESUME -> {
-                    // Ensure WebSocket connection loop is running when app comes to foreground
+                Lifecycle.Event.ON_START -> {
+                    AppForeground.setForeground(true)
                     WebSocketManager.connect()
                 }
-                Lifecycle.Event.ON_PAUSE -> {
-                    // No-op for connection lifecycle: WebSocketManager keeps trying to reconnect
-                }
+                Lifecycle.Event.ON_STOP -> AppForeground.setForeground(false)
                 else -> {}
             }
         }

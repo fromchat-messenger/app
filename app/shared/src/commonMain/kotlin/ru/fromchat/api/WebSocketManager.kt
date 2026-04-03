@@ -13,8 +13,10 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -22,17 +24,27 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import ru.fromchat.AppForeground
 import ru.fromchat.core.Logger
 import ru.fromchat.core.config.Config
 import kotlin.concurrent.Volatile
+import kotlin.coroutines.coroutineContext
 import kotlin.coroutines.suspendCoroutine
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
+@OptIn(ExperimentalTime::class)
 object WebSocketManager {
-    private const val RECONNECT_DELAY_MS = 1_000L
+    private const val TAG = "WebSocketManager"
+    private const val MIN_RECONNECT_DELAY_MS = 1_000L
+    private const val MAX_RECONNECT_DELAY_MS = 60_000L
+    /** Android [NetworkCallback.onAvailable] can fire repeatedly; avoid canceling the reconnect loop each time. */
+    private const val NETWORK_AVAILABLE_DEBOUNCE_MS = 2_000L
+    private const val FOREGROUND_DELAY_CHUNK_MS = 200L
 
-    // Config
+    @Volatile
+    private var lastOnNetworkAvailableWallMs: Long = 0L
+
     private val scope = CoroutineScope(Dispatchers.IO)
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -49,34 +61,54 @@ object WebSocketManager {
         globalHandlers -= handler
     }
 
-    // State
     @Volatile private var connecting = false
     @Volatile private var session: DefaultClientWebSocketSession? = null
     @Volatile private var connectionJob: Job? = null
 
-    /**
-     * Check if WebSocket is connected
-     */
     val isConnected get() = session != null
 
-    /**
-     * Wait for WebSocket connection with timeout
-     */
-    @OptIn(ExperimentalTime::class)
+    private fun logD(message: String) {
+        if (AppForeground.isInForeground.value) Logger.d(TAG, message)
+    }
+
+    private fun logW(message: String, throwable: Throwable? = null) {
+        if (AppForeground.isInForeground.value) Logger.w(TAG, message, throwable)
+    }
+
+    private fun logE(message: String, throwable: Throwable? = null) {
+        if (AppForeground.isInForeground.value) Logger.e(TAG, message, throwable)
+    }
+
+    private suspend fun awaitForeground() {
+        if (AppForeground.isInForeground.value) return
+        AppForeground.isInForeground.first { it }
+    }
+
+    /** Like [delay], but does not burn the full duration while the app is in the background. */
+    private suspend fun delayWhileForeground(totalMs: Long) {
+        var remaining = totalMs
+        while (remaining > 0) {
+            coroutineContext.ensureActive()
+            awaitForeground()
+            val chunk = minOf(FOREGROUND_DELAY_CHUNK_MS, remaining)
+            delay(chunk)
+            remaining -= chunk
+        }
+    }
+
     suspend fun waitForConnection(timeoutMs: Long = 10000): Boolean {
-        Logger.d("WebSocketManager", "waitForConnection: session=${session != null}, connecting=$connecting")
+        logD("waitForConnection: session=${session != null}, connecting=$connecting")
         if (session != null) return true
         val startTime = Clock.System.now().toEpochMilliseconds()
         while (session == null && (Clock.System.now().toEpochMilliseconds() - startTime) < timeoutMs) {
             delay(100)
         }
-        Logger.d("WebSocketManager", "waitForConnection finished: session=${session != null}")
+        logD("waitForConnection finished: session=${session != null}")
         return session != null
     }
 
     fun connect(forceRestart: Boolean = false) {
-        Logger.d(
-            "WebSocketManager",
+        logD(
             "connect(forceRestart=$forceRestart) called. current session=${session != null}, connecting=$connecting"
         )
 
@@ -86,7 +118,7 @@ object WebSocketManager {
         } else {
             val existingJob = connectionJob
             if (existingJob != null && existingJob.isActive) {
-                Logger.d("WebSocketManager", "connect() ignored: connectionJob already running")
+                logD("connect() ignored: connectionJob already running")
                 return
             }
         }
@@ -94,20 +126,23 @@ object WebSocketManager {
         ConnectionStateStore.onConnecting()
 
         connectionJob = scope.launch {
+            var reconnectDelayMs = MIN_RECONNECT_DELAY_MS
             while (isActive) {
-                Logger.d("WebSocketManager", "Connection loop active. isActive=$isActive")
+                awaitForeground()
+
+                logD("Connection loop active. isActive=$isActive")
 
                 val token = ApiClient.token
                 if (token.isNullOrEmpty()) {
-                    Logger.d("WebSocketManager", "No auth token available; staying in CONNECTING and retrying later")
+                    logD("No auth token available; staying in CONNECTING and retrying later")
                     ConnectionStateStore.onConnecting()
-                    delay(RECONNECT_DELAY_MS)
+                    delayWhileForeground(MIN_RECONNECT_DELAY_MS)
                     continue
                 }
 
                 try {
                     val wsUrl = Config.webSocketUrl
-                    Logger.d("WebSocketManager", "Attempting to connect to: $wsUrl")
+                    logD("Attempting to connect to: $wsUrl")
                     connecting = true
                     ConnectionStateStore.onConnecting()
 
@@ -117,13 +152,13 @@ object WebSocketManager {
                             url(wsUrl)
                         }
                     ) {
+                        reconnectDelayMs = MIN_RECONNECT_DELAY_MS
                         session = this
                         connecting = false
-                        Logger.d("WebSocketManager", "WebSocket connected. connecting set to false")
+                        logD("WebSocket connected. connecting set to false")
                         ConnectionStateStore.onConnected()
 
-                        // Send ping message immediately after connection for authentication
-                        Logger.d("WebSocketManager", "Sending WebSocket ping for authentication")
+                        logD("Sending WebSocket ping for authentication")
                         send(
                             WebSocketMessage(
                                 type = "ping",
@@ -134,30 +169,28 @@ object WebSocketManager {
                             )
                         )
 
-                        // Kick off gap detection in the background; it will no-op if not needed.
                         scope.launch {
                             runCatching {
                                 UpdateSyncManager.runGapDetectionIfNeeded()
                             }.onFailure {
-                                Logger.w("WebSocketManager", "Gap detection failed: ${it.message}", it)
+                                logW("Gap detection failed: ${it.message}", it)
                             }
                         }
 
                         for (frame in incoming) {
                             val text = (frame as? Frame.Text)?.readText() ?: continue
-                            Logger.d("WebSocketManager", "Received payload: $text")
+                            logD("Received payload: $text")
                             try {
                                 val jsonTree = json.parseToJsonElement(text)
                                 val messageType = jsonTree.jsonObject["type"]?.jsonPrimitive?.content
 
                                 val msg = when (messageType) {
                                     "updates" -> {
-                                        // Track sequence for missed-update detection
                                         runCatching {
                                             val updatesData = json.decodeFromJsonElement(WebSocketUpdatesData.serializer(), jsonTree)
                                             UpdateSyncManager.onUpdatesBatch(updatesData.seq)
                                         }.onFailure {
-                                            Logger.w("WebSocketManager", "Failed to decode updates envelope for seq tracking: ${it.message}", it)
+                                            logW("Failed to decode updates envelope for seq tracking: ${it.message}", it)
                                         }
 
                                         WebSocketMessage(
@@ -166,10 +199,9 @@ object WebSocketManager {
                                         )
                                     }
                                     "typing", "stopTyping" -> {
-                                        // These messages are expected to be direct, without additional data in the web client
                                         WebSocketMessage(
                                             type = messageType,
-                                            data = jsonTree.jsonObject["data"] // Extract data if present
+                                            data = jsonTree.jsonObject["data"]
                                         )
                                     }
                                     else -> {
@@ -180,22 +212,24 @@ object WebSocketManager {
                                 globalHandlers.forEach { it(msg) }
                                 _messages.emit(msg)
                             } catch (e: Throwable) {
-                                Logger.w("WebSocketManager", "Received malformed payload: ${e.message}", e)
-                                // ignore malformed
+                                logW("Received malformed payload: ${e.message}", e)
                             }
                         }
                     }
                 } catch (e: Throwable) {
-                    Logger.w("WebSocketManager", "An error occurred during WebSocket connection: ${e.message}", e)
+                    logW("An error occurred during WebSocket connection: ${e.message}", e)
                 } finally {
-                    Logger.w("WebSocketManager", "WebSocket disconnected. session set to null, connecting set to false")
+                    logW("WebSocket disconnected. session set to null, connecting set to false")
                     session = null
                     connecting = false
                     ConnectionStateStore.onConnecting()
 
                     if (isActive) {
-                        Logger.d("WebSocketManager", "Reconnecting in ${RECONNECT_DELAY_MS}ms...")
-                        delay(RECONNECT_DELAY_MS)
+                        awaitForeground()
+                        logD("Reconnecting in ${reconnectDelayMs}ms...")
+                        delayWhileForeground(reconnectDelayMs)
+                        reconnectDelayMs =
+                            (reconnectDelayMs * 2).coerceAtMost(MAX_RECONNECT_DELAY_MS)
                     }
                 }
             }
@@ -203,45 +237,42 @@ object WebSocketManager {
     }
 
     suspend fun send(message: WebSocketMessage) {
-        // Wait for connection if not connected yet
         if (session == null) {
             if (!waitForConnection(5000)) {
-                Logger.w("WebSocketManager", "Cannot send message: no active session after waiting")
+                logW("Cannot send message: no active session after waiting")
                 throw IllegalStateException("No active WebSocket session")
             }
         }
-        
+
         val currentSession = session
         if (currentSession != null) {
             try {
                 currentSession.send(Frame.Text(json.encodeToString(message)))
             } catch (e: Exception) {
-                Logger.e("WebSocketManager", "Failed to send message: ${e.message}", e)
+                logE("Failed to send message: ${e.message}", e)
                 throw e
             }
         } else {
-            Logger.w("WebSocketManager", "Cannot send message: no active session")
+            logW("Cannot send message: no active session")
             throw IllegalStateException("No active WebSocket session")
         }
     }
 
     @OptIn(DelicateCoroutinesApi::class)
     suspend fun request(message: WebSocketMessage, timeoutMs: Long = 10_000): WebSocketMessage? {
-        Logger.d("WebSocketManager", "WebSocket request: $message")
+        logD("WebSocket request: $message")
         var handler: ((WebSocketMessage) -> Unit)? = null
 
         return try {
-            // Check if we have a valid session before sending
             if (session == null) {
-                Logger.w("WebSocketManager", "No active WebSocket session")
+                logW("No active WebSocket session")
                 return null
             }
-            
+
             send(message)
             withTimeout(timeoutMs) {
                 suspendCoroutine { continuation ->
                     handler = { response ->
-                        // Only process responses that match our request type
                         if (response.type == message.type) {
                             continuation.resumeWith(Result.success(response))
                             removeGlobalMessageHandler(handler!!)
@@ -251,10 +282,10 @@ object WebSocketManager {
                 }
             }
         } catch (_: TimeoutCancellationException) {
-            Logger.w("WebSocketManager", "Request timed out")
+            logW("Request timed out")
             null
         } catch (e: Exception) {
-            Logger.e("WebSocketManager", "Request failed: ${e.message}", e)
+            logE("Request failed: ${e.message}", e)
             null
         } finally {
             handler?.let { removeGlobalMessageHandler(it) }
@@ -262,30 +293,41 @@ object WebSocketManager {
     }
 
     fun shutdown() {
-        Logger.d("WebSocketManager", "shutdown() called. Cancelling scope.")
+        logD("shutdown() called. Cancelling scope.")
         scope.cancel()
     }
 
     fun disconnect() {
-        Logger.d("WebSocketManager", "disconnect() called. current session=${session != null}")
-        session?.cancel() // Close the WebSocket session
+        logD("disconnect() called. current session=${session != null}")
+        session?.cancel()
         session = null
         connecting = false
-        Logger.d("WebSocketManager", "Disconnected. session set to null, connecting set to false")
+        logD("Disconnected. session set to null, connecting set to false")
     }
 
-    /** OS reported loss of network: fail fast and show connecting until back online. */
     fun onNetworkLost() {
-        Logger.d("WebSocketManager", "onNetworkLost")
+        logD("onNetworkLost")
         connectionJob?.cancel()
         connectionJob = null
         disconnect()
         ConnectionStateStore.onConnecting()
     }
 
-    /** OS reported network available: restart the 1s reconnect loop immediately. */
     fun onNetworkAvailable() {
-        Logger.d("WebSocketManager", "onNetworkAvailable")
+        if (!AppForeground.isInForeground.value) return
+
+        if (session != null) {
+            logD("onNetworkAvailable: session active, skip")
+            return
+        }
+        val now = Clock.System.now().toEpochMilliseconds()
+        val prev = lastOnNetworkAvailableWallMs
+        if (now - prev < NETWORK_AVAILABLE_DEBOUNCE_MS) {
+            logD("onNetworkAvailable: debounced")
+            return
+        }
+        lastOnNetworkAvailableWallMs = now
+        logD("onNetworkAvailable: reconnect")
         connect(forceRestart = true)
     }
 }
