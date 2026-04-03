@@ -42,6 +42,35 @@ object ProfileCache {
      * Fills or refreshes a lightweight profile from a public chat [Message] (username, avatar URL).
      * Skips when a full API profile is already stored ([UserProfile.isClientPreviewOnly] is false).
      */
+    /**
+     * Seeds or refreshes a lightweight profile from a DM conversations list [User].
+     * Skips when a full `/user/...` profile is already cached.
+     */
+    fun mergeFromDmUser(user: User) {
+        val existing = get(user.id)
+        if (existing != null && !existing.isClientPreviewOnly) return
+        put(
+            UserProfile(
+                id = user.id,
+                username = user.username.ifBlank { existing?.username.orEmpty() },
+                displayName = existing?.displayName?.takeIf { it.isNotBlank() }
+                    ?: user.username.takeIf { it.isNotBlank() }
+                    ?: existing?.username.orEmpty(),
+                profilePicture = user.profile_picture?.takeIf { it.isNotBlank() }
+                    ?: existing?.profilePicture,
+                bio = existing?.bio,
+                online = user.online,
+                lastSeen = user.last_seen.takeIf { it.isNotBlank() } ?: existing?.lastSeen,
+                createdAt = user.created_at.takeIf { it.isNotBlank() } ?: existing?.createdAt,
+                verified = existing?.verified,
+                suspended = existing?.suspended,
+                suspensionReason = existing?.suspensionReason,
+                deleted = existing?.deleted,
+                isClientPreviewOnly = true
+            )
+        )
+    }
+
     fun mergePreviewFromPublicMessage(message: Message) {
         val uid = message.user_id
         if (uid <= 0) return

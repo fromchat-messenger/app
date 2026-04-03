@@ -299,12 +299,14 @@ fun ProfileScreen(
                                 userId = profile.id
                             )
                         }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "@${profile.username}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        if (profile.username.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "@${profile.username}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         Spacer(modifier = Modifier.height(36.dp))
 
                         Row(
@@ -418,21 +420,23 @@ fun ProfileScreen(
                         }
 
                         Category(Modifier.padding(top = 16.dp), title = "Details") {
-                            ListItem(
-                                headline = "Username",
-                                supportingText = profile.username,
-                                leadingContent = {
-                                    CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
-                                        Icon(
-                                            imageVector = Icons.Filled.AlternateEmail,
-                                            contentDescription = null
-                                        )
-                                    }
-                                },
-                                divider = true,
-                                dividerColor = CategoryDefaults.dividerColor,
-                                dividerThickness = CategoryDefaults.dividerThickness
-                            )
+                            if (profile.username.isNotBlank()) {
+                                ListItem(
+                                    headline = "Username",
+                                    supportingText = profile.username,
+                                    leadingContent = {
+                                        CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+                                            Icon(
+                                                imageVector = Icons.Filled.AlternateEmail,
+                                                contentDescription = null
+                                            )
+                                        }
+                                    },
+                                    divider = true,
+                                    dividerColor = CategoryDefaults.dividerColor,
+                                    dividerThickness = CategoryDefaults.dividerThickness
+                                )
+                            }
 
                             if (!profile.bio.isNullOrBlank()) {
                                 ListItem(
