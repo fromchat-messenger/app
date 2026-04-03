@@ -5,7 +5,9 @@ import ru.fromchat.api.DmEnvelope
 import ru.fromchat.crypto.dm.DmCrypto
 
 /** Shown in the UI when [DmCiphertextCorruptedException] is caught while decrypting a DM. */
-const val CorruptedDmMessagePlaceholder = "This message is corrupted and can't be displayed."
+/** Must match [ru.fromchat.Res.string.message_corrupted] (Compose resources). */
+const val CorruptedDmMessagePlaceholder =
+    "Сообщение повреждено и не может быть отображено."
 
 /**
  * Unwrap a MEK (Message Encryption Key) using the appropriate wrapping key

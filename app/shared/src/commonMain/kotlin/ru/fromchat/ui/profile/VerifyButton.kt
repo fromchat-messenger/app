@@ -13,7 +13,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import org.jetbrains.compose.resources.stringResource
 import kotlinx.coroutines.Dispatchers
+import ru.fromchat.Res
+import ru.fromchat.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.fromchat.api.ApiClient
@@ -29,6 +32,8 @@ fun VerifyButton(
 
     var isVerifying by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val labelVerify = stringResource(Res.string.verify)
+    val labelUnverify = stringResource(Res.string.unverify)
 
     Button(
         onClick = {
@@ -53,7 +58,7 @@ fun VerifyButton(
             )
         } else {
             Text(
-                text = if (verified) "Unverify" else "Verify"
+                text = if (verified) labelUnverify else labelVerify
             )
         }
     }

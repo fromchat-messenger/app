@@ -1,0 +1,17 @@
+---
+alwaysApply: true
+---
+
+# UI strings (shared module)
+
+## No hardcoded user-visible text
+- Do not put English or Russian (or other) UI copy directly in Kotlin/Compose for screens users see. Use Compose Multiplatform resources: `app/shared/src/commonMain/composeResources/values/strings.xml` (default English) and `values-ru/strings.xml` (Russian), **same `name` keys** in both files.
+- Use `stringResource(Res.string.*)` in `@Composable` (and `import ru.fromchat.*` when needed so `Res.string` extensions resolve). Internal-only tokens (cache keys, shared-element keys, protocol constants) may stay in code.
+
+## When you add or change copy
+- Add or update the string in **both** `values/strings.xml` and `values-ru/strings.xml` in the **same** change.
+- Prefer **plain language** short words, short sentences; avoid jargon unless necessary (e.g. say “server address” rather than “URL” in labels when it fits).
+
+## Debug API screen — excluded
+- The **Debug API** screen (`ru.fromchat.ui.debug`) is not for standard users. You may **hardcode English (or any) strings directly in Kotlin** for that screen and **do not** need to add matching keys in `values/strings.xml` / `values-ru/strings.xml` or keep translations in sync.
+- The **entry row** that opens Debug API (e.g. in Settings) stays in compose resources like other settings copy.

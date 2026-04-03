@@ -41,15 +41,14 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
+import ru.fromchat.*
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.ConnectionStateStore
 import ru.fromchat.api.ConnectionStatus
 import ru.fromchat.api.ProfileCache
 import ru.fromchat.api.db.CachedConversation
 import ru.fromchat.api.db.MessageCacheStore
-import ru.fromchat.chat_last_mesaage
 import ru.fromchat.net.NetworkConnectivity
-import ru.fromchat.public_chat
 import ru.fromchat.ui.ConnectingEllipsis
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.branding.FromChatBrandTitle
@@ -119,6 +118,10 @@ fun ChatsTab() {
         else -> "fromchat"
     }
 
+    val connectingTitle = stringResource(Res.string.status_connecting)
+    val updatingTitle = stringResource(Res.string.status_updating)
+    val brandTitle = stringResource(Res.string.app_name)
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -162,7 +165,7 @@ fun ChatsTab() {
                                             horizontalArrangement = Arrangement.Start
                                         ) {
                                             Text(
-                                                text = "Connecting",
+                                                text = connectingTitle,
                                                 style = style,
                                                 color = color,
                                                 maxLines = 1,
@@ -176,16 +179,29 @@ fun ChatsTab() {
                                         }
                                     }
                                     "updating" -> {
-                                        Text(
+                                        val style = MaterialTheme.typography.titleLarge
+                                        val color = MaterialTheme.colorScheme.onSurface
+                                        Row(
                                             modifier = Modifier.fillMaxWidth(),
-                                            text = "Updating...",
-                                            style = MaterialTheme.typography.titleLarge,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Start
+                                        ) {
+                                            Text(
+                                                text = updatingTitle,
+                                                style = style,
+                                                color = color,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            ConnectingEllipsis(
+                                                fontSize = style.fontSize,
+                                                color = color,
+                                                baseStyle = style
+                                            )
+                                        }
                                     }
                                     else -> {
-                                        FromChatBrandTitle(text = "FromChat")
+                                        FromChatBrandTitle(text = brandTitle)
                                     }
                                 }
                             }
@@ -233,7 +249,9 @@ fun ChatsTab() {
                 val avatarUrl = cached?.profilePicture
                 val peerTitle = cached?.displayName?.takeIf { it.isNotBlank() }
                     ?: cached?.username?.takeIf { it.isNotBlank() }
-                    ?: conv.displayName.ifBlank { "User ${conv.otherUserId}" }
+                    ?: conv.displayName.ifBlank {
+                        stringResource(Res.string.user_fallback, conv.otherUserId)
+                    }
                 val preview = conv.lastMessagePreview?.trim().orEmpty()
                 ListItem(
                     leadingContent = {
@@ -264,7 +282,7 @@ fun ChatsTab() {
                     },
                     trailingContent = {
                         if (conv.unreadCount > 0) {
-                            Text("+${conv.unreadCount}")
+                            Text(stringResource(Res.string.unread_count, conv.unreadCount))
                         }
                     },
                     modifier = Modifier.clickable {

@@ -46,7 +46,10 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import org.jetbrains.compose.resources.stringResource
+import ru.fromchat.Res
 import ru.fromchat.api.Message
+import ru.fromchat.*
 import ru.fromchat.ui.scaleOnPress
 
 data class ContextMenuState(
@@ -257,6 +260,9 @@ private fun ContextMenuContent(
     val menuColor = MaterialTheme.colorScheme.surfaceContainer
     val edgePadding = 8.dp
     val itemSpacing = 2.dp
+    val labelReply = stringResource(Res.string.action_reply)
+    val labelEdit = stringResource(Res.string.action_edit)
+    val labelDelete = stringResource(Res.string.action_delete)
 
     Box(modifier = containerModifier) {
         Box(modifier = Modifier.matchParentSize().background(menuColor, menuShape))
@@ -268,20 +274,20 @@ private fun ContextMenuContent(
         ) {
             ContextMenuItem(
                 icon = Icons.AutoMirrored.Filled.Reply,
-                text = "Reply",
+                text = labelReply,
                 onClick = { onReply(message) }
             )
             if (isAuthor) {
                 ContextMenuItem(
                     icon = Icons.Default.Edit,
-                    text = "Edit",
+                    text = labelEdit,
                     onClick = { onEdit(message) }
                 )
             }
             if (isAuthor) {
                 ContextMenuItem(
                     icon = Icons.Default.Delete,
-                    text = "Delete",
+                    text = labelDelete,
                     onClick = { onDelete(message) },
                     isError = true
                 )

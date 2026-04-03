@@ -67,8 +67,11 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
+import org.jetbrains.compose.resources.stringResource
+import ru.fromchat.Res
 import kotlinx.datetime.toLocalDateTime
 import ru.fromchat.api.Message
+import ru.fromchat.*
 import ru.fromchat.ui.BackHandler
 import ru.fromchat.ui.LocalSystemBarsVisibility
 import kotlin.math.abs
@@ -121,6 +124,12 @@ fun ImageFullscreenPreview(
     thumbnailBounds: Rect? = null
 ) {
     val file = message.files?.getOrNull(fileIndex) ?: return
+    val cdBack = stringResource(Res.string.back)
+    val cdMenu = stringResource(Res.string.more)
+    val labelReply = stringResource(Res.string.action_reply)
+    val labelSave = stringResource(Res.string.action_save)
+    val labelDelete = stringResource(Res.string.action_delete)
+    val headerName = messageDisplayUsername(message, currentUserId)
     val envelope = message.dmEnvelope
     val thumbnailBase64 = message.fileThumbnails?.getOrNull(fileIndex)
 
@@ -596,7 +605,7 @@ fun ImageFullscreenPreview(
                 IconButton(onClick = { dismissRequested = true }) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
+                        contentDescription = cdBack,
                         tint = Color.White
                     )
                 }
@@ -605,7 +614,7 @@ fun ImageFullscreenPreview(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = message.username,
+                        text = headerName,
                         style = MaterialTheme.typography.titleMedium,
                         color = Color.White
                     )
@@ -620,7 +629,7 @@ fun ImageFullscreenPreview(
                     IconButton(onClick = { menuExpanded = true }) {
                         Icon(
                             imageVector = Icons.Default.MoreVert,
-                            contentDescription = "Menu",
+                            contentDescription = cdMenu,
                             tint = Color.White
                         )
                     }
@@ -634,7 +643,7 @@ fun ImageFullscreenPreview(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.AutoMirrored.Filled.Reply, null, tint = Color.White)
                                     Spacer(Modifier.width(8.dp))
-                                    Text("Reply", color = Color.White)
+                                    Text(labelReply, color = Color.White)
                                 }
                             },
                         onClick = {
@@ -648,7 +657,7 @@ fun ImageFullscreenPreview(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.SaveAlt, null, tint = Color.White)
                                     Spacer(Modifier.width(8.dp))
-                                    Text("Save", color = Color.White)
+                                    Text(labelSave, color = Color.White)
                                 }
                             },
                             onClick = {
@@ -661,7 +670,7 @@ fun ImageFullscreenPreview(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.Delete, null, tint = Color.White)
                                     Spacer(Modifier.width(8.dp))
-                                    Text("Delete", color = Color.White)
+                                    Text(labelDelete, color = Color.White)
                                 }
                             },
                         onClick = {

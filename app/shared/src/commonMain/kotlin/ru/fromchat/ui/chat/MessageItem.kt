@@ -53,7 +53,10 @@ import androidx.compose.ui.unit.sp
 import com.pr0gramm3r101.utils.conditional
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import org.jetbrains.compose.resources.stringResource
+import ru.fromchat.Res
 import ru.fromchat.api.Message
+import ru.fromchat.*
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 
@@ -95,6 +98,10 @@ fun MessageItem(
     val formattedTime = remember(message.timestamp) {
         formatTime(message.timestamp)
     }
+    val corruptedBody = stringResource(Res.string.message_corrupted)
+    val editedSuffix = stringResource(Res.string.message_edited_suffix)
+    val displayUsername = messageDisplayUsername(message, currentUserId)
+    val replyRef = message.reply_to
 
     // No AnimatedVisibility here: visible=true still ran enter transitions for every item on first
     // composition (N messages ⇒ N concurrent animations + huge JIT), causing main-thread jank.
@@ -316,7 +323,7 @@ fun MessageItem(
                                         )
                                 ) {
                                     Text(
-                                        text = message.username,
+                                        text = displayUsername,
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.SemiBold,
                                         color = MaterialTheme.colorScheme.primary,
@@ -326,7 +333,7 @@ fun MessageItem(
                             } else {
                                 Box(modifier = usernameOutset) {
                                     Text(
-                                        text = message.username,
+                                        text = displayUsername,
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.SemiBold,
                                         color = MaterialTheme.colorScheme.primary,
@@ -348,7 +355,8 @@ fun MessageItem(
                         ) {
                             Column {
                         // Reply preview
-                        message.reply_to?.let { replyTo ->
+                        replyRef?.let { replyToMsg ->
+                            val replyName = messageDisplayUsername(replyToMsg, currentUserId)
                             Box(
                                 Modifier.padding(bottom = 4.dp, start = 6.dp, end = 6.dp)
                             ) {
@@ -379,7 +387,7 @@ fun MessageItem(
                                     ) {
                                         if (showUsername) {
                                             Text(
-                                                text = replyTo.username,
+                                                text = replyName,
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = MaterialTheme.colorScheme.primary,
@@ -387,7 +395,7 @@ fun MessageItem(
                                             )
                                         }
                                         Text(
-                                            text = replyTo.content.take(50) + if (replyTo.content.length > 50) "..." else "",
+                                            text = replyToMsg.content.take(50) + if (replyToMsg.content.length > 50) "..." else "",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             fontSize = 12.sp,
@@ -401,7 +409,7 @@ fun MessageItem(
                         // Attachments (images/files) or corrupted message
                         if (isCorrupted) {
                             Text(
-                                text = "_This message is corrupted and cannot be displayed.",
+                                text = corruptedBody,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = if (isAuthor) {
                                     Color.White.copy(alpha = 0.8f)
@@ -553,7 +561,7 @@ fun MessageItem(
                             if (message.is_edited) {
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "(edited)",
+                                    text = editedSuffix,
                                     style = MaterialTheme.typography.labelSmall,
                                     fontSize = 11.sp,
                                     color = if (isAuthor) {

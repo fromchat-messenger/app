@@ -20,6 +20,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.jetbrains.compose.resources.stringResource
+import ru.fromchat.Res
+import ru.fromchat.*
 import ru.fromchat.api.ApiClient
 
 @Composable
@@ -30,6 +33,8 @@ fun StatusBadge(
     size: Dp = 20.dp
 ) {
     var isSimilarToVerified by remember(userId, verified) { mutableStateOf(false) }
+    val cdVerified = stringResource(Res.string.cd_verified_account)
+    val cdSimilar = stringResource(Res.string.cd_similar_verified)
 
     LaunchedEffect(verified, userId, ApiClient.token) {
         if (verified == true) {
@@ -49,18 +54,18 @@ fun StatusBadge(
     when {
         verified == true -> Icon(
             imageVector = Icons.Filled.Verified,
-            contentDescription = "Verified account",
+            contentDescription = cdVerified,
             modifier = modifier
                 .size(size)
-                .semantics { contentDescription = "Verified account" },
+                .semantics { contentDescription = cdVerified },
             tint = MaterialTheme.colorScheme.primary
         )
         isSimilarToVerified -> Icon(
             imageVector = Icons.Filled.Warning,
-            contentDescription = "Similar to verified account",
+            contentDescription = cdSimilar,
             modifier = modifier
                 .size(size)
-                .semantics { contentDescription = "Similar to verified account" },
+                .semantics { contentDescription = cdSimilar },
             tint = Color(0xFFFFA000)
         )
         else -> {}

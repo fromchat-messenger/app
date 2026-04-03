@@ -14,7 +14,7 @@ Whenever you change anything under **`app:android`**, **`app:shared`** (`commonM
 5. For **each** chosen device `id`: **`mobile_install_app`** with `path` = absolute path to  
    `app/android/build/outputs/apk/debug/android-debug.apk`  
    in this repo.
-6. For **each** same device: **`mobile_launch_app`** with `packageName` **`ru.fromchat.beta`** (debug `applicationIdSuffix`).
+6. For **each** same device: **`mobile_launch_app`** with `packageName` **`ru.fromchat.beta`**. The debug APK from `assembleDebug` uses `applicationIdSuffix = ".beta"` (`app/android/build.gradle.kts`), so the on-device package is **`ru.fromchat.beta`**, not `ru.fromchat`—`ru.fromchat` will fail to launch after a debug install. (Release / no-suffix id is `ru.fromchat`.)
 
 Also run **`:app:shared:compileKotlinIosArm64`** (and fix errors) when shared Kotlin changes should stay valid for iOS—either with the same Gradle invocation as in `general.mdc` or right after the Android APK build.
 

@@ -70,7 +70,7 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.api.Message
-import ru.fromchat.message_placeholder
+import ru.fromchat.*
 
 @Composable
 private fun <T> AnimatedPreviewBar(
@@ -101,6 +101,7 @@ private fun PreviewBar(
     icon: ImageVector,
     title: String,
     subtitle: String,
+    closeContentDescription: String,
     onClose: () -> Unit
 ) {
     Row(
@@ -137,7 +138,7 @@ private fun PreviewBar(
         IconButton(onClick = onClose) {
             Icon(
                 imageVector = Icons.Default.Close,
-                contentDescription = "Close",
+                contentDescription = closeContentDescription,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -148,6 +149,7 @@ private fun PreviewBar(
 private fun AttachmentChip(
     attachment: SelectedAttachment,
     onRemove: () -> Unit,
+    removeContentDescription: String,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -186,7 +188,7 @@ private fun AttachmentChip(
         IconButton(onClick = onRemove, modifier = Modifier.size(24.dp)) {
             Icon(
                 imageVector = Icons.Default.Close,
-                contentDescription = "Remove",
+                contentDescription = removeContentDescription,
                 modifier = Modifier.size(14.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -206,7 +208,8 @@ fun ChatInput(
     onClearReply: () -> Unit,
     onClearEdit: () -> Unit,
     hazeState: HazeState,
-    recipientId: Int? = null
+    recipientId: Int? = null,
+    currentUserId: Int? = null
 ) {
     val scope = rememberCoroutineScope()
     var typingJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
@@ -251,6 +254,13 @@ fun ChatInput(
     }
 
     val canSend = text.isNotBlank() || attachments.isNotEmpty()
+    val cdClose = stringResource(Res.string.cd_close)
+    val cdRemove = stringResource(Res.string.cd_remove)
+    val cdPickImage = stringResource(Res.string.cd_pick_image)
+    val cdPickFile = stringResource(Res.string.cd_pick_file)
+    val cdSend = stringResource(Res.string.cd_send)
+    val corruptedShort = stringResource(Res.string.message_corrupted_short)
+    val editingTitle = stringResource(Res.string.message_editing_title)
 
     Box(
         modifier = Modifier
@@ -277,28 +287,31 @@ fun ChatInput(
         ) {
             AnimatedPreviewBar(replyTo) { replyTo ->
                 val replySubtitle = if (replyTo.isContentCorrupted) {
-                    "Corrupted message"
+                    corruptedShort
                 } else {
                     replyTo.content.take(50) + if (replyTo.content.length > 50) "..." else ""
                 }
+                val replyName = messageDisplayUsername(replyTo, currentUserId)
                 PreviewBar(
                     icon = Icons.AutoMirrored.Filled.Reply,
-                    title = "Replying to ${replyTo.username}",
+                    title = stringResource(Res.string.message_replying_to, replyName),
                     subtitle = replySubtitle,
+                    closeContentDescription = cdClose,
                     onClose = { onClearReply() }
                 )
             }
 
             AnimatedPreviewBar(editingMessage) { message ->
                 val subtitle = if (message.isContentCorrupted) {
-                    "Corrupted message"
+                    corruptedShort
                 } else {
                     message.content.take(50) + if (message.content.length > 50) "..." else ""
                 }
                 PreviewBar(
                     icon = Icons.Filled.Edit,
-                    title = "Editing message",
+                    title = editingTitle,
                     subtitle = subtitle,
+                    closeContentDescription = cdClose,
                     onClose = { onClearEdit() }
                 )
             }
@@ -318,7 +331,8 @@ fun ChatInput(
                     attachments.forEach { attachment ->
                         AttachmentChip(
                             attachment = attachment,
-                            onRemove = { attachments = attachments.filter { it.id != attachment.id } }
+                            onRemove = { attachments = attachments.filter { it.id != attachment.id } },
+                            removeContentDescription = cdRemove
                         )
                     }
                 }
@@ -332,14 +346,14 @@ fun ChatInput(
                     IconButton(onClick = { launchImagePicker() }) {
                         Icon(
                             imageVector = Icons.Default.Image,
-                            contentDescription = "Pick image",
+                            contentDescription = cdPickImage,
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     IconButton(onClick = { launchFilePicker() }) {
                         Icon(
                             imageVector = Icons.Default.AttachFile,
-                            contentDescription = "Pick file",
+                            contentDescription = cdPickFile,
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -397,7 +411,7 @@ fun ChatInput(
                                 ) {
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Filled.Send,
-                                        contentDescription = "Send",
+                                        contentDescription = cdSend,
                                         tint = MaterialTheme.colorScheme.onPrimary,
                                         modifier = Modifier.size(18.dp)
                                     )

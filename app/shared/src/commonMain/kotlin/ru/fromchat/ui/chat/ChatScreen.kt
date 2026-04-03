@@ -74,6 +74,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
+import ru.fromchat.*
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.ProfileCache
 import ru.fromchat.api.AttachmentUploadJob
@@ -85,7 +86,6 @@ import ru.fromchat.api.UserStatusStore
 import ru.fromchat.api.WebSocketManager
 import ru.fromchat.api.WebSocketMessage
 import ru.fromchat.api.WebSocketUpdatesData
-import ru.fromchat.back
 import ru.fromchat.core.Logger
 import ru.fromchat.net.NetworkConnectivity
 import ru.fromchat.ui.ConnectingEllipsis
@@ -95,6 +95,7 @@ import ru.fromchat.ui.rememberHapticFeedback
 import ru.fromchat.ui.chat.getImageAspectRatio
 import ru.fromchat.ui.scaleOnPress
 import ru.fromchat.utils.formatLastSeen
+import ru.fromchat.utils.rememberLastSeenFormatStrings
 import kotlin.time.Clock
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalHazeMaterialsApi::class)
@@ -144,6 +145,11 @@ fun ChatScreen(
     val statusMap by UserStatusStore.status.collectAsState()
     val connectionStatus by ConnectionStateStore.status.collectAsState()
     val online by NetworkConnectivity.isOnline.collectAsState(initial = true)
+    val lastSeenFormat = rememberLastSeenFormatStrings()
+    val statusConnecting = stringResource(Res.string.status_connecting)
+    val statusUpdating = stringResource(Res.string.status_updating)
+    val chatGroupLabel = stringResource(Res.string.chat_group_label)
+    val cdCall = stringResource(Res.string.cd_call)
     LaunchedEffect(currentTypingUsers) {
         Logger.d("ChatScreen", "currentTypingUsers updated (from panelState): ${currentTypingUsers.map { it.username }}")
     }
@@ -413,7 +419,7 @@ fun ChatScreen(
                                     panelState.profileUserId != null -> {
                                         val userStatus = statusMap[panelState.profileUserId]
                                         val statusText = userStatus?.let {
-                                            formatLastSeen(it.online, it.lastSeen)
+                                            formatLastSeen(it.online, it.lastSeen, lastSeenFormat)
                                         }.orEmpty()
                                         if (statusText.isNotEmpty()) {
                                             "presence:$statusText"
@@ -434,12 +440,23 @@ fun ChatScreen(
                                 ) { key ->
                                     when {
                                         key == "updating" -> {
-                                            Text(
-                                                text = "Updating...",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.padding(top = 2.dp)
-                                            )
+                                            val st = MaterialTheme.typography.bodySmall
+                                            val col = MaterialTheme.colorScheme.onSurfaceVariant
+                                            Row(
+                                                modifier = Modifier.padding(top = 2.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = statusUpdating,
+                                                    style = st,
+                                                    color = col
+                                                )
+                                                ConnectingEllipsis(
+                                                    fontSize = st.fontSize,
+                                                    color = col,
+                                                    baseStyle = st
+                                                )
+                                            }
                                         }
                                         key == "connecting" -> {
                                             val st = MaterialTheme.typography.bodySmall
@@ -449,7 +466,7 @@ fun ChatScreen(
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Text(
-                                                    text = "Connecting",
+                                                    text = statusConnecting,
                                                     style = st,
                                                     color = col
                                                 )
@@ -477,7 +494,7 @@ fun ChatScreen(
                                         }
                                         key == "group" -> {
                                             Text(
-                                                text = "group",
+                                                text = chatGroupLabel,
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 modifier = Modifier.padding(top = 2.dp)
@@ -486,7 +503,7 @@ fun ChatScreen(
                                         key.startsWith("members:") -> {
                                             val n = key.removePrefix("members:").toIntOrNull() ?: 0
                                             Text(
-                                                text = "$n members",
+                                                text = stringResource(Res.string.chat_members_count, n),
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 modifier = Modifier.padding(top = 2.dp)
@@ -513,7 +530,7 @@ fun ChatScreen(
                             IconButton(onClick = { /* TODO: Handle call */ }) {
                                 Icon(
                                     imageVector = Icons.Default.Call,
-                                    contentDescription = "Call"
+                                    contentDescription = cdCall
                                 )
                             }
                         }
@@ -547,6 +564,7 @@ fun ChatScreen(
                     ChatInput(
                         text = inputText,
                         onTextChange = { inputText = it },
+                        currentUserId = currentUserId,
                         onSend = { text, attachments ->
                             if (editingMessage != null) {
                                 scope.launch {

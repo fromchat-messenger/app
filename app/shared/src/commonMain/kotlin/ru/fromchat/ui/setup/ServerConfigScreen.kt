@@ -43,16 +43,11 @@ import com.pr0gramm3r101.utils.navigateAndWipeBackStack
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
+import ru.fromchat.*
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.WebSocketManager
-import ru.fromchat.back
 import ru.fromchat.core.ServerConfigData
 import ru.fromchat.core.config.Config
-import ru.fromchat.https_enabled
-import ru.fromchat.save_continue
-import ru.fromchat.server_config_subtitle
-import ru.fromchat.server_config_title
-import ru.fromchat.server_url_label
 import ru.fromchat.ui.LocalNavController
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -62,7 +57,7 @@ fun ServerConfigScreen() {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
     
     // Load existing config if available
-    var serverUrl by remember { mutableStateOf("fromchat.ru") }
+    var serverUrl by remember { mutableStateOf("") }
     var httpsEnabled by remember { mutableStateOf(true) }
     
     LaunchedEffect(Unit) {
@@ -123,7 +118,7 @@ fun ServerConfigScreen() {
                 value = serverUrl,
                 onValueChange = { serverUrl = it },
                 label = { Text(stringResource(Res.string.server_url_label)) },
-                placeholder = { Text("fromchat.ru") },
+                placeholder = { Text(stringResource(Res.string.server_url_hint)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )

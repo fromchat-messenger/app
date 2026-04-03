@@ -25,11 +25,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
+import ru.fromchat.*
 import ru.fromchat.api.ApiClient
-import ru.fromchat.chats
-import ru.fromchat.coming_soon
-import ru.fromchat.contacts
-import ru.fromchat.settings
 import ru.fromchat.utils.exclude
 import ru.fromchat.ui.profile.ProfileScreen
 
@@ -62,7 +59,7 @@ fun MainScreen(onLogout: () -> Unit = {}) {
                 NavigationBarItem(
                     selected = selectedTab == "profile",
                     onClick = { selectedTab = "profile" },
-                    label = { Text("Profile") },
+                    label = { Text(stringResource(Res.string.profile)) },
                     icon = { Icon(Icons.Filled.Person, contentDescription = null) }
                 )
             }

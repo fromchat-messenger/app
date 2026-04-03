@@ -18,11 +18,14 @@ import ru.fromchat.api.db.MessageCacheStore
 import ru.fromchat.core.Logger
 
 class PublicChatPanel(
-    chatName: String,
+    /** Stable cache / panel id (not localized; hardcoded in [PublicChatPanelCache]). */
+    panelKey: String,
+    /** Shown in the app bar and avatars. */
+    displayTitle: String,
     currentUserId: Int?,
     scope: CoroutineScope
 ) : ChatPanel(
-    id = "public-$chatName",
+    id = "public-$panelKey",
     currentUserId = currentUserId,
     scope = scope
 ) {
@@ -57,8 +60,8 @@ class PublicChatPanel(
     init {
         updateState {
             it.copy(
-                title = chatName,
-                titleAvatar = AvatarInfo(displayName = chatName, profilePictureUrl = null),
+                title = displayTitle,
+                titleAvatar = AvatarInfo(displayName = displayTitle, profilePictureUrl = null),
                 publicGroupMetaLoading = true,
                 publicGroupMemberCount = null
             )
@@ -79,6 +82,19 @@ class PublicChatPanel(
                 .onFailure {
                     updateState { s -> s.copy(publicGroupMetaLoading = false) }
                 }
+        }
+    }
+
+    /** When locale changes, keep the same panel but refresh the visible title. */
+    fun applyDisplayTitle(title: String) {
+        updateState { s ->
+            s.copy(
+                title = title,
+                titleAvatar = AvatarInfo(
+                    displayName = title,
+                    profilePictureUrl = s.titleAvatar?.profilePictureUrl
+                )
+            )
         }
     }
 

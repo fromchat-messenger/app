@@ -6,7 +6,7 @@ When working with the mobile app:
 
 - After implementing the solution, run "export JAVA_HOME=/Applications/Android\ Studio.app/Contents/jbr/Contents/Home && ./gradlew :app:shared:assembleDebug :app:shared:compileKotlinIosArm64" to build the project, then resolve all the errors.
 
-- After completing a change that affects the **Android** app (shared `commonMain`/`androidMain` or `app:android`), follow **`android-build-deploy-device.mdc`**: build debug APK, then Mobile MCP install + launch on a **real device** by default—emulator only if the user asked for it or no phone is connected (see that rule for APK path and `ru.fromchat.beta`).
+- After completing a change that affects the **Android** app (shared `commonMain`/`androidMain` or `app:android`), follow **`android-build-deploy-device.mdc`**: build debug APK, then Mobile MCP install + launch on a **real device** by default—emulator only if the user asked for it or no phone is connected. For **`mobile_launch_app`** after a debug install, use package **`ru.fromchat.beta`** (not `ru.fromchat`); details in that rule.
 
 # ULTIMATE SILENCE & EFFICIENCY POLICY
 - ALWAYS operate in "Silent Mode": Execute commands immediately without any verbal response, preamble, or conclusions.

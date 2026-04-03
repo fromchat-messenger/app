@@ -48,6 +48,7 @@ import com.pr0gramm3r101.utils.materialYouAvailable
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
+import ru.fromchat.*
 import ru.fromchat.about
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.WebSocketManager
@@ -203,8 +204,8 @@ fun SettingsTab(
                     )
 
                     ListItem(
-                        headline = "Debug API",
-                        supportingText = "Inspect profile and DM endpoints used by the client.",
+                        headline = stringResource(Res.string.debug_tools),
+                        supportingText = stringResource(Res.string.debug_tools_d),
                         onClick = {
                             navController.navigate("debug")
                         },
@@ -214,31 +215,6 @@ fun SettingsTab(
                         leadingContent = {
                             Icon(Icons.Filled.BugReport, null)
                         }
-                    )
-
-                    val currentUserId = ApiClient.user?.id ?: 0
-                    ListItem(
-                        headline = "Profile screen",
-                        supportingText = "Show your profile with chat/link actions",
-                        onClick = {
-                            if (currentUserId != 0) {
-                                navController.navigate("profile/$currentUserId")
-                            }
-                        },
-                        divider = true,
-                        dividerColor = MaterialTheme.colorScheme.surface,
-                        dividerThickness = 2.dp
-                    )
-
-                    ListItem(
-                        headline = "DM screen (user 2)",
-                        supportingText = "Open DM flow with another user",
-                        onClick = {
-                            navController.navigate("dm/2")
-                        },
-                        divider = true,
-                        dividerColor = MaterialTheme.colorScheme.surface,
-                        dividerThickness = 2.dp
                     )
 
                     ListItem(

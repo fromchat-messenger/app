@@ -68,6 +68,9 @@ import com.pr0gramm3r101.components.ListItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.jetbrains.compose.resources.stringResource
+import ru.fromchat.Res
+import ru.fromchat.*
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.ProfileCache
 import ru.fromchat.api.UserProfile
@@ -76,11 +79,15 @@ import ru.fromchat.ui.chat.Avatar
 import ru.fromchat.ui.chat.publicChatProfileSharedAvatarKey
 import ru.fromchat.ui.scaleOnPress
 
+private sealed interface ProfileLoadError {
+    data object Generic : ProfileLoadError
+    data class Message(val text: String) : ProfileLoadError
+}
+
 private data class ProfileUiState(
     val profile: UserProfile? = null,
     val isLoading: Boolean = true,
-    val error: String? = null,
-    val linkStatus: String? = null
+    val error: ProfileLoadError? = null
 )
 
 private val profileActionCardPressSpring = spring<Float>(
@@ -109,6 +116,21 @@ fun ProfileScreen(
 ) {
     val clipboardManager: ClipboardManager = LocalClipboardManager.current
     val navController = LocalNavController.current
+    var linkCopied by remember { mutableStateOf(false) }
+    val profileTitle = stringResource(Res.string.profile_title)
+    val cdBack = stringResource(Res.string.back)
+    val profileLoadFailed = stringResource(Res.string.profile_load_failed)
+    val labelSettings = stringResource(Res.string.action_open_settings)
+    val labelChat = stringResource(Res.string.action_chat)
+    val labelLink = stringResource(Res.string.action_copy_link)
+    val linkCopiedText = stringResource(Res.string.link_copied)
+    val detailsTitle = stringResource(Res.string.profile_details_category)
+    val headlineUsername = stringResource(Res.string.profile_headline_username)
+    val headlineMemberSince = stringResource(Res.string.profile_headline_member_since)
+    val headlineBio = stringResource(Res.string.profile_headline_bio)
+    val headlineVerification = stringResource(Res.string.profile_headline_verification)
+    val verifiedSupport = stringResource(Res.string.profile_verified_support)
+    val verifyPromptSupport = stringResource(Res.string.profile_verify_prompt_support)
     val hideBackButton = navController.currentDestination?.route == "chat"
     val targetUserId = userId.takeIf { it != null && it > 0 }
     val ownUserId = ApiClient.user?.id?.takeIf { it > 0 }
@@ -142,7 +164,7 @@ fun ProfileScreen(
                     state = latestUi.copy(
                         profile = null,
                         isLoading = false,
-                        error = "Unable to load profile"
+                        error = ProfileLoadError.Generic
                     )
                     return@onSuccess
                 }
@@ -154,7 +176,8 @@ fun ProfileScreen(
                 val fallback = fallbackId?.let { ProfileCache.get(it) }
                 state = latestUi.copy(
                     error = if (latestUi.profile == null && fallback == null) {
-                        err.message ?: "Unable to load profile"
+                        err.message?.takeIf { it.isNotBlank() }?.let { ProfileLoadError.Message(it) }
+                            ?: ProfileLoadError.Generic
                     } else {
                         null
                     },
@@ -171,7 +194,7 @@ fun ProfileScreen(
         modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             MediumTopAppBar(
-                title = { Text("Profile") },
+                title = { Text(profileTitle) },
                 navigationIcon = {
                     if (!hideBackButton) {
                         Box(
@@ -182,7 +205,7 @@ fun ProfileScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back",
+                                contentDescription = cdBack,
                                 modifier = Modifier.size(24.dp)
                             )
                         }
@@ -195,7 +218,7 @@ fun ProfileScreen(
         Box(
             modifier = Modifier.fillMaxSize()
         ) {
-            val errorMessage = state.error
+            val loadError = state.error
             val profile = state.profile
             val displayName = profile?.displayName?.takeIf { it.isNotBlank() }
                 ?: profile?.username?.takeIf { it.isNotBlank() }
@@ -280,9 +303,13 @@ fun ProfileScreen(
                     state.isLoading -> {
                         CircularProgressIndicator(modifier = Modifier.padding(top = 24.dp))
                     }
-                    errorMessage != null -> {
+                    loadError != null -> {
+                        val errText = when (loadError) {
+                            ProfileLoadError.Generic -> profileLoadFailed
+                            is ProfileLoadError.Message -> loadError.text
+                        }
                         Text(
-                            text = errorMessage,
+                            text = errText,
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.padding(top = 24.dp)
                         )
@@ -301,7 +328,8 @@ fun ProfileScreen(
                             }
                         val scope = rememberCoroutineScope()
 
-                        val verificationLabel = if (profile.verified == true) "Verified account" else "Click to verify"
+                        val verificationLabel =
+                            if (profile.verified == true) verifiedSupport else verifyPromptSupport
                         val isOwnProfile = ApiClient.user?.id == profile.id
 
                         Row(
@@ -336,7 +364,7 @@ fun ProfileScreen(
                             val primarySource = remember { MutableInteractionSource() }
                             val primaryClick: () -> Unit
                             val primaryIcon = if (isOwnProfile) Icons.Filled.Settings else Icons.AutoMirrored.Filled.Chat
-                            val primaryLabel = if (isOwnProfile) "Settings" else "Chat"
+                            val primaryLabel = if (isOwnProfile) labelSettings else labelChat
 
                             primaryClick = if (isOwnProfile) {
                                 onOpenSettings
@@ -404,7 +432,7 @@ fun ProfileScreen(
                                             indication = LocalIndication.current,
                                             onClick = {
                                                 clipboardManager.setText(AnnotatedString(profileLink))
-                                                state = state.copy(linkStatus = "Link copied!")
+                                                linkCopied = true
                                             }
                                         ),
                                     contentAlignment = Alignment.Center
@@ -420,7 +448,7 @@ fun ProfileScreen(
                                         )
                                         Spacer(modifier = Modifier.height(6.dp))
                                         Text(
-                                            text = "Link",
+                                            text = labelLink,
                                             style = MaterialTheme.typography.bodyMedium
                                         )
                                     }
@@ -428,10 +456,10 @@ fun ProfileScreen(
                             }
                         }
 
-                        state.linkStatus?.let { status ->
+                        if (linkCopied) {
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = status,
+                                text = linkCopiedText,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -450,10 +478,10 @@ fun ProfileScreen(
                                 showDetailsBio ||
                                 showDetailsVerify
                         ) {
-                            Category(Modifier.padding(top = 16.dp), title = "Details") {
+                            Category(Modifier.padding(top = 16.dp), title = detailsTitle) {
                                 if (showDetailsUsername) {
                                     ListItem(
-                                        headline = "Username",
+                                        headline = headlineUsername,
                                         supportingText = profile.username,
                                         divider = true,
                                         dividerColor = CategoryDefaults.dividerColor,
@@ -472,7 +500,7 @@ fun ProfileScreen(
                                 }
                                 if (showDetailsMemberSince) {
                                     ListItem(
-                                        headline = "Member since",
+                                        headline = headlineMemberSince,
                                         supportingText = profile.createdAt,
                                         divider = true,
                                         dividerColor = CategoryDefaults.dividerColor,
@@ -491,7 +519,7 @@ fun ProfileScreen(
                                 }
                                 if (showDetailsBio) {
                                     ListItem(
-                                        headline = "Bio",
+                                        headline = headlineBio,
                                         supportingText = profile.bio,
                                         divider = true,
                                         dividerColor = CategoryDefaults.dividerColor,
@@ -522,7 +550,7 @@ fun ProfileScreen(
                                     }
 
                                     ListItem(
-                                        headline = "Verification",
+                                        headline = headlineVerification,
                                         supportingText = verificationLabel,
                                         leadingContent = {
                                             Icon(
