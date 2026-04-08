@@ -2,7 +2,7 @@
 agp = "9.0.0"
 androidx-activityCompose = "1.12.2"
 androidx-appcompat = "1.7.1"
-androidx-core-ktx = "1.17.0"
+androidx-core-ktx = "1.18.0"
 coilCompose = "3.3.0"
 compose-multiplatform = "1.10.0"
 #noinspection NewerVersionAvailable
