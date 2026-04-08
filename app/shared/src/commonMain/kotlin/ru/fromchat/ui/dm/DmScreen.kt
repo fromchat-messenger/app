@@ -13,6 +13,7 @@ import ru.fromchat.ui.chat.ChatScreen
 @Composable
 fun DmScreen(
     panel: DmPanel,
+    scrollToMessageId: Int? = null,
     modifier: Modifier = Modifier,
     onTitleClick: (() -> Unit)? = null,
     hideTitleBarAvatar: Boolean = false,
@@ -34,6 +35,7 @@ fun DmScreen(
         panel = panel,
         currentUserId = currentUserId,
         modifier = modifier.fillMaxSize(),
+        scrollToMessageId = scrollToMessageId,
         onTitleClick = onTitleClick,
         hideTitleBarAvatar = hideTitleBarAvatar,
         onAvatarSlotBounds = onAvatarSlotBounds,

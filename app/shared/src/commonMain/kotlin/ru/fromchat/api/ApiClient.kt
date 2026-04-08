@@ -41,6 +41,7 @@ import ru.fromchat.crypto.IdentityKeyManager
 import ru.fromchat.crypto.transport.TransportCiphertext
 import ru.fromchat.crypto.transport.TransportCrypto
 import ru.fromchat.platform.currentDeviceInfo
+import ru.fromchat.fcm.unregisterFcmTokenFromServer
 
 /**
  * Creates a platform-specific HTTP client that supports WebSockets
@@ -266,6 +267,15 @@ object ApiClient {
             }
             .body<DmConversationsResponse>()
             .conversations
+
+    suspend fun getDmFetch(since: Int? = null): DmHistoryResponse {
+        return http
+            .get("${Config.apiBaseUrl}/dm/fetch") {
+                contentType(ContentType.Application.Json)
+                since?.let { parameter("since", it) }
+            }
+            .body()
+    }
 
     suspend fun getDmHistory(
         otherUserId: Int,
@@ -510,6 +520,32 @@ object ApiClient {
         }
     }
 
+    suspend fun registerFcmToken(token: String): SimpleStatusResponse {
+        return http
+            .post("${Config.apiBaseUrl}/push/register") {
+                contentType(ContentType.Application.Json)
+                setBody(FcmTokenRequest(token = token))
+            }
+            .body()
+    }
+
+    suspend fun unregisterFcmToken(token: String? = null): SimpleStatusResponse {
+        return if (token.isNullOrBlank()) {
+            http
+                .post("${Config.apiBaseUrl}/push/unregister") {
+                    contentType(ContentType.Application.Json)
+                }
+                .body()
+        } else {
+            http
+                .post("${Config.apiBaseUrl}/push/unregister") {
+                    contentType(ContentType.Application.Json)
+                    setBody(FcmTokenRequest(token = token))
+                }
+                .body()
+        }
+    }
+
     suspend fun changePassword(
         currentPasswordDerived: String,
         newPasswordDerived: String,
@@ -556,6 +592,8 @@ object ApiClient {
         secureSettings.remove("auth_token")
         settings.remove("user_info")
         settings.remove("current_user_id")
+        settings.remove("pending_fcm_token")
+        settings.remove("current_fcm_token")
         token = null
         user = null
         uid?.let { UpdateSyncManager.clearPersistedSeqForUser(it) }
@@ -567,13 +605,19 @@ object ApiClient {
     }
 
     suspend fun logout() {
-        runCatching {
-            http.get("${Config.apiBaseUrl}/logout")
-        }
+        runCatching { http.get("${Config.apiBaseUrl}/logout") }
+        runCatching { unregisterFcmTokenFromServer() }
         clearLocalSession()
     }
 
     fun getTokenSafely() = token ?: throw IllegalStateException("Not authenticated")
+
+    suspend fun sendMessageViaHttp(content: String, replyToId: Int? = null) {
+        http.post("${Config.apiBaseUrl}/send_message") {
+            contentType(ContentType.Application.Json)
+            setBody(SendMessageRequest(content = content, reply_to_id = replyToId))
+        }
+    }
 
     // WebSocket send helpers
     suspend fun sendMessage(content: String, replyToId: Int? = null, clientMessageId: String? = null) {

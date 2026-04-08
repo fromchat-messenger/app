@@ -1,5 +1,15 @@
 package ru.fromchat.fcm
 
 actual suspend fun uploadPendingFcmTokenIfAvailable() {
-    // This should remain a placeholder because iOS is stupid
+    // iOS does not use FCM token management in this app build.
+}
+
+actual suspend fun ensureFcmTokenRegistered(): Boolean {
+    // iOS does not use FCM token management in this app build.
+    return false
+}
+
+actual suspend fun unregisterFcmTokenFromServer(): Boolean {
+    // iOS does not use FCM token management in this app build.
+    return false
 }

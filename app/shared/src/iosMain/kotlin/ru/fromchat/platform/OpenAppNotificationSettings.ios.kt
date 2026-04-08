@@ -10,3 +10,7 @@ actual fun openAppNotificationSettings(): Boolean {
     val url = NSURL.URLWithString(urlString) ?: return false
     return UIApplication.sharedApplication.openURL(url)
 }
+
+actual fun areAppNotificationsEnabled(): Boolean {
+    return true
+}

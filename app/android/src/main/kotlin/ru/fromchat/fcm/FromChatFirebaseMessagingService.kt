@@ -4,24 +4,55 @@ import android.util.Log
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.pr0gramm3r101.utils.settings.settings
-import io.ktor.client.request.post
-import io.ktor.client.request.setBody
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import ru.fromchat.api.ApiClient
-import ru.fromchat.core.config.Config
 import ru.fromchat.notifications.NotificationHelper
+import ru.fromchat.fcm.uploadPendingFcmTokenIfAvailable
 
 @OptIn(DelicateCoroutinesApi::class)
 class FromChatFirebaseMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
-        Log.d("FromChatFCM", "onMessageReceived: from=${remoteMessage.from}, data=${remoteMessage.data}")
+        Log.i("FromChatFCM", "onMessageReceived: from=${remoteMessage.from} dataSize=${remoteMessage.data.size}")
+        Log.d("FromChatFCM", "onMessageReceived data=${remoteMessage.data}")
 
         GlobalScope.launch(Dispatchers.IO) {
             try {
-                NotificationHelper.fetchAndNotify(applicationContext)
+                val pushData = remoteMessage.data
+                val fallbackMessageId = pushData["message_id"]?.toIntOrNull()
+                    ?: pushData["dm_id"]?.toIntOrNull()
+                val sender = pushData["sender_username"] ?: remoteMessage.data["senderUsername"]
+                val title = remoteMessage.notification?.title ?: pushData["title"] ?: "FromChat"
+                val body = remoteMessage.notification?.body ?: pushData["body"] ?: "New message"
+                val messageType = pushData["type"] ?: "public_message"
+                val isDirectMessage = messageType.equals("dm", ignoreCase = true)
+                if (ApiClient.token.isNullOrBlank()) {
+                    Log.w("FromChatFCM", "No auth token in memory; loading persisted data before handling push")
+                    ApiClient.loadPersistedData()
+                    Log.d("FromChatFCM", "Token loaded from storage for push sync: hasToken=${ApiClient.token?.isNotBlank() ?: false}")
+                }
+                if (!isDirectMessage && (title.isNotBlank() || body.isNotBlank())) {
+                    NotificationHelper.showFallbackPushNotification(
+                        applicationContext,
+                        title,
+                        body,
+                        sender,
+                        fallbackMessageId,
+                        messageType == "dm"
+                    )
+                }
+                if (isDirectMessage) {
+                    NotificationHelper.fetchAndNotify(
+                        applicationContext,
+                        includeDmMessages = true,
+                        dmMessageId = fallbackMessageId,
+                        dmSenderName = sender,
+                    )
+                } else {
+                    NotificationHelper.fetchAndNotify(applicationContext)
+                }
             } catch (e: Exception) {
                 Log.e("FromChatFCM", "onMessageReceived error: ${e.message}", e)
             }
@@ -31,25 +62,10 @@ class FromChatFirebaseMessagingService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         Log.d("FromChatFCM", "onNewToken: $token")
         GlobalScope.launch(Dispatchers.IO) {
-            // Upload token to backend if authenticated, otherwise save locally (TODO: persist and upload on login)
             try {
-                val authToken = ApiClient.token
-                if (!authToken.isNullOrEmpty()) {
-                    // Call backend endpoint to register token
-                    try {
-                        val resp = ApiClient.http.post("${Config.apiBaseUrl}/push/register") {
-                            setBody(ApiClient.json.encodeToString(mapOf("token" to token)))
-                        }
-                        Log.d("FromChatFCM", "Uploaded FCM token to server: ${resp.status.value}")
-                    } catch (e: Exception) {
-                        Log.e("FromChatFCM", "Failed to upload token: ${e.message}", e)
-                    }
-                } else {
-                    // Save to shared preferences for later upload (best-effort)
-                    runCatching {
-                        settings.putString("pending_fcm_token", token)
-                    }
-                }
+                settings.putString("pending_fcm_token", token)
+                uploadPendingFcmTokenIfAvailable()
+                Log.d("FromChatFCM", "FCM token queued or uploaded for this app instance")
             } catch (e: Exception) {
                 Log.e("FromChatFCM", "onNewToken upload error: ${e.message}", e)
             }

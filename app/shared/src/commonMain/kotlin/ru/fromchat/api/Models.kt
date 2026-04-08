@@ -234,6 +234,7 @@ data class DmEnvelope(
     val id: Int,
     val senderId: Int,
     val recipientId: Int,
+    @SerialName("sender_username") val senderUsername: String? = null,
     @SerialName("iv_b64") val ivB64: String,
     @SerialName("ciphertext_b64") val ciphertextB64: String,
     @SerialName("wrapped_mek_b64") val wrappedMekB64: String? = null,
@@ -411,4 +412,9 @@ data class SimilarityResult(
 @Serializable
 data class VerifyResponse(
     val verified: Boolean
+)
+
+@Serializable
+data class FcmTokenRequest(
+    val token: String
 )

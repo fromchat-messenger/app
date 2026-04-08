@@ -14,10 +14,16 @@ import ru.fromchat.ui.rememberHapticFeedback
 
 /** Route patterns and builders for DM chat + in-DM profile (stacked for predictive / system back). */
 object DmNav {
-    const val CHAT_ROUTE = "dm/{otherUserId}/chat"
+    const val CHAT_ROUTE = "dm/{otherUserId}/chat?sourceMessageId={sourceMessageId}"
     const val PROFILE_ROUTE = "dm/{otherUserId}/profile"
 
-    fun chatRoute(otherUserId: Int) = "dm/$otherUserId/chat"
+    fun chatRoute(otherUserId: Int, sourceMessageId: Int? = null): String {
+        return if (sourceMessageId != null && sourceMessageId > 0) {
+            "dm/$otherUserId/chat?sourceMessageId=$sourceMessageId"
+        } else {
+            "dm/$otherUserId/chat"
+        }
+    }
 
     fun profileRoute(otherUserId: Int) = "dm/$otherUserId/profile"
 }
@@ -27,6 +33,7 @@ private const val DM_AVATAR_KEY_PREFIX = "dm-avatar-"
 @Composable
 fun DmChatRoute(
     otherUserId: Int,
+    scrollToMessageId: Int? = null,
     navController: NavController,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
@@ -40,6 +47,7 @@ fun DmChatRoute(
     DmScreen(
         panel = panel,
         modifier = modifier.fillMaxSize(),
+        scrollToMessageId = scrollToMessageId,
         onTitleClick = {
             haptic(HapticFeedbackEvent.ProfileOpened)
             navController.navigate(DmNav.profileRoute(otherUserId))

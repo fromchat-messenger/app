@@ -15,10 +15,8 @@ fun SettingsTab() {
         val nav = LocalNavController.current
         SettingsHubScreen(
             onAppearance = { nav.navigate(SettingsRoutes.Appearance) },
-            onServerTools = { nav.navigate(SettingsRoutes.ServerTools) },
             onNotifications = { nav.navigate(SettingsRoutes.Notifications) },
             onDevices = { nav.navigate(SettingsRoutes.Devices) },
-            onSecurity = { nav.navigate(SettingsRoutes.Security) },
             onAccount = { nav.navigate(SettingsRoutes.Account) },
             onAbout = { nav.navigate("about") },
             title = stringResource(Res.string.settings),

@@ -133,6 +133,11 @@
     <string name="settings_notifications_title">Уведомления</string>
     <string name="settings_notifications_body">Чтобы разрешить или отключить уведомления FromChat, откройте настройки уведомлений телефона.</string>
     <string name="settings_open_notification_settings">Открыть настройки уведомлений</string>
+    <string name="settings_notifications_enable">Включить push-уведомления</string>
+    <string name="settings_notifications_disable">Отключить push-уведомления</string>
+    <string name="settings_notifications_permission_required">Откройте системные настройки и разрешите уведомления.</string>
+    <string name="settings_push_notifications_enabled">Push-уведомления включены</string>
+    <string name="settings_push_notifications_disabled">Push-уведомления отключены</string>
 
     <string name="settings_devices_title">Устройства</string>
     <string name="settings_devices_empty">Нет активных сессий</string>

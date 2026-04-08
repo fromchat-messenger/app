@@ -83,6 +83,7 @@ kotlin {
 
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
+            implementation(libs.firebase.messaging)
             implementation(libs.androidx.activity.compose)
             implementation(libs.androidx.work.runtime.ktx)
             implementation(libs.tweetnacl.java)

@@ -1,5 +1,4 @@
 package ru.fromchat
-
 import android.Manifest
 import android.content.Intent
 import android.os.Build
@@ -30,18 +29,34 @@ import ru.fromchat.core.config.Config
 import ru.fromchat.ui.App
 import ru.fromchat.ui.isPublicChatVisible
 
+private const val EXTRA_NOTIFICATION_CHAT_TYPE = "notification_chat_type"
+private const val EXTRA_OPEN_DM_USER_ID = "open_dm_user_id"
+private const val EXTRA_MARK_MESSAGE_READ = "mark_message_read"
+private const val EXTRA_MESSAGE_ID = "scroll_to_message_id"
+private const val CHAT_TYPE_PUBLIC = "public"
+private const val CHAT_TYPE_DM = "dm"
+
 class MainActivity : ComponentActivity() {
     private var scrollToMessageId by mutableStateOf<Int?>(null)
     private var startAtPublicChat by mutableStateOf(false)
+    private var startAtDmConversationUserId by mutableStateOf<Int?>(null)
     private var prevIsPublicChatVisible: Boolean? = null
 
     private fun handleIntent(intent: Intent?) {
-        val messageId = intent?.getIntExtra("scroll_to_message_id", -1) ?: -1
+        val messageId = intent?.getIntExtra(EXTRA_MESSAGE_ID, -1) ?: -1
+        val chatType = intent?.getStringExtra(EXTRA_NOTIFICATION_CHAT_TYPE) ?: CHAT_TYPE_PUBLIC
+        val dmConversationUserId = intent?.getIntExtra(EXTRA_OPEN_DM_USER_ID, -1) ?: -1
+
         scrollToMessageId = if (messageId != -1) messageId else null
-        startAtPublicChat = messageId != -1
+        startAtPublicChat = messageId != -1 && chatType != CHAT_TYPE_DM
+        startAtDmConversationUserId = if (chatType == CHAT_TYPE_DM && dmConversationUserId > 0) {
+            dmConversationUserId
+        } else {
+            null
+        }
 
         // Mark messages as read if clicked from notification
-        if (intent?.getBooleanExtra("mark_message_read", false) == true) {
+        if (intent?.getBooleanExtra(EXTRA_MARK_MESSAGE_READ, false) == true) {
             markMessagesAsRead()
         }
     }
@@ -101,7 +116,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             App(
                 scrollToMessageId = scrollToMessageId,
-                startAtPublicChat = startAtPublicChat
+                startAtPublicChat = startAtPublicChat,
+                startAtDmConversationUserId = startAtDmConversationUserId
             )
         }
 

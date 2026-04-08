@@ -58,7 +58,6 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LaptopMac
 import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Palette
@@ -149,6 +148,9 @@ import ru.fromchat.materialYou
 import ru.fromchat.materialYou_d
 import ru.fromchat.password_length_error
 import ru.fromchat.passwords_dont_match
+import ru.fromchat.fcm.ensureFcmTokenRegistered
+import ru.fromchat.fcm.unregisterFcmTokenFromServer
+import ru.fromchat.platform.areAppNotificationsEnabled
 import ru.fromchat.platform.openAppNotificationSettings
 import ru.fromchat.platform.currentDeviceInfo
 import ru.fromchat.settings_account_delete
@@ -197,8 +199,13 @@ import ru.fromchat.settings_devices_this_device
 import ru.fromchat.settings_devices_title
 import ru.fromchat.settings_new_password
 import ru.fromchat.settings_notifications_body
+import ru.fromchat.settings_notifications_disable
+import ru.fromchat.settings_notifications_enable
 import ru.fromchat.settings_notifications_title
+import ru.fromchat.settings_notifications_permission_required
 import ru.fromchat.settings_open_notification_settings
+import ru.fromchat.settings_push_notifications_disabled
+import ru.fromchat.settings_push_notifications_enabled
 import ru.fromchat.settings_hub_about_sub
 import ru.fromchat.settings_next
 import ru.fromchat.settings_password_changed
@@ -231,10 +238,8 @@ private fun SettingsListLeadingIcon(imageVector: ImageVector) {
 @Composable
 fun SettingsHubScreen(
     onAppearance: () -> Unit,
-    onServerTools: () -> Unit,
     onNotifications: () -> Unit,
     onDevices: () -> Unit,
-    onSecurity: () -> Unit,
     onAccount: () -> Unit,
     onAbout: () -> Unit,
     title: String,
@@ -263,31 +268,21 @@ fun SettingsHubScreen(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerLow
             ) {
                 ListItem(
-                    headline = stringResource(Res.string.settings_category_appearance),
-                    supportingText = stringResource(Res.string.settings_category_appearance_d),
-                    onClick = onAppearance,
-                    leadingContent = { SettingsListLeadingIcon(Icons.Filled.Palette) },
+                    headline = stringResource(Res.string.settings_category_account),
+                    supportingText = stringResource(Res.string.settings_category_account_d),
+                    onClick = onAccount,
+                    leadingContent = { SettingsListLeadingIcon(Icons.Filled.AccountCircle) },
                     divider = true,
                     dividerColor = settingsSurfaceCutDividerColor(),
-                    dividerThickness = SettingsSurfaceCutDividerThickness
-                )
-                ListItem(
-                    headline = stringResource(Res.string.settings_category_server_tools),
-                    supportingText = stringResource(Res.string.settings_category_server_tools_d),
-                    onClick = onServerTools,
-                    leadingContent = { SettingsListLeadingIcon(Icons.Filled.Storage) },
-                    divider = true,
-                    dividerColor = settingsSurfaceCutDividerColor(),
-                    dividerThickness = SettingsSurfaceCutDividerThickness
-                )
-                ListItem(
-                    headline = stringResource(Res.string.settings_category_notifications),
-                    supportingText = stringResource(Res.string.settings_category_notifications_d),
-                    onClick = onNotifications,
-                    leadingContent = { SettingsListLeadingIcon(Icons.Filled.Notifications) },
-                    divider = true,
-                    dividerColor = settingsSurfaceCutDividerColor(),
-                    dividerThickness = SettingsSurfaceCutDividerThickness
+                    dividerThickness = SettingsSurfaceCutDividerThickness,
+                    trailingContent = {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 )
                 ListItem(
                     headline = stringResource(Res.string.settings_category_devices),
@@ -296,22 +291,49 @@ fun SettingsHubScreen(
                     leadingContent = { SettingsListLeadingIcon(Icons.Filled.Devices) },
                     divider = true,
                     dividerColor = settingsSurfaceCutDividerColor(),
-                    dividerThickness = SettingsSurfaceCutDividerThickness
+                    dividerThickness = SettingsSurfaceCutDividerThickness,
+                    trailingContent = {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 )
                 ListItem(
-                    headline = stringResource(Res.string.settings_category_security),
-                    supportingText = stringResource(Res.string.settings_category_security_d),
-                    onClick = onSecurity,
-                    leadingContent = { SettingsListLeadingIcon(Icons.Filled.Lock) },
+                    headline = stringResource(Res.string.settings_category_appearance),
+                    supportingText = stringResource(Res.string.settings_category_appearance_d),
+                    onClick = onAppearance,
+                    leadingContent = { SettingsListLeadingIcon(Icons.Filled.Palette) },
                     divider = true,
                     dividerColor = settingsSurfaceCutDividerColor(),
-                    dividerThickness = SettingsSurfaceCutDividerThickness
+                    dividerThickness = SettingsSurfaceCutDividerThickness,
+                    trailingContent = {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 )
                 ListItem(
-                    headline = stringResource(Res.string.settings_category_account),
-                    supportingText = stringResource(Res.string.settings_category_account_d),
-                    onClick = onAccount,
-                    leadingContent = { SettingsListLeadingIcon(Icons.Filled.AccountCircle) }
+                    headline = stringResource(Res.string.settings_category_notifications),
+                    supportingText = stringResource(Res.string.settings_category_notifications_d),
+                    onClick = onNotifications,
+                    leadingContent = { SettingsListLeadingIcon(Icons.Filled.Notifications) },
+                    divider = true,
+                    dividerColor = settingsSurfaceCutDividerColor(),
+                    dividerThickness = SettingsSurfaceCutDividerThickness,
+                    trailingContent = {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 )
             }
             Spacer(Modifier.height(20.dp))
@@ -319,37 +341,20 @@ fun SettingsHubScreen(
                 modifier = Modifier.padding(bottom = 24.dp),
                 containerColor = MaterialTheme.colorScheme.surfaceContainerLow
             ) {
-                val aboutInteraction = remember { MutableInteractionSource() }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(
-                            interactionSource = aboutInteraction,
-                            indication = LocalIndication.current,
-                            onClick = onAbout
-                        )
-                        .padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    SettingsListLeadingIcon(Icons.Filled.Info)
-                    Column(Modifier.padding(horizontal = 16.dp).weight(1f)) {
-                        Text(
-                            text = stringResource(Res.string.about),
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Text(
-                            text = stringResource(Res.string.settings_hub_about_sub),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                ListItem(
+                    headline = stringResource(Res.string.about),
+                    supportingText = stringResource(Res.string.settings_hub_about_sub),
+                    onClick = onAbout,
+                    leadingContent = { SettingsListLeadingIcon(Icons.Filled.Info) },
+                    trailingContent = {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = null,
-                        modifier = Modifier.size(24.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                )
             }
         }
     }
@@ -542,8 +547,27 @@ fun SettingsSecurityHubScreen(onBack: () -> Unit, onChangePassword: () -> Unit) 
 @Composable
 fun SettingsNotificationsScreen(onBack: () -> Unit) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val coroutineScope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+    var isUpdating by remember { mutableStateOf(false) }
+    var notificationsEnabled by remember { mutableStateOf(areAppNotificationsEnabled()) }
+    val pushNotificationsEnabledText = stringResource(Res.string.settings_push_notifications_enabled)
+    val pushNotificationsDisabledText = stringResource(Res.string.settings_push_notifications_disabled)
+    val notificationsEnableText = stringResource(Res.string.settings_notifications_enable)
+    val notificationsDisableText = stringResource(Res.string.settings_notifications_disable)
+    val notificationsPermissionText = stringResource(Res.string.settings_notifications_permission_required)
+    val unexpectedErrorText = stringResource(Res.string.error_unexpected)
 
     Scaffold(
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState) {
+                Snackbar(
+                    snackbarData = it,
+                    containerColor = Color.Transparent,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        },
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             MediumTopAppBar(
@@ -575,6 +599,62 @@ fun SettingsNotificationsScreen(onBack: () -> Unit) {
                         .fillMaxWidth()
                         .padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp)
                 )
+                Text(
+                    text = stringResource(
+                        if (notificationsEnabled) {
+                            Res.string.settings_push_notifications_enabled
+                        } else {
+                            Res.string.settings_push_notifications_disabled
+                        }
+                    ),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
+                )
+                FilledTonalButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            isUpdating = true
+                            if (!areAppNotificationsEnabled()) {
+                                val opened = openAppNotificationSettings()
+                                if (!opened) {
+                                    snackbarHostState.showSnackbar(message = unexpectedErrorText)
+                                } else {
+                                    snackbarHostState.showSnackbar(message = notificationsPermissionText)
+                                }
+                                isUpdating = false
+                                return@launch
+                            }
+
+                            val success = if (notificationsEnabled) {
+                                unregisterFcmTokenFromServer()
+                            } else {
+                                ensureFcmTokenRegistered()
+                            }
+
+                            if (success) {
+                                notificationsEnabled = !notificationsEnabled
+                            } else {
+                                snackbarHostState.showSnackbar(message = unexpectedErrorText)
+                            }
+                            isUpdating = false
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                    enabled = !isUpdating
+                ) {
+                    Text(
+                        text = if (notificationsEnabled) {
+                            notificationsDisableText
+                        } else {
+                            notificationsEnableText
+                        }
+                    )
+                }
                 FilledTonalButton(
                     onClick = { openAppNotificationSettings() },
                     modifier = Modifier
@@ -1802,7 +1882,7 @@ private fun SecurityPasswordStepPage(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsAccountScreen(onBack: () -> Unit, onLogout: () -> Unit) {
+fun SettingsAccountScreen(onBack: () -> Unit, onLogout: () -> Unit, onChangePassword: () -> Unit) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -1834,6 +1914,23 @@ fun SettingsAccountScreen(onBack: () -> Unit, onLogout: () -> Unit) {
                 Modifier.padding(top = 16.dp),
                 containerColor = MaterialTheme.colorScheme.surfaceContainerLow
             ) {
+                ListItem(
+                    headline = stringResource(Res.string.settings_change_password),
+                    supportingText = stringResource(Res.string.settings_security_change_password_sub),
+                    onClick = onChangePassword,
+                    leadingContent = { SettingsListLeadingIcon(Icons.Filled.Key) },
+                    divider = true,
+                    dividerColor = settingsSurfaceCutDividerColor(),
+                    dividerThickness = SettingsSurfaceCutDividerThickness,
+                    trailingContent = {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
                 ListItem(
                     headline = stringResource(Res.string.logout),
                     onClick = {

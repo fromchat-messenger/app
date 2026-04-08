@@ -89,7 +89,11 @@ private fun NavGraphBuilder.settingsSlideComposable(
 }
 
 @Composable
-fun App(scrollToMessageId: Int? = null, startAtPublicChat: Boolean = false) {
+fun App(
+    scrollToMessageId: Int? = null,
+    startAtPublicChat: Boolean = false,
+    startAtDmConversationUserId: Int? = null
+) {
     setSingletonImageLoaderFactory { context ->
         ImageLoader.Builder(context)
             .components {
@@ -120,6 +124,7 @@ fun App(scrollToMessageId: Int? = null, startAtPublicChat: Boolean = false) {
         // Now determine start destination based on loaded token
         val hasToken = ApiClient.token?.isNotEmpty() == true
         startDestination = when {
+            hasToken && startAtDmConversationUserId != null -> "chat"
             hasToken && startAtPublicChat -> "chats/publicChat"
             hasToken && !startAtPublicChat -> "chat"
             else -> "login"
@@ -156,9 +161,22 @@ fun App(scrollToMessageId: Int? = null, startAtPublicChat: Boolean = false) {
         SharedTransitionLayout {
             val navController = rememberNavController()
 
-            // Handle navigation to public chat when requested (e.g., from notification)
-            LaunchedEffect(startAtPublicChat) {
-                if (startAtPublicChat && navController.currentDestination?.route != "chats/publicChat") {
+            // Handle navigation to the target chat when launched from notification
+            LaunchedEffect(startAtDmConversationUserId, startAtPublicChat, startDestination) {
+                if (startDestination == null || startDestination == "login") {
+                    return@LaunchedEffect
+                }
+
+                if (startAtDmConversationUserId != null && startAtDmConversationUserId > 0) {
+                    navController.navigate(
+                        DmNav.chatRoute(
+                            otherUserId = startAtDmConversationUserId,
+                            sourceMessageId = scrollToMessageId
+                        )
+                    ) {
+                        launchSingleTop = true
+                    }
+                } else if (startAtPublicChat && navController.currentDestination?.route != "chats/publicChat") {
                     navController.navigate("chats/publicChat") {
                         launchSingleTop = true
                     }
@@ -284,7 +302,10 @@ fun App(scrollToMessageId: Int? = null, startAtPublicChat: Boolean = false) {
 
                     composable(
                         route = DmNav.CHAT_ROUTE,
-                        arguments = listOf(navArgument("otherUserId") { type = NavType.StringType }),
+                        arguments = listOf(
+                            navArgument("otherUserId") { type = NavType.StringType },
+                            navArgument("sourceMessageId") { type = NavType.IntType; defaultValue = -1 },
+                        ),
                         enterTransition = {
                             when (initialState.destination.route) {
                                 DmNav.PROFILE_ROUTE -> fadeIn(animationSpec = dmChatProfileFade)
@@ -311,9 +332,11 @@ fun App(scrollToMessageId: Int? = null, startAtPublicChat: Boolean = false) {
                         },
                     ) { entry ->
                         val otherUserId = entry.savedStateHandle.get<String>("otherUserId")?.toIntOrNull() ?: 0
+                        val sourceMessageId = entry.savedStateHandle.get<Int>("sourceMessageId") ?: -1
                         if (otherUserId <= 0) return@composable
                         DmChatRoute(
                             otherUserId = otherUserId,
+                            scrollToMessageId = if (sourceMessageId > 0) sourceMessageId else null,
                             navController = navController,
                             sharedTransitionScope = this@SharedTransitionLayout,
                             animatedVisibilityScope = this,
@@ -373,14 +396,15 @@ fun App(scrollToMessageId: Int? = null, startAtPublicChat: Boolean = false) {
                         SettingsSecurityPasswordFlowScreen(
                             onBack = { navController.navigateUp() },
                             onDonePopToHub = {
-                                navController.popBackStack(SettingsRoutes.Security, inclusive = false)
+                                navController.popBackStack()
                             }
                         )
                     }
                     settingsSlideComposable(SettingsRoutes.Account, animationSpec) {
                         SettingsAccountScreen(
                             onBack = { navController.navigateUp() },
-                            onLogout = navigateToLoginClearingChat
+                            onLogout = navigateToLoginClearingChat,
+                            onChangePassword = { navController.navigate(SettingsRoutes.SecurityPasswordFlow) }
                         )
                     }
                     }

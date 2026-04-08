@@ -17,6 +17,7 @@ import androidx.core.app.RemoteInput
 import androidx.core.content.ContextCompat
 import com.pr0gramm3r101.utils.settings.settings
 import io.ktor.client.call.body
+import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.request.get
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -26,25 +27,52 @@ import kotlinx.coroutines.launch
 import ru.fromchat.MainActivity
 import ru.fromchat.R
 import ru.fromchat.api.ApiClient
+import ru.fromchat.api.DmHistoryResponse
 import ru.fromchat.api.Message
 import ru.fromchat.api.MessagesResponse
 import ru.fromchat.core.config.Config
+import ru.fromchat.crypto.CorruptedDmMessagePlaceholder
+import ru.fromchat.crypto.DmCiphertextCorruptedException
+import ru.fromchat.crypto.decryptEnvelope
 import ru.fromchat.ui.isPublicChatVisible
 
 object NotificationHelper {
+    private const val EXTRA_NOTIFICATION_CHAT_TYPE = "notification_chat_type"
+    private const val EXTRA_OPEN_DM_USER_ID = "open_dm_user_id"
+    private const val EXTRA_REPLY_CHAT_TYPE = "notification_reply_chat_type"
+    private const val EXTRA_REPLY_DM_USER_ID = "notification_reply_dm_user_id"
+    private const val EXTRA_REPLY_PARENT_MESSAGE_ID = "notification_reply_parent_message_id"
+    private const val EXTRA_MESSAGE_ID = "scroll_to_message_id"
+    private const val EXTRA_MARK_MESSAGE_READ = "mark_message_read"
+    private const val CHAT_TYPE_PUBLIC = "public"
+    private const val CHAT_TYPE_DM = "dm"
     private const val CHANNEL_ID = "fromchat_messages"
     private const val SUMMARY_NOTIFICATION_ID = 1000000 // Use a high unique ID for summary
     private const val PREF_SHOWN_KEY = "shown_message_ids"
+    private const val PREF_SHOWN_DM_KEY = "shown_dm_message_ids"
+    private const val PREF_LAST_DM_MESSAGE_ID = "last_dm_message_id"
     private const val PREF_LAST_NOTIFICATION_TIME = "last_notification_time"
     const val KEY_TEXT_REPLY = "key_text_reply"
 
-    private fun createMessageIntent(context: Context, messageId: Int) = PendingIntent.getActivity(
+    fun summaryNotificationId(): Int = SUMMARY_NOTIFICATION_ID
+
+    private fun createMessageIntent(
+        context: Context,
+        messageId: Int,
+        targetDmUserId: Int? = null,
+        markMessageRead: Boolean = true
+    ) = PendingIntent.getActivity(
         context,
-        messageId,
+        if (targetDmUserId != null) -messageId else messageId,
         Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra("scroll_to_message_id", messageId)
-            putExtra("mark_message_read", true)
+            putExtra(EXTRA_MESSAGE_ID, messageId)
+            putExtra(
+                EXTRA_NOTIFICATION_CHAT_TYPE,
+                if (targetDmUserId != null) CHAT_TYPE_DM else CHAT_TYPE_PUBLIC
+            )
+            putExtra(EXTRA_OPEN_DM_USER_ID, targetDmUserId ?: -1)
+            putExtra(EXTRA_MARK_MESSAGE_READ, markMessageRead)
         },
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
@@ -52,12 +80,26 @@ object NotificationHelper {
     private fun notificationReplyAction(context: Context) =
         "${context.packageName}.NOTIFICATION_REPLY"
 
-    private fun createReplyIntent(context: Context) = PendingIntent.getBroadcast(
+    private fun createReplyIntent(
+        context: Context,
+        isDirectMessage: Boolean = false,
+        targetDmUserId: Int? = null,
+        parentMessageId: Int? = null
+    ) = PendingIntent.getBroadcast(
         context,
-        SUMMARY_NOTIFICATION_ID,
+        if (isDirectMessage && targetDmUserId != null) {
+            -targetDmUserId
+        } else {
+            parentMessageId ?: SUMMARY_NOTIFICATION_ID
+        },
         Intent(context, NotificationReplyReceiver::class.java).apply {
             action = notificationReplyAction(context)
             putExtra("notification_id", SUMMARY_NOTIFICATION_ID)
+            putExtra(EXTRA_REPLY_CHAT_TYPE, if (isDirectMessage) CHAT_TYPE_DM else CHAT_TYPE_PUBLIC)
+            putExtra(EXTRA_REPLY_DM_USER_ID, targetDmUserId ?: -1)
+            if (parentMessageId != null) {
+                putExtra(EXTRA_REPLY_PARENT_MESSAGE_ID, parentMessageId)
+            }
         },
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
     )
@@ -79,26 +121,298 @@ object NotificationHelper {
         }
     }
 
-    suspend fun fetchAndNotify(context: Context) {
+    suspend fun fetchAndNotify(
+        context: Context,
+        includeDmMessages: Boolean = false,
+        dmMessageId: Int? = null,
+        dmSenderName: String? = null
+    ) {
         Log.d("NotificationHelper", "fetchAndNotify: starting fetch")
 
         try {
+            val currentUserId = settings.getInt("current_user_id", -1)
+            Log.d(
+                "NotificationHelper",
+                "fetchAndNotify: currentUserId=$currentUserId hasToken=${ApiClient.token?.isNotBlank() ?: false}"
+            )
+            if (currentUserId == -1) {
+                Log.w("NotificationHelper", "fetchAndNotify: missing currentUserId, skipping push sync")
+                return
+            }
+
             val messages = ApiClient.http
                 .get("${Config.apiBaseUrl}/messages/new")
                 .body<MessagesResponse>()
                 .messages
-            Log.d("NotificationHelper", "fetchAndNotify: fetched ${messages.size} messages")
-            if (messages.isEmpty()) return
+            Log.d("NotificationHelper", "fetchAndNotify: fetched ${messages.size} public messages")
+            if (messages.isNotEmpty()) {
+                settings.putLong(PREF_LAST_NOTIFICATION_TIME, System.currentTimeMillis())
+                CoroutineScope(Dispatchers.Main).launch {
+                    createChannel(context)
+                    displayNotifications(context, messages)
+                }
+            } else {
+                Log.d("NotificationHelper", "fetchAndNotify: no public messages returned")
+            }
 
-            settings.putLong(PREF_LAST_NOTIFICATION_TIME, System.currentTimeMillis())
-
-            // Display notifications on main thread
-            CoroutineScope(Dispatchers.Main).launch {
-                createChannel(context)
-                displayNotifications(context, messages)
+            if (includeDmMessages) {
+                fetchAndNotifyDirectMessages(context, currentUserId, dmMessageId, dmSenderName)
             }
         } catch (e: Exception) {
+            if (e is ClientRequestException && e.response.status.value == 401) {
+                try {
+                    Log.w("NotificationHelper", "fetchAndNotify: received 401; reloading token and retrying")
+                    ApiClient.loadPersistedData()
+                    val retryMessages = ApiClient.http
+                        .get("${Config.apiBaseUrl}/messages/new")
+                        .body<MessagesResponse>()
+                        .messages
+                    Log.d(
+                        "NotificationHelper",
+                        "fetchAndNotify retry: fetched ${retryMessages.size} public messages"
+                    )
+                    if (retryMessages.isNotEmpty()) {
+                        CoroutineScope(Dispatchers.Main).launch {
+                            createChannel(context)
+                            displayNotifications(context, retryMessages)
+                        }
+                    }
+                    if (includeDmMessages) {
+                        fetchAndNotifyDirectMessages(context, settings.getInt("current_user_id", -1), dmMessageId, dmSenderName)
+                    }
+                    return
+                } catch (_: Exception) {
+                    Log.e("NotificationHelper", "fetchAndNotify retry failed", e)
+                }
+            }
             Log.e("NotificationHelper", "fetchAndNotify: error ${e.message}", e)
+        }
+    }
+
+    private suspend fun fetchAndNotifyDirectMessages(
+        context: Context,
+        currentUserId: Int,
+        dmMessageId: Int? = null,
+        dmSenderName: String? = null
+    ) {
+        val storedLastDmMessageId = settings.getInt(PREF_LAST_DM_MESSAGE_ID, 0)
+        val sinceId = when {
+            dmMessageId != null && dmMessageId > storedLastDmMessageId -> dmMessageId - 1
+            storedLastDmMessageId > 0 -> storedLastDmMessageId
+            else -> null
+        }
+
+        if (sinceId == null || sinceId < 0) {
+            Log.d("NotificationHelper", "fetchAndNotifyDirectMessages: no dm watermark yet, skipping broad dm sync")
+            return
+        }
+
+        val response = runCatching {
+            ApiClient.getDmFetch(sinceId)
+        }.getOrElse { throwable ->
+            if (throwable is ClientRequestException && throwable.response.status.value == 401) {
+                throw throwable
+            }
+            Log.e(
+                "NotificationHelper",
+                "fetchAndNotifyDirectMessages: failed to fetch dm messages for since=$sinceId: ${throwable.message}",
+                throwable
+            )
+            return
+        }
+
+        processDirectMessages(context, response, currentUserId, dmMessageId, dmSenderName)
+    }
+
+    private suspend fun processDirectMessages(
+        context: Context,
+        response: DmHistoryResponse,
+        currentUserId: Int,
+        dmMessageId: Int?,
+        dmSenderName: String?
+    ) {
+        val dmMessages = response.messages
+        Log.d("NotificationHelper", "fetchAndNotifyDirectMessages: fetched ${dmMessages.size} dm messages")
+        if (dmMessages.isEmpty()) {
+            return
+        }
+
+        val shownDm = settings.getStringSet(PREF_SHOWN_DM_KEY, emptySet()).toMutableSet()
+        val latestMessageId = settings.getInt(PREF_LAST_DM_MESSAGE_ID, 0)
+
+        dmMessages
+            .filter { envelope ->
+                envelope.id > 0 && envelope.senderId != currentUserId
+            }
+            .forEach { envelope ->
+                val envelopeId = envelope.id
+                val shownDmKey = "dm:$envelopeId"
+
+                if (shownDm.contains(shownDmKey) || envelopeId <= latestMessageId) {
+                    Log.d(
+                        "NotificationHelper",
+                        "Direct notification skipped: already shown envelopeId=$envelopeId"
+                    )
+                    return@forEach
+                }
+
+                val plaintext = runCatching {
+                    decryptEnvelope(envelope, currentUserId)
+                }.getOrElse { throwable ->
+                    when (throwable) {
+                        is DmCiphertextCorruptedException -> {
+                            Log.w(
+                                "NotificationHelper",
+                                "DM decrypt failed for envelopeId=$envelopeId"
+                            )
+                            CorruptedDmMessagePlaceholder
+                        }
+
+                        else -> {
+                            Log.w(
+                                "NotificationHelper",
+                                "DM decrypt failed for envelopeId=$envelopeId: ${throwable.message}",
+                                throwable
+                            )
+                            "Encrypted message"
+                        }
+                    }
+                }
+
+                val senderName = if (
+                    envelopeId == dmMessageId && !dmSenderName.isNullOrBlank()
+                ) {
+                    dmSenderName
+                } else if (!envelope.senderUsername.isNullOrBlank()) {
+                    envelope.senderUsername
+                } else {
+                    "User ${envelope.senderId}"
+                }
+                val dmConversationUserId = envelope.senderId
+
+                showFallbackPushNotification(
+                    context = context,
+                    title = "Direct message from $senderName",
+                    body = plaintext,
+                    sender = senderName,
+                    messageId = envelopeId,
+                    allowWhenPublicChatVisible = true,
+                    isDirectMessage = true,
+                    targetDmUserId = dmConversationUserId,
+                    conversationTitle = "Direct Messages"
+                )
+                shownDm.add(shownDmKey)
+            }
+
+        val newMaxDmId = dmMessages.maxOfOrNull { it.id } ?: 0
+        if (newMaxDmId > latestMessageId) {
+            settings.putInt(PREF_LAST_DM_MESSAGE_ID, newMaxDmId)
+        }
+        settings.putStringSet(PREF_SHOWN_DM_KEY, shownDm)
+    }
+
+    fun showFallbackPushNotification(
+        context: Context,
+        title: String,
+        body: String,
+        sender: String? = null,
+        messageId: Int? = null,
+        allowWhenPublicChatVisible: Boolean = false,
+        isDirectMessage: Boolean = false,
+        targetDmUserId: Int? = null,
+        conversationTitle: String = "Public Chat"
+    ) {
+        CoroutineScope(Dispatchers.Main).launch {
+            createChannel(context)
+
+            if (isPublicChatVisible && !allowWhenPublicChatVisible) {
+                Log.d("NotificationHelper", "Fallback push notification skipped: public chat is visible")
+                return@launch
+            }
+
+            with(NotificationManagerCompat.from(context)) {
+                if (
+                    ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.POST_NOTIFICATIONS
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    Log.w(
+                        "NotificationHelper",
+                        "Fallback push notification skipped: POST_NOTIFICATIONS permission missing"
+                    )
+                    return@launch
+                }
+
+                val shown = settings.getStringSet(PREF_SHOWN_KEY, emptySet()).toMutableSet()
+                val shownKey = if (isDirectMessage) "dm:${messageId}" else messageId?.toString()
+                if (messageId != null && shown.contains(shownKey)) {
+                    Log.d(
+                        "NotificationHelper",
+                        "Fallback push notification skipped: already shown messageId=$messageId"
+                    )
+                    return@launch
+                }
+                if (messageId != null) {
+                    shownKey?.let { shown.add(it) }
+                }
+
+                val senderName = sender?.ifBlank { "FromChat" } ?: "FromChat"
+                notify(
+                    SUMMARY_NOTIFICATION_ID,
+                    NotificationCompat.Builder(context, CHANNEL_ID)
+                        .setSmallIcon(R.drawable.logo_big)
+                        .setContentTitle(title)
+                        .setContentText(body)
+                        .setStyle(
+                            NotificationCompat.MessagingStyle(
+                                Person.Builder().setName("FromChat").build()
+                            ).setConversationTitle(conversationTitle).addMessage(
+                                NotificationCompat.MessagingStyle.Message(
+                                    body,
+                                    System.currentTimeMillis(),
+                                    Person.Builder().setName(senderName).build()
+                                )
+                            )
+                        )
+                        .setPriority(NotificationCompat.PRIORITY_HIGH)
+                        .setCategory(Notification.CATEGORY_MESSAGE)
+                        .setAutoCancel(true)
+                        .addAction(
+                            NotificationCompat.Action.Builder(
+                                android.R.drawable.ic_menu_send,
+                                "Reply",
+                                createReplyIntent(
+                                    context = context,
+                                    isDirectMessage = isDirectMessage,
+                                    targetDmUserId = targetDmUserId,
+                                    parentMessageId = messageId
+                                )
+                            )
+                                .addRemoteInput(
+                                    RemoteInput.Builder(KEY_TEXT_REPLY)
+                                        .setLabel("Reply to chat...")
+                                        .build()
+                                )
+                                .setAllowGeneratedReplies(true)
+                                .build()
+                        )
+                        .setContentIntent(
+                            createMessageIntent(
+                                context = context,
+                                messageId = messageId ?: 0,
+                                targetDmUserId = targetDmUserId,
+                                markMessageRead = !isDirectMessage
+                            )
+                        )
+                        .build()
+                )
+                settings.putStringSet(PREF_SHOWN_KEY, shown)
+                Log.d(
+                    "NotificationHelper",
+                    "Fallback push notification shown title=$title sender=$senderName messageId=$messageId"
+                )
+            }
         }
     }
     @OptIn(DelicateCoroutinesApi::class)
@@ -127,15 +441,24 @@ object NotificationHelper {
 
                     if (currentUserId == -1) return@launch
 
-                    val newMessages = messages
-                        .filter { msg ->
-                            !shown.contains(msg.id.toString()) && // Not already shown
-                            msg.user_id != currentUserId // Not from current user
-                        }
-                        .ifEmpty { return@launch }
-                        .apply { forEach { shown.add(it.id.toString()) } }
+                    val newMessages = messages.filter { msg ->
+                        !shown.contains(msg.id.toString()) && // Not already shown
+                        msg.user_id != currentUserId // Not from current user
+                    }
+                    if (newMessages.isEmpty()) {
+                        Log.d(
+                            "NotificationHelper",
+                            "displayNotifications: no new messages after filters for user=$currentUserId"
+                        )
+                        return@launch
+                    }
+                    newMessages.apply { forEach { shown.add(it.id.toString()) } }
 
                     newMessageCount = newMessages.size
+                    Log.d(
+                        "NotificationHelper",
+                        "displayNotifications: user=$currentUserId totalMessages=${messages.size} newMessages=${newMessageCount}"
+                    )
 
                     notify(
                         SUMMARY_NOTIFICATION_ID,
@@ -169,12 +492,16 @@ object NotificationHelper {
                             .setPriority(NotificationCompat.PRIORITY_HIGH)
                             .setCategory(Notification.CATEGORY_MESSAGE)
                             .setAutoCancel(true)
-                            .addAction(
-                                NotificationCompat.Action.Builder(
-                                    android.R.drawable.ic_menu_send,
-                                    "Reply",
-                                    createReplyIntent(context)
+                        .addAction(
+                            NotificationCompat.Action.Builder(
+                                android.R.drawable.ic_menu_send,
+                                "Reply",
+                                createReplyIntent(
+                                    context = context,
+                                    isDirectMessage = false,
+                                    parentMessageId = newMessages.last().id
                                 )
+                            )
                                     .addRemoteInput(
                                         RemoteInput.Builder(KEY_TEXT_REPLY)
                                             .setLabel("Reply to chat...")
@@ -183,18 +510,13 @@ object NotificationHelper {
                                     .setAllowGeneratedReplies(true)
                                     .build()
                             )
-                            .addAction(
-                                NotificationCompat.Action.Builder(
-                                    android.R.drawable.ic_menu_view,
-                                    "View Chat",
-                                    createMessageIntent(
-                                        context,
-                                        newMessages.last().id
-                                    )
-                                ).build()
-                            )
                             .setContentIntent(createMessageIntent(context, newMessages.last().id))
                             .build()
+                    )
+                } else {
+                    Log.w(
+                        "NotificationHelper",
+                        "displayNotifications: POST_NOTIFICATIONS permission missing, skipping"
                     )
                 }
             }

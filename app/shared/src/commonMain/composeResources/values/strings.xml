@@ -163,6 +163,11 @@
     <string name="settings_notifications_title">Notifications</string>
     <string name="settings_notifications_body">To allow or block alerts from FromChat, use your phone’s notification settings.</string>
     <string name="settings_open_notification_settings">Open notification settings</string>
+    <string name="settings_notifications_enable">Enable push notifications</string>
+    <string name="settings_notifications_disable">Disable push notifications</string>
+    <string name="settings_notifications_permission_required">Open system notification settings to allow alerts.</string>
+    <string name="settings_push_notifications_enabled">Push notifications enabled</string>
+    <string name="settings_push_notifications_disabled">Push notifications disabled</string>
 
     <string name="settings_devices_title">Devices</string>
     <string name="settings_devices_empty">No active sessions</string>
