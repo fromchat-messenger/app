@@ -33,7 +33,7 @@ lifecycleRuntimeKtx = "2.10.0"
 composeBom = "2026.01.00"
 composeMaterialIconsExtended = "1.7.3"
 composeMaterial3 = "1.10.0-alpha05"
-composeComponents = "1.10.0"
+composeComponents = "1.10.3"
 playServicesBase = "18.10.0"
 
 [libraries]
