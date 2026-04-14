@@ -1,0 +1,3 @@
+[submodule ".cursor/skills/material-3-skill"]
+	path = .cursor/skills/material-3-skill
+	url = https://github.com/hamen/material-3-skill
