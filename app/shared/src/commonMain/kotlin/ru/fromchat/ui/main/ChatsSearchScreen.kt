@@ -67,6 +67,7 @@ import ru.fromchat.resolveSearchHintResource
 import ru.fromchat.resolveSearchTitleResource
 import ru.fromchat.resolveSearchNotFoundMessageResource
 import ru.fromchat.resolveSearchNotFoundTitleResource
+import ru.fromchat.api.visibleUsername
 import ru.fromchat.ui.BackHandler
 import ru.fromchat.ui.M3SearchBar
 import ru.fromchat.ui.SearchBarSharedElement
@@ -271,7 +272,7 @@ private fun matchesSearchConversations(conv: CachedConversation, normalizedQuery
     val candidates = buildList {
         add(conv.displayName)
         cached?.displayName?.let { add(it) }
-        cached?.username?.let { add(it) }
+        cached?.visibleUsername(ApiClient.user?.id)?.let { add(it) }
     }
 
     return candidates.any { candidate ->

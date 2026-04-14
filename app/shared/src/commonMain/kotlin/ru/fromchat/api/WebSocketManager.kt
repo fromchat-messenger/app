@@ -293,16 +293,19 @@ object WebSocketManager {
     }
 
     fun shutdown() {
+        disconnect()
         logD("shutdown() called. Cancelling scope.")
         scope.cancel()
     }
 
     fun disconnect() {
-        logD("disconnect() called. current session=${session != null}")
+        logD("disconnect() called. current session=${session != null}, connectionJobActive=${connectionJob?.isActive}")
+        connectionJob?.cancel()
+        connectionJob = null
         session?.cancel()
         session = null
         connecting = false
-        logD("Disconnected. session set to null, connecting set to false")
+        logD("Disconnected. session set to null, connecting set to false, connectionJob set to null")
     }
 
     fun onNetworkLost() {

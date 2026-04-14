@@ -79,9 +79,12 @@ import ru.fromchat.ui.SearchBarSharedElement
 import ru.fromchat.ui.branding.FromChatBrandTitle
 import ru.fromchat.ui.chat.Avatar
 import ru.fromchat.ui.chat.TypingIndicator
+import ru.fromchat.ui.suspension.*
 import ru.fromchat.ui.dm.DmNav
 import ru.fromchat.unread_count
 import ru.fromchat.user_fallback
+import ru.fromchat.api.visibleUsername
+import ru.fromchat.*
 
 @Composable
 private fun ChatRowAvatar(
@@ -126,6 +129,7 @@ fun ChatsTab(
     val statusMap by UserStatusStore.status.collectAsState()
     var subscribedDmUserIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
     val statusSubscriptionScope = rememberCoroutineScope()
+    val suspensionState by ApiClient.suspensionState.collectAsState()
     val publicConversationsOffset = 1
 
     LaunchedEffect(dmConversations, tabListState, isVisible, onOpenSearch) {
@@ -202,6 +206,8 @@ fun ChatsTab(
     val updatingTitle = stringResource(Res.string.status_updating)
     val brandTitle = stringResource(Res.string.app_name)
     val defaultLastMessage = stringResource(Res.string.chat_last_mesaage)
+    val suspendBannerTitle = stringResource(Res.string.suspend_chat_banner_message)
+    val suspendDefaultReason = stringResource(Res.string.suspended_default_reason)
     val publicChatTitle = stringResource(Res.string.public_chat)
 
     Scaffold(
@@ -320,6 +326,15 @@ fun ChatsTab(
                 sharedElementKey = SearchBarSharedElement
             )
 
+            SuspendedAccountNoticeHost(
+                isSuspended = suspensionState.isSuspended,
+                reason = suspensionState.reason,
+                fallbackReason = suspendDefaultReason,
+                bannerTitle = suspendBannerTitle,
+                style = SuspendedAccountBannerStyle.Tabs,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+            )
+
             ChatConversationsList(
                 listState = tabListState,
                 conversations = dmConversations,
@@ -342,6 +357,7 @@ fun ChatsTab(
             )
         }
     }
+
 }
 
 @Composable
@@ -439,7 +455,7 @@ private fun DmConversationRow(
     val cached = ProfileCache.get(conversation.otherUserId)
     val avatarUrl = cached?.profilePicture
     val peerTitle = cached?.displayName?.takeIf { it.isNotBlank() }
-        ?: cached?.username?.takeIf { it.isNotBlank() }
+        ?: cached?.visibleUsername(ApiClient.user?.id)
         ?: conversation.displayName.ifBlank {
             stringResource(Res.string.user_fallback, conversation.otherUserId)
         }
@@ -511,7 +527,7 @@ private fun matchesDmSearch(conv: CachedConversation, normalizedQuery: String): 
     val candidates = buildList {
         add(conv.displayName)
         cached?.displayName?.let { add(it) }
-        cached?.username?.let { add(it) }
+        cached?.visibleUsername(ApiClient.user?.id)?.let { add(it) }
     }
 
     return candidates.any { candidate ->

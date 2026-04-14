@@ -12,6 +12,23 @@ import kotlinx.serialization.json.Json
 import kotlin.concurrent.Volatile
 
 /**
+ * Returns true when a profile entry should not expose its `username` field
+ * to the UI (for suspended or deleted users), except for the current user.
+ */
+fun UserProfile.shouldHideUsername(currentUserId: Int? = null): Boolean =
+    id != currentUserId && (deleted == true || suspended == true)
+
+fun UserProfile.visibleUsername(currentUserId: Int? = null): String? =
+    if (shouldHideUsername(currentUserId)) {
+        null
+    } else {
+        username.trim().takeIf { it.isNotBlank() }
+    }
+
+fun UserProfile.visibleDisplayName(currentUserId: Int? = null): String? =
+    displayName?.trim()?.ifEmpty { null } ?: visibleUsername(currentUserId)
+
+/**
  * In-memory profile cache with disk persistence. [get] reads a volatile snapshot (lock-free).
  * [put] copy-on-writes the map and schedules an async flush of the full list to settings.
  */

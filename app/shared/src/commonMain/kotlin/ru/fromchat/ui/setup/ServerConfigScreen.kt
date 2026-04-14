@@ -151,11 +151,11 @@ fun ServerConfigScreen() {
                         }
                         
                         // Clear API client state
-                        ApiClient.token = null
-                        ApiClient.user = null
+                        ApiClient.clearMemorySession()
                         
-                        // Shutdown WebSocket (will reconnect on login)
-                        WebSocketManager.shutdown()
+                        // Restart websocket connection flow so it uses the new server config
+                        WebSocketManager.disconnect()
+                        WebSocketManager.connect(forceRestart = true)
                         
                         // Navigate to login and wipe entire back stack
                         navController.navigateAndWipeBackStack("login")

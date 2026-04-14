@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import io.ktor.client.plugins.ClientRequestException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -16,6 +17,7 @@ import ru.fromchat.api.ApiClient
 import ru.fromchat.api.DmEnvelope
 import ru.fromchat.api.Message
 import ru.fromchat.api.ProfileCache
+import ru.fromchat.api.visibleDisplayName
 import ru.fromchat.api.WebSocketMessage
 import ru.fromchat.core.Logger
 import ru.fromchat.crypto.CorruptedDmMessagePlaceholder
@@ -83,7 +85,7 @@ class DmPanel(
                     return@onSuccess
                 }
                 ProfileCache.put(profile)
-                val displayName = profile.displayName?.takeIf { it.isNotBlank() } ?: profile.username
+                val displayName = profile.visibleDisplayName(ApiClient.user?.id).orEmpty()
                 otherDisplayName = displayName
                 otherProfilePicture = profile.profilePicture
                 updateState {
@@ -130,19 +132,15 @@ class DmPanel(
     override suspend fun loadMessages() {
         setLoading(true)
         try {
-            // First, hydrate from cache if available.
-            runCatching {
-                val cached = MessageCacheStore.loadDmMessages(otherUserId)
-                if (cached.isNotEmpty()) {
-                    clearMessages()
-                    addMessages(cached)
-                }
+            val cached = runCatching { MessageCacheStore.loadDmMessages(otherUserId) }.getOrDefault(emptyList())
+            if (cached.isNotEmpty()) {
+                clearMessages()
+                addMessages(cached)
             }
 
-            // Then refresh from network.
-            runCatching {
-                ApiClient.getDmHistory(otherUserId)
-            }.onSuccess { response ->
+            val historyResult = runCatching { ApiClient.getDmHistory(otherUserId) }
+            if (historyResult.isSuccess) {
+                val response = historyResult.getOrNull() ?: return@loadMessages
                 clearMessages()
                 val decryptedForLog = mutableListOf<Pair<Int, String>>()
                 val messages = response.messages.map { envelope ->
@@ -165,8 +163,14 @@ class DmPanel(
 
                 // Persist the most recent DM messages for offline use.
                 MessageCacheStore.replaceDmMessages(otherUserId, messagesWithReplies)
-            }.onFailure { error ->
-                Logger.e("DmPanel", "Failed to load DM history: ${error.message}", error)
+            } else {
+                val error = historyResult.exceptionOrNull()
+                Logger.e("DmPanel", "Failed to load DM history: ${error?.message}", error)
+                if (error is ClientRequestException && error.response.status.value == 403) {
+                    MessageCacheStore.clearDmMessages(otherUserId)
+                    clearMessages()
+                    setHasMoreMessages(false)
+                }
             }
         } finally {
             setLoading(false)

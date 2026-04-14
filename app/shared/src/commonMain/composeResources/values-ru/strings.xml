@@ -204,4 +204,12 @@
     <string name="typing_many">%1$s, %2$s и ещё %3$d печатают…</string>
     <string name="more">Ещё</string>
     <string name="unread_count">+%1$d</string>
+
+    <!-- Удаления доступа -->
+    <string name="suspend_chat_banner_message">Ваш аккаунт был заблокирован</string>
+    <string name="suspended_default_reason">Причина не указана. Доступ к отправке временно отключён.</string>
+    <string name="suspended_sheet_title">Аккаунт заблокирован</string>
+    <string name="suspended_sheet_desc">Ваш аккаунт заблокирован за нарушение правил.\nСейчас вы можете читать чаты, но отправка новых сообщений временно отключена.\nЕсли вы считаете, что это ошибка, свяжитесь с поддержкой и мы поможем разобраться.</string>
+    <string name="suspended_sheet_reason_label">Причина</string>
+    <string name="suspended_sheet_action_contact_support">Связаться с поддержкой</string>
 </resources>

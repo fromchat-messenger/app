@@ -67,10 +67,20 @@ fun MessageContextMenu(
     onReply: (Message) -> Unit,
     onEdit: (Message) -> Unit,
     onDelete: (Message) -> Unit,
+    isReadOnly: Boolean = false,
     screenWidthPx: Int,
     screenHeightPx: Int,
     modifier: Modifier = Modifier,
 ) {
+    if (isReadOnly && state.isOpen) {
+        onDismiss()
+        return
+    }
+
+    if (isReadOnly) {
+        return
+    }
+
     var shouldShowPopup by remember(state.message) {
         mutableStateOf(state.isOpen && state.message != null)
     }
@@ -119,6 +129,7 @@ fun MessageContextMenu(
                     modifier = modifier.graphicsLayer(alpha = 0f),
                     animated = false,
                     withShadow = false,
+                    isReadOnly = isReadOnly,
                 )
             }.map { it.measure(looseConstraints) }
             val p = placeables.firstOrNull()
@@ -206,7 +217,8 @@ fun MessageContextMenu(
                     scale = scale,
                     alpha = alpha,
                     transformOriginX = transformOriginX,
-                    transformOriginY = transformOriginY
+                    transformOriginY = transformOriginY,
+                    isReadOnly = isReadOnly
                 )
             }
         }
@@ -220,6 +232,7 @@ private fun ContextMenuContent(
     onReply: (Message) -> Unit,
     onEdit: (Message) -> Unit,
     onDelete: (Message) -> Unit,
+    isReadOnly: Boolean = false,
     modifier: Modifier,
     animated: Boolean,
     withShadow: Boolean = true,
@@ -272,19 +285,21 @@ private fun ContextMenuContent(
                 .verticalScroll(menuScrollState),
             verticalArrangement = Arrangement.spacedBy(itemSpacing)
         ) {
-            ContextMenuItem(
-                icon = Icons.AutoMirrored.Filled.Reply,
-                text = labelReply,
-                onClick = { onReply(message) }
-            )
-            if (isAuthor) {
+            if (!isReadOnly) {
+                ContextMenuItem(
+                    icon = Icons.AutoMirrored.Filled.Reply,
+                    text = labelReply,
+                    onClick = { onReply(message) }
+                )
+            }
+            if (isAuthor && !isReadOnly) {
                 ContextMenuItem(
                     icon = Icons.Default.Edit,
                     text = labelEdit,
                     onClick = { onEdit(message) }
                 )
             }
-            if (isAuthor) {
+            if (isAuthor && !isReadOnly) {
                 ContextMenuItem(
                     icon = Icons.Default.Delete,
                     text = labelDelete,

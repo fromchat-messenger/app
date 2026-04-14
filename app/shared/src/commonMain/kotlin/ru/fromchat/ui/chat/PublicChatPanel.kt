@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import io.ktor.client.plugins.ClientRequestException
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import ru.fromchat.api.ApiClient
@@ -189,9 +190,11 @@ class PublicChatPanel(
         }
 
         // 2) Refresh from network; this may be fast or slow, but runs entirely off main.
-        val response = withContext(Dispatchers.Default) {
-            runCatching { ApiClient.getMessages(limit = 50) }.getOrNull()
+        val responseResult = withContext(Dispatchers.Default) {
+            runCatching { ApiClient.getMessages(limit = 50) }
         }
+        val response = responseResult.getOrNull()
+
         if (response != null && response.messages.isNotEmpty()) {
             withContext(Dispatchers.Main) {
                 val shown = _state.messages
@@ -211,15 +214,31 @@ class PublicChatPanel(
             withContext(Dispatchers.Default) {
                 MessageCacheStore.replacePublicMessages(response.messages)
             }
+        } else if (responseResult.isFailure) {
+            val cause = responseResult.exceptionOrNull()
+            if (cause is ClientRequestException && cause.response.status.value == 403) {
+                MessageCacheStore.clearPublicMessages()
+                withContext(Dispatchers.Main) {
+                    clearMessages()
+                    if (_state.isLoading) setLoading(false)
+                    if (_state.hasMoreMessages) setHasMoreMessages(false)
+                }
+            } else if (cached.isEmpty()) {
+                // Nothing to show at all; hide spinner so the user is not stuck.
+                withContext(Dispatchers.Main) {
+                    if (_state.isLoading) setLoading(false)
+                    if (_state.hasMoreMessages) setHasMoreMessages(false)
+                }
+            } else {
+                // We already displayed cached messages; just mark pagination state.
+                withContext(Dispatchers.Main) {
+                    if (_state.hasMoreMessages) setHasMoreMessages(false)
+                }
+            }
         } else if (cached.isEmpty()) {
             // Nothing to show at all; hide spinner so the user is not stuck.
             withContext(Dispatchers.Main) {
                 if (_state.isLoading) setLoading(false)
-                if (_state.hasMoreMessages) setHasMoreMessages(false)
-            }
-        } else {
-            // We already displayed cached messages; just mark pagination state.
-            withContext(Dispatchers.Main) {
                 if (_state.hasMoreMessages) setHasMoreMessages(false)
             }
         }

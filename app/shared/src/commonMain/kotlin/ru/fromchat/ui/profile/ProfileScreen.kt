@@ -75,6 +75,8 @@ import ru.fromchat.*
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.ProfileCache
 import ru.fromchat.api.UserProfile
+import ru.fromchat.api.visibleDisplayName
+import ru.fromchat.api.visibleUsername
 import ru.fromchat.api.UserStatus
 import ru.fromchat.api.UserStatusStore
 import ru.fromchat.ui.LocalNavController
@@ -232,10 +234,12 @@ fun ProfileScreen(
         ) {
             val loadError = state.error
             val profile = state.profile
-            val displayName = profile?.displayName?.takeIf { it.isNotBlank() }
-                ?: profile?.username?.takeIf { it.isNotBlank() }
+            val currentProfileUserId = targetUserId ?: ownUserId ?: profile?.id
+            val displayName =
+                profile?.visibleDisplayName(currentProfileUserId)
                 ?: initialDisplayName?.takeIf { it.isNotBlank() }
                 ?: "?"
+            val usernameForLinks = profile?.visibleUsername(currentProfileUserId)
 
             val navSharedAvatarKey =
                 if (useSharedElementFromNavigation && targetUserId != null && sharedSourceMessageId != -1) {
@@ -334,7 +338,7 @@ fun ProfileScreen(
                             if (compactIdentityForPublicChat) {
                                 "https://fromchat.ru/?u=${profile.id}"
                             } else {
-                                profile.username.takeIf { it.isNotBlank() }
+                                usernameForLinks
                                     ?.let { "https://fromchat.ru/@$it" }
                                     ?: "https://fromchat.ru/?u=${profile.id}"
                             }
@@ -515,7 +519,7 @@ fun ProfileScreen(
                         }
 
                         val showDetailsUsername =
-                            !compactIdentityForPublicChat && profile.username.isNotBlank()
+                            !compactIdentityForPublicChat && usernameForLinks != null
                         val showDetailsMemberSince =
                             !compactIdentityForPublicChat &&
                                 !profile.createdAt.isNullOrBlank()
@@ -531,7 +535,7 @@ fun ProfileScreen(
                                 if (showDetailsUsername) {
                                     ListItem(
                                         headline = headlineUsername,
-                                        supportingText = profile.username,
+                                        supportingText = usernameForLinks.orEmpty(),
                                         divider = true,
                                         dividerColor = CategoryDefaults.dividerColor,
                                         dividerThickness = CategoryDefaults.dividerThickness,

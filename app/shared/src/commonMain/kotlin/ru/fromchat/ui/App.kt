@@ -59,6 +59,8 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.launch
 import ru.fromchat.ui.main.settings.SettingsAccountScreen
 import ru.fromchat.ui.main.settings.SettingsAppearanceScreen
 import ru.fromchat.ui.main.settings.SettingsDevicesScreen
@@ -87,14 +89,42 @@ private fun handlePresenceTyping(type: String, data: JsonObject?) {
     }
 }
 
+private fun extractReason(data: JsonElement?): String? {
+    return data?.jsonObject?.get("reason")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+}
+
+private fun handleAccountLifecycleEvent(message: WebSocketMessage) {
+    when (message.type) {
+        "suspended" -> {
+            val reason = extractReason(message.data)
+            ApiClient.setSuspended(reason)
+        }
+        "unsuspended" -> {
+            ApiClient.clearSuspensionState()
+        }
+        "account_deleted" -> {
+            MainScope().launch {
+                ApiClient.logout()
+            }
+            WebSocketManager.disconnect()
+        }
+    }
+}
+
 private fun handlePresenceEvent(message: WebSocketMessage) {
     when (message.type) {
+        "suspended", "unsuspended", "account_deleted" -> handleAccountLifecycleEvent(message)
         "statusUpdate" -> message.data?.jsonObject?.let(::handlePresenceStatus)
         "dmTyping", "stopDmTyping" -> message.data?.jsonObject?.let { handlePresenceTyping(message.type, it) }
         "updates" -> {
             val data = message.data ?: return
             val updates = ApiClient.json.decodeFromJsonElement<WebSocketUpdatesData>(data)
-            updates.updates.forEach(::handlePresenceEvent)
+            updates.updates.forEach { update ->
+                when (update.type) {
+                    "suspended", "unsuspended", "account_deleted" -> handleAccountLifecycleEvent(update)
+                    else -> handlePresenceEvent(update)
+                }
+            }
         }
     }
 }
@@ -149,6 +179,14 @@ fun App(
         ApiClient.loadPersistedData()
 
         runCatching { ProfileCache.hydrateFromDisk() }
+
+        val hasTokenInitially = ApiClient.token?.isNotEmpty() == true
+        if (hasTokenInitially) {
+            runCatching {
+                val ownProfile = ApiClient.getOwnProfile()
+                ApiClient.syncSuspensionStateFromProfile(ownProfile)
+            }
+        }
 
         // Initialize update sync state for the current user (if any)
         runCatching {
@@ -279,6 +317,7 @@ fun App(
                     composable("login") {
                         LoginScreen(
                             onLoginSuccess = {
+                                WebSocketManager.connect(forceRestart = true)
                                 navController.navigate("chat") {
                                     popUpTo("login") { inclusive = true }
                                 }

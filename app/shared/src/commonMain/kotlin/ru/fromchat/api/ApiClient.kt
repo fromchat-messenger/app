@@ -23,11 +23,15 @@ import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.request.put
+import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.encodeToJsonElement
 import ru.fromchat.core.config.Config
@@ -56,6 +60,55 @@ object ApiClient {
         ignoreUnknownKeys = true
         isLenient = true
         encodeDefaults = true
+    }
+
+    data class SuspensionState(
+        val isSuspended: Boolean = false,
+        val reason: String? = null,
+    )
+
+    private val _suspensionState = MutableStateFlow(SuspensionState())
+    val suspensionState: StateFlow<SuspensionState> = _suspensionState.asStateFlow()
+
+    private fun normalizedSuspensionReason(reason: String?): String? =
+        reason?.trim()?.ifEmpty { null }
+
+    private fun syncSuspensionStateFromUser(user: User?) {
+        _suspensionState.value = SuspensionState(
+            isSuspended = user?.suspended == true,
+            reason = normalizedSuspensionReason(user?.suspensionReason)
+        )
+    }
+
+    fun syncSuspensionStateFromProfile(profile: UserProfile?) {
+        val isSuspended = profile?.suspended == true
+        val reason = normalizedSuspensionReason(profile?.suspensionReason)
+        _suspensionState.value = SuspensionState(
+            isSuspended = isSuspended,
+            reason = if (isSuspended) reason else null
+        )
+
+        user = user?.copy(
+            suspended = isSuspended,
+            suspensionReason = if (isSuspended) reason else null
+        )
+    }
+
+    fun clearSuspensionState() {
+        _suspensionState.value = SuspensionState()
+        user = user?.copy(
+            suspended = false,
+            suspensionReason = null
+        )
+    }
+
+    fun setSuspended(reason: String?) {
+        val normalizedReason = normalizedSuspensionReason(reason)
+        _suspensionState.value = SuspensionState(isSuspended = true, reason = normalizedReason)
+        user = user?.copy(
+            suspended = true,
+            suspensionReason = normalizedReason
+        )
     }
 
     val http = createPlatformHttpClient {
@@ -91,17 +144,23 @@ object ApiClient {
             header("User-Agent", userAgent)
         }
 
-        // Handle HTTP errors and auth errors globally
+        // Handle HTTP auth errors globally.
+        // - 401 => token/session invalid, clear auth state and trigger auth recovery flow.
+        // - 403 => forbidden, keep session intact (used for read-only/suspension workflows).
         HttpResponseValidator {
             validateResponse { response ->
-                if (response.status.value == 401 || response.status.value == 403) {
+                if (response.status.value == 401) {
                     token = null
                     user = null
+                    clearSuspensionState()
                     onAuthError?.let {
                         MainScope().launch {
                             it()
                         }
                     }
+                }
+                if (response.status.value == 403) {
+                    handleForbiddenAsPotentialSuspension(response)
                 }
 
                 if (response.status.value !in (200..299) + 101) {
@@ -153,6 +212,17 @@ object ApiClient {
     // Global auth error handler
     var onAuthError: (() -> Unit)? = null
 
+    private fun getSuspensionReasonFromForbiddenResponse(response: HttpResponse): String? {
+        return response.headers["suspension_reason"]?.trim()?.takeIf { it.isNotBlank() }
+    }
+
+    private fun handleForbiddenAsPotentialSuspension(response: HttpResponse) {
+        if (response.status.value != 403) return
+        getSuspensionReasonFromForbiddenResponse(response)?.let { reason ->
+            setSuspended(reason)
+        }
+    }
+
     // Load persisted token and user info
     suspend fun loadPersistedData() {
         try {
@@ -162,6 +232,7 @@ object ApiClient {
                 val userInfo = settings.getString("user_info", "")
                 if (userInfo.isNotEmpty()) {
                     user = json.decodeFromString(userInfo)
+                    syncSuspensionStateFromUser(user)
                 }
             }
         } catch (e: Exception) {
@@ -193,11 +264,13 @@ object ApiClient {
     fun bindSession(loginResponse: LoginResponse) {
         token = loginResponse.token
         user = loginResponse.user
+        syncSuspensionStateFromUser(user)
     }
 
     fun clearMemorySession() {
         token = null
         user = null
+        clearSuspensionState()
     }
 
     suspend fun persistSessionToStorage(loginResponse: LoginResponse) {
@@ -596,6 +669,7 @@ object ApiClient {
         settings.remove("current_fcm_token")
         token = null
         user = null
+        clearSuspensionState()
         uid?.let { UpdateSyncManager.clearPersistedSeqForUser(it) }
         UpdateSyncManager.resetInMemoryOnLogout()
         runCatching { IdentityKeyManager.clearLocalKeys() }
@@ -613,6 +687,7 @@ object ApiClient {
     fun getTokenSafely() = token ?: throw IllegalStateException("Not authenticated")
 
     suspend fun sendMessageViaHttp(content: String, replyToId: Int? = null) {
+        if (_suspensionState.value.isSuspended) return
         http.post("${Config.apiBaseUrl}/send_message") {
             contentType(ContentType.Application.Json)
             setBody(SendMessageRequest(content = content, reply_to_id = replyToId))
@@ -621,6 +696,7 @@ object ApiClient {
 
     // WebSocket send helpers
     suspend fun sendMessage(content: String, replyToId: Int? = null, clientMessageId: String? = null) {
+        if (_suspensionState.value.isSuspended) return
         WebSocketManager.send(
             WebSocketMessage(
                 type = "sendMessage",
@@ -640,6 +716,7 @@ object ApiClient {
     }
 
     suspend fun editMessage(messageId: Int, content: String) {
+        if (_suspensionState.value.isSuspended) return
         WebSocketManager.send(
             WebSocketMessage(
                 type = "editMessage",
@@ -658,6 +735,7 @@ object ApiClient {
     }
 
     suspend fun deleteMessage(messageId: Int) {
+        if (_suspensionState.value.isSuspended) return
         WebSocketManager.send(
             WebSocketMessage(
                 type = "deleteMessage",
@@ -675,6 +753,7 @@ object ApiClient {
     }
 
     suspend fun sendTyping() {
+        if (_suspensionState.value.isSuspended) return
         runCatching {
             WebSocketManager.send(
                 WebSocketMessage(
@@ -689,6 +768,7 @@ object ApiClient {
     }
 
     suspend fun sendStopTyping() {
+        if (_suspensionState.value.isSuspended) return
         runCatching {
             WebSocketManager.send(
                 WebSocketMessage(
@@ -703,6 +783,7 @@ object ApiClient {
     }
 
     suspend fun sendDmTyping(recipientId: Int) {
+        if (_suspensionState.value.isSuspended) return
         runCatching {
             WebSocketManager.send(
                 WebSocketMessage(
@@ -718,6 +799,7 @@ object ApiClient {
     }
 
     suspend fun sendStopDmTyping(recipientId: Int) {
+        if (_suspensionState.value.isSuspended) return
         runCatching {
             WebSocketManager.send(
                 WebSocketMessage(

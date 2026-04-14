@@ -11,6 +11,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -56,6 +57,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -209,7 +211,9 @@ fun ChatInput(
     onClearEdit: () -> Unit,
     hazeState: HazeState,
     recipientId: Int? = null,
-    currentUserId: Int? = null
+    currentUserId: Int? = null,
+    isReadOnly: Boolean = false,
+    onReadOnlyMessageClick: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     var typingJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
@@ -253,7 +257,7 @@ fun ChatInput(
         }
     }
 
-    val canSend = text.isNotBlank() || attachments.isNotEmpty()
+    val canSend = !isReadOnly && (text.isNotBlank() || attachments.isNotEmpty())
     val cdClose = stringResource(Res.string.cd_close)
     val cdRemove = stringResource(Res.string.cd_remove)
     val cdPickImage = stringResource(Res.string.cd_pick_image)
@@ -261,6 +265,7 @@ fun ChatInput(
     val cdSend = stringResource(Res.string.cd_send)
     val corruptedShort = stringResource(Res.string.message_corrupted_short)
     val editingTitle = stringResource(Res.string.message_editing_title)
+    val blockedMessage = stringResource(Res.string.suspend_chat_banner_message)
 
     Box(
         modifier = Modifier
@@ -284,142 +289,163 @@ fun ChatInput(
                     state = hazeState,
                     style = HazeMaterials.thin()
                 )
+                .clickable(enabled = isReadOnly) {
+                    if (isReadOnly) {
+                        onReadOnlyMessageClick()
+                    }
+                }
         ) {
-            AnimatedPreviewBar(replyTo) { replyTo ->
-                val replySubtitle = if (replyTo.isContentCorrupted) {
-                    corruptedShort
-                } else {
-                    replyTo.content.take(50) + if (replyTo.content.length > 50) "..." else ""
-                }
-                val replyName = messageDisplayUsername(replyTo, currentUserId)
-                PreviewBar(
-                    icon = Icons.AutoMirrored.Filled.Reply,
-                    title = stringResource(Res.string.message_replying_to, replyName),
-                    subtitle = replySubtitle,
-                    closeContentDescription = cdClose,
-                    onClose = { onClearReply() }
-                )
-            }
-
-            AnimatedPreviewBar(editingMessage) { message ->
-                val subtitle = if (message.isContentCorrupted) {
-                    corruptedShort
-                } else {
-                    message.content.take(50) + if (message.content.length > 50) "..." else ""
-                }
-                PreviewBar(
-                    icon = Icons.Filled.Edit,
-                    title = editingTitle,
-                    subtitle = subtitle,
-                    closeContentDescription = cdClose,
-                    onClose = { onClearEdit() }
-                )
-            }
-
-            AnimatedVisibility(
-                visible = attachments.isNotEmpty(),
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
-                Row(
+            if (isReadOnly) {
+                Text(
+                    text = blockedMessage,
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.error,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(start = 12.dp, end = 12.dp, top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                )
+            } else {
+                AnimatedPreviewBar(replyTo) { replyTo ->
+                    val replySubtitle = if (replyTo.isContentCorrupted) {
+                        corruptedShort
+                    } else {
+                        replyTo.content.take(50) + if (replyTo.content.length > 50) "..." else ""
+                    }
+                    val replyName = messageDisplayUsername(replyTo, currentUserId)
+                    PreviewBar(
+                        icon = Icons.AutoMirrored.Filled.Reply,
+                        title = stringResource(Res.string.message_replying_to, replyName),
+                        subtitle = replySubtitle,
+                        closeContentDescription = cdClose,
+                        onClose = { onClearReply() }
+                    )
+                }
+
+                AnimatedPreviewBar(editingMessage) { message ->
+                    val subtitle = if (message.isContentCorrupted) {
+                        corruptedShort
+                    } else {
+                        message.content.take(50) + if (message.content.length > 50) "..." else ""
+                    }
+                    PreviewBar(
+                        icon = Icons.Filled.Edit,
+                        title = editingTitle,
+                        subtitle = subtitle,
+                        closeContentDescription = cdClose,
+                        onClose = { onClearEdit() }
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = attachments.isNotEmpty(),
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
                 ) {
-                    attachments.forEach { attachment ->
-                        AttachmentChip(
-                            attachment = attachment,
-                            onRemove = { attachments = attachments.filter { it.id != attachment.id } },
-                            removeContentDescription = cdRemove
-                        )
-                    }
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Bottom
-            ) {
-                if (recipientId != null) {
-                    IconButton(onClick = { launchImagePicker() }) {
-                        Icon(
-                            imageVector = Icons.Default.Image,
-                            contentDescription = cdPickImage,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    IconButton(onClick = { launchFilePicker() }) {
-                        Icon(
-                            imageVector = Icons.Default.AttachFile,
-                            contentDescription = cdPickFile,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = onTextChange,
-                    modifier = Modifier
-                        .weight(1f)
-                        .animateContentSize(),
-                    placeholder = {
-                        Text(
-                            text = stringResource(Res.string.message_placeholder),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                        )
-                    },
-                    shape = shape,
-                    maxLines = 5,
-                    singleLine = false,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        errorContainerColor = Color.Transparent,
-                        disabledContainerColor = Color.Transparent,
-                        focusedBorderColor = Color.Transparent,
-                        errorBorderColor = Color.Transparent,
-                        disabledBorderColor = Color.Transparent,
-                        unfocusedBorderColor = Color.Transparent
-                    ),
-                    trailingIcon = {
-                        val offset = with(LocalDensity.current) { 20.dp.toPx().toInt() }
-
-                        AnimatedVisibility(
-                            visible = canSend,
-                            enter = slideInHorizontally(
-                                initialOffsetX = { it + offset },
-                                animationSpec = tween(durationMillis = 300)
-                            ),
-                            exit = slideOutHorizontally(
-                                targetOffsetX = { it + offset },
-                                animationSpec = tween(durationMillis = 200)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(start = 12.dp, end = 12.dp, top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        attachments.forEach { attachment ->
+                            AttachmentChip(
+                                attachment = attachment,
+                                onRemove = { attachments = attachments.filter { it.id != attachment.id } },
+                                removeContentDescription = cdRemove
                             )
-                        ) {
-                            Box(Modifier.padding(end = 5.dp)) {
-                                FilledIconButton(
-                                    onClick = {
-                                        val plaintext = text.trim().ifBlank { "" }
-                                        onSend(plaintext, attachments)
-                                        onTextChange("")
-                                        attachments = emptyList()
-                                        typingHandler.stopTyping()
-                                    },
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.Send,
-                                        contentDescription = cdSend,
-                                        tint = MaterialTheme.colorScheme.onPrimary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    if (recipientId != null && !isReadOnly) {
+                        IconButton(onClick = { launchImagePicker() }) {
+                            Icon(
+                                imageVector = Icons.Default.Image,
+                                contentDescription = cdPickImage,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(onClick = { launchFilePicker() }) {
+                            Icon(
+                                imageVector = Icons.Default.AttachFile,
+                                contentDescription = cdPickFile,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = text,
+                        onValueChange = onTextChange,
+                        enabled = !isReadOnly,
+                        modifier = Modifier
+                            .weight(1f)
+                            .animateContentSize(),
+                        placeholder = {
+                            Text(
+                                text = stringResource(Res.string.message_placeholder),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                        },
+                        shape = shape,
+                        maxLines = 5,
+                        singleLine = false,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            errorContainerColor = Color.Transparent,
+                            disabledContainerColor = Color.Transparent,
+                            focusedBorderColor = Color.Transparent,
+                            errorBorderColor = Color.Transparent,
+                            disabledBorderColor = Color.Transparent,
+                            unfocusedBorderColor = Color.Transparent
+                        ),
+                        trailingIcon = {
+                            val offset = with(LocalDensity.current) { 20.dp.toPx().toInt() }
+
+                            AnimatedVisibility(
+                                visible = canSend,
+                                enter = slideInHorizontally(
+                                    initialOffsetX = { it + offset },
+                                    animationSpec = tween(durationMillis = 300)
+                                ),
+                                exit = slideOutHorizontally(
+                                    targetOffsetX = { it + offset },
+                                    animationSpec = tween(durationMillis = 200)
+                                )
+                            ) {
+                                Box(Modifier.padding(end = 5.dp)) {
+                                    FilledIconButton(
+                                        onClick = {
+                                            if (isReadOnly) {
+                                                return@FilledIconButton
+                                            }
+                                            val plaintext = text.trim().ifBlank { "" }
+                                            onSend(plaintext, attachments)
+                                            onTextChange("")
+                                            attachments = emptyList()
+                                            typingHandler.stopTyping()
+                                        },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.Send,
+                                            contentDescription = cdSend,
+                                            tint = MaterialTheme.colorScheme.onPrimary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
-                )
+                    )
+                }
             }
         }
     }

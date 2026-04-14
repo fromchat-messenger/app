@@ -103,8 +103,16 @@ object MessageCacheStore {
         replaceMessages(conversationIdForPublic(), merged)
     }
 
+    suspend fun clearPublicMessages() {
+        clearConversationMessages(conversationIdForPublic())
+    }
+
     suspend fun loadDmMessages(otherUserId: Int): List<Message> {
         return loadMessages(conversationIdForDm(otherUserId))
+    }
+
+    suspend fun clearDmMessages(otherUserId: Int) {
+        clearConversationMessages(conversationIdForDm(otherUserId))
     }
 
     suspend fun replaceDmMessages(otherUserId: Int, messages: List<Message>) {
@@ -149,6 +157,12 @@ object MessageCacheStore {
 
     suspend fun confirmDmMessage(otherUserId: Int, clientMessageId: String, confirmed: Message) {
         confirmMessage(conversationIdForDm(otherUserId), clientMessageId, confirmed)
+    }
+
+    private suspend fun clearConversationMessages(conversationId: String) {
+        withContext(Dispatchers.Default) {
+            db.messageDatabaseQueries.deleteMessagesForConversation(conversationId)
+        }
     }
 
     private suspend fun deleteByClientMessageId(conversationId: String, clientMessageId: String) {

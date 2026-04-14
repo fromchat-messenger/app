@@ -1954,7 +1954,7 @@ fun SettingsAccountScreen(onBack: () -> Unit, onLogout: () -> Unit, onChangePass
                     onClick = {
                         scope.launch {
                             runCatching { ApiClient.logout() }
-                            WebSocketManager.shutdown()
+                            WebSocketManager.disconnect()
                             onLogout()
                         }
                     },
@@ -1992,7 +1992,7 @@ fun SettingsAccountScreen(onBack: () -> Unit, onLogout: () -> Unit, onChangePass
                         scope.launch {
                             runCatching {
                                 ApiClient.deleteAccount()
-                                WebSocketManager.shutdown()
+                                WebSocketManager.disconnect()
                                 ApiClient.clearLocalSession()
                                 onLogout()
                             }.onFailure {

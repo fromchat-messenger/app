@@ -238,4 +238,12 @@
 
     <string name="more">More</string>
     <string name="unread_count">+%1$d</string>
+
+    <!-- Suspension -->
+    <string name="suspend_chat_banner_message">Your account was blocked</string>
+    <string name="suspended_default_reason">Reason not provided. Your account access is currently read-only.</string>
+    <string name="suspended_sheet_title">Account blocked</string>
+    <string name="suspended_sheet_desc">Your account was blocked for violating the community rules.\nYou can still read your chats, but new messages are currently paused.\nIf you think this is a mistake, contact support and we can help.</string>
+    <string name="suspended_sheet_reason_label">Reason</string>
+    <string name="suspended_sheet_action_contact_support">Contact support</string>
 </resources>

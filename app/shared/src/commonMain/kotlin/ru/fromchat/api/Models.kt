@@ -33,7 +33,9 @@ data class User(
     @SerialName("display_name") val displayName: String? = null,
     val admin: Boolean? = null,
     val bio: String? = null,
-    val profile_picture: String? = null
+    val profile_picture: String? = null,
+    val suspended: Boolean? = null,
+    @SerialName("suspension_reason") val suspensionReason: String? = null
 )
 
 @Serializable

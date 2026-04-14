@@ -94,6 +94,7 @@ import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.rememberHapticFeedback
 import ru.fromchat.ui.chat.getImageAspectRatio
 import ru.fromchat.ui.scaleOnPress
+import ru.fromchat.ui.suspension.SuspendedAccountSupportSheet
 import ru.fromchat.utils.formatLastSeen
 import ru.fromchat.utils.rememberLastSeenFormatStrings
 import kotlin.time.Clock
@@ -145,13 +146,22 @@ fun ChatScreen(
     val statusMap by UserStatusStore.status.collectAsState()
     val connectionStatus by ConnectionStateStore.status.collectAsState()
     val online by NetworkConnectivity.isOnline.collectAsState(initial = true)
+    val suspensionState by ApiClient.suspensionState.collectAsState()
+    val isReadOnly = suspensionState.isSuspended
     val lastSeenFormat = rememberLastSeenFormatStrings()
+    var showSuspendedSupportSheet by remember { mutableStateOf(false) }
     val statusConnecting = stringResource(Res.string.status_connecting)
     val statusUpdating = stringResource(Res.string.status_updating)
     val chatGroupLabel = stringResource(Res.string.chat_group_label)
     val cdCall = stringResource(Res.string.cd_call)
     LaunchedEffect(currentTypingUsers) {
         Logger.d("ChatScreen", "currentTypingUsers updated (from panelState): ${currentTypingUsers.map { it.username }}")
+    }
+
+    LaunchedEffect(isReadOnly) {
+        if (!isReadOnly) {
+            showSuspendedSupportSheet = false
+        }
     }
 
     // Subscribe to other user's status when DM is visible; unsubscribe on leave
@@ -186,7 +196,7 @@ fun ChatScreen(
     var inputText by rememberSaveable { mutableStateOf("") }
     var replyTo by rememberSaveable { mutableStateOf<Message?>(null) }
     var editingMessage by rememberSaveable { mutableStateOf<Message?>(null) }
-    var contextMenuState by remember { 
+    var contextMenuState by remember {
         mutableStateOf(
             ContextMenuState(
                 isOpen = false,
@@ -236,7 +246,7 @@ fun ChatScreen(
                                 "newMessage", "messageEdited", "messageDeleted",
                                 "dmNew", "dmEdited", "dmDeleted",
                                 "typing", "stopTyping", "dmTyping", "stopDmTyping",
-                                "suspended", "account_deleted", "registeredUserCount" -> {
+                                "registeredUserCount" -> {
                                     Logger.d("ChatScreen", "handleWebSocketMessage for ${update.type}")
                                     try {
                                         panel.handleWebSocketMessage(wsMessage)
@@ -323,6 +333,11 @@ fun ChatScreen(
 
 
     Box(modifier = Modifier.fillMaxSize()) {
+        SuspendedAccountSupportSheet(
+            isVisible = isReadOnly && showSuspendedSupportSheet,
+            onDismissRequest = { showSuspendedSupportSheet = false }
+        )
+
         Scaffold(
             modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
             topBar = {
@@ -526,7 +541,7 @@ fun ChatScreen(
                         }
                     },
                     actions = {
-                        if (panel.showCallButton()) {
+                        if (panel.showCallButton() && !isReadOnly) {
                             IconButton(onClick = { /* TODO: Handle call */ }) {
                                 Icon(
                                     imageVector = Icons.Default.Call,
@@ -642,7 +657,13 @@ fun ChatScreen(
                             inputText = ""
                         },
                         hazeState = hazeState,
-                        recipientId = panel.getRecipientId()
+                        recipientId = panel.getRecipientId(),
+                        isReadOnly = isReadOnly,
+                        onReadOnlyMessageClick = {
+                            if (isReadOnly) {
+                                showSuspendedSupportSheet = true
+                            }
+                        }
                     )
                 }
             }
@@ -691,6 +712,9 @@ fun ChatScreen(
                                 isContextMenuOpen = contextMenuState.isOpen,
                                 isContextMenuForThisMessage = contextMenuState.isOpen && contextMenuState.message?.id == message.id,
                                 onLongPress = {
+                                    if (isReadOnly) {
+                                        return@MessageItem
+                                    }
                                     haptic(HapticFeedbackEvent.ContextMenuOpened)
                                     contextMenuState = ContextMenuState(
                                         isOpen = true,
@@ -756,6 +780,7 @@ fun ChatScreen(
                     MessageContextMenu(
                         state = contextMenuState,
                         isAuthor = contextMenuState.message?.user_id == currentUserId,
+                        isReadOnly = isReadOnly,
                         screenWidthPx = screenWidthPx,
                         screenHeightPx = screenHeightPx,
                         onDismiss = { contextMenuState = contextMenuState.copy(isOpen = false) },
@@ -815,4 +840,5 @@ fun ChatScreen(
             )
         }
     }
+
 }
