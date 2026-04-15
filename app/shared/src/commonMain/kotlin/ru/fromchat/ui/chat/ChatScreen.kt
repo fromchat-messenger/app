@@ -1,44 +1,29 @@
 package ru.fromchat.ui.chat
 
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Call
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -53,11 +38,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -88,12 +69,10 @@ import ru.fromchat.api.WebSocketMessage
 import ru.fromchat.api.WebSocketUpdatesData
 import ru.fromchat.core.Logger
 import ru.fromchat.net.NetworkConnectivity
-import ru.fromchat.ui.ConnectingEllipsis
 import ru.fromchat.ui.HapticFeedbackEvent
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.rememberHapticFeedback
 import ru.fromchat.ui.chat.getImageAspectRatio
-import ru.fromchat.ui.scaleOnPress
 import ru.fromchat.ui.suspension.SuspendedAccountSupportSheet
 import ru.fromchat.utils.formatLastSeen
 import ru.fromchat.utils.rememberLastSeenFormatStrings
@@ -132,8 +111,10 @@ fun ChatScreen(
         onTitleAvatarChange?.invoke(panelState.titleAvatar)
     }
 
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
-    val listState = rememberLazyListState()
+    val panelId = panelState.id
+    val listState = rememberSaveable(panelId, saver = LazyListState.Saver) {
+        LazyListState(0, 0)
+    }
     val scope = rememberCoroutineScope()
     val haptic = rememberHapticFeedback()
     val navController = LocalNavController.current
@@ -156,6 +137,32 @@ fun ChatScreen(
     val cdCall = stringResource(Res.string.cd_call)
     LaunchedEffect(currentTypingUsers) {
         Logger.d("ChatScreen", "currentTypingUsers updated (from panelState): ${currentTypingUsers.map { it.username }}")
+    }
+
+    val subtitleKey = when {
+        !online -> "connecting"
+        connectionStatus == ConnectionStatus.UPDATING -> "updating"
+        connectionStatus != ConnectionStatus.CONNECTED -> "connecting"
+        currentTypingUsers.isNotEmpty() -> "typing"
+        panel.usesPublicGroupSubtitle -> {
+            if (panelState.publicGroupMetaLoading || panelState.publicGroupMemberCount == null) {
+                "group"
+            } else {
+                "members:${panelState.publicGroupMemberCount}"
+            }
+        }
+        panelState.profileUserId != null -> {
+            val userStatus = statusMap[panelState.profileUserId]
+            val statusText = userStatus?.let {
+                formatLastSeen(it.online, it.lastSeen, lastSeenFormat)
+            }.orEmpty()
+            if (statusText.isNotEmpty()) {
+                "presence:$statusText"
+            } else {
+                ""
+            }
+        }
+        else -> ""
     }
 
     LaunchedEffect(isReadOnly) {
@@ -289,27 +296,37 @@ fun ChatScreen(
     // LazyColumn uses reverseLayout + chronological messages asReversed(): index 0 is bottom inset, 1..n newest→oldest.
     // - Initial: after one frame, scrollToItem(0) so the first list composition/layout is not merged with scroll in one VSYNC.
     // - Later: same anchor; "near bottom" = smallest visible index is near 0.
-    var didInitialScroll by remember(panel) { mutableStateOf(false) }
+    // rememberSaveable(panelId): survives navigation (e.g. profile) so we do not re-run initial scrollToItem(0) and discard scroll.
+    var didInitialScroll by rememberSaveable(panelId) { mutableStateOf(false) }
+    // LaunchedEffect restarts when returning from profile even if message keys are unchanged; skip auto-scroll unless the list actually changed.
+    var previousMessageFingerprint by rememberSaveable(panelId) { mutableStateOf("") }
     LaunchedEffect(panelState.messages.size, panelState.messages.lastOrNull()?.id, panelState.messages.lastOrNull()?.pendingFileAspectRatio) {
         if (panelState.messages.isEmpty()) return@LaunchedEffect
 
         val lastMessage = panelState.messages.lastOrNull()
-        val lastIsOurs = lastMessage?.user_id == currentUserId
+        val fingerprint = "${panelState.messages.size}|${lastMessage?.id}|${lastMessage?.pendingFileAspectRatio}"
 
         if (!didInitialScroll) {
             didInitialScroll = true
             withFrameNanos { }
             listState.scrollToItem(0)
+            previousMessageFingerprint = fingerprint
             return@LaunchedEffect
         }
 
+        if (fingerprint == previousMessageFingerprint) return@LaunchedEffect
+        previousMessageFingerprint = fingerprint
+
+        val lastIsOurs = lastMessage?.user_id == currentUserId
         val minVisibleIndex = listState.layoutInfo.visibleItemsInfo.minOfOrNull { it.index } ?: Int.MAX_VALUE
         val isNearBottom = minVisibleIndex <= 2
         if (lastIsOurs || isNearBottom) {
-            delay(100)
-            listState.animateScrollToItem(0)
-            delay(150)
-            listState.animateScrollToItem(0)
+            if (listState.layoutInfo.visibleItemsInfo.isNotEmpty()) {
+                delay(100)
+                listState.animateScrollToItem(0)
+                delay(150)
+                listState.animateScrollToItem(0)
+            }
         }
     }
 
@@ -339,240 +356,19 @@ fun ChatScreen(
         )
 
         Scaffold(
-            modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-            topBar = {
-                TopAppBar(
-                    title = {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .scaleOnPress(
-                                    scale = 0.96f,
-                                    onClick = if (profileUserId != null && onTitleClick != null) {
-                                        { onTitleClick() }
-                                    } else null
-                                ),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            when {
-                                sharedAvatarKey != null && sharedTransitionScope != null && animatedVisibilityScope != null -> {
-                                    val avatar = panelState.titleAvatar
-                                    val displayName = avatar?.displayName?.takeIf { it.isNotBlank() }
-                                        ?: panelState.title.takeIf { it.isNotBlank() }
-                                        ?: ""
-                                    with(sharedTransitionScope) {
-                                        Avatar(
-                                            profilePictureUrl = avatar?.profilePictureUrl,
-                                            displayName = displayName,
-                                            modifier = Modifier
-                                                .sharedElement(
-                                                    rememberSharedContentState(key = sharedAvatarKey),
-                                                    animatedVisibilityScope = animatedVisibilityScope
-                                                )
-                                                .size(36.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                }
-                                !hideTitleBarAvatar -> {
-                                    panelState.titleAvatar?.let { avatar ->
-                                        Avatar(
-                                            profilePictureUrl = avatar.profilePictureUrl,
-                                            displayName = avatar.displayName,
-                                            modifier = Modifier.size(36.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                    }
-                                }
-                                onAvatarSlotBounds != null -> {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .onGloballyPositioned { coords ->
-                                                val pos = coords.positionInRoot()
-                                                val sz = coords.size
-                                                onAvatarSlotBounds(
-                                                    Rect(
-                                                        pos.x,
-                                                        pos.y,
-                                                        pos.x + sz.width.toFloat(),
-                                                        pos.y + sz.height.toFloat()
-                                                    )
-                                                )
-                                            }
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                }
-                                else -> {
-                                    panelState.titleAvatar?.let {
-                                        Spacer(modifier = Modifier.width(36.dp))
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                    }
-                                }
-                            }
-
-                            Column(Modifier.fillMaxWidth()) {
-                                Text(
-                                    text = panelState.title,
-                                    style = MaterialTheme.typography.titleLarge
-                                )
-
-                                val subtitleKey = when {
-                                    !online -> "connecting"
-                                    connectionStatus == ConnectionStatus.UPDATING -> "updating"
-                                    connectionStatus != ConnectionStatus.CONNECTED -> "connecting"
-                                    currentTypingUsers.isNotEmpty() -> "typing"
-                                    panel.usesPublicGroupSubtitle -> {
-                                        if (panelState.publicGroupMetaLoading ||
-                                            panelState.publicGroupMemberCount == null
-                                        ) {
-                                            "group"
-                                        } else {
-                                            "members:${panelState.publicGroupMemberCount}"
-                                        }
-                                    }
-                                    panelState.profileUserId != null -> {
-                                        val userStatus = statusMap[panelState.profileUserId]
-                                        val statusText = userStatus?.let {
-                                            formatLastSeen(it.online, it.lastSeen, lastSeenFormat)
-                                        }.orEmpty()
-                                        if (statusText.isNotEmpty()) {
-                                            "presence:$statusText"
-                                        } else {
-                                            ""
-                                        }
-                                    }
-                                    else -> ""
-                                }
-
-                                AnimatedContent(
-                                    targetState = subtitleKey,
-                                    transitionSpec = {
-                                        (slideInVertically { it / 2 } + fadeIn()) togetherWith
-                                            (slideOutVertically { -it / 2 } + fadeOut())
-                                    },
-                                    label = "chat_subtitle"
-                                ) { key ->
-                                    when {
-                                        key == "updating" -> {
-                                            val st = MaterialTheme.typography.bodySmall
-                                            val col = MaterialTheme.colorScheme.onSurfaceVariant
-                                            Row(
-                                                modifier = Modifier.padding(top = 2.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    text = statusUpdating,
-                                                    style = st,
-                                                    color = col
-                                                )
-                                                ConnectingEllipsis(
-                                                    fontSize = st.fontSize,
-                                                    color = col,
-                                                    baseStyle = st
-                                                )
-                                            }
-                                        }
-                                        key == "connecting" -> {
-                                            val st = MaterialTheme.typography.bodySmall
-                                            val col = MaterialTheme.colorScheme.onSurfaceVariant
-                                            Row(
-                                                modifier = Modifier.padding(top = 2.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    text = statusConnecting,
-                                                    style = st,
-                                                    color = col
-                                                )
-                                                ConnectingEllipsis(
-                                                    fontSize = st.fontSize,
-                                                    color = col,
-                                                    baseStyle = st
-                                                )
-                                            }
-                                        }
-                                        key == "typing" -> {
-                                            TypingIndicator(
-                                                typingUsers = currentTypingUsers.map { it.username },
-                                                modifier = Modifier.padding(top = 2.dp)
-                                            )
-                                        }
-                                        key.startsWith("presence:") -> {
-                                            val text = key.removePrefix("presence:")
-                                            Text(
-                                                text = text,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.padding(top = 2.dp)
-                                            )
-                                        }
-                                        key == "group" -> {
-                                            Text(
-                                                text = chatGroupLabel,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.padding(top = 2.dp)
-                                            )
-                                        }
-                                        key.startsWith("members:") -> {
-                                            val n = key.removePrefix("members:").toIntOrNull() ?: 0
-                                            Text(
-                                                text = stringResource(Res.string.chat_members_count, n),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.padding(top = 2.dp)
-                                            )
-                                        }
-                                        else -> {
-                                            // No subtitle for this state
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = { navController.navigateUp() }) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(Res.string.back)
-                            )
-                        }
-                    },
-                    actions = {
-                        if (panel.showCallButton() && !isReadOnly) {
-                            IconButton(onClick = { /* TODO: Handle call */ }) {
-                                Icon(
-                                    imageVector = Icons.Default.Call,
-                                    contentDescription = cdCall
-                                )
-                            }
-                        }
-                    },
-                    scrollBehavior = scrollBehavior,
-                    modifier = Modifier.hazeEffect(
-                        state = hazeState,
-                        style = HazeMaterials.thin()
-                    ),
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Transparent,
-                        scrolledContainerColor = Color.Transparent
-                    )
-                )
-            },
+            modifier = modifier.fillMaxSize(),
+            // Do not apply safeDrawing top (or other sides) to content — we handle status bars on the
+            // floating header Box only; avoids extra top inset on the fade / list and duplicate “padding”.
+            contentWindowInsets = WindowInsets.navigationBars,
             bottomBar = {
                 Column(
                     modifier = Modifier
                         .windowInsetsPadding(WindowInsets.ime)
                         .fillMaxWidth()
-                        .hazeEffect(
-                            state = hazeState,
-                            style = HazeMaterials.thin()
-                        ) {
+                        .hazeEffect(state = hazeState, style = HazeMaterials.thin()) {
                             progressive = HazeProgressive.verticalGradient(
                                 startIntensity = 0f,
-                                endIntensity = 1f
+                                endIntensity = 1f,
                             )
                         }
                 ) {
@@ -668,6 +464,10 @@ fun ChatScreen(
                 }
             }
         ) { innerPadding ->
+            val density = LocalDensity.current
+            val statusBarTopDp = with(density) { WindowInsets.statusBars.getTop(this).toDp() }
+            val floatingHeaderClearance = statusBarTopDp + 64.dp + 12.dp
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -687,15 +487,17 @@ fun ChatScreen(
                         CircularProgressIndicator()
                     }
                 } else {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .hazeSource(hazeState),
-                        userScrollEnabled = !contextMenuState.isOpen,
-                        reverseLayout = true,
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.background)
+                                .hazeSource(hazeState),
+                            userScrollEnabled = !contextMenuState.isOpen,
+                            reverseLayout = true,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
                         item { Spacer(Modifier.height(innerPadding.calculateBottomPadding())) }
 
                         items(
@@ -768,7 +570,37 @@ fun ChatScreen(
                             )
                         }
 
-                        item { Spacer(Modifier.height(innerPadding.calculateTopPadding())) }
+                        item { Spacer(Modifier.height(floatingHeaderClearance)) }
+                        }
+
+                        ChatFloatingHeaderBox(
+                            hazeState = hazeState,
+                            onBack = { navController.navigateUp() },
+                            backContentDescription = stringResource(Res.string.back),
+                            showCallButton = panel.showCallButton() && !isReadOnly,
+                            onCallClick = { /* TODO: Handle call */ },
+                            callContentDescription = cdCall,
+                            titleChrome = {
+                                ChatFloatingTitleChrome(
+                                    hazeState = hazeState,
+                                    title = panelState.title,
+                                    titleAvatar = panelState.titleAvatar,
+                                    profileUserId = profileUserId,
+                                    onTitleClick = onTitleClick,
+                                    hideTitleBarAvatar = hideTitleBarAvatar,
+                                    onAvatarSlotBounds = onAvatarSlotBounds,
+                                    sharedTransitionScope = sharedTransitionScope,
+                                    animatedVisibilityScope = animatedVisibilityScope,
+                                    sharedAvatarKey = sharedAvatarKey,
+                                    subtitleKey = subtitleKey,
+                                    currentTypingUsers = currentTypingUsers,
+                                    statusConnecting = statusConnecting,
+                                    statusUpdating = statusUpdating,
+                                    chatGroupLabel = chatGroupLabel,
+                                )
+                            },
+                            modifier = Modifier.align(Alignment.TopCenter),
+                        )
                     }
                 }
 

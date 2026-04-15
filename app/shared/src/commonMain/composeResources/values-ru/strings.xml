@@ -60,6 +60,7 @@
     <string name="cd_pick_image">Выбрать фото</string>
     <string name="cd_pick_file">Выбрать файл</string>
     <string name="cd_send">Отправить</string>
+    <string name="cd_emoji">Эмодзи</string>
     <string name="profile_title">Профиль</string>
     <string name="profile_load_failed">Не получилось загрузить профиль</string>
     <string name="profile_not_found">Профиль не найден</string>

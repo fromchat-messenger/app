@@ -2,13 +2,15 @@ package ru.fromchat.ui.chat
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDp
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,28 +21,33 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Reply
-import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.SentimentSatisfied
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -51,16 +58,19 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
@@ -74,15 +84,32 @@ import ru.fromchat.Res
 import ru.fromchat.api.Message
 import ru.fromchat.*
 
+private val ChatInputChromeHeight = 46.dp
+private val ChatInputLineVerticalPadding = 12.dp
+private val ChatInputTextLineHeight = 22.sp
+
+private val ChatInputIconSlotSize = 36.dp
+private val ChatInputIconSlotVerticalInset =
+    (ChatInputChromeHeight - ChatInputIconSlotSize) / 2f
+
+private val ChatInputSendSpringFloat = spring<Float>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = Spring.StiffnessMedium,
+)
+private val ChatInputSendSpringDp = spring<Dp>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = Spring.StiffnessMedium,
+)
+
 @Composable
 private fun <T> AnimatedPreviewBar(
     state: T?,
-    content: @Composable (T) -> Unit
+    content: @Composable (T) -> Unit,
 ) {
     AnimatedVisibility(
         visible = state != null,
         enter = fadeIn() + expandVertically(),
-        exit = fadeOut() + shrinkVertically()
+        exit = fadeOut() + shrinkVertically(),
     ) {
         var lastState by remember { mutableStateOf(state) }
 
@@ -104,19 +131,19 @@ private fun PreviewBar(
     title: String,
     subtitle: String,
     closeContentDescription: String,
-    onClose: () -> Unit
+    onClose: () -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = 12.dp, end = 6.dp, top = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary
+            tint = MaterialTheme.colorScheme.primary,
         )
 
         Column(modifier = Modifier.weight(1f)) {
@@ -124,7 +151,7 @@ private fun PreviewBar(
                 text = title,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.primary,
             )
 
             Spacer(modifier = Modifier.height(2.dp))
@@ -133,15 +160,15 @@ private fun PreviewBar(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1
+                maxLines = 1,
             )
         }
 
         IconButton(onClick = onClose) {
             Icon(
-                imageVector = Icons.Default.Close,
+                imageVector = Icons.Filled.Close,
                 contentDescription = closeContentDescription,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -152,7 +179,7 @@ private fun AttachmentChip(
     attachment: SelectedAttachment,
     onRemove: () -> Unit,
     removeContentDescription: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     Row(
         modifier = modifier
@@ -160,7 +187,7 @@ private fun AttachmentChip(
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         if (attachment.isImage) {
             AsyncImage(
@@ -169,14 +196,14 @@ private fun AttachmentChip(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(RoundedCornerShape(8.dp)),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Crop,
             )
         } else {
             Icon(
-                imageVector = Icons.Default.AttachFile,
+                imageVector = Icons.Filled.AttachFile,
                 contentDescription = null,
                 modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Text(
@@ -185,14 +212,14 @@ private fun AttachmentChip(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.widthIn(max = 120.dp)
+            modifier = Modifier.widthIn(max = 120.dp),
         )
         IconButton(onClick = onRemove, modifier = Modifier.size(24.dp)) {
             Icon(
-                imageVector = Icons.Default.Close,
+                imageVector = Icons.Filled.Close,
                 contentDescription = removeContentDescription,
                 modifier = Modifier.size(14.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -213,7 +240,7 @@ fun ChatInput(
     recipientId: Int? = null,
     currentUserId: Int? = null,
     isReadOnly: Boolean = false,
-    onReadOnlyMessageClick: () -> Unit = {}
+    onReadOnlyMessageClick: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     var typingJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
@@ -226,7 +253,7 @@ fun ChatInput(
                 uri = uri,
                 filename = getFilenameFromUri(uri),
                 sizeBytes = null,
-                isImage = true
+                isImage = true,
             )
         }
     }
@@ -237,7 +264,7 @@ fun ChatInput(
                 uri = uri,
                 filename = getFilenameFromUri(uri),
                 sizeBytes = null,
-                isImage = false
+                isImage = false,
             )
         }
     }
@@ -263,6 +290,7 @@ fun ChatInput(
     val cdPickImage = stringResource(Res.string.cd_pick_image)
     val cdPickFile = stringResource(Res.string.cd_pick_file)
     val cdSend = stringResource(Res.string.cd_send)
+    val cdEmoji = stringResource(Res.string.cd_emoji)
     val corruptedShort = stringResource(Res.string.message_corrupted_short)
     val editingTitle = stringResource(Res.string.message_editing_title)
     val blockedMessage = stringResource(Res.string.suspend_chat_banner_message)
@@ -272,30 +300,23 @@ fun ChatInput(
             .fillMaxWidth()
             .background(Color.Transparent)
             .windowInsetsPadding(WindowInsets.navigationBars)
-            .padding(start = 8.dp, end = 8.dp, bottom = 8.dp)
+            .padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
     ) {
-        val shape = RoundedCornerShape(24.dp)
+        val pillShape = RoundedCornerShape(28.dp)
 
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(
-                    Dp.Hairline,
-                    MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-                    shape
-                )
-                .clip(shape)
-                .hazeEffect(
-                    state = hazeState,
-                    style = HazeMaterials.thin()
-                )
-                .clickable(enabled = isReadOnly) {
-                    if (isReadOnly) {
-                        onReadOnlyMessageClick()
-                    }
-                }
-        ) {
-            if (isReadOnly) {
+        if (isReadOnly) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(
+                        Dp.Hairline,
+                        MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                        pillShape,
+                    )
+                    .clip(pillShape)
+                    .hazeEffect(state = hazeState, style = HazeMaterials.thin())
+                    .clickable(enabled = true) { onReadOnlyMessageClick() },
+            ) {
                 Text(
                     text = blockedMessage,
                     style = MaterialTheme.typography.bodyLarge,
@@ -303,150 +324,239 @@ fun ChatInput(
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
                 )
-            } else {
-                AnimatedPreviewBar(replyTo) { replyTo ->
-                    val replySubtitle = if (replyTo.isContentCorrupted) {
-                        corruptedShort
-                    } else {
-                        replyTo.content.take(50) + if (replyTo.content.length > 50) "..." else ""
-                    }
-                    val replyName = messageDisplayUsername(replyTo, currentUserId)
-                    PreviewBar(
-                        icon = Icons.AutoMirrored.Filled.Reply,
-                        title = stringResource(Res.string.message_replying_to, replyName),
-                        subtitle = replySubtitle,
-                        closeContentDescription = cdClose,
-                        onClose = { onClearReply() }
-                    )
-                }
+            }
+        } else {
+            val sendTransition = updateTransition(
+                targetState = canSend,
+                label = "chat_input_send_transition",
+            )
 
-                AnimatedPreviewBar(editingMessage) { message ->
-                    val subtitle = if (message.isContentCorrupted) {
-                        corruptedShort
-                    } else {
-                        message.content.take(50) + if (message.content.length > 50) "..." else ""
-                    }
-                    PreviewBar(
-                        icon = Icons.Filled.Edit,
-                        title = editingTitle,
-                        subtitle = subtitle,
-                        closeContentDescription = cdClose,
-                        onClose = { onClearEdit() }
-                    )
-                }
+            val progress by sendTransition.animateFloat(
+                transitionSpec = { ChatInputSendSpringFloat },
+                label = "chat_input_send_progress",
+            ) { state -> if (state) 1f else 0f }
 
-                AnimatedVisibility(
-                    visible = attachments.isNotEmpty(),
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState())
-                            .padding(start = 12.dp, end = 12.dp, top = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        attachments.forEach { attachment ->
-                            AttachmentChip(
-                                attachment = attachment,
-                                onRemove = { attachments = attachments.filter { it.id != attachment.id } },
-                                removeContentDescription = cdRemove
-                            )
-                        }
-                    }
-                }
+            val slotMax = ChatInputChromeHeight + 8.dp
+            val slotPadding by sendTransition.animateDp(
+                transitionSpec = { ChatInputSendSpringDp },
+                label = "chat_input_slot_padding",
+            ) { state -> if (state) slotMax else 0.dp }
 
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.Bottom
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(end = slotPadding),
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    if (recipientId != null && !isReadOnly) {
-                        IconButton(onClick = { launchImagePicker() }) {
-                            Icon(
-                                imageVector = Icons.Default.Image,
-                                contentDescription = cdPickImage,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        IconButton(onClick = { launchFilePicker() }) {
-                            Icon(
-                                imageVector = Icons.Default.AttachFile,
-                                contentDescription = cdPickFile,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    OutlinedTextField(
-                        value = text,
-                        onValueChange = onTextChange,
-                        enabled = !isReadOnly,
+                    Column(
                         modifier = Modifier
                             .weight(1f)
-                            .animateContentSize(),
-                        placeholder = {
-                            Text(
-                                text = stringResource(Res.string.message_placeholder),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            .animateContentSize()
+                            .border(
+                                Dp.Hairline,
+                                MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                                pillShape,
                             )
-                        },
-                        shape = shape,
-                        maxLines = 5,
-                        singleLine = false,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            errorContainerColor = Color.Transparent,
-                            disabledContainerColor = Color.Transparent,
-                            focusedBorderColor = Color.Transparent,
-                            errorBorderColor = Color.Transparent,
-                            disabledBorderColor = Color.Transparent,
-                            unfocusedBorderColor = Color.Transparent
-                        ),
-                        trailingIcon = {
-                            val offset = with(LocalDensity.current) { 20.dp.toPx().toInt() }
+                            .clip(pillShape)
+                            .hazeEffect(state = hazeState, style = HazeMaterials.thin()),
+                    ) {
+                        AnimatedPreviewBar(replyTo) { reply ->
+                            val replySubtitle = if (reply.isContentCorrupted) {
+                                corruptedShort
+                            } else {
+                                reply.content.take(50) + if (reply.content.length > 50) "..." else ""
+                            }
+                            val replyName = messageDisplayUsername(reply, currentUserId)
+                            PreviewBar(
+                                icon = Icons.AutoMirrored.Filled.Reply,
+                                title = stringResource(Res.string.message_replying_to, replyName),
+                                subtitle = replySubtitle,
+                                closeContentDescription = cdClose,
+                                onClose = { onClearReply() },
+                            )
+                        }
 
-                            AnimatedVisibility(
-                                visible = canSend,
-                                enter = slideInHorizontally(
-                                    initialOffsetX = { it + offset },
-                                    animationSpec = tween(durationMillis = 300)
-                                ),
-                                exit = slideOutHorizontally(
-                                    targetOffsetX = { it + offset },
-                                    animationSpec = tween(durationMillis = 200)
-                                )
+                        AnimatedPreviewBar(editingMessage) { message ->
+                            val subtitle = if (message.isContentCorrupted) {
+                                corruptedShort
+                            } else {
+                                message.content.take(50) + if (message.content.length > 50) "..." else ""
+                            }
+                            PreviewBar(
+                                icon = Icons.Filled.Edit,
+                                title = editingTitle,
+                                subtitle = subtitle,
+                                closeContentDescription = cdClose,
+                                onClose = { onClearEdit() },
+                            )
+                        }
+
+                        AnimatedVisibility(
+                            visible = attachments.isNotEmpty(),
+                            enter = fadeIn() + expandVertically(),
+                            exit = fadeOut() + shrinkVertically(),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                Box(Modifier.padding(end = 5.dp)) {
-                                    FilledIconButton(
-                                        onClick = {
-                                            if (isReadOnly) {
-                                                return@FilledIconButton
-                                            }
-                                            val plaintext = text.trim().ifBlank { "" }
-                                            onSend(plaintext, attachments)
-                                            onTextChange("")
-                                            attachments = emptyList()
-                                            typingHandler.stopTyping()
-                                        },
-                                        modifier = Modifier.size(36.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Filled.Send,
-                                            contentDescription = cdSend,
-                                            tint = MaterialTheme.colorScheme.onPrimary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
+                                attachments.forEach { attachment ->
+                                    AttachmentChip(
+                                        attachment = attachment,
+                                        onRemove = { attachments = attachments.filter { it.id != attachment.id } },
+                                        removeContentDescription = cdRemove,
+                                    )
                                 }
                             }
                         }
-                    )
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .defaultMinSize(minHeight = ChatInputChromeHeight)
+                                .wrapContentHeight()
+                                .padding(horizontal = 6.dp, vertical = 0.dp),
+                            verticalAlignment = Alignment.Bottom,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(vertical = ChatInputIconSlotVerticalInset)
+                                    .size(ChatInputIconSlotSize)
+                                    .clip(CircleShape)
+                                    .clickable(onClick = { /* emoji picker to be wired */ }),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.SentimentSatisfied,
+                                    contentDescription = cdEmoji,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+
+                            val inputTextStyle = MaterialTheme.typography.bodyLarge.merge(
+                                TextStyle(
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    lineHeight = ChatInputTextLineHeight,
+                                ),
+                            )
+
+                            BasicTextField(
+                                value = text,
+                                onValueChange = onTextChange,
+                                enabled = !isReadOnly,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .wrapContentHeight()
+                                    .animateContentSize(),
+                                textStyle = inputTextStyle,
+                                singleLine = false,
+                                maxLines = 5,
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                decorationBox = { innerTextField ->
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(
+                                                horizontal = ChatInputLineVerticalPadding / 2,
+                                                vertical = ChatInputLineVerticalPadding,
+                                            ),
+                                        contentAlignment = Alignment.CenterStart,
+                                    ) {
+                                        if (text.isEmpty()) {
+                                            Text(
+                                                text = stringResource(Res.string.message_placeholder),
+                                                style = inputTextStyle.copy(
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                                ),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                softWrap = false,
+                                                modifier = Modifier.fillMaxWidth(),
+                                            )
+                                        }
+                                        innerTextField()
+                                    }
+                                },
+                            )
+
+                            if (recipientId != null) {
+                                Box(
+                                    modifier = Modifier
+                                        .padding(vertical = ChatInputIconSlotVerticalInset)
+                                        .size(ChatInputIconSlotSize)
+                                        .clip(CircleShape)
+                                        .clickable { launchImagePicker() },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Image,
+                                        contentDescription = cdPickImage,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .padding(vertical = ChatInputIconSlotVerticalInset)
+                                        .size(ChatInputIconSlotSize)
+                                        .clip(CircleShape)
+                                        .clickable { launchFilePicker() },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.AttachFile,
+                                        contentDescription = cdPickFile,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Box(
+                    modifier = Modifier.align(Alignment.BottomEnd),
+                ) {
+                    if (progress > 0.01f) {
+                        val alpha by sendTransition.animateFloat(
+                            transitionSpec = { ChatInputSendSpringFloat },
+                            label = "chat_input_send_alpha",
+                        ) { state -> if (state) 1f else 0f }
+                        val travel = ChatInputChromeHeight * 1.2f
+                        val offsetX = travel * (1f - progress)
+
+                        FilledIconButton(
+                            onClick = {
+                                val plaintext = text.trim().ifBlank { "" }
+                                onSend(plaintext, attachments)
+                                onTextChange("")
+                                attachments = emptyList()
+                                typingHandler.stopTyping()
+                            },
+                            modifier = Modifier
+                                .size(ChatInputChromeHeight)
+                                .offset(x = offsetX)
+                                .alpha(alpha),
+                            shape = CircleShape,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.ArrowUpward,
+                                contentDescription = cdSend,
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                            )
+                        }
+                    }
                 }
             }
         }
     }
 }
+
