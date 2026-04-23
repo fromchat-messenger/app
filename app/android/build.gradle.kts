@@ -56,12 +56,12 @@ val fixComposeResourcesStructure = tasks.register<FixComposeResTask>("fixCompose
 
 extensions.configure<ApplicationExtension> {
     namespace = "ru.fromchat"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "ru.fromchat"
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 1
         versionName = "1.0"
     }

@@ -4,22 +4,48 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.DayOfWeek
-import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.minus
+import kotlinx.datetime.number
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
-import ru.fromchat.*
+import ru.fromchat.month_apr
+import ru.fromchat.month_aug
+import ru.fromchat.month_dec
+import ru.fromchat.month_feb
+import ru.fromchat.month_jan
+import ru.fromchat.month_jul
+import ru.fromchat.month_jun
+import ru.fromchat.month_mar
+import ru.fromchat.month_may
+import ru.fromchat.month_nov
+import ru.fromchat.month_oct
+import ru.fromchat.month_sep
+import ru.fromchat.presence_date_full
+import ru.fromchat.presence_date_this_year
+import ru.fromchat.presence_online
+import ru.fromchat.presence_recently
+import ru.fromchat.presence_today_at
+import ru.fromchat.presence_weekday_at
+import ru.fromchat.presence_yesterday_at
+import ru.fromchat.weekday_fri
+import ru.fromchat.weekday_mon
+import ru.fromchat.weekday_sat
+import ru.fromchat.weekday_sun
+import ru.fromchat.weekday_thu
+import ru.fromchat.weekday_tue
+import ru.fromchat.weekday_wed
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
+import kotlin.time.Instant
 
 private fun formatFromXmlTemplate(template: String, vararg args: Any): String {
     var result = template
     args.forEachIndexed { index, arg ->
         val n = index + 1
         val text = arg.toString()
-        result = result.replace("%${n}\$s", text).replace("%${n}\$d", text)
+        result = result.replace($$"%$${n}$s", text).replace($$"%$${n}$d", text)
     }
     return result
 }
@@ -124,12 +150,12 @@ fun formatLastSeen(online: Boolean, lastSeenIso: String?, s: LastSeenFormatStrin
             formatFromXmlTemplate(s.weekdayAt, label, timePart)
         }
         lastDate.year == nowDate.year -> {
-            val mon = s.monthShort(lastDate.monthNumber)
-            formatFromXmlTemplate(s.dateThisYear, lastDate.dayOfMonth, mon, timePart)
+            val mon = s.monthShort(lastDate.month.number)
+            formatFromXmlTemplate(s.dateThisYear, lastDate.day, mon, timePart)
         }
         else -> {
-            val mon = s.monthShort(lastDate.monthNumber)
-            formatFromXmlTemplate(s.dateFull, lastDate.dayOfMonth, mon, lastDate.year, timePart)
+            val mon = s.monthShort(lastDate.month.number)
+            formatFromXmlTemplate(s.dateFull, lastDate.day, mon, lastDate.year, timePart)
         }
     }
 }

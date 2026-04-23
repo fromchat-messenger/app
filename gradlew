@@ -44,7 +44,8 @@ APP_NAME="Gradle"
 APP_BASE_NAME=`basename "$0"`
 
 # Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.
-DEFAULT_JVM_OPTS='"-Xmx64m" "-Xms64m"'
+# 64m is too small for the wrapper client JVM on recent JDKs (VM init / code cache); keep this modest but safe.
+DEFAULT_JVM_OPTS='"-Xmx512m" "-Xms128m" "-Xshare:off"'
 
 # Use the maximum available, or set MAX_FD != -1 to use that value.
 MAX_FD="maximum"
@@ -82,6 +83,23 @@ esac
 
 CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
 
+# If the default JDK crashes on startup (e.g. SIGBUS in CodeHeap::allocate during VM init on some
+# macOS + JDK combinations), point Gradle at another JDK 21+ without changing your global JAVA_HOME:
+#   export GRADLE_JAVA_HOME="/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home"
+if [ -n "$GRADLE_JAVA_HOME" ] && [ -x "$GRADLE_JAVA_HOME/bin/java" ]; then
+    JAVA_HOME="$GRADLE_JAVA_HOME"
+    export JAVA_HOME
+fi
+
+# macOS: when JAVA_HOME is still unset, use the JBR bundled with Android Studio.app (recommended on Apple Silicon).
+if [ "$darwin" = "true" ] && [ -z "${JAVA_HOME:-}" ]; then
+    _STUDIO_JBR="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+    if [ -x "$_STUDIO_JBR/bin/java" ]; then
+        JAVA_HOME="$_STUDIO_JBR"
+        export JAVA_HOME
+    fi
+    unset _STUDIO_JBR
+fi
 
 # Determine the Java command to use to start the JVM.
 if [ -n "$JAVA_HOME" ] ; then

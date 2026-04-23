@@ -10,6 +10,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
@@ -21,6 +23,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.IntOffset
 import androidx.lifecycle.Lifecycle
@@ -76,6 +79,8 @@ import ru.fromchat.ui.main.settings.SettingsSecurityHubScreen
 import ru.fromchat.ui.main.settings.SettingsSecurityPasswordFlowScreen
 import ru.fromchat.ui.main.settings.SettingsServerToolsScreen
 import ru.fromchat.ui.profile.ProfileScreen
+import ru.fromchat.calls.CallOverlay
+import ru.fromchat.calls.CallStore
 import ru.fromchat.ui.setup.ServerConfigScreen
 
 val LocalNavController = compositionLocalOf<NavController> { error("NavController not provided") }
@@ -123,6 +128,7 @@ private fun handlePresenceEvent(message: WebSocketMessage) {
         "suspended", "unsuspended", "account_deleted" -> handleAccountLifecycleEvent(message)
         "statusUpdate" -> message.data?.jsonObject?.let(::handlePresenceStatus)
         "dmTyping", "stopDmTyping" -> message.data?.jsonObject?.let { handlePresenceTyping(message.type, it) }
+        "call_signaling" -> CallStore.onWebSocketMessage(message)
         "updates" -> {
             val data = message.data ?: return
             val updates = ApiClient.json.decodeFromJsonElement<WebSocketUpdatesData>(data)
@@ -321,50 +327,41 @@ fun App(
                 }
             }
 
-            // Set up global auth error handler
-            LaunchedEffect(navController) {
-                ApiClient.onAuthError = {
-                    Logger.d("App", "Global auth error handler triggered, navigating to login")
-                    navController.navigate("login") {
-                        popUpTo("chat") { inclusive = true }
-                    }
-                }
-            }
-
             CompositionLocalProvider(
                 LocalNavController provides navController,
                 LocalSystemBarsVisibility provides rememberSystemBarsController()
             ) {
                 if (startDestination != null) {
                     val animationSpec = tween<IntOffset>(400)
-                    NavHost(
-                        navController = navController,
-                        startDestination = startDestination!!,
-                        enterTransition = {
-                            slideIntoContainer(
-                                Start,
-                                animationSpec = animationSpec
-                            )
-                        },
-                        exitTransition = {
-                            slideOutOfContainer(
-                                Start,
-                                animationSpec = animationSpec
-                            )
-                        },
-                        popEnterTransition = {
-                            slideIntoContainer(
-                                End,
-                                animationSpec = animationSpec
-                            )
-                        },
-                        popExitTransition = {
-                            slideOutOfContainer(
-                                End,
-                                animationSpec = animationSpec
-                            )
-                        }
-                    ) {
+                    Box(Modifier.fillMaxSize()) {
+                        NavHost(
+                            navController = navController,
+                            startDestination = startDestination!!,
+                            enterTransition = {
+                                slideIntoContainer(
+                                    Start,
+                                    animationSpec = animationSpec
+                                )
+                            },
+                            exitTransition = {
+                                slideOutOfContainer(
+                                    Start,
+                                    animationSpec = animationSpec
+                                )
+                            },
+                            popEnterTransition = {
+                                slideIntoContainer(
+                                    End,
+                                    animationSpec = animationSpec
+                                )
+                            },
+                            popExitTransition = {
+                                slideOutOfContainer(
+                                    End,
+                                    animationSpec = animationSpec
+                                )
+                            }
+                        ) {
                         composable("serverConfig") {
                             ServerConfigScreen()
                         }
@@ -612,6 +609,24 @@ fun App(
                                 onChangePassword = { navController.navigate(SettingsRoutes.SecurityPasswordFlow) }
                             )
                         }
+                    }
+                        // Register only after NavHost has attached a graph; otherwise 401 during startup/call can crash.
+                        DisposableEffect(navController) {
+                            ApiClient.onAuthError = {
+                                Logger.d("App", "Global auth error handler triggered, navigating to login")
+                                runCatching {
+                                    navController.navigate("login") {
+                                        popUpTo("chat") { inclusive = true }
+                                    }
+                                }.onFailure { e ->
+                                    Logger.w("App", "Auth navigation failed: ${e.message}", e)
+                                }
+                            }
+                            onDispose {
+                                ApiClient.onAuthError = null
+                            }
+                        }
+                        CallOverlay(Modifier.fillMaxSize())
                     }
                 }
             }

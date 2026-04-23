@@ -7,10 +7,11 @@ alwaysApply: true
 
 Whenever you change anything under **`app:android`**, **`app:shared`** (`commonMain` / `androidMain`), or **`utils:shared`** in ways that affect the Android app:
 
-1. **Build** the debug APK: `./gradlew :app:android:assembleDebug` from the Android repo root. If `JAVA_HOME` pointing at Android Studio’s JBR fails, use a working JDK 17+ on the machine.
+1. **Build** the debug APK: `./gradlew :app:android:assembleDebug` from the Android repo root. On macOS, use Android Studio’s bundled JBR (e.g. `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`, or unset `JAVA_HOME` so `gradlew` defaults to it). If that JBR is missing or fails, use another working JDK 21+ (`GRADLE_JAVA_HOME`).
 2. **Read Mobile MCP tool schemas** under the project’s MCP descriptors for `user-Mobile MCP` before calling tools (required).
 3. **`mobile_list_available_devices`** — get all `id`s (and `name` / `type` if present).
 4. **Use a real device by default.** Do **not** install or launch on an emulator **unless** the user **explicitly** asked to use the emulator, **or** no physical device is connected and **only** emulator(s) are available. Classify devices using `type != "emulator"` when reliable; if `type` is wrong or missing, treat as physical when the **name** does not look like an AVD (e.g. not `sdk_gphone`, not a generic emulator name). When one or more physical devices are available, install and launch **only** on those—**never** also push to emulators in the same step. When **no** physical device is connected, use every returned target (emulators).
+   - **All connected phones (e.g. two-device FromChat testing):** When the user asks to **always run on every / both connected devices** (or similar), repeat **`mobile_install_app`** and **`mobile_launch_app`** for **each** connected physical device ID returned by **`mobile_list_available_devices`**, not just one. If only one device is online, use that one; do not fail the step.
 5. For **each** chosen device `id`: **`mobile_install_app`** with `path` = absolute path to  
    `app/android/build/outputs/apk/debug/android-debug.apk`  
    in this repo.

@@ -850,4 +850,56 @@ object ApiClient {
             )
         }
     }
+
+    suspend fun fetchLiveKitToken(peerUserId: Int, roomName: String? = null): LiveKitTokenResponse {
+        if (_suspensionState.value.isSuspended) {
+            throw IllegalStateException("Suspended")
+        }
+        return http
+            .post("${Config.apiBaseUrl}/livekit/token") {
+                contentType(ContentType.Application.Json)
+                setBody(LiveKitTokenRequest(peerUserId = peerUserId, roomName = roomName))
+            }
+            .body()
+    }
+
+    suspend fun sendLiveKitInvite(toUserId: Int, roomName: String, serverUrl: String) {
+        if (_suspensionState.value.isSuspended) return
+        WebSocketManager.send(
+            WebSocketMessage(
+                type = "call_signaling",
+                credentials = WebSocketCredentials(
+                    scheme = "Bearer",
+                    credentials = getTokenSafely(),
+                ),
+                data = json.encodeToJsonElement(
+                    CallSignalingLiveKitPayload(
+                        toUserId = toUserId,
+                        roomName = roomName,
+                        serverUrl = serverUrl,
+                    ),
+                ),
+            ),
+        )
+    }
+
+    suspend fun sendLiveKitControl(toUserId: Int, kind: String, roomName: String? = null) {
+        if (_suspensionState.value.isSuspended) return
+        WebSocketManager.send(
+            WebSocketMessage(
+                type = "call_signaling",
+                credentials = WebSocketCredentials(
+                    scheme = "Bearer",
+                    credentials = getTokenSafely(),
+                ),
+                data = json.encodeToJsonElement(
+                    CallSignalingLiveKitControl(
+                        toUserId = toUserId,
+                        kind = kind,
+                        roomName = roomName,
+                    ),
+                ),
+            ),
+        )
+    }
 }

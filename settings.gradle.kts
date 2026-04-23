@@ -33,6 +33,8 @@ dependencyResolutionManagement {
             }
         }
         mavenCentral()
+        // LiveKit Android pulls com.github.davidliu:audioswitch from JitPack.
+        maven("https://jitpack.io")
     }
 }
 

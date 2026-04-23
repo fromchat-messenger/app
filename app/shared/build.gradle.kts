@@ -89,13 +89,15 @@ kotlin {
             implementation(libs.androidx.work.runtime.ktx)
             implementation(libs.tweetnacl.java)
             implementation(libs.sqldelight.driver.android)
+            implementation(libs.livekit.android)
+            implementation(libs.livekit.android.compose.components)
         }
 
         iosMain.dependencies {
             implementation(libs.jetbrains.kotlinx.io.bytestring)
             implementation(libs.jetbrains.kotlinx.coroutines.core)
             implementation(libs.ktor.client.darwin)
-            implementation("com.ionspin.kotlin:multiplatform-crypto-libsodium-bindings:0.9.5")
+            implementation(libs.multiplatform.crypto.libsodium.bindings)
             implementation(libs.sqldelight.driver.native)
         }
     }

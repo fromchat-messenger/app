@@ -55,6 +55,24 @@
     <string name="chat_group_label">Group</string>
     <string name="chat_members_count">%1$d people</string>
     <string name="cd_call">Call</string>
+    <string name="cd_call_mic">Microphone</string>
+    <string name="cd_call_camera">Camera</string>
+    <string name="cd_call_screenshare">Share screen</string>
+    <string name="cd_call_end">End call</string>
+    <string name="call_status_starting">Starting call…</string>
+    <string name="call_status_calling">Calling…</string>
+    <string name="call_status_connecting">Connecting…</string>
+    <string name="call_status_in_call">In call</string>
+    <string name="call_incoming_subtitle">Incoming call</string>
+    <string name="call_accept">Accept</string>
+    <string name="call_decline">Decline</string>
+    <string name="call_failed_title">Could not connect</string>
+    <string name="call_dismiss">OK</string>
+    <string name="notif_screenshare_title">Screen sharing</string>
+    <string name="notif_screenshare_text">Screen capture is active for this call</string>
+    <string name="notif_call_channel_name">Ongoing call</string>
+    <string name="notif_call_ongoing_title">Video call</string>
+    <string name="notif_call_ongoing_text">Camera and microphone stay active while you’re away</string>
 
     <!-- Messages -->
     <string name="message_sender_you">You</string>

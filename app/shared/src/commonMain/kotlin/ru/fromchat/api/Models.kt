@@ -420,3 +420,30 @@ data class VerifyResponse(
 data class FcmTokenRequest(
     val token: String
 )
+
+@Serializable
+data class LiveKitTokenRequest(
+    @SerialName("peer_user_id") val peerUserId: Int,
+    @SerialName("room_name") val roomName: String? = null,
+)
+
+@Serializable
+data class LiveKitTokenResponse(
+    @SerialName("server_url") val serverUrl: String,
+    val token: String,
+    @SerialName("room_name") val roomName: String,
+)
+
+@Serializable
+data class CallSignalingLiveKitPayload(
+    val toUserId: Int,
+    val roomName: String,
+    val serverUrl: String,
+)
+
+@Serializable
+data class CallSignalingLiveKitControl(
+    val toUserId: Int,
+    val kind: String,
+    val roomName: String? = null,
+)

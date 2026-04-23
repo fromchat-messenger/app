@@ -418,7 +418,7 @@ class DmPanel(
 
     override suspend fun handleDeleteMessage(messageId: Int) {}
 
-    override fun showCallButton(): Boolean = false
+    override fun showCallButton(): Boolean = true
 
     override fun getTypingHandler(): TypingHandler = typingHandler
 

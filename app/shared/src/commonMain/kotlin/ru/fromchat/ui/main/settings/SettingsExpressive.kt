@@ -39,9 +39,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.graphics.shapes.Morph
@@ -136,11 +136,11 @@ fun SettingsSecurityMorphedPasswordHero(
     val usePredictive = predictiveProgress != null && predictiveFromStep != null && predictiveToStep != null
 
     val fromStep = when {
-        usePredictive -> predictiveFromStep!!
+        usePredictive -> predictiveFromStep
         else -> step
     }
     val toStep = when {
-        usePredictive -> predictiveToStep!!
+        usePredictive -> predictiveToStep
         else -> step
     }
 

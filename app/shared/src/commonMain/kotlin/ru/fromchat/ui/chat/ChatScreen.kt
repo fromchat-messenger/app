@@ -67,6 +67,7 @@ import ru.fromchat.api.UserStatusStore
 import ru.fromchat.api.WebSocketManager
 import ru.fromchat.api.WebSocketMessage
 import ru.fromchat.api.WebSocketUpdatesData
+import ru.fromchat.calls.CallStore
 import ru.fromchat.core.Logger
 import ru.fromchat.net.NetworkConnectivity
 import ru.fromchat.ui.HapticFeedbackEvent
@@ -578,7 +579,12 @@ fun ChatScreen(
                             onBack = { navController.navigateUp() },
                             backContentDescription = stringResource(Res.string.back),
                             showCallButton = panel.showCallButton() && !isReadOnly,
-                            onCallClick = { /* TODO: Handle call */ },
+                            onCallClick = {
+                                val peer = panelState.profileUserId
+                                if (peer != null && peer > 0) {
+                                    scope.launch { CallStore.startOutgoingCall(peer) }
+                                }
+                            },
                             callContentDescription = cdCall,
                             titleChrome = {
                                 ChatFloatingTitleChrome(
