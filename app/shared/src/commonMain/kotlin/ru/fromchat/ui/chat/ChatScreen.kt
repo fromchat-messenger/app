@@ -286,6 +286,12 @@ fun ChatScreen(
                         panel.handleWebSocketMessage(message)
                     }
                 }
+                "call_signaling" -> {
+                    Logger.d(
+                        "ChatScreen",
+                        "call_signaling (also dispatched to App global → CallStore); skipping panel",
+                    )
+                }
                 else -> {
                     Logger.d("ChatScreen", "Unhandled top-level WebSocket message type: ${message.type}")
                 }

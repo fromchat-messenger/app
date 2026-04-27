@@ -117,6 +117,18 @@ data class SimpleStatusResponse(
 )
 
 @Serializable
+data class ServerInstanceIdResponse(
+    @SerialName("instance_id") val instanceId: String,
+)
+
+@Serializable
+data class CheckAuthResponse(
+    val authenticated: Boolean = false,
+    val username: String? = null,
+    val admin: Boolean? = null,
+)
+
+@Serializable
 data class MessagesResponse(
     val status: String,
     val messages: List<Message>

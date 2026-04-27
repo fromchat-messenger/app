@@ -199,6 +199,7 @@ fun RegisterScreen(
                                         throw e
                                     }
                                     ApiClient.persistSessionToStorage(response)
+                                    runCatching { ApiClient.refreshServerInstanceFingerprint() }
                                     response
                                 }
                             }

@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.encodeToJsonElement
+import ru.fromchat.core.Settings
 import ru.fromchat.core.config.Config
 import ru.fromchat.ui.chat.PublicChatPanelCache
 import ru.fromchat.ui.dm.DmPanelCache
@@ -169,6 +170,58 @@ object ApiClient {
                         response.status.description
                     )
                 }
+            }
+        }
+    }
+
+    /** GET-only client: no global 401 handler (used when probing a not-yet-saved server URL). */
+    private val httpProbe by lazy {
+        createPlatformHttpClient {
+            install(ContentNegotiation) {
+                json(json)
+            }
+            install(Logging) {
+                logger = Logger.SIMPLE
+                level = LogLevel.INFO
+            }
+            val currentDevice = currentDeviceInfo()
+            val userAgent = buildLoginUserAgent(
+                osName = currentDevice.osName?.takeIfNotBlank(),
+                osVersion = currentDevice.osVersion?.takeIfNotBlank(),
+                model = currentDevice.model?.takeIfNotBlank(),
+                brand = currentDevice.brand?.takeIfNotBlank(),
+            )
+            defaultRequest {
+                header("User-Agent", userAgent)
+            }
+        }
+    }
+
+    suspend fun fetchServerInstanceId(apiBaseUrl: String): String {
+        val base = apiBaseUrl.trimEnd('/')
+        return httpProbe.get("$base/instance_id").body<ServerInstanceIdResponse>().instanceId.trim()
+    }
+
+    /** Minimal TCP/HTTP check: true if a GET succeeds without throwing (any HTTP status). */
+    suspend fun probeHttpGet(url: String): Boolean =
+        runCatching {
+            httpProbe.get(url.trim())
+            true
+        }.getOrDefault(false)
+
+    suspend fun checkAuthAt(apiBaseUrl: String, bearer: String): Boolean =
+        runCatching {
+            val base = apiBaseUrl.trimEnd('/')
+            httpProbe.get("$base/check_auth") {
+                bearerAuth(bearer)
+            }.body<CheckAuthResponse>().authenticated
+        }.getOrDefault(false)
+
+    suspend fun refreshServerInstanceFingerprint() {
+        runCatching {
+            val id = fetchServerInstanceId(Config.apiBaseUrl)
+            if (id.isNotEmpty()) {
+                Settings.lastKnownServerInstanceId = id
             }
         }
     }

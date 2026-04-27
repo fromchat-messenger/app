@@ -24,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.toPath
+import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -260,8 +261,10 @@ fun SettingsSecurityMorphedPasswordHero(
 }
 
 /**
- * Large icon in a rounded shape for empty states and smaller heroes.
+ * Large icon clipped with a Material expressive polygon ([MaterialShapes] + [toShape]).
+ * Default is a circle; pass another library polygon (e.g. cookie-sided) to match adjacent flows.
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun SettingsExpressiveIconFrame(
     icon: ImageVector,
@@ -269,12 +272,14 @@ fun SettingsExpressiveIconFrame(
     containerSize: Dp = 112.dp,
     iconSize: Dp = 52.dp,
     containerColor: Color = MaterialTheme.colorScheme.primaryContainer,
-    contentColor: Color = MaterialTheme.colorScheme.onPrimaryContainer
+    contentColor: Color = MaterialTheme.colorScheme.onPrimaryContainer,
+    materialPolygon: RoundedPolygon = MaterialShapes.Circle,
 ) {
+    val frameShape = materialPolygon.normalized().toShape()
     Box(
         modifier = modifier
             .size(containerSize)
-            .clip(RoundedCornerShape(percent = 32))
+            .clip(frameShape)
             .background(containerColor),
         contentAlignment = Alignment.Center
     ) {

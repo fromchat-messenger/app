@@ -21,6 +21,7 @@ import ru.fromchat.api.WebSocketMessage
 import ru.fromchat.api.db.MessageCacheStore
 import ru.fromchat.api.visibleDisplayName
 import ru.fromchat.core.Logger
+import ru.fromchat.core.config.Config
 import ru.fromchat.crypto.CorruptedDmMessagePlaceholder
 import ru.fromchat.crypto.DmCiphertextCorruptedException
 import ru.fromchat.crypto.decryptEnvelope
@@ -418,7 +419,7 @@ class DmPanel(
 
     override suspend fun handleDeleteMessage(messageId: Int) {}
 
-    override fun showCallButton(): Boolean = true
+    override fun showCallButton(): Boolean = Config.callsEnabled
 
     override fun getTypingHandler(): TypingHandler = typingHandler
 

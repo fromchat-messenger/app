@@ -152,10 +152,31 @@
 
     <!-- Server Configuration -->
     <string name="server_config_title">Connect to a server</string>
-    <string name="server_config_subtitle">Enter the server you want to use</string>
-    <string name="server_url_label">Server address</string>
-    <string name="server_url_hint">example.com</string>
-    <string name="https_enabled">Use a secure connection</string>
+    <string name="server_config_subtitle">Connect to an alternative FromChat server. This can give you more privacy and control over data.</string>
+    <string name="server_ip_label">Server IP or hostname</string>
+    <string name="server_ip_hint">192.168.1.10</string>
+    <string name="api_port_label">Port</string>
+    <string name="api_port_hint">8301</string>
+    <string name="calls_port_label">Calls port</string>
+    <string name="calls_port_hint">8302</string>
+    <string name="https_enabled">Secure connection</string>
+    <string name="server_config_https_hint">Uses HTTPS. Turn off only for plain HTTP.</string>
+    <string name="server_config_https_headline">HTTPS</string>
+    <string name="server_config_https_local_hint">Secure connection. If your server is local, you probably should turn it off.</string>
+    <string name="server_config_host_error">Enter a valid IP or hostname.</string>
+    <string name="server_config_port_error">Enter a port from 1 to 65535.</string>
+    <string name="server_config_snackbar_ok_calls">Server OK. Calls port reachable. Ping: %1$d ms.</string>
+    <string name="server_config_snackbar_ok_calls_skip">Server OK. Calls disabled (no port). Ping: %1$d ms.</string>
+    <string name="server_config_snackbar_api_fail">Cannot reach the API.</string>
+    <string name="server_config_snackbar_calls_fail">Calls port not reachable.</string>
+    <string name="server_config_snackbar_ok_api_calls_bad">Server OK; calls port did not respond.</string>
+    <string name="server_config_snackbar_defaults">Defaults applied.</string>
+    <string name="server_config_fab_verify">Check server</string>
+    <string name="server_config_fab_reset">Reset to defaults</string>
+    <string name="server_config_action_check">Check</string>
+    <string name="server_config_action_reset">Reset</string>
+    <string name="server_config_action_reset_confirm_title">Reset to defaults?</string>
+    <string name="server_config_action_reset_confirm_body">This restores the default server and port settings.</string>
     <string name="save_continue">Save and continue</string>
 
     <!-- Settings -->

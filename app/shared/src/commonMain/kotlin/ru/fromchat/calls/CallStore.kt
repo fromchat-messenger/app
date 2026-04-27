@@ -18,6 +18,7 @@ import ru.fromchat.api.ProfileCache
 import ru.fromchat.api.WebSocketMessage
 import ru.fromchat.api.visibleDisplayName
 import ru.fromchat.core.Logger
+import ru.fromchat.core.config.Config
 
 private const val TAG = "CallStore"
 
@@ -58,7 +59,10 @@ object CallStore {
 
     fun onWebSocketMessage(message: WebSocketMessage) {
         if (message.type != "call_signaling") return
-        val data = message.data ?: return
+        val data = message.data ?: run {
+            Logger.w(TAG, "call_signaling: missing data")
+            return
+        }
         scope.launch {
             runCatching { handleSignalingPayload(data) }
                 .onFailure { Logger.e(TAG, "call_signaling handling failed", it) }
@@ -70,6 +74,10 @@ object CallStore {
         val kind = obj["kind"]?.jsonPrimitive?.contentOrNull
         val fromUserId = obj["fromUserId"]?.jsonPrimitive?.content?.toIntOrNull()
         val currentId = ApiClient.user?.id ?: return
+        Logger.d(
+            TAG,
+            "call_signaling payload kind=$kind fromUserId=$fromUserId keys=${obj.keys}",
+        )
         if (kind != null) {
             if (fromUserId == null || fromUserId == currentId) return
             when (kind) {
@@ -84,8 +92,12 @@ object CallStore {
                         else -> {}
                     }
                 }
-                "accept" -> {}
-                else -> {}
+                "accept" -> {
+                    Logger.d(TAG, "call_signaling accept from peer=$fromUserId (LiveKit path)")
+                }
+                else -> {
+                    Logger.d(TAG, "call_signaling control kind=$kind from=$fromUserId (ignored)")
+                }
             }
             return
         }
@@ -93,8 +105,13 @@ object CallStore {
         val roomName = obj["roomName"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
         if (serverUrl == null || roomName == null || fromUserId == null) return
         if (fromUserId == currentId) return
+        if (!Config.callsEnabled) {
+            Logger.d(TAG, "call_signaling invite ignored (calls disabled in server config)")
+            return
+        }
         val fromUsername = obj["fromUsername"]?.jsonPrimitive?.contentOrNull.orEmpty()
         if (_ui.value is CallUiState.InCall) return
+        Logger.d(TAG, "call_signaling → Incoming from=$fromUserId room=$roomName")
         _ui.value = CallUiState.Incoming(
             fromUserId = fromUserId,
             fromUsername = fromUsername,
@@ -105,15 +122,21 @@ object CallStore {
 
     fun startOutgoingCall(peerUserId: Int) {
         if (peerUserId <= 0 || peerUserId == ApiClient.user?.id) return
+        if (!Config.callsEnabled) {
+            Logger.d(TAG, "startOutgoingCall ignored (calls disabled: set calls port in server settings)")
+            return
+        }
+        Logger.d(TAG, "startOutgoingCall(peer=$peerUserId)")
         scope.launch {
-            _ui.value = CallUiState.Connecting(peerUserId)
+            // Stay on underlying UI until the room is ready; do not block on callee answering.
             runCatching {
                 withContext(Dispatchers.Default) {
                     val tok = ApiClient.fetchLiveKitToken(peerUserId, null)
-                    ApiClient.sendLiveKitInvite(peerUserId, tok.roomName, tok.serverUrl)
+                    val signalUrl = Config.liveKitSignalingWsUrl()
+                    ApiClient.sendLiveKitInvite(peerUserId, tok.roomName, signalUrl)
                     val label = peerLabel(peerUserId)
                     LiveKitConnectSession(
-                        serverUrl = tok.serverUrl,
+                        serverUrl = signalUrl,
                         token = tok.token,
                         peerUserId = peerUserId,
                         peerDisplayName = label,
@@ -121,6 +144,10 @@ object CallStore {
                     )
                 }
             }.onSuccess { session ->
+                Logger.d(
+                    TAG,
+                    "startOutgoingCall → InCall peer=${session.peerUserId} room=${session.roomName}",
+                )
                 _ui.value = CallUiState.InCall(session)
             }.onFailure { e ->
                 Logger.e(TAG, "startOutgoingCall failed", e)
@@ -133,6 +160,10 @@ object CallStore {
 
     fun acceptIncoming() {
         val inc = _ui.value as? CallUiState.Incoming ?: return
+        if (!Config.callsEnabled) {
+            Logger.d(TAG, "acceptIncoming ignored (calls disabled)")
+            return
+        }
         scope.launch {
             runCatching {
                 withContext(Dispatchers.Default) {
@@ -142,7 +173,7 @@ object CallStore {
                     val display =
                         if (inc.fromUsername.isNotBlank()) inc.fromUsername else label
                     LiveKitConnectSession(
-                        serverUrl = tok.serverUrl,
+                        serverUrl = Config.liveKitSignalingWsUrl(),
                         token = tok.token,
                         peerUserId = inc.fromUserId,
                         peerDisplayName = display,
@@ -150,6 +181,10 @@ object CallStore {
                     )
                 }
             }.onSuccess { session ->
+                Logger.d(
+                    TAG,
+                    "acceptIncoming → InCall peer=${session.peerUserId} room=${session.roomName}",
+                )
                 _ui.value = CallUiState.InCall(session)
             }.onFailure { e ->
                 Logger.e(TAG, "acceptIncoming failed", e)

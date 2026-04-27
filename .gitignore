@@ -28,3 +28,4 @@ xcuserdata
 google-services.json
 
 .cursor/plans
+*.log

@@ -82,10 +82,8 @@ import androidx.compose.material3.MediumTopAppBar
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -115,6 +113,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import ru.fromchat.ui.FromChatSnackbarHost
 import com.pr0gramm3r101.components.Category
 import com.pr0gramm3r101.components.ListItem
 import com.pr0gramm3r101.components.SwitchListItem
@@ -577,15 +576,7 @@ fun SettingsNotificationsScreen(onBack: () -> Unit) {
     val unexpectedErrorText = stringResource(Res.string.error_unexpected)
 
     Scaffold(
-        snackbarHost = {
-            SnackbarHost(hostState = snackbarHostState) {
-                Snackbar(
-                    snackbarData = it,
-                    containerColor = Color.Transparent,
-                    contentColor = MaterialTheme.colorScheme.onSurface
-                )
-            }
-        },
+        snackbarHost = { FromChatSnackbarHost(hostState = snackbarHostState) },
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             MediumTopAppBar(
@@ -1128,7 +1119,7 @@ fun SettingsDevicesScreen(onBack: () -> Unit) {
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = { FromChatSnackbarHost(hostState = snackbarHostState) },
         topBar = {
             MediumTopAppBar(
                 title = { Text(stringResource(Res.string.settings_devices_title)) },
@@ -1763,22 +1754,15 @@ fun SettingsSecurityPasswordFlowScreen(onBack: () -> Unit, onDonePopToHub: () ->
                 }
             }
 
-            SnackbarHost(
+            FromChatSnackbarHost(
                 hostState = snackbarHostState,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(horizontal = SettingsStepHorizontalPadding)
                     .padding(bottom = 76.dp)
                     .fillMaxWidth(),
-                snackbar = { data ->
-                    Snackbar(
-                        snackbarData = data,
-                        modifier = Modifier.fillMaxWidth(),
-                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                        shape = RoundedCornerShape(16.dp),
-                    )
-                },
+                snackbarModifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
             )
         }
     }
@@ -1909,7 +1893,7 @@ fun SettingsAccountScreen(onBack: () -> Unit, onLogout: () -> Unit, onChangePass
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = { FromChatSnackbarHost(hostState = snackbarHostState) },
         topBar = {
             MediumTopAppBar(
                 title = { Text(stringResource(Res.string.settings_account_title)) },

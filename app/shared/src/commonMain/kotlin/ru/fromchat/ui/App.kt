@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection.
 import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection.Companion.Start
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -332,7 +333,7 @@ fun App(
                 LocalSystemBarsVisibility provides rememberSystemBarsController()
             ) {
                 if (startDestination != null) {
-                    val animationSpec = tween<IntOffset>(400)
+                    val rootNavMotion = spring<IntOffset>(dampingRatio = 0.88f, stiffness = 420f)
                     Box(Modifier.fillMaxSize()) {
                         NavHost(
                             navController = navController,
@@ -340,25 +341,25 @@ fun App(
                             enterTransition = {
                                 slideIntoContainer(
                                     Start,
-                                    animationSpec = animationSpec
+                                    animationSpec = rootNavMotion
                                 )
                             },
                             exitTransition = {
                                 slideOutOfContainer(
                                     Start,
-                                    animationSpec = animationSpec
+                                    animationSpec = rootNavMotion
                                 )
                             },
                             popEnterTransition = {
                                 slideIntoContainer(
                                     End,
-                                    animationSpec = animationSpec
+                                    animationSpec = rootNavMotion
                                 )
                             },
                             popExitTransition = {
                                 slideOutOfContainer(
                                     End,
-                                    animationSpec = animationSpec
+                                    animationSpec = rootNavMotion
                                 )
                             }
                         ) {
@@ -511,25 +512,25 @@ fun App(
                             enterTransition = {
                                 when (initialState.destination.route) {
                                     DmNav.PROFILE_ROUTE -> fadeIn(animationSpec = dmChatProfileFade)
-                                    else -> slideIntoContainer(Start, animationSpec = animationSpec)
+                                    else -> slideIntoContainer(Start, animationSpec = rootNavMotion)
                                 }
                             },
                             exitTransition = {
                                 when (targetState.destination.route) {
                                     DmNav.PROFILE_ROUTE -> fadeOut(animationSpec = dmChatProfileFade)
-                                    else -> slideOutOfContainer(Start, animationSpec = animationSpec)
+                                    else -> slideOutOfContainer(Start, animationSpec = rootNavMotion)
                                 }
                             },
                             popEnterTransition = {
                                 when (initialState.destination.route) {
                                     DmNav.PROFILE_ROUTE -> fadeIn(animationSpec = dmChatProfileFade)
-                                    else -> slideIntoContainer(End, animationSpec = animationSpec)
+                                    else -> slideIntoContainer(End, animationSpec = rootNavMotion)
                                 }
                             },
                             popExitTransition = {
                                 when (targetState.destination.route) {
                                     DmNav.PROFILE_ROUTE -> fadeOut(animationSpec = dmChatProfileFade)
-                                    else -> slideOutOfContainer(End, animationSpec = animationSpec)
+                                    else -> slideOutOfContainer(End, animationSpec = rootNavMotion)
                                 }
                             },
                         ) { entry ->
@@ -563,7 +564,7 @@ fun App(
                             )
                         }
 
-                        settingsSlideComposable("about", animationSpec) {
+                        settingsSlideComposable("about", rootNavMotion) {
                             AboutScreen()
                         }
 
@@ -573,28 +574,28 @@ fun App(
                             }
                         }
 
-                        settingsSlideComposable(SettingsRoutes.Appearance, animationSpec) {
+                        settingsSlideComposable(SettingsRoutes.Appearance, rootNavMotion) {
                             SettingsAppearanceScreen(onBack = { navController.navigateUp() })
                         }
-                        settingsSlideComposable(SettingsRoutes.ServerTools, animationSpec) {
+                        settingsSlideComposable(SettingsRoutes.ServerTools, rootNavMotion) {
                             SettingsServerToolsScreen(
                                 onBack = { navController.navigateUp() },
                                 outerNav = navController
                             )
                         }
-                        settingsSlideComposable(SettingsRoutes.Notifications, animationSpec) {
+                        settingsSlideComposable(SettingsRoutes.Notifications, rootNavMotion) {
                             SettingsNotificationsScreen(onBack = { navController.navigateUp() })
                         }
-                        settingsSlideComposable(SettingsRoutes.Devices, animationSpec) {
+                        settingsSlideComposable(SettingsRoutes.Devices, rootNavMotion) {
                             SettingsDevicesScreen(onBack = { navController.navigateUp() })
                         }
-                        settingsSlideComposable(SettingsRoutes.Security, animationSpec) {
+                        settingsSlideComposable(SettingsRoutes.Security, rootNavMotion) {
                             SettingsSecurityHubScreen(
                                 onBack = { navController.navigateUp() },
                                 onChangePassword = { navController.navigate(SettingsRoutes.SecurityPasswordFlow) }
                             )
                         }
-                        settingsSlideComposable(SettingsRoutes.SecurityPasswordFlow, animationSpec) {
+                        settingsSlideComposable(SettingsRoutes.SecurityPasswordFlow, rootNavMotion) {
                             SettingsSecurityPasswordFlowScreen(
                                 onBack = { navController.navigateUp() },
                                 onDonePopToHub = {
@@ -602,7 +603,7 @@ fun App(
                                 }
                             )
                         }
-                        settingsSlideComposable(SettingsRoutes.Account, animationSpec) {
+                        settingsSlideComposable(SettingsRoutes.Account, rootNavMotion) {
                             SettingsAccountScreen(
                                 onBack = { navController.navigateUp() },
                                 onLogout = navigateToLoginClearingChat,

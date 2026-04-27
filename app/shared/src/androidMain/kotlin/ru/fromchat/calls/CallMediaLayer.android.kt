@@ -8,11 +8,14 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.PackageManager
-import android.media.AudioManager
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.os.PowerManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
@@ -43,6 +46,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -67,7 +71,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -76,43 +79,49 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
 import dev.chrisbanes.haze.rememberHazeState
+import io.livekit.android.RoomOptions
 import io.livekit.android.compose.local.RoomScope
+import io.livekit.android.events.RoomEvent
+import io.livekit.android.events.collect
 import io.livekit.android.compose.state.rememberParticipantTrackReferences
 import io.livekit.android.compose.state.rememberParticipants
 import io.livekit.android.compose.types.TrackReference
 import io.livekit.android.compose.ui.ScaleType
 import io.livekit.android.compose.ui.VideoTrackView
 import io.livekit.android.room.Room
+import io.livekit.android.room.track.LocalAudioTrackOptions
 import io.livekit.android.room.participant.LocalParticipant
 import io.livekit.android.room.participant.Participant
 import io.livekit.android.room.track.Track
 import io.livekit.android.room.track.screencapture.ScreenCaptureParams
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.yield
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.*
@@ -125,22 +134,128 @@ private const val TAG = "CallMediaLayer"
 private const val SCREEN_SHARE_NOTIFICATION_ID = 99102
 private const val SCREEN_SHARE_CHANNEL_ID = "fromchat_call_screenshare"
 
+private val pipReorgSpring = spring<Float>(
+    dampingRatio = Spring.DampingRatioMediumBouncy,
+    stiffness = Spring.StiffnessMedium,
+)
+
 private val REQUIRED_PERMISSIONS = arrayOf(
     Manifest.permission.RECORD_AUDIO,
     Manifest.permission.CAMERA,
 )
 
 private enum class VideoSlot {
+    None,
     RemoteScreen,
     RemoteCam,
     LocalScreen,
     LocalCam,
 }
 
+private data class CallOwnerUi(
+    val name: String,
+    val avatarName: String,
+    val pictureUrl: String?,
+    val level: Float,
+    val isSelf: Boolean,
+)
+
 private tailrec fun findActivity(ctx: Context?): Activity? = when (ctx) {
     is Activity -> ctx
     is ContextWrapper -> findActivity(ctx.baseContext)
     else -> null
+}
+
+@Composable
+private fun StreamOwnerChip(
+    label: String,
+    avatarName: String,
+    profilePictureUrl: String?,
+    audioLevel: Float,
+    showName: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val cap = 0.55f
+    val boost = (audioLevel.coerceIn(0f, cap) / cap).coerceIn(0f, 1f)
+    val scale = 1f + boost * 0.12f
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.9f))
+            .padding(
+                horizontal = if (showName) 6.dp else 4.dp,
+                vertical = 4.dp,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(if (showName) 6.dp else 0.dp),
+    ) {
+        Box(
+            Modifier.graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            },
+        ) {
+            Avatar(
+                profilePictureUrl = profilePictureUrl,
+                displayName = avatarName,
+                modifier = Modifier
+                    .size(if (showName) 26.dp else 24.dp)
+                    .clip(CircleShape),
+            )
+        }
+        if (showName && label.isNotBlank()) {
+            Text(
+                text = label,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.widthIn(max = 140.dp),
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+private fun CallSlotSharedVideo(
+    room: Room,
+    sharedTransitionScope: SharedTransitionScope,
+    slot: VideoSlot,
+    trackRef: TrackReference,
+    mirror: Boolean,
+    scaleType: ScaleType,
+    modifier: Modifier,
+    innerClipShape: Shape?,
+) {
+    with(sharedTransitionScope) {
+        val state = rememberSharedContentState(key = slot)
+        Box(
+            modifier
+                .sharedElementWithCallerManagedVisibility(
+                    sharedContentState = state,
+                    visible = true,
+                    boundsTransform = { _, _ ->
+                        spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessMediumLow,
+                        )
+                    },
+                ),
+        ) {
+            VideoTrackView(
+                trackReference = trackRef,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (innerClipShape != null) Modifier.clip(innerClipShape) else Modifier,
+                    ),
+                room = room,
+                mirror = mirror,
+                scaleType = scaleType,
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalHazeMaterialsApi::class)
@@ -160,18 +275,32 @@ actual fun CallMediaLayer(
         )
     }
     var askedForPermissions by remember { mutableStateOf(false) }
+    var micRequestedOn by remember(connect?.roomName) { mutableStateOf(true) }
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { result ->
         permissionsGranted = result.values.all { it }
+        Logger.d(TAG, "media permissions result=$permissionsGranted detail=$result")
     }
 
     LaunchedEffect(connect, showDialingPlaceholder) {
         val needMedia = connect != null || showDialingPlaceholder
+        Logger.d(
+            TAG,
+            "CallMediaLayer LaunchedEffect(connect,placeholder): needMedia=$needMedia " +
+                "connectRoom=${connect?.roomName} perms=$permissionsGranted asked=$askedForPermissions",
+        )
         if (needMedia && !permissionsGranted && !askedForPermissions) {
             askedForPermissions = true
             launcher.launch(REQUIRED_PERMISSIONS)
         }
+    }
+
+    LaunchedEffect(connect?.roomName, permissionsGranted, micRequestedOn) {
+        Logger.d(
+            TAG,
+            "CallMediaLayer snapshot room=${connect?.roomName} perms=$permissionsGranted micReq=$micRequestedOn",
+        )
     }
 
     when {
@@ -186,25 +315,76 @@ actual fun CallMediaLayer(
             }
         }
         connect != null && permissionsGranted -> {
+            Logger.d(
+                TAG,
+                "RoomScope starting url=${connect.serverUrl} room=${connect.roomName} " +
+                    "(mic UI sync waits for CONNECTED; DISCONNECTED means join failed or network)",
+            )
             RoomScope(
                 url = connect.serverUrl,
                 token = connect.token,
-                audio = true,
-                video = true,
+                roomOptions = RoomOptions(
+                    audioTrackCaptureDefaults = LocalAudioTrackOptions(
+                        typingNoiseDetection = false,
+                    ),
+                ),
+                audio = micRequestedOn,
+                video = false,
+                onError = { r, e ->
+                    Logger.e(
+                        TAG,
+                        "RoomScope onError state=${r.state} msg=${e?.message}",
+                        e,
+                    )
+                },
+                onDisconnected = { r ->
+                    Logger.w(TAG, "RoomScope onDisconnected state=${r.state}")
+                },
                 onConnected = { room ->
-                    launch {
-                        delay(200)
+                    Logger.d(
+                        TAG,
+                        "RoomScope onConnected state=${room.state} micReq=$micRequestedOn " +
+                            "micEn=${room.localParticipant.isMicrophoneEnabled}",
+                    )
+                    withContext(NonCancellable) {
                         runCatching {
-                            room.localParticipant.setMicrophoneEnabled(true)
-                            room.localParticipant.setCameraEnabled(true)
+                            room.localParticipant.setCameraEnabled(false)
                         }.onFailure { Logger.e(TAG, "onConnected media enable failed", it) }
                     }
+                    Logger.d(
+                        TAG,
+                        "RoomScope onConnected after camera off: micEn=${room.localParticipant.isMicrophoneEnabled}",
+                    )
                 },
             ) { room ->
+                LaunchedEffect(room) {
+                    room.events.collect { event: RoomEvent ->
+                        when (event) {
+                            is RoomEvent.Connected ->
+                                Logger.d(TAG, "RoomEvent.Connected")
+                            is RoomEvent.Disconnected ->
+                                Logger.w(
+                                    TAG,
+                                    "RoomEvent.Disconnected reason=${event.reason} " +
+                                        "err=${event.error?.message}",
+                                    event.error,
+                                )
+                            is RoomEvent.FailedToConnect ->
+                                Logger.e(TAG, "RoomEvent.FailedToConnect", event.error)
+                            is RoomEvent.Reconnecting ->
+                                Logger.d(TAG, "RoomEvent.Reconnecting")
+                            is RoomEvent.Reconnected ->
+                                Logger.d(TAG, "RoomEvent.Reconnected")
+                            else -> {}
+                        }
+                    }
+                }
                 CallRoomContent(
                     room = room,
                     session = connect,
                     showInCallControls = showInCallControls,
+                    micRequestedOn = micRequestedOn,
+                    onMicRequestedChange = { micRequestedOn = it },
                     modifier = modifier,
                 )
             }
@@ -235,6 +415,8 @@ private fun CallRoomContent(
     room: Room,
     session: LiveKitConnectSession,
     showInCallControls: Boolean,
+    micRequestedOn: Boolean,
+    onMicRequestedChange: (Boolean) -> Unit,
     modifier: Modifier,
 ) {
     val context = LocalContext.current
@@ -242,12 +424,18 @@ private fun CallRoomContent(
     val ongoingTitle = stringResource(Res.string.notif_call_ongoing_title)
     val ongoingText = stringResource(Res.string.notif_call_ongoing_text)
     val callStartWallMs = remember(session.roomName) { System.currentTimeMillis() }
+
     DisposableEffect(Unit) {
-        val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val previous = am.mode
-        am.mode = AudioManager.MODE_IN_COMMUNICATION
+        val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        val tag = "${TAG}:CallWake"
+        val wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, tag).apply {
+            setReferenceCounted(false)
+            acquire(6 * 60 * 60 * 1000L)
+        }
         onDispose {
-            am.mode = previous
+            runCatching {
+                if (wakeLock.isHeld) wakeLock.release()
+            }
         }
     }
 
@@ -265,9 +453,70 @@ private fun CallRoomContent(
         }
     }
 
+    LaunchedEffect(room, micRequestedOn) {
+        Logger.d(
+            TAG,
+            "micSync effect START micReq=$micRequestedOn roomState=${room.state} " +
+                "micEn=${room.localParticipant.isMicrophoneEnabled}",
+        )
+        var lastLoggedRoomState = room.state
+        while (isActive) {
+            val state = room.state
+            if (state != lastLoggedRoomState) {
+                Logger.d(
+                    TAG,
+                    "micSync room.state $lastLoggedRoomState → $state micReq=$micRequestedOn " +
+                        "micEn=${room.localParticipant.isMicrophoneEnabled}",
+                )
+                lastLoggedRoomState = state
+            }
+            if (state != Room.State.CONNECTED) {
+                delay(300)
+                continue
+            }
+
+            val current = room.localParticipant.isMicrophoneEnabled
+            if (current != micRequestedOn) {
+                Logger.d(TAG, "micSync calling setMicrophoneEnabled($micRequestedOn) current=$current")
+                val ok = runCatching {
+                    room.localParticipant.setMicrophoneEnabled(micRequestedOn)
+                }.onFailure { e ->
+                    Logger.e(TAG, "setMicrophoneEnabled($micRequestedOn) threw", e)
+                }.getOrDefault(false)
+
+                if (!ok) {
+                    Logger.w(TAG, "setMicrophoneEnabled($micRequestedOn) returned false")
+                }
+                Logger.d(
+                    TAG,
+                    "micSync after setMicrophoneEnabled: wanted=$micRequestedOn " +
+                        "micEn=${room.localParticipant.isMicrophoneEnabled} ok=$ok",
+                )
+            }
+
+            if (!micRequestedOn || room.localParticipant.isMicrophoneEnabled) {
+                Logger.d(
+                    TAG,
+                    "micSync effect DONE micReq=$micRequestedOn micEn=${room.localParticipant.isMicrophoneEnabled}",
+                )
+                break
+            }
+
+            Logger.w(
+                TAG,
+                "micSync mismatch after apply; retry in 800ms micReq=$micRequestedOn " +
+                    "micEn=${room.localParticipant.isMicrophoneEnabled}",
+            )
+            delay(800)
+        }
+    }
+
     val hazeState = rememberHazeState(blurEnabled = showInCallControls)
-    val navBottomDp = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surfaceContainerLowest),
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -280,21 +529,10 @@ private fun CallRoomContent(
             )
         }
         if (showInCallControls) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(168.dp + navBottomDp)
-                    .zIndex(0.5f)
-                    .hazeEffect(state = hazeState, style = HazeMaterials.thin()) {
-                        progressive = HazeProgressive.verticalGradient(
-                            startIntensity = 0f,
-                            endIntensity = 1f,
-                        )
-                    },
-            )
             CallInlineControlBar(
                 room = room,
+                micRequestedOn = micRequestedOn,
+                onMicRequestedChange = onMicRequestedChange,
                 hazeState = hazeState,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -336,7 +574,7 @@ private fun SoloCallParticipantVideos(
     session: LiveKitConnectSession,
     showInCallControls: Boolean,
 ) {
-    var localCamOn by remember { mutableStateOf(true) }
+    var localCamOn by remember { mutableStateOf(false) }
     var localLevel by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(local) {
         while (isActive) {
@@ -355,23 +593,28 @@ private fun SoloCallParticipantVideos(
     val selfPic = self?.id?.let { ProfileCache.get(it)?.profilePicture } ?: self?.profile_picture
     val selfName = self?.displayName?.takeIf { !it.isNullOrBlank() } ?: self?.username.orEmpty()
     val peerPic = ProfileCache.get(session.peerUserId)?.profilePicture
-    Box(Modifier.fillMaxSize()) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surfaceContainerLowest),
+    ) {
         when {
             // Never full-screen your own screen share; show camera or placeholders instead.
             lcRef != null && localCamOn -> {
-                VideoTrackView(
-                    trackReference = lcRef,
-                    modifier = Modifier.fillMaxSize(),
-                    room = room,
-                    mirror = true,
-                    scaleType = ScaleType.Fill,
-                )
+                Box(Modifier.fillMaxSize()) {
+                    VideoTrackView(
+                        trackReference = lcRef,
+                        modifier = Modifier.fillMaxSize(),
+                        room = room,
+                        mirror = true,
+                        scaleType = ScaleType.Fill,
+                    )
+                }
             }
             lcRef != null && !localCamOn -> {
                 RemoteVideoOffPlaceholder(
                     displayName = selfName,
                     profilePictureUrl = selfPic,
-                    label = selfName,
                     audioLevel = localLevel,
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -380,27 +623,15 @@ private fun SoloCallParticipantVideos(
                 RemoteVideoOffPlaceholder(
                     displayName = session.peerDisplayName,
                     profilePictureUrl = peerPic,
-                    label = session.peerDisplayName,
                     audioLevel = 0f,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
         }
-        CallVolumeAvatars(
-            remoteName = session.peerDisplayName,
-            remotePic = peerPic,
-            remoteLevel = 0f,
-            selfName = selfName,
-            selfPic = selfPic,
-            localLevel = localLevel,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(12.dp),
-        )
     }
 }
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 private fun DuoCallParticipantVideos(
     room: Room,
@@ -410,7 +641,7 @@ private fun DuoCallParticipantVideos(
     showInCallControls: Boolean,
 ) {
     var remoteCamOn by remember { mutableStateOf(true) }
-    var localCamOn by remember { mutableStateOf(true) }
+    var localCamOn by remember { mutableStateOf(false) }
     var remoteLevel by remember { mutableFloatStateOf(0f) }
     var localLevel by remember { mutableFloatStateOf(0f) }
 
@@ -461,11 +692,12 @@ private fun DuoCallParticipantVideos(
         else -> null
     }
 
-    val effectiveMain = userMain ?: defaultMainSlot()
+    val effectiveMain: VideoSlot = (userMain ?: defaultMainSlot()) ?: VideoSlot.None
 
     LaunchedEffect(userMain, rsRef, rcRef, lsRef, lcRef, remoteCamOn, localCamOn) {
         val u = userMain ?: return@LaunchedEffect
         val ok = when (u) {
+            VideoSlot.None -> false
             VideoSlot.RemoteScreen -> rsRef != null
             VideoSlot.RemoteCam -> rcRef != null
             VideoSlot.LocalScreen -> false
@@ -475,6 +707,7 @@ private fun DuoCallParticipantVideos(
     }
 
     fun refFor(slot: VideoSlot): TrackReference? = when (slot) {
+        VideoSlot.None -> null
         VideoSlot.RemoteScreen -> rsRef
         VideoSlot.RemoteCam -> rcRef
         VideoSlot.LocalScreen -> lsRef
@@ -485,6 +718,7 @@ private fun DuoCallParticipantVideos(
         slot == VideoSlot.RemoteScreen || slot == VideoSlot.LocalScreen
 
     fun camEnabled(slot: VideoSlot): Boolean = when (slot) {
+        VideoSlot.None -> false
         VideoSlot.RemoteCam -> remoteCamOn
         VideoSlot.LocalCam -> localCamOn
         else -> true
@@ -511,81 +745,101 @@ private fun DuoCallParticipantVideos(
     val selfPic = selfId?.let { ProfileCache.get(it)?.profilePicture }
         ?: self?.profile_picture
     val selfName = self?.displayName?.takeIf { !it.isNullOrBlank() } ?: self?.username.orEmpty()
+    val youLabel = stringResource(Res.string.message_sender_you)
+    val controlsReserve = if (showInCallControls) 168.dp else 0.dp
+    val screenShareMainBottomPad = controlsReserve
+
+    fun streamOwner(slot: VideoSlot): CallOwnerUi = when (slot) {
+        VideoSlot.RemoteScreen, VideoSlot.RemoteCam ->
+            CallOwnerUi(
+                name = session.peerDisplayName,
+                avatarName = session.peerDisplayName,
+                pictureUrl = peerPic,
+                level = remoteLevel,
+                isSelf = false,
+            )
+        VideoSlot.LocalCam, VideoSlot.LocalScreen ->
+            CallOwnerUi(
+                name = youLabel,
+                avatarName = selfName,
+                pictureUrl = selfPic,
+                level = localLevel,
+                isSelf = true,
+            )
+        else ->
+            CallOwnerUi(
+                name = "",
+                avatarName = "",
+                pictureUrl = null,
+                level = 0f,
+                isSelf = false,
+            )
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        val mainSlot = effectiveMain
-        val mainRef = mainSlot?.let { refFor(it) }
-        val swapMain: () -> Unit = {
-            if (previewSlots.isNotEmpty()) userMain = previewSlots.first()
-        }
-        Box(modifier = Modifier.fillMaxSize()) {
-            if (mainSlot != null && mainRef != null && (isScreen(mainSlot) || camEnabled(mainSlot))) {
-                VideoTrackView(
-                    trackReference = mainRef,
+        SharedTransitionLayout(Modifier.fillMaxSize()) {
+            val shared = this@SharedTransitionLayout
+            Box(Modifier.fillMaxSize()) {
+                Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = swapMain,
-                        ),
+                        .background(MaterialTheme.colorScheme.surfaceContainerLowest),
+                ) {
+                    val slot = effectiveMain
+                    val mainRef = refFor(slot)
+                    val screenInsetMod = if (isScreen(slot) && mainRef != null) {
+                        Modifier
+                            .windowInsetsPadding(WindowInsets.safeDrawing)
+                            .padding(bottom = screenShareMainBottomPad)
+                    } else {
+                        Modifier
+                    }
+                    val baseModifier = Modifier.fillMaxSize().then(screenInsetMod)
+                    when {
+                        slot != VideoSlot.None && mainRef != null && (isScreen(slot) || camEnabled(slot)) -> {
+                            CallSlotSharedVideo(
+                                room = room,
+                                sharedTransitionScope = shared,
+                                slot = slot,
+                                trackRef = mainRef,
+                                mirror = slot == VideoSlot.LocalCam || slot == VideoSlot.LocalScreen,
+                                scaleType = if (isScreen(slot)) ScaleType.FitInside else ScaleType.Fill,
+                                modifier = baseModifier,
+                                innerClipShape = null,
+                            )
+                        }
+                        slot != VideoSlot.None && mainRef != null && !isScreen(slot) && !camEnabled(slot) -> {
+                            RemoteVideoOffPlaceholder(
+                                displayName = session.peerDisplayName,
+                                profilePictureUrl = if (slot == VideoSlot.RemoteCam) peerPic else selfPic,
+                                audioLevel = if (slot == VideoSlot.RemoteCam) remoteLevel else localLevel,
+                                modifier = baseModifier,
+                            )
+                        }
+                        else -> {
+                            RemoteVideoOffPlaceholder(
+                                displayName = session.peerDisplayName,
+                                profilePictureUrl = peerPic,
+                                audioLevel = remoteLevel,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
+                }
+
+                CallPreviewCluster(
                     room = room,
-                    mirror = mainSlot == VideoSlot.LocalCam || mainSlot == VideoSlot.LocalScreen,
-                    scaleType = ScaleType.Fill,
-                )
-            } else if (mainSlot != null && mainRef != null && !isScreen(mainSlot) && !camEnabled(mainSlot)) {
-                RemoteVideoOffPlaceholder(
-                    displayName = session.peerDisplayName,
-                    profilePictureUrl = if (mainSlot == VideoSlot.RemoteCam) peerPic else selfPic,
-                    label = if (mainSlot == VideoSlot.RemoteCam) session.peerDisplayName else selfName,
-                    audioLevel = if (mainSlot == VideoSlot.RemoteCam) remoteLevel else localLevel,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = swapMain,
-                        ),
-                )
-            } else {
-                RemoteVideoOffPlaceholder(
-                    displayName = session.peerDisplayName,
-                    profilePictureUrl = peerPic,
-                    label = session.peerDisplayName,
-                    audioLevel = remoteLevel,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = swapMain,
-                        ),
+                    previewSlots = previewSlots,
+                    refFor = ::refFor,
+                    isScreen = ::isScreen,
+                    camEnabled = ::camEnabled,
+                    showInCallControls = showInCallControls,
+                    onSelectMain = { s -> userMain = s },
+                    streamOwner = ::streamOwner,
+                    sharedTransitionScope = shared,
                 )
             }
         }
-
-        CallVolumeAvatars(
-            remoteName = session.peerDisplayName,
-            remotePic = peerPic,
-            remoteLevel = remoteLevel,
-            selfName = selfName,
-            selfPic = selfPic,
-            localLevel = localLevel,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(12.dp),
-        )
-
-        CallPreviewCluster(
-            room = room,
-            previewSlots = previewSlots,
-            refFor = ::refFor,
-            isScreen = ::isScreen,
-            camEnabled = ::camEnabled,
-            showInCallControls = showInCallControls,
-            onSelectMain = { slot -> userMain = slot },
-        )
     }
 }
 
@@ -593,7 +847,6 @@ private fun DuoCallParticipantVideos(
 private fun RemoteVideoOffPlaceholder(
     displayName: String,
     profilePictureUrl: String?,
-    label: String,
     audioLevel: Float,
     modifier: Modifier,
 ) {
@@ -623,89 +876,21 @@ private fun RemoteVideoOffPlaceholder(
         ),
         contentAlignment = Alignment.Center,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Avatar(
-                profilePictureUrl = profilePictureUrl,
-                displayName = displayName,
-                modifier = Modifier
-                    .size(120.dp)
-                    .clip(CircleShape)
-                    .graphicsLayer {
-                        scaleX = scale
-                        scaleY = scale
-                    },
-            )
-            Spacer(Modifier.size(16.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 24.dp),
-            )
-        }
+        Avatar(
+            profilePictureUrl = profilePictureUrl,
+            displayName = displayName,
+            modifier = Modifier
+                .size(120.dp)
+                .clip(CircleShape)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                },
+        )
     }
 }
 
-@Composable
-private fun CallVolumeAvatars(
-    remoteName: String,
-    remotePic: String?,
-    remoteLevel: Float,
-    selfName: String,
-    selfPic: String?,
-    localLevel: Float,
-    modifier: Modifier,
-) {
-    val cap = 0.55f
-    fun scaleFor(level: Float): Float {
-        val boost = (level.coerceIn(0f, cap) / cap).coerceIn(0f, 1f)
-        return 1f + boost * 0.12f
-    }
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .graphicsLayer {
-                    scaleX = scaleFor(remoteLevel)
-                    scaleY = scaleFor(remoteLevel)
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Avatar(
-                profilePictureUrl = remotePic,
-                displayName = remoteName,
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape),
-            )
-        }
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .graphicsLayer {
-                    scaleX = scaleFor(localLevel)
-                    scaleY = scaleFor(localLevel)
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Avatar(
-                profilePictureUrl = selfPic,
-                displayName = selfName,
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape),
-            )
-        }
-    }
-}
-
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 private fun CallPreviewCluster(
     room: Room,
@@ -715,6 +900,8 @@ private fun CallPreviewCluster(
     camEnabled: (VideoSlot) -> Boolean,
     showInCallControls: Boolean,
     onSelectMain: (VideoSlot) -> Unit,
+    streamOwner: (VideoSlot) -> CallOwnerUi,
+    sharedTransitionScope: SharedTransitionScope,
 ) {
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
@@ -727,27 +914,20 @@ private fun CallPreviewCluster(
 
     val gap = 8.dp
     val controlsReserve = if (showInCallControls) with(density) { 108.dp.toPx() } else with(density) { 16.dp.toPx() }
-    val handleH = 10.dp
-    val handlePx = with(density) { handleH.toPx() }
 
     val posX = remember { Animatable(0f) }
     val posY = remember { Animatable(0f) }
     var layoutReady by remember { mutableStateOf(false) }
-    var stripHorizontal by remember { mutableStateOf(false) }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val marginPx = with(density) { 12.dp.toPx() }
+        val marginPx = with(density) { 16.dp.toPx() }
         val pipWpx = with(density) { 104.dp.toPx() }
         val pipHpx = with(density) { 138.dp.toPx() }
         val gapPx = with(density) { gap.toPx() }
         val n = previewSlots.size.coerceAtLeast(1)
-        val clusterHCol = n * pipHpx + (n - 1).coerceAtLeast(0) * gapPx + handlePx + with(density) { 4.dp.toPx() }
-        val clusterWRow = n * pipWpx + (n - 1).coerceAtLeast(0) * gapPx
-
+        val clusterHCol = n * pipHpx + (n - 1).coerceAtLeast(0) * gapPx
         val maxXPxCol = with(density) { maxWidth.toPx() } - endPx - pipWpx
         val maxYPxCol = with(density) { maxHeight.toPx() } - bottomPx - controlsReserve - clusterHCol
-        val maxXPxRow = with(density) { maxWidth.toPx() } - endPx - clusterWRow
-        val topRowY = topPx + marginPx
 
         LaunchedEffect(maxWidth, maxHeight, bottomPx, controlsReserve, endPx, topPx) {
             if (!layoutReady) {
@@ -760,11 +940,6 @@ private fun CallPreviewCluster(
         fun clampCol(o: Offset): Offset = Offset(
             x = o.x.coerceIn(marginPx + startPx, maxXPxCol),
             y = o.y.coerceIn(marginPx + topPx, maxYPxCol),
-        )
-
-        fun clampRow(o: Offset): Offset = Offset(
-            x = o.x.coerceIn(marginPx + startPx, maxXPxRow),
-            y = o.y.coerceIn(topRowY, topRowY),
         )
 
         fun nearestCornerCol(o: Offset): Offset {
@@ -786,32 +961,18 @@ private fun CallPreviewCluster(
             return best
         }
 
-        val springSnap = spring<Float>(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMediumLow,
-        )
-
         if (previewSlots.isEmpty()) return@BoxWithConstraints
 
         fun moveCluster(amount: Offset) {
             val raw = Offset(posX.value + amount.x, posY.value + amount.y)
-            val next = if (stripHorizontal) clampRow(raw) else clampCol(raw)
-            val wantStrip = !stripHorizontal && raw.y < topPx + with(density) { 88.dp.toPx() }
-            if (wantStrip && previewSlots.isNotEmpty()) {
-                stripHorizontal = true
-                scope.launch {
-                    posX.snapTo(clampRow(Offset(posX.value, topRowY)).x)
-                    posY.snapTo(topRowY)
-                }
-                return
-            }
+            val next = clampCol(raw)
             scope.launch {
                 posX.snapTo(next.x)
                 posY.snapTo(next.y)
             }
         }
 
-        val dragModifier = Modifier.pointerInput(layoutReady, stripHorizontal, maxXPxCol, maxYPxCol, maxXPxRow, topRowY, marginPx, startPx, topPx) {
+        val dragModifier = Modifier.pointerInput(layoutReady, maxXPxCol, maxYPxCol, marginPx, startPx, topPx) {
             if (!layoutReady) return@pointerInput
             detectDragGestures(
                 onDrag = { change, amount ->
@@ -820,33 +981,22 @@ private fun CallPreviewCluster(
                 },
                 onDragEnd = {
                     scope.launch {
-                        val t = if (stripHorizontal) {
-                            Offset(
-                                posX.value.coerceIn(marginPx + startPx, maxXPxRow),
-                                topRowY,
-                            )
-                        } else {
-                            nearestCornerCol(Offset(posX.value, posY.value))
-                        }
+                        val t = nearestCornerCol(Offset(posX.value, posY.value))
                         coroutineScope {
                             awaitAll(
-                                async { posX.animateTo(t.x, springSnap) },
-                                async { posY.animateTo(t.y, springSnap) },
+                                async { posX.animateTo(t.x, pipReorgSpring) },
+                                async { posY.animateTo(t.y, pipReorgSpring) },
                             )
                         }
                     }
                 },
                 onDragCancel = {
                     scope.launch {
-                        val t = if (stripHorizontal) {
-                            Offset(posX.value.coerceIn(marginPx + startPx, maxXPxRow), topRowY)
-                        } else {
-                            nearestCornerCol(Offset(posX.value, posY.value))
-                        }
+                        val t = nearestCornerCol(Offset(posX.value, posY.value))
                         coroutineScope {
                             awaitAll(
-                                async { posX.animateTo(t.x, springSnap) },
-                                async { posY.animateTo(t.y, springSnap) },
+                                async { posX.animateTo(t.x, pipReorgSpring) },
+                                async { posY.animateTo(t.y, pipReorgSpring) },
                             )
                         }
                     }
@@ -858,66 +1008,52 @@ private fun CallPreviewCluster(
             modifier = Modifier
                 .offset { IntOffset(posX.value.roundToInt(), posY.value.roundToInt()) },
         ) {
-            if (!stripHorizontal) {
-                Column(verticalArrangement = Arrangement.spacedBy(gap)) {
-                    for (slot in previewSlots) {
-                        PreviewTile(
-                            room = room,
-                            ref = refFor(slot),
-                            mirror = slot == VideoSlot.LocalCam || slot == VideoSlot.LocalScreen,
-                            showVideo = refFor(slot) != null && (isScreen(slot) || camEnabled(slot)),
-                            onTap = { onSelectMain(slot) },
-                        )
-                    }
-                    Spacer(Modifier.size(4.dp))
-                    Box(
-                        modifier = Modifier
-                            .size(104.dp, handleH)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
-                            .then(dragModifier),
+            Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+                for (slot in previewSlots) {
+                    val owner = streamOwner(slot)
+                    PreviewTile(
+                        room = room,
+                        slot = slot,
+                        sharedTransitionScope = sharedTransitionScope,
+                        ref = refFor(slot),
+                        mirror = slot == VideoSlot.LocalCam || slot == VideoSlot.LocalScreen,
+                        showVideo = refFor(slot) != null && (isScreen(slot) || camEnabled(slot)),
+                        displayName = owner.name,
+                        avatarDisplayName = owner.avatarName,
+                        profilePictureUrl = owner.pictureUrl,
+                        audioLevel = owner.level,
+                        onTap = { onSelectMain(slot) },
+                        dragModifier = dragModifier,
                     )
-                }
-            } else {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(gap),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp, 138.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
-                            .then(dragModifier),
-                    )
-                    for (slot in previewSlots) {
-                        PreviewTile(
-                            room = room,
-                            ref = refFor(slot),
-                            mirror = slot == VideoSlot.LocalCam || slot == VideoSlot.LocalScreen,
-                            showVideo = refFor(slot) != null && (isScreen(slot) || camEnabled(slot)),
-                            onTap = { onSelectMain(slot) },
-                        )
-                    }
                 }
             }
         }
     }
 }
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 private fun PreviewTile(
     room: Room,
+    slot: VideoSlot,
+    sharedTransitionScope: SharedTransitionScope,
     ref: TrackReference?,
     mirror: Boolean,
     showVideo: Boolean,
+    displayName: String,
+    avatarDisplayName: String,
+    profilePictureUrl: String?,
+    audioLevel: Float,
     onTap: () -> Unit,
+    dragModifier: Modifier = Modifier,
 ) {
+    val tileShape = RoundedCornerShape(16.dp)
     Box(
         modifier = Modifier
             .size(104.dp, 138.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(tileShape)
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .then(dragModifier)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -925,21 +1061,34 @@ private fun PreviewTile(
             ),
     ) {
         if (ref != null && showVideo) {
-            VideoTrackView(
-                trackReference = ref,
-                modifier = Modifier.fillMaxSize(),
+            CallSlotSharedVideo(
                 room = room,
+                sharedTransitionScope = sharedTransitionScope,
+                slot = slot,
+                trackRef = ref,
                 mirror = mirror,
                 scaleType = ScaleType.Fill,
+                modifier = Modifier.fillMaxSize(),
+                innerClipShape = tileShape,
             )
         } else {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Filled.VideocamOff,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.55f)),
+            )
+        }
+        if (displayName.isNotBlank()) {
+            StreamOwnerChip(
+                label = displayName,
+                avatarName = avatarDisplayName,
+                profilePictureUrl = profilePictureUrl,
+                audioLevel = audioLevel,
+                showName = true,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(6.dp),
+            )
         }
     }
 }
@@ -948,13 +1097,15 @@ private fun PreviewTile(
 @Composable
 private fun CallInlineControlBar(
     room: Room,
+    micRequestedOn: Boolean,
+    onMicRequestedChange: (Boolean) -> Unit,
     hazeState: dev.chrisbanes.haze.HazeState,
     modifier: Modifier,
 ) {
     val scope = rememberCoroutineScope()
     val localParticipant = room.localParticipant
-    var micOn by remember { mutableStateOf(true) }
-    var camOn by remember { mutableStateOf(true) }
+    var micOn by remember { mutableStateOf(micRequestedOn) }
+    var camOn by remember { mutableStateOf(false) }
     var shareOn by remember { mutableStateOf(false) }
 
     LaunchedEffect(localParticipant) {
@@ -964,6 +1115,10 @@ private fun CallInlineControlBar(
             shareOn = localParticipant.isScreenShareEnabled
             delay(400)
         }
+    }
+
+    LaunchedEffect(micRequestedOn) {
+        micOn = micRequestedOn
     }
 
     val context = LocalContext.current
@@ -1029,23 +1184,25 @@ private fun CallInlineControlBar(
                 .fillMaxWidth(0.86f)
                 .clip(RoundedCornerShape(28.dp))
                 .hazeEffect(state = hazeState, style = HazeMaterials.thick())
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.34f)),
-        )
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.48f)),
+        ) {
         Row(
             modifier = Modifier
-                .fillMaxWidth(0.86f)
+                .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 14.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             FilledTonalIconButton(
                 onClick = {
-                    scope.launch {
-                        val next = !micOn
-                        if (runCatching { localParticipant.setMicrophoneEnabled(next) }.isSuccess) {
-                            micOn = next
-                        }
-                    }
+                    val next = !micRequestedOn
+                    Logger.d(
+                        TAG,
+                        "mic button: toggle $micRequestedOn → $next room.state=${room.state} " +
+                            "lp.micEn=${localParticipant.isMicrophoneEnabled}",
+                    )
+                    micOn = next
+                    onMicRequestedChange(next)
                 },
                 modifier = Modifier.size(52.dp),
                 colors = IconButtonDefaults.filledTonalIconButtonColors(
@@ -1154,6 +1311,7 @@ private fun CallInlineControlBar(
                     contentDescription = stringResource(Res.string.cd_call_end),
                 )
             }
+        }
         }
     }
 }

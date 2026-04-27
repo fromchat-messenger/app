@@ -22,7 +22,6 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -32,6 +31,7 @@ import androidx.compose.ui.Modifier
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.*
 import ru.fromchat.api.ApiClient
+import ru.fromchat.ui.FromChatSnackbarHost
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.utils.exclude
 import ru.fromchat.ui.main.settings.SettingsTab
@@ -65,7 +65,7 @@ fun MainScreen(
     val isChatsPage = selectedPage == PAGE_CHATS
 
     Scaffold(
-        snackbarHost = { SnackbarHost(hostState = effectiveSnackbarHostState) },
+        snackbarHost = { FromChatSnackbarHost(hostState = effectiveSnackbarHostState) },
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(
