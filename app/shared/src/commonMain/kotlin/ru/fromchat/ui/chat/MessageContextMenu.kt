@@ -23,6 +23,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.SaveAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -72,6 +73,7 @@ internal fun messageContextMenuFingerprint(
     return buildString {
         append("q=").append(isQueued)
         append("|copy=").append(!corrupted)
+        append("|save=").append(resolveSavableMessageImage(message) != null)
         if (!isQueued && !isReadOnly) {
             append("|reply=1")
             append("|edit=").append(isAuthor && !corrupted)
@@ -90,6 +92,7 @@ fun MessageContextMenu(
     onEdit: (Message) -> Unit,
     onDelete: (Message) -> Unit,
     onCopy: (Message) -> Unit,
+    onSave: (Message) -> Unit,
     onCancelSend: (Message) -> Unit,
     isReadOnly: Boolean = false,
     screenWidthPx: Int,
@@ -151,6 +154,7 @@ fun MessageContextMenu(
                     onEdit = {},
                     onDelete = {},
                     onCopy = {},
+                    onSave = {},
                     onCancelSend = {},
                     modifier = modifier.graphicsLayer(alpha = 0f),
                     animated = false,
@@ -242,6 +246,10 @@ fun MessageContextMenu(
                         onCopy(it)
                         onDismiss()
                     },
+                    onSave = {
+                        onSave(it)
+                        onDismiss()
+                    },
                     onCancelSend = {
                         onCancelSend(it)
                         onDismiss()
@@ -267,6 +275,7 @@ private fun ContextMenuContent(
     onEdit: (Message) -> Unit,
     onDelete: (Message) -> Unit,
     onCopy: (Message) -> Unit,
+    onSave: (Message) -> Unit,
     onCancelSend: (Message) -> Unit,
     isReadOnly: Boolean = false,
     modifier: Modifier,
@@ -313,8 +322,10 @@ private fun ContextMenuContent(
     val labelEdit = stringResource(Res.string.action_edit)
     val labelDelete = stringResource(Res.string.action_delete)
     val labelCopy = stringResource(Res.string.action_copy)
+    val labelSave = stringResource(Res.string.action_save)
     val labelCancelSend = stringResource(Res.string.action_cancel_send)
     val isQueued = message.isQueuedOutbound() && isAuthor
+    val savableImage = resolveSavableMessageImage(message)
 
     Box(modifier = containerModifier) {
         Box(modifier = Modifier.matchParentSize().background(menuColor, menuShape))
@@ -329,6 +340,13 @@ private fun ContextMenuContent(
                     icon = Icons.Rounded.ContentCopy,
                     text = labelCopy,
                     onClick = { onCopy(message) }
+                )
+            }
+            if (savableImage != null) {
+                ContextMenuItem(
+                    icon = Icons.Rounded.SaveAlt,
+                    text = labelSave,
+                    onClick = { onSave(message) }
                 )
             }
             if (isQueued) {

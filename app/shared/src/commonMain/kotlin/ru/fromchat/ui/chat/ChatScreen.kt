@@ -129,6 +129,7 @@ fun ChatScreen(
         LazyListState(0, 0)
     }
     val scope = rememberCoroutineScope()
+    val saveMessageImage = rememberSaveMessageImage { /* best-effort */ }
     val haptic = rememberHapticFeedback()
     val navController = LocalNavController.current
     val profileUserId = panelState.profileUserId
@@ -757,6 +758,11 @@ fun ChatScreen(
                                 scope.launch { clipboard.setText(text) }
                             }
                         },
+                        onSave = { message ->
+                            resolveSavableMessageImage(message)?.let { savable ->
+                                saveMessageImage(savable)
+                            }
+                        },
                         onCancelSend = { message ->
                             scope.launch { panel.cancelQueuedMessage(message) }
                         },
@@ -790,7 +796,20 @@ fun ChatScreen(
                         panel.handleDeleteMessage(m.id)
                     }
                 },
-                onSave = { _, _ -> /* TODO: platform-specific save to gallery */ },
+                onSave = { msg, fileIndex ->
+                    if (!isMessageImageFullyLoaded(msg, fileIndex)) return@ImageFullscreenPreview
+                    val file = msg.files?.getOrNull(fileIndex) ?: return@ImageFullscreenPreview
+                    resolveImageSourceUri(msg, fileIndex)?.let { source ->
+                        saveMessageImage(
+                            SavableMessageImage(
+                                fileIndex = fileIndex,
+                                sourceUri = source,
+                                filename = file.name,
+                                mimeType = mimeTypeForImageFilename(file.name),
+                            ),
+                        )
+                    }
+                },
                 sharedTransitionScope = null,
                 animatedVisibilityScope = null,
                 sharedImageKey = null,

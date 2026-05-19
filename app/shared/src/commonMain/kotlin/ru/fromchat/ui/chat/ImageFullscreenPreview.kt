@@ -710,19 +710,21 @@ fun ImageFullscreenPreview(
                             dismissRequested = true
                         }
                         )
-                        DropdownMenuItem(
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Rounded.SaveAlt, null, tint = Color.White)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(labelSave, color = Color.White)
-                                }
-                            },
-                            onClick = {
-                                menuExpanded = false
-                                onSave(message, fileIndex)
-                            }
-                        )
+                        if (isMessageImageFullyLoaded(message, fileIndex)) {
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Rounded.SaveAlt, null, tint = Color.White)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(labelSave, color = Color.White)
+                                    }
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    onSave(message, fileIndex)
+                                },
+                            )
+                        }
                         DropdownMenuItem(
                             text = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
