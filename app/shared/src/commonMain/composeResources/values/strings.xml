@@ -32,7 +32,24 @@
     <string name="username_length_error">Username must be 3 to 20 characters</string>
     <string name="password_length_error">Password must be 5 to 50 characters</string>
     <string name="passwords_dont_match">The two passwords don’t match</string>
-
+    <string name="auth_welcome_title">Welcome to FromChat</string>
+    <string name="auth_welcome_tagline">The 100% free and open source messenger.</string>
+    <string name="auth_get_started">Get started</string>
+    <string name="auth_server_connect_failed">Failed to connect to the server</string>
+    <string name="auth_wrong_password">Wrong password</string>
+    <string name="auth_rate_limit">Too many attempts. Try again later.</string>
+    <string name="show_password">Show password</string>
+    <string name="hide_password">Hide password</string>
+    <string name="auth_char_count">%1$d/%2$d</string>
+    <string name="auth_step_username_title">Enter your username</string>
+    <string name="auth_step_username_body">This is your login. It helps us tell you apart from everyone else.</string>
+    <string name="auth_step_profile_title">Create your profile</string>
+    <string name="auth_step_profile_body">Enter your display name and, if you like, a few words about yourself.</string>
+    <string name="auth_username_taken">This username was just taken. Please choose another one.</string>
+    <string name="auth_step_password_title">Enter your password</string>
+    <string name="auth_step_password_body">We will sign you in or create a new account.</string>
+    <string name="auth_step_confirm_title">Confirm your password</string>
+    <string name="auth_step_confirm_body">Enter the same password again.</string>
     <!-- Main Screen -->
     <string name="chats">Chats</string>
     <string name="contacts">Contacts</string>
@@ -294,11 +311,28 @@
     <string name="settings_hub_about_sub">Version, links, and more</string>
 
     <string name="settings_account_title">Account</string>
+    <string name="settings_account_logout_confirm_title">Log out?</string>
+    <string name="settings_account_logout_confirm_body">You will need to sign in again.</string>
     <string name="settings_account_delete">Delete account</string>
     <string name="settings_account_delete_d">Permanently delete your account and data</string>
     <string name="settings_account_delete_confirm_title">Delete account?</string>
     <string name="settings_account_delete_confirm_body">This cannot be undone.</string>
     <string name="settings_account_deleted">Account deleted</string>
+
+    <string name="settings_delete_step_intro_title">Do you want to delete your account?</string>
+    <string name="settings_delete_step_intro_body">Your account will be deleted forever. If you confirm the action, this will happen:</string>
+    <string name="settings_delete_consequence_chat_history">You will lose all your chat history.</string>
+    <string name="settings_delete_consequence_username">Your username will become available to everyone and anyone can claim it.</string>
+    <string name="settings_delete_consequence_messages">Your sent messages will be anonymized.</string>
+    <string name="settings_delete_consequence_permanent">This cannot be undone.</string>
+    <string name="settings_delete_step_password_title">Confirm your password</string>
+    <string name="settings_delete_step_password_body">Enter your password to continue.</string>
+    <string name="settings_delete_step_final_title">Last warning</string>
+    <string name="settings_delete_step_final_body">Your account will be deleted FOREVER and CANNOT be recovered. You will be signed out on all devices and lose access immediately.</string>
+    <string name="settings_delete_account_button">Delete account</string>
+    <string name="settings_delete_confirm_phrase">i confirm that i want to delete my account</string>
+    <string name="settings_delete_confirm_phrase_quote">I confirm that I want to delete my account</string>
+    <string name="settings_delete_confirm_phrase_instruction">To avoid you accidentally clicking the button, please type “%1$s” (case-insensitive).</string>
 
     <!-- Error Messages -->
     <string name="error_unexpected">Something went wrong</string>

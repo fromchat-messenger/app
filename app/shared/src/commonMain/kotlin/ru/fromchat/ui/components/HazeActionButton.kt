@@ -21,15 +21,10 @@ import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 
 @OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
-fun HazeActionButton(
-    onClick: () -> Unit,
+fun HazeBottomBar(
     hazeState: HazeState,
     modifier: Modifier = Modifier,
-    innerModifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    loading: Boolean = false,
-    interactionSource: MutableInteractionSource? = null,
-    content: @Composable (RowScope.() -> Unit)
+    content: @Composable () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -50,14 +45,31 @@ fun HazeActionButton(
                 .padding(horizontal = SettingsStepHorizontalPadding)
                 .padding(top = 0.dp, bottom = 16.dp),
         ) {
-            ActionButton(
-                onClick = onClick,
-                modifier = innerModifier,
-                enabled = enabled,
-                loading = loading,
-                interactionSource = interactionSource,
-                content = content
-            )
+            content()
         }
+    }
+}
+
+@OptIn(ExperimentalHazeMaterialsApi::class)
+@Composable
+fun HazeActionButton(
+    onClick: () -> Unit,
+    hazeState: HazeState,
+    modifier: Modifier = Modifier,
+    innerModifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    loading: Boolean = false,
+    interactionSource: MutableInteractionSource? = null,
+    content: @Composable (RowScope.() -> Unit)
+) {
+    HazeBottomBar(hazeState = hazeState, modifier = modifier) {
+        ActionButton(
+            onClick = onClick,
+            modifier = innerModifier,
+            enabled = enabled,
+            loading = loading,
+            interactionSource = interactionSource,
+            content = content,
+        )
     }
 }

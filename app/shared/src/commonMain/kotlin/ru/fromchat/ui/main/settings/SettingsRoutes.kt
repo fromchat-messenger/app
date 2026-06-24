@@ -11,6 +11,7 @@ object SettingsRoutes {
     /** Single destination: in-screen steps + morphing hero (no nested nav routes per step). */
     const val SecurityPasswordFlow = "settings/security/password"
     const val Account = "settings/account"
+    const val AccountDeleteFlow = "settings/account/delete"
     const val ServerConfig = "serverConfig"
     const val About = "about"
 }

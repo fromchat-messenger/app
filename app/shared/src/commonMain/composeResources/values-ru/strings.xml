@@ -25,6 +25,24 @@
     <string name="username_length_error">Имя пользователя — от 3 до 20 символов</string>
     <string name="password_length_error">Пароль — от 5 до 50 символов</string>
     <string name="passwords_dont_match">Пароли не совпадают</string>
+    <string name="auth_welcome_title">Добро пожаловать в FromChat</string>
+    <string name="auth_welcome_tagline">100% бесплатный мессенджер с открытым исходным кодом.</string>
+    <string name="auth_get_started">Начать</string>
+    <string name="auth_server_connect_failed">Не удалось подключиться к серверу</string>
+    <string name="auth_wrong_password">Неверный пароль</string>
+    <string name="auth_rate_limit">Слишком много попыток. Попробуйте позже.</string>
+    <string name="show_password">Показать пароль</string>
+    <string name="hide_password">Скрыть пароль</string>
+    <string name="auth_char_count">%1$d/%2$d</string>
+    <string name="auth_step_username_title">Введите имя пользователя</string>
+    <string name="auth_step_username_body">Это ваш логин. С помощью него мы сможем отличить вас от других людей.</string>
+    <string name="auth_step_profile_title">Создайте ваш профиль</string>
+    <string name="auth_step_profile_body">Введите ваше отображаемое имя и, если хотите, несколько слов о себе.</string>
+    <string name="auth_username_taken">Это имя пользователя уже занято. Выберите другое.</string>
+    <string name="auth_step_password_title">Введите пароль</string>
+    <string name="auth_step_password_body">Мы войдём в аккаунт или создадим новый.</string>
+    <string name="auth_step_confirm_title">Подтвердите пароль</string>
+    <string name="auth_step_confirm_body">Введите тот же пароль ещё раз.</string>
     <string name="chats">Чаты</string>
     <string name="contacts">Контакты</string>
     <string name="profile">Профиль</string>
@@ -267,11 +285,28 @@
     <string name="settings_hub_about_sub">Версия, ссылки и другое</string>
 
     <string name="settings_account_title">Аккаунт</string>
+    <string name="settings_account_logout_confirm_title">Выйти?</string>
+    <string name="settings_account_logout_confirm_body">Придётся войти снова.</string>
     <string name="settings_account_delete">Удалить аккаунт</string>
     <string name="settings_account_delete_d">Безвозвратно удалить аккаунт и данные</string>
     <string name="settings_account_delete_confirm_title">Удалить аккаунт?</string>
     <string name="settings_account_delete_confirm_body">Это нельзя отменить.</string>
     <string name="settings_account_deleted">Аккаунт удалён</string>
+
+    <string name="settings_delete_step_intro_title">Удалить аккаунт?</string>
+    <string name="settings_delete_step_intro_body">Ваш аккаунт будет удалён навсегда. Если вы подтвердите действие, произойдёт следующее:</string>
+    <string name="settings_delete_consequence_chat_history">Вы потеряете всю историю переписки.</string>
+    <string name="settings_delete_consequence_username">Ваше имя пользователя станет доступным всем, и его сможет занять любой.</string>
+    <string name="settings_delete_consequence_messages">Отправленные вами сообщения будут анонимизированы.</string>
+    <string name="settings_delete_consequence_permanent">Это действие нельзя отменить.</string>
+    <string name="settings_delete_step_password_title">Подтвердите пароль</string>
+    <string name="settings_delete_step_password_body">Введите пароль, чтобы продолжить.</string>
+    <string name="settings_delete_step_final_title">Последнее предупреждение</string>
+    <string name="settings_delete_step_final_body">Ваш аккаунт будет удалён НАВСЕГДА и его НЕВОЗМОЖНО восстановить. Вы выйдете на всех устройствах и сразу потеряете доступ.</string>
+    <string name="settings_delete_account_button">Удалить аккаунт</string>
+    <string name="settings_delete_confirm_phrase">я подтверждаю, что хочу удалить свой аккаунт</string>
+    <string name="settings_delete_confirm_phrase_quote">Я подтверждаю, что хочу удалить свой аккаунт</string>
+    <string name="settings_delete_confirm_phrase_instruction">Чтобы вы случайно не нажали кнопку, введите «%1$s» (без учёта регистра).</string>
 
     <string name="error_unexpected">Что-то пошло не так</string>
     <string name="error_invalid_credentials">Неверное имя пользователя или пароль</string>

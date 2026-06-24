@@ -1,0 +1,22 @@
+---
+description: Do not use ripgrep (rg) in shell commands or scripts
+alwaysApply: true
+---
+
+# Never use `rg`
+
+Do **not** run `rg` / ripgrep in terminal commands. It is unreliable in this environment.
+
+## Use instead
+
+- **Cursor Grep tool** — preferred for searching the codebase
+- **`grep -r`** — if a shell search is truly needed
+- **Glob / SemanticSearch** — for finding files or concepts
+
+```bash
+# ❌ BAD
+rg "probeCurrentServer" app/shared
+
+# ✅ GOOD — use the Grep tool, or:
+grep -r "probeCurrentServer" app/shared
+```

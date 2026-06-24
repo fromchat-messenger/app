@@ -21,8 +21,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MediumTopAppBar
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHostState
-import ru.fromchat.ui.components.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
@@ -44,30 +42,30 @@ import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.WebSocketManager
 import ru.fromchat.back
 import ru.fromchat.cancel
-import ru.fromchat.confirm
-import ru.fromchat.error_unexpected
 import ru.fromchat.logout
 import ru.fromchat.settings_account_delete
-import ru.fromchat.settings_account_delete_confirm_body
-import ru.fromchat.settings_account_delete_confirm_title
 import ru.fromchat.settings_account_delete_d
+import ru.fromchat.settings_account_logout_confirm_body
+import ru.fromchat.settings_account_logout_confirm_title
 import ru.fromchat.settings_account_title
 import ru.fromchat.settings_change_password
 import ru.fromchat.settings_security_change_password_sub
-import ru.fromchat.ui.components.FromChatSnackbarHost
+import ru.fromchat.ui.components.Text
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AccountScreen(onBack: () -> Unit, onLogout: () -> Unit, onChangePassword: () -> Unit) {
+fun AccountScreen(
+    onBack: () -> Unit,
+    onLogout: () -> Unit,
+    onChangePassword: () -> Unit,
+    onDeleteAccount: () -> Unit,
+) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val scope = rememberCoroutineScope()
-    val snackbarHostState = remember { SnackbarHostState() }
-    var showDeleteConfirm by remember { mutableStateOf(false) }
-    val errUnexpected = stringResource(Res.string.error_unexpected)
+    var showLogoutConfirm by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        snackbarHost = { FromChatSnackbarHost(hostState = snackbarHostState) },
         topBar = {
             MediumTopAppBar(
                 title = { Text(stringResource(Res.string.settings_account_title)) },
@@ -105,15 +103,18 @@ fun AccountScreen(onBack: () -> Unit, onLogout: () -> Unit, onChangePassword: ()
                         )
                     }
                 )
+
+                ListItem(
+                    headline = stringResource(Res.string.settings_account_delete),
+                    supportingText = stringResource(Res.string.settings_account_delete_d),
+                    onClick = onDeleteAccount,
+                    leadingContent = { Icon(Icons.Filled.AccountCircle, null) },
+                    divider = true
+                )
+
                 ListItem(
                     headline = stringResource(Res.string.logout),
-                    onClick = {
-                        scope.launch {
-                            runCatching { ApiClient.logout() }
-                            WebSocketManager.disconnect()
-                            onLogout()
-                        }
-                    },
+                    onClick = { showLogoutConfirm = true },
                     leadingContent = {
                         Icon(
                             Icons.AutoMirrored.Filled.Logout,
@@ -121,48 +122,36 @@ fun AccountScreen(onBack: () -> Unit, onLogout: () -> Unit, onChangePassword: ()
                             Modifier.size(24.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    },
-                    divider = true
-                )
-                ListItem(
-                    headline = stringResource(Res.string.settings_account_delete),
-                    supportingText = stringResource(Res.string.settings_account_delete_d),
-                    onClick = { showDeleteConfirm = true },
-                    leadingContent = { Icon(Icons.Filled.AccountCircle, null) }
+                    }
                 )
             }
         }
     }
 
-    if (showDeleteConfirm) {
+    if (showLogoutConfirm) {
         AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            title = { Text(stringResource(Res.string.settings_account_delete_confirm_title)) },
-            text = { Text(stringResource(Res.string.settings_account_delete_confirm_body)) },
+            onDismissRequest = { showLogoutConfirm = false },
+            title = { Text(stringResource(Res.string.settings_account_logout_confirm_title)) },
+            text = { Text(stringResource(Res.string.settings_account_logout_confirm_body)) },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        showDeleteConfirm = false
+                        showLogoutConfirm = false
                         scope.launch {
-                            runCatching {
-                                ApiClient.deleteAccount()
-                                WebSocketManager.disconnect()
-                                ApiClient.clearLocalSession()
-                                onLogout()
-                            }.onFailure {
-                                snackbarHostState.showSnackbar(it.message ?: errUnexpected)
-                            }
+                            runCatching { ApiClient.logout() }
+                            WebSocketManager.disconnect()
+                            onLogout()
                         }
-                    }
+                    },
                 ) {
-                    Text(stringResource(Res.string.confirm))
+                    Text(stringResource(Res.string.logout))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) {
+                TextButton(onClick = { showLogoutConfirm = false }) {
                     Text(stringResource(Res.string.cancel))
                 }
-            }
+            },
         )
     }
 }

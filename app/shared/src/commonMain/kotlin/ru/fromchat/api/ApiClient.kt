@@ -29,6 +29,7 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import io.ktor.http.encodedPath
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,6 +44,10 @@ import ru.fromchat.api.crypto.IdentityKeyManager
 import ru.fromchat.api.crypto.transport.TransportCiphertext
 import ru.fromchat.api.crypto.transport.TransportCrypto
 import ru.fromchat.api.instance.InstanceIdGuard
+import ru.fromchat.api.instance.InstanceIdResolveResult
+import ru.fromchat.api.instance.resolveInstanceId
+import ru.fromchat.api.local.cache.CacheContext
+import ru.fromchat.api.local.send.scheduleOutboxProcessing
 import ru.fromchat.api.local.WebSocketManager
 import ru.fromchat.api.local.cache.readOutboundFileBytes
 import ru.fromchat.api.local.db.store.InstanceRegistryStore
@@ -71,9 +76,12 @@ import ru.fromchat.api.schema.server.RegisteredUserCountResponse
 import ru.fromchat.api.schema.server.ServerInstanceIdResponse
 import ru.fromchat.api.schema.server.TransportKeyResponse
 import ru.fromchat.api.schema.user.ChangePasswordApiRequest
+import ru.fromchat.api.schema.user.DeleteAccountRequest
+import ru.fromchat.api.schema.user.VerifyPasswordRequest
 import ru.fromchat.api.schema.user.FcmTokenRequest
 import ru.fromchat.api.schema.user.User
 import ru.fromchat.api.schema.user.auth.CheckAuthResponse
+import ru.fromchat.api.schema.user.auth.CheckUsernameResponse
 import ru.fromchat.api.schema.user.auth.LoginRequest
 import ru.fromchat.api.schema.user.auth.LoginResponse
 import ru.fromchat.api.schema.user.auth.RegisterRequest
@@ -114,6 +122,8 @@ object ApiClient {
         isLenient = true
         encodeDefaults = true
     }
+
+    // --- Session & suspension ---
 
     data class SuspensionState(
         val isSuspended: Boolean = false,
@@ -164,6 +174,8 @@ object ApiClient {
         )
     }
 
+    // --- HTTP clients ---
+
     val http = createPlatformHttpClient {
         install(ContentNegotiation) {
             json(json)
@@ -209,12 +221,16 @@ object ApiClient {
                     }
                 }
                 if (response.status.value == 401) {
-                    token = null
-                    user = null
-                    clearSuspensionState()
-                    onAuthError?.let {
-                        MainScope().launch {
-                            it()
+                    val path = response.call.request.url.encodedPath
+                    val isCredentialCheck = path.endsWith("/login") || path.endsWith("/register")
+                    if (!isCredentialCheck) {
+                        token = null
+                        user = null
+                        clearSuspensionState()
+                        onAuthError?.let {
+                            MainScope().launch {
+                                it()
+                            }
                         }
                     }
                 }
@@ -269,6 +285,8 @@ object ApiClient {
         }
     }
 
+    // --- Server probe ---
+
     suspend fun fetchServerInstanceId(apiBaseUrl: String): String {
         val base = apiBaseUrl.trimEnd('/')
         return httpProbe.get("$base/instance_id").body<ServerInstanceIdResponse>().instanceId.trim()
@@ -290,11 +308,30 @@ object ApiClient {
         }.getOrDefault(false)
 
     suspend fun refreshServerInstanceFingerprint() {
+        if (token.isNullOrEmpty()) return
+        val config = Settings.serverConfig
         runCatching {
-            val id = fetchServerInstanceId(ServerConfig.apiBaseUrl)
-            if (id.isNotEmpty()) {
-                Settings.lastKnownServerInstanceId = id
-                InstanceRegistryStore.registerInstanceEncountered(id)
+            when (
+                val resolve = resolveInstanceId(
+                    config = config,
+                    apiBaseUrl = ServerConfig.apiBaseUrl,
+                    forceNetwork = true,
+                )
+            ) {
+                is InstanceIdResolveResult.Cached,
+                is InstanceIdResolveResult.Fetched,
+                is InstanceIdResolveResult.InstanceIdChanged,
+                -> {
+                    val id = when (resolve) {
+                        is InstanceIdResolveResult.Cached -> resolve.instanceId
+                        is InstanceIdResolveResult.Fetched -> resolve.instanceId
+                        is InstanceIdResolveResult.InstanceIdChanged -> resolve.newId
+                    }
+                    Settings.lastKnownServerInstanceId = id
+                    CacheContext.setActiveInstance(id, user?.id)
+                    scheduleOutboxProcessing(id)
+                }
+                else -> Unit
             }
         }
     }
@@ -335,12 +372,10 @@ object ApiClient {
     @Volatile
     var user: User? = null
 
-    // Global auth error handler
     var onAuthError: (() -> Unit)? = null
 
-    private fun getSuspensionReasonFromForbiddenResponse(response: HttpResponse): String? {
-        return response.headers["suspension_reason"]?.trim()?.takeIf { it.isNotBlank() }
-    }
+    private fun getSuspensionReasonFromForbiddenResponse(response: HttpResponse): String? =
+        response.headers["suspension_reason"]?.trim()?.takeIf { it.isNotBlank() }
 
     private fun handleForbiddenAsPotentialSuspension(response: HttpResponse) {
         if (response.status.value != 403) return
@@ -349,7 +384,8 @@ object ApiClient {
         }
     }
 
-    // Load persisted token and user info
+    // --- Auth ---
+
     suspend fun loadPersistedData() {
         try {
             val savedToken = secureSettings.getString("auth_token", "")
@@ -383,6 +419,15 @@ object ApiClient {
             }
             .body()
 
+    /** Public pre-auth lookup; uses probe client so an existing session token is not sent. */
+    suspend fun checkUsername(username: String): CheckUsernameResponse =
+        httpProbe
+            .get("${ServerConfig.apiBaseUrl}/check_username") {
+                contentType(ContentType.Application.Json)
+                parameter("username", username.trim())
+            }
+            .body()
+
     /**
      * Sets in-memory auth only so follow-up calls (e.g. crypto upload) use Bearer token.
      * Persist with [persistSessionToStorage] only after identity keys are fully synced.
@@ -409,6 +454,8 @@ object ApiClient {
             }
         }
     }
+
+    // --- User & profile ---
 
     suspend fun getMessages(limit: Int = 50, beforeId: Int? = null) =
         http
@@ -1181,14 +1228,23 @@ object ApiClient {
         }
     }
 
+    suspend fun verifyPasswordDerived(passwordDerived: String) {
+        http.post("${ServerConfig.apiBaseUrl}/verify-password") {
+            contentType(ContentType.Application.Json)
+            setBody(VerifyPasswordRequest(passwordDerived = passwordDerived))
+        }
+    }
+
     /**
      * Self-delete account. Tries `/account/delete` (web client); falls back to `/delete` (bare FastAPI route) on 404.
      */
-    suspend fun deleteAccount(): SimpleStatusResponse {
+    suspend fun deleteAccount(passwordDerived: String): SimpleStatusResponse {
+        val body = DeleteAccountRequest(passwordDerived = passwordDerived)
         try {
             return http
                 .post("${ServerConfig.apiBaseUrl}/account/delete") {
                     contentType(ContentType.Application.Json)
+                    setBody(body)
                 }
                 .body()
         } catch (e: ClientRequestException) {
@@ -1196,6 +1252,7 @@ object ApiClient {
             return http
                 .post("${ServerConfig.apiBaseUrl}/delete") {
                     contentType(ContentType.Application.Json)
+                    setBody(body)
                 }
                 .body()
         }

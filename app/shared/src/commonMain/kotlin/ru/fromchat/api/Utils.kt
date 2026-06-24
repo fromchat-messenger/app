@@ -16,7 +16,7 @@ suspend inline fun <Response> apiRequest(
         onSuccess(response)
         return Result.success(response)
     } catch (e: ClientRequestException) {
-        val message = if (e.response.status.value in arrayOf(401, 403)) {
+        val message = if (e.response.status.value in arrayOf(401, 403, 429)) {
             e.response.body<ErrorResponse>().detail
         } else {
             unexpectedError

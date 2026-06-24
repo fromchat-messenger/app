@@ -5,9 +5,6 @@ package ru.fromchat.ui.main.settings.server
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.BringIntoViewSpec
-import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
-import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,7 +21,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -53,9 +49,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,24 +58,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.pr0gramm3r101.components.Category
 import com.pr0gramm3r101.components.SwitchListItem
 import com.pr0gramm3r101.utils.navigateAndWipeBackStack
 import com.pr0gramm3r101.utils.toDp
-import com.pr0gramm3r101.utils.toPx
 import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
@@ -89,7 +82,6 @@ import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.getString
@@ -130,48 +122,21 @@ import ru.fromchat.server_ip_hint
 import ru.fromchat.server_ip_label
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.components.CtaShape
+import ru.fromchat.ui.components.DisabledBringIntoViewSpec
 import ru.fromchat.ui.components.ExpressiveIconFrame
 import ru.fromchat.ui.components.FromChatSnackbarHost
 import ru.fromchat.ui.components.HazeActionButton
+import com.pr0gramm3r101.utils.LastAnchoredBottomArrangement
+import ru.fromchat.ui.components.LazyListFocusScrollEffect
+import ru.fromchat.ui.components.SettingsPasswordOutlineFieldShape
+import ru.fromchat.ui.components.rememberLazyListFocusScrollState
+import ru.fromchat.ui.components.trackLazyListFocus
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
-import ru.fromchat.ui.main.settings.account.SettingsPasswordOutlineFieldShape
 import kotlin.math.roundToInt
 
-
-/**
- * Fixed [Dp] gaps between all children (resolved in [Density.arrange] like [Arrangement.spacedBy]),
- * plus extra height inserted **only** before the last child so it sits at the bottom when content
- * is shorter than the viewport. Uses a stable [remember] so [4.dp.roundToPx] changes from
- * recomposition do not swap the arrangement instance and nudge spacing by a pixel.
- */
-@Stable
-private class ServerConfigSpacedByLastAnchoredBottom(
-    private val space: Dp,
-) : Arrangement.Vertical {
-    override val spacing get() = space
-
-    override fun Density.arrange(
-        totalSize: Int,
-        sizes: IntArray,
-        outPositions: IntArray,
-    ) {
-        val spacePx = space.roundToPx()
-        when (sizes.size) {
-            0 -> return
-            1 -> {
-                outPositions[0] = (totalSize - sizes[0]).coerceAtLeast(0)
-                return
-            }
-        }
-
-        var y = 0
-        for (i in 0 until sizes.size - 1) {
-            outPositions[i] = y
-            y += sizes[i] + spacePx
-        }
-
-        outPositions[sizes.size - 1] = y + (totalSize - sizes.sum() - (spacePx * (sizes.size - 1))).coerceAtLeast(0)
-    }
+private object ServerConfigLazyListIndices {
+    const val SERVER_IP_FIELD = 2
+    const val PORT_FIELDS = 4
 }
 
 private inline fun port(text: String, default: Int) = text
@@ -182,32 +147,6 @@ private inline fun port(text: String, default: Int) = text
 
 private fun resolvedApiPort(apiPortText: String) = port(apiPortText, 443)
 private fun resolvedCallsPort(callsPortText: String) = port(callsPortText, DEFAULT_CALLS_PORT)
-
-private suspend fun LazyListState.scrollFocusedItemIntoView(
-    itemIndex: Int,
-    viewportMarginPx: Float,
-) {
-    if (layoutInfo.visibleItemsInfo.none { it.index == itemIndex }) {
-        animateScrollToItem(itemIndex)
-    }
-
-    val viewportStart = layoutInfo.viewportStartOffset + viewportMarginPx
-    val viewportEnd = (layoutInfo.viewportEndOffset - layoutInfo.afterContentPadding - viewportMarginPx)
-        .coerceAtLeast(viewportStart)
-
-    val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == itemIndex } ?: return
-
-    val itemStart = item.offset.toFloat()
-    val itemEnd = itemStart + item.size
-
-    when {
-        itemStart < viewportStart -> itemStart - viewportStart
-        itemEnd > viewportEnd -> itemEnd - viewportEnd
-        else -> 0f
-    }.also { if (it != 0f) animateScrollBy(it) }
-}
-
-
 
 @OptIn(
     ExperimentalFoundationApi::class,
@@ -243,7 +182,7 @@ fun ServerConfigScreen() {
     var lastProbedConfig by remember { mutableStateOf<ServerConfigData?>(null) }
     var showResetDialog by remember { mutableStateOf(false) }
     val actionHazeState = rememberHazeState()
-    var focusedItemIndex by remember { mutableStateOf<Int?>(null) }
+    val focusScrollState = rememberLazyListFocusScrollState()
 
 
     val strSnackbarDefaults = stringResource(Res.string.server_config_snackbar_defaults)
@@ -402,14 +341,14 @@ fun ServerConfigScreen() {
                                             bearer = ApiClient.token?.trim().orEmpty(),
                                             onNavigateLogin = {
                                                 withContext(Dispatchers.Main) {
-                                                    navController.navigateAndWipeBackStack("login")
+                                                    navController.navigateAndWipeBackStack("auth")
                                                 }
                                             },
                                             onNavigateChat = {
                                                 withContext(Dispatchers.Main) {
                                                     if (!navController.popBackStack()) {
                                                         navController.navigate("chat") {
-                                                            popUpTo("login") {
+                                                            popUpTo("welcome") {
                                                                 inclusive = true
                                                             }
                                                         }
@@ -421,7 +360,7 @@ fun ServerConfigScreen() {
                                                     WebSocketManager.disconnect()
                                                     runCatching { ApiClient.logout() }
                                                     ApiClient.clearMemorySession()
-                                                    navController.navigateAndWipeBackStack("login")
+                                                    navController.navigateAndWipeBackStack("auth")
                                                 }
                                             }
                                         )
@@ -465,36 +404,28 @@ fun ServerConfigScreen() {
             val floatingHeaderClearance = WindowInsets.statusBars.getTop(density).toDp(density) + 68.dp
             val bottomInsetPadding = innerPadding.calculateBottomPadding()
             val serverConfigListState = rememberLazyListState()
+            var listViewportBounds by remember { mutableStateOf<Rect?>(null) }
 
-            LaunchedEffect(focusedItemIndex, bottomInsetPadding) {
-                delay(40L)
-
-                serverConfigListState.scrollFocusedItemIntoView(
-                    itemIndex = focusedItemIndex ?: return@LaunchedEffect,
-                    viewportMarginPx = 12.dp.toPx(density),
-                )
-            }
+            LazyListFocusScrollEffect(
+                listState = serverConfigListState,
+                focusState = focusScrollState,
+                viewportBoundsInWindow = listViewportBounds,
+                contentPaddingBottom = bottomInsetPadding,
+            )
 
             Box(Modifier.fillMaxSize()) {
-                CompositionLocalProvider(LocalBringIntoViewSpec provides remember {
-                    object : BringIntoViewSpec {
-                        override fun calculateScrollDistance(
-                            offset: Float,
-                            size: Float,
-                            containerSize: Float,
-                        ): Float = 0f
-                    }
-                }) {
+                DisabledBringIntoViewSpec {
                     LazyColumn(
-                        state = serverConfigListState,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .consumeWindowInsets(innerPadding)
-                            .background(MaterialTheme.colorScheme.background)
-                            .hazeSource(actionHazeState),
+                    state = serverConfigListState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .consumeWindowInsets(innerPadding)
+                        .background(MaterialTheme.colorScheme.background)
+                        .hazeSource(actionHazeState)
+                        .onGloballyPositioned { listViewportBounds = it.boundsInWindow() },
                         contentPadding = PaddingValues(bottom = bottomInsetPadding),
                         verticalArrangement = remember {
-                            ServerConfigSpacedByLastAnchoredBottom(space = 4.dp)
+                            LastAnchoredBottomArrangement(space = 4.dp)
                         },
                     ) {
                         item { Spacer(Modifier.height(floatingHeaderClearance)) }
@@ -560,11 +491,10 @@ fun ServerConfigScreen() {
                                 placeholder = { Text(stringResource(Res.string.server_ip_hint)) },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .onFocusChanged {
-                                        if (it.isFocused) {
-                                            focusedItemIndex = 2
-                                        }
-                                    }
+                                    .trackLazyListFocus(
+                                        focusScrollState,
+                                        ServerConfigLazyListIndices.SERVER_IP_FIELD,
+                                    )
                                     .padding(horizontal = SettingsStepHorizontalPadding),
                                 singleLine = true,
                                 isError = !hostOk,
@@ -604,11 +534,10 @@ fun ServerConfigScreen() {
                                         placeholder = { Text("8301") },
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .onFocusChanged {
-                                                if (it.isFocused) {
-                                                    focusedItemIndex = 4
-                                                }
-                                            },
+                                            .trackLazyListFocus(
+                                                focusScrollState,
+                                                ServerConfigLazyListIndices.PORT_FIELDS,
+                                            ),
                                         singleLine = true,
                                         isError = apiPortError,
                                         supportingText = if (apiPortError) {
@@ -638,11 +567,10 @@ fun ServerConfigScreen() {
                                         placeholder = { Text(DEFAULT_CALLS_PORT.toString()) },
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .onFocusChanged {
-                                                if (it.isFocused) {
-                                                    focusedItemIndex = 4
-                                                }
-                                            },
+                                            .trackLazyListFocus(
+                                                focusScrollState,
+                                                ServerConfigLazyListIndices.PORT_FIELDS,
+                                            ),
                                         singleLine = true,
                                         isError = callsPortError,
                                         supportingText = if (callsPortError) {{

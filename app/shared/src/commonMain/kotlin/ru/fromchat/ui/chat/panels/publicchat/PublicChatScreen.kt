@@ -33,7 +33,8 @@ fun PublicChatScreen(
 
     val activeInstanceId by CacheContext.activeInstanceId.collectAsState()
 
-    LaunchedEffect(panel) {
+    LaunchedEffect(panel, activeInstanceId) {
+        if (activeInstanceId.isBlank()) return@LaunchedEffect
         if (panel.getState().messages.isEmpty()) {
             panel.loadMessages()
         }

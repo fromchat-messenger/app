@@ -40,6 +40,7 @@ import coil3.ImageLoader
 import coil3.compose.setSingletonImageLoaderFactory
 import coil3.svg.SvgDecoder
 import com.pr0gramm3r101.utils.LocalSystemBarsVisibility
+import com.pr0gramm3r101.utils.navigateAndWipeBackStack
 import com.pr0gramm3r101.utils.rememberSystemBarsController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
@@ -69,8 +70,7 @@ import ru.fromchat.api.local.send.scheduleOutboxProcessing
 import ru.fromchat.api.schema.websocket.WebSocketMessage
 import ru.fromchat.api.schema.websocket.types.WebSocketUpdatesData
 import ru.fromchat.config.ServerConfig
-import ru.fromchat.ui.auth.LoginScreen
-import ru.fromchat.ui.auth.RegisterScreen
+import ru.fromchat.ui.auth.AuthScreen
 import ru.fromchat.ui.calls.CallOverlay
 import ru.fromchat.ui.chat.panels.dm.DmChatRoute
 import ru.fromchat.ui.chat.panels.dm.DmNav
@@ -84,7 +84,8 @@ import ru.fromchat.ui.main.settings.DevicesScreen
 import ru.fromchat.ui.main.settings.NotificationsScreen
 import ru.fromchat.ui.main.settings.SettingsRoutes
 import ru.fromchat.ui.main.settings.account.AccountScreen
-import ru.fromchat.ui.main.settings.account.SettingsSecurityPasswordFlowScreen
+import ru.fromchat.ui.main.settings.account.delete.DeleteAccountScreen
+import ru.fromchat.ui.main.settings.account.changepassword.ChangePasswordScreen
 import ru.fromchat.ui.main.settings.server.ServerConfigScreen
 import ru.fromchat.ui.profile.ProfileScreen
 import ru.fromchat.utils.NetworkConnectivity
@@ -205,7 +206,7 @@ fun App(
             hasToken && startAtDmConversationUserId != null -> "chat"
             hasToken && startAtPublicChat -> "chats/publicChat"
             hasToken && !startAtPublicChat -> "chat"
-            else -> "login"
+            else -> "welcome"
         }
 
         runCatching {
@@ -233,7 +234,7 @@ fun App(
     LaunchedEffect(sessionLogoutRequired) {
         if (!sessionLogoutRequired) return@LaunchedEffect
         logoutIfInstanceUnsupported()
-        startDestination = "login"
+        startDestination = "welcome"
         sessionLogoutRequired = false
     }
 
@@ -313,7 +314,7 @@ fun App(
                         "startAtProfileUsername=$startAtProfileUsername, startAtDmConversationUserId=$startAtDmConversationUserId, " +
                         "startAtPublicChat=$startAtPublicChat, scrollToMessageId=$scrollToMessageId"
                 )
-                if (startDestination == null || startDestination == "login") {
+                if (startDestination == null || startDestination == "welcome") {
                     return@LaunchedEffect
                 }
 
@@ -392,25 +393,28 @@ fun App(
                                 ServerConfigScreen()
                             }
 
-                            composable("login") {
-                                LoginScreen(
-                                    onLoginSuccess = {
-                                        WebSocketManager.connect(forceRestart = true)
-                                        navController.navigate("chat") {
-                                            popUpTo("login") { inclusive = true }
+                            composable("welcome") {
+                                WelcomeScreen(
+                                    onGetStarted = {
+                                        navController.navigate("auth") {
+                                            popUpTo("auth") { inclusive = true }
+                                            launchSingleTop = true
                                         }
                                     },
-                                    onNavigateToRegister = { navController.navigate("register") }
+                                    onAlreadyLoggedIn = {
+                                        WebSocketManager.connect(forceRestart = true)
+                                        navController.navigateAndWipeBackStack("chat")
+                                    },
                                 )
                             }
 
-                            composable("register") {
-                                RegisterScreen(
-                                    onRegistered = {
-                                        navController.navigate("chat") {
-                                            popUpTo("login") { inclusive = true }
-                                        }
-                                    }
+                            composable("auth") {
+                                AuthScreen(
+                                    onAuthSuccess = {
+                                        WebSocketManager.connect(forceRestart = true)
+                                        navController.navigateAndWipeBackStack("chat")
+                                    },
+                                    onBackToWelcome = { navController.navigateUp() },
                                 )
                             }
 
@@ -599,11 +603,20 @@ fun App(
                             }
 
                             settingsSlideComposable(SettingsRoutes.SecurityPasswordFlow, rootNavMotion) {
-                                SettingsSecurityPasswordFlowScreen(
+                                ChangePasswordScreen(
                                     onBack = { navController.navigateUp() },
-                                    onDonePopToHub = {
-                                        navController.popBackStack()
-                                    }
+                                    onDone = { navController.popBackStack() },
+                                )
+                            }
+
+                            settingsSlideComposable(SettingsRoutes.AccountDeleteFlow, rootNavMotion) {
+                                DeleteAccountScreen(
+                                    onBack = { navController.navigateUp() },
+                                    onDeleted = {
+                                        navController.navigate("welcome") {
+                                            popUpTo("chat") { inclusive = true }
+                                        }
+                                    },
                                 )
                             }
 
@@ -611,11 +624,12 @@ fun App(
                                 AccountScreen(
                                     onBack = { navController.navigateUp() },
                                     onLogout = {
-                                        navController.navigate("login") {
+                                        navController.navigate("welcome") {
                                             popUpTo("chat") { inclusive = true }
                                         }
                                     },
-                                    onChangePassword = { navController.navigate(SettingsRoutes.SecurityPasswordFlow) }
+                                    onChangePassword = { navController.navigate(SettingsRoutes.SecurityPasswordFlow) },
+                                    onDeleteAccount = { navController.navigate(SettingsRoutes.AccountDeleteFlow) },
                                 )
                             }
                         }
@@ -624,9 +638,7 @@ fun App(
                             ApiClient.onAuthError = {
                                 Logger.d("App", "Global auth error handler triggered, navigating to login")
                                 runCatching {
-                                    navController.navigate("login") {
-                                        popUpTo("chat") { inclusive = true }
-                                    }
+                                    navController.navigateAndWipeBackStack("welcome")
                                 }.onFailure { e ->
                                     Logger.w("App", "Auth navigation failed: ${e.message}", e)
                                 }
