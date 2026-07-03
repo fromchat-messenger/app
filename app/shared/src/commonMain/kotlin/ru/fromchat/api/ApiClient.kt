@@ -8,6 +8,8 @@ import com.pr0gramm3r101.utils.settings.settings
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.ClientRequestException
+import io.ktor.client.request.forms.formData
+import io.ktor.client.request.forms.submitFormWithBinaryData
 import io.ktor.client.plugins.HttpResponseValidator
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.defaultRequest
@@ -29,7 +31,6 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
-import io.ktor.http.encodedPath
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,18 +47,21 @@ import ru.fromchat.api.crypto.transport.TransportCrypto
 import ru.fromchat.api.instance.InstanceIdGuard
 import ru.fromchat.api.instance.InstanceIdResolveResult
 import ru.fromchat.api.instance.resolveInstanceId
-import ru.fromchat.api.local.cache.CacheContext
-import ru.fromchat.api.local.send.scheduleOutboxProcessing
 import ru.fromchat.api.local.WebSocketManager
+import ru.fromchat.api.local.db.store.MessageRepository
+import ru.fromchat.api.local.send.cancelOutboxProcessing
+import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.cache.readOutboundFileBytes
-import ru.fromchat.api.local.db.store.InstanceRegistryStore
 import ru.fromchat.api.local.db.store.ProfileCache
+import ru.fromchat.api.local.db.store.PublicChatProfileCache
 import ru.fromchat.api.local.download.streamEncryptedFileToDisk
+import ru.fromchat.api.local.send.scheduleOutboxProcessing
 import ru.fromchat.api.schema.calls.CallSignalingLiveKitControl
 import ru.fromchat.api.schema.calls.CallSignalingLiveKitPayload
 import ru.fromchat.api.schema.calls.LiveKitTokenRequest
 import ru.fromchat.api.schema.calls.LiveKitTokenResponse
 import ru.fromchat.api.schema.core.SimpleStatusResponse
+import ru.fromchat.api.schema.messages.MarkReadRequest
 import ru.fromchat.api.schema.messages.MessagesResponse
 import ru.fromchat.api.schema.messages.dm.DmConversation
 import ru.fromchat.api.schema.messages.dm.DmConversationsResponse
@@ -71,15 +75,17 @@ import ru.fromchat.api.schema.messages.dm.upload.DmUploadCompleteResponse
 import ru.fromchat.api.schema.messages.dm.upload.DmUploadInitRequest
 import ru.fromchat.api.schema.messages.dm.upload.DmUploadInitResponse
 import ru.fromchat.api.schema.messages.dm.upload.DmUploadStatusResponse
+import ru.fromchat.api.schema.chats.publicchat.PublicChatProfile
 import ru.fromchat.api.schema.messages.publicchat.SendMessageRequest
 import ru.fromchat.api.schema.server.RegisteredUserCountResponse
 import ru.fromchat.api.schema.server.ServerInstanceIdResponse
 import ru.fromchat.api.schema.server.TransportKeyResponse
 import ru.fromchat.api.schema.user.ChangePasswordApiRequest
 import ru.fromchat.api.schema.user.DeleteAccountRequest
-import ru.fromchat.api.schema.user.VerifyPasswordRequest
 import ru.fromchat.api.schema.user.FcmTokenRequest
 import ru.fromchat.api.schema.user.User
+import ru.fromchat.api.schema.user.UsersSearchResponse
+import ru.fromchat.api.schema.user.VerifyPasswordRequest
 import ru.fromchat.api.schema.user.auth.CheckAuthResponse
 import ru.fromchat.api.schema.user.auth.CheckUsernameResponse
 import ru.fromchat.api.schema.user.auth.LoginRequest
@@ -91,6 +97,8 @@ import ru.fromchat.api.schema.user.keys.BackupBlobRequest
 import ru.fromchat.api.schema.user.keys.BackupBlobResponse
 import ru.fromchat.api.schema.user.keys.PublicKeyResponse
 import ru.fromchat.api.schema.user.profile.SimilarityResult
+import ru.fromchat.api.schema.user.profile.UpdateProfileRequest
+import ru.fromchat.api.schema.user.profile.UpdateProfileResponse
 import ru.fromchat.api.schema.user.profile.UserProfile
 import ru.fromchat.api.schema.user.profile.VerifyResponse
 import ru.fromchat.api.schema.websocket.WebSocketCredentials
@@ -296,13 +304,11 @@ object ApiClient {
     suspend fun probeHttpGet(url: String): Boolean =
         runCatching {
             httpProbe.get(url.trim())
-            true
-        }.getOrDefault(false)
+        }.isSuccess
 
     suspend fun checkAuthAt(apiBaseUrl: String, bearer: String): Boolean =
         runCatching {
-            val base = apiBaseUrl.trimEnd('/')
-            httpProbe.get("$base/check_auth") {
+            httpProbe.get("${apiBaseUrl.trimEnd('/')}/check_auth") {
                 bearerAuth(bearer)
             }.body<CheckAuthResponse>().authenticated
         }.getOrDefault(false)
@@ -455,6 +461,11 @@ object ApiClient {
         }
     }
 
+    suspend fun persistCurrentUser() {
+        val currentUser = user ?: return
+        settings.putString("user_info", json.encodeToString(currentUser))
+    }
+
     // --- User & profile ---
 
     suspend fun getMessages(limit: Int = 50, beforeId: Int? = null) =
@@ -465,6 +476,21 @@ object ApiClient {
                 beforeId?.let { parameter("before_id", it) }
             }
             .body<MessagesResponse>()
+
+    suspend fun getNewMessages(): MessagesResponse =
+        http
+            .get("${ServerConfig.apiBaseUrl}/messages/new") {
+                contentType(ContentType.Application.Json)
+            }
+            .body()
+
+    suspend fun markMessagesRead(messageIds: List<Int>) {
+        if (messageIds.isEmpty()) return
+        http.post("${ServerConfig.apiBaseUrl}/messages/read") {
+            contentType(ContentType.Application.Json)
+            setBody(MarkReadRequest(messageIds = messageIds))
+        }
+    }
 
     suspend fun getOwnProfile(): UserProfile =
         http
@@ -483,6 +509,54 @@ object ApiClient {
     suspend fun getProfileByUsername(username: String): UserProfile =
         http
             .get("${ServerConfig.apiBaseUrl}/user/$username") {
+                contentType(ContentType.Application.Json)
+            }
+            .body()
+
+    suspend fun updateProfile(
+        username: String? = null,
+        displayName: String? = null,
+        bio: String? = null,
+    ): UpdateProfileResponse {
+        val response = http
+            .put("${ServerConfig.apiBaseUrl}/user/profile") {
+                contentType(ContentType.Application.Json)
+                setBody(
+                    UpdateProfileRequest(
+                        username = username,
+                        displayName = displayName,
+                        description = bio,
+                    )
+                )
+            }
+            .body<UpdateProfileResponse>()
+
+        val currentUser = user
+        if (currentUser != null) {
+            user = currentUser.copy(
+                username = response.username,
+                displayName = response.displayName,
+                bio = response.bio,
+            )
+            persistCurrentUser()
+        }
+
+        ProfileCache.get(currentUser?.id ?: 0)?.let { cached ->
+            ProfileCache.put(
+                cached.copy(
+                    username = response.username,
+                    displayName = response.displayName,
+                    bio = response.bio,
+                )
+            )
+        }
+
+        return response
+    }
+
+    suspend fun getPublicChatProfile(): PublicChatProfile =
+        http
+            .get("${ServerConfig.apiBaseUrl}/public-chat/profile") {
                 contentType(ContentType.Application.Json)
             }
             .body()
@@ -520,6 +594,18 @@ object ApiClient {
             }
             .body<DmConversationsResponse>()
             .conversations
+
+    suspend fun searchUsers(query: String): List<User> {
+        val trimmed = query.trim()
+        if (trimmed.length < 2) return emptyList()
+        return http
+            .get("${ServerConfig.apiBaseUrl}/users/search") {
+                contentType(ContentType.Application.Json)
+                parameter("q", trimmed)
+            }
+            .body<UsersSearchResponse>()
+            .users
+    }
 
     suspend fun getDmFetch(since: Int? = null): DmHistoryResponse {
         return http
@@ -1263,6 +1349,11 @@ object ApiClient {
      * or together with [logout] after remote logout).
      */
     suspend fun clearLocalSession() {
+        val instanceId = runCatching { CacheContext.activeInstanceId.value.trim() }.getOrDefault("")
+        if (instanceId.isNotEmpty()) {
+            runCatching { cancelOutboxProcessing(instanceId) }
+            runCatching { MessageRepository.purgeAllPendingForInstance() }
+        }
         val uid = user?.id
         secureSettings.remove("auth_token")
         settings.remove("user_info")
@@ -1277,7 +1368,9 @@ object ApiClient {
         runCatching { IdentityKeyManager.clearLocalKeys() }
         runCatching { ProfileCache.clear() }
         runCatching { DmPanelCache.clearAll() }
+        runCatching { PublicChatProfileCache.clear() }
         runCatching { PublicChatPanelCache.clear() }
+        runCatching { CacheContext.clearActive() }
     }
 
     suspend fun logout() {
@@ -1290,10 +1383,15 @@ object ApiClient {
 
     suspend fun sendMessageViaHttp(content: String, replyToId: Int? = null) {
         if (_suspensionState.value.isSuspended) return
-        http.post("${ServerConfig.apiBaseUrl}/send_message") {
-            contentType(ContentType.Application.Json)
-            setBody(SendMessageRequest(content = content, reply_to_id = replyToId))
-        }
+        val payloadJson = json.encodeToString(
+            SendMessageRequest(content = content.trim(), reply_to_id = replyToId),
+        )
+        http.submitFormWithBinaryData(
+            url = "${ServerConfig.apiBaseUrl}/send_message",
+            formData = formData {
+                append("payload", payloadJson)
+            },
+        )
     }
 
     // WebSocket send helpers

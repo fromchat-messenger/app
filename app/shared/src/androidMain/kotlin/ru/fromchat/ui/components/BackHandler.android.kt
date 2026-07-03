@@ -49,6 +49,7 @@ actual fun rememberHapticFeedbackInternal(): (Int) -> Unit {
                 HapticFeedbackEvent.ProfileClosed.ordinal -> HapticFeedbackConstants.CLOCK_TICK
                 HapticFeedbackEvent.MessageSent.ordinal -> HapticFeedbackConstants.CONFIRM
                 HapticFeedbackEvent.ContextMenuOpened.ordinal -> HapticFeedbackConstants.CONFIRM
+                HapticFeedbackEvent.SelectionModeEntered.ordinal -> HapticFeedbackConstants.CONFIRM
                 else -> HapticFeedbackConstants.CLOCK_TICK
             }
             view.performHapticFeedback(constant)

@@ -92,7 +92,7 @@ fun ChatTopBarInner(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
         modifier = modifier.conditional(
-            profileUserId != null && onTitleClick != null
+            onTitleClick != null
         ) {
             Modifier.scaleOnPress(
                 scale = 0.96f,

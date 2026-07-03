@@ -10,6 +10,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import ru.fromchat.api.ApiClient
+import ru.fromchat.api.local.workers.AttachmentUploadNotifier
 import ru.fromchat.api.local.workers.AttachmentUploadProgress
 import ru.fromchat.api.local.messages.GENERAL_PUBLIC_GROUP_ID
 import ru.fromchat.api.local.db.store.MessageCacheStore
@@ -17,7 +18,11 @@ import ru.fromchat.api.local.db.store.MessageDatabaseProvider
 import ru.fromchat.api.local.db.store.MessageRepository
 import ru.fromchat.api.local.messages.conversationIdForDm
 import ru.fromchat.api.local.messages.conversationIdForGroup
-import ru.fromchat.api.local.workers.AttachmentUploadNotifier
+import ru.fromchat.api.local.send.OutboundSendNotifier
+import ru.fromchat.api.local.send.OutboundSendProgress
+import ru.fromchat.api.local.send.isOutboundPermanentFailure
+import ru.fromchat.api.local.send.isOutboundTransientFailure
+import ru.fromchat.api.local.send.outboundFailureErrorKey
 import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.api.schema.messages.dm.SendDmFile
 import ru.fromchat.api.local.cache.CacheContext
@@ -178,6 +183,21 @@ object OutgoingMessageCoordinator {
             }
     }
 
+    /** Re-queues a failed public / text outbound row (outbox row must still exist). */
+    fun retryOutboundMessage(clientMessageId: String, conversationId: String) {
+        val cid = clientMessageId.trim()
+        if (cid.isEmpty()) return
+        val instanceId = CacheContext.activeInstanceId.value.trim()
+        if (instanceId.isEmpty()) return
+        drainScope.launch {
+            withContext(Dispatchers.Default) {
+                MessageCacheStore.clearSendFailed(conversationId, cid)
+            }
+            OutboundSendNotifier.emit(OutboundSendProgress.Pending(cid))
+            kickOutboxDrain(instanceId)
+        }
+    }
+
     /** Re-queues a failed attachment upload (outbox row must still exist). */
     fun retryDmAttachmentUpload(clientMessageId: String) {
         val cid = clientMessageId.trim()
@@ -233,12 +253,33 @@ object OutgoingMessageCoordinator {
             for (row in rows) {
                 when (row.kind) {
                     KIND_SEND_PUBLIC -> {
-                        runCatching {
+                        val sendResult = runCatching {
                             val payload = json.decodeFromString<PublicOutboxPayload>(row.payloadJson)
                             ApiClient.sendMessageViaHttp(payload.content, payload.replyToId)
+                        }
+                        sendResult.onSuccess {
                             withContext(Dispatchers.Default) {
                                 MessageDatabaseProvider.database.messageDatabaseQueries
                                     .deleteOutboxItem(id, row.clientMessageId)
+                            }
+                        }.onFailure { error ->
+                            when {
+                                error.isOutboundPermanentFailure() -> {
+                                    val errorKey = outboundFailureErrorKey(error)
+                                    withContext(Dispatchers.Default) {
+                                        MessageCacheStore.markSendFailed(row.conversationId, row.clientMessageId)
+                                    }
+                                    OutboundSendNotifier.emit(
+                                        OutboundSendProgress.Failed(row.clientMessageId, errorKey),
+                                    )
+                                }
+                                error.isOutboundTransientFailure() -> {
+                                    allOk = false
+                                    drainScope.launch {
+                                        delay(3_000)
+                                        drainOutboxForInstance(id)
+                                    }
+                                }
                             }
                         }
                     }

@@ -11,10 +11,12 @@ import ru.fromchat.Logger
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.cache.DecryptedImageCache
 import ru.fromchat.api.local.db.store.MessageCacheStore
+import ru.fromchat.api.local.db.store.PublicChatProfileCache
 import ru.fromchat.api.local.db.store.MessageRepository
 import ru.fromchat.api.local.messages.GENERAL_PUBLIC_GROUP_ID
 import ru.fromchat.api.local.messages.conversationIdForGroup
 import ru.fromchat.api.local.send.OutgoingMessageCoordinator
+import ru.fromchat.api.schema.chats.publicchat.PublicChatProfile
 import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.api.schema.messages.publicchat.SendMessageResponse
 import ru.fromchat.api.schema.websocket.WebSocketMessage
@@ -30,8 +32,6 @@ import ru.fromchat.ui.chat.utils.TypingHandler
 class PublicChatPanel(
     /** Stable cache / panel id (not localized; hardcoded in [ru.fromchat.ui.chat.utils.PublicChatPanelCache]). */
     panelKey: String,
-    /** Shown in the app bar and avatars. */
-    displayTitle: String,
     currentUserId: Int?,
     scope: CoroutineScope
 ) : ChatPanel(
@@ -70,8 +70,8 @@ class PublicChatPanel(
     init {
         updateState {
             it.copy(
-                title = displayTitle,
-                titleAvatar = AvatarInfo(displayName = displayTitle, profilePictureUrl = null),
+                title = "",
+                titleAvatar = null,
                 publicGroupMetaLoading = true,
                 publicGroupMemberCount = null
             )
@@ -83,27 +83,30 @@ class PublicChatPanel(
             }
         }
         scope.launch(Dispatchers.Default) {
-            runCatching { ApiClient.getRegisteredUserCount() }
-                .onSuccess { n ->
-                    updateState { s ->
-                        s.copy(publicGroupMemberCount = n, publicGroupMetaLoading = false)
-                    }
+            val cached = PublicChatProfileCache.profile
+            if (cached != null) {
+                applyPublicChatProfile(cached)
+            }
+            runCatching { ApiClient.getPublicChatProfile() }
+                .onSuccess { profile ->
+                    PublicChatProfileCache.put(profile)
+                    applyPublicChatProfile(profile)
                 }
                 .onFailure {
-                    updateState { s -> s.copy(publicGroupMetaLoading = false) }
+                    if (cached == null) {
+                        updateState { s -> s.copy(publicGroupMetaLoading = false) }
+                    }
                 }
         }
     }
 
-    /** When locale changes, keep the same panel but refresh the visible title. */
-    fun applyDisplayTitle(title: String) {
+    private fun applyPublicChatProfile(profile: PublicChatProfile) {
         updateState { s ->
             s.copy(
-                title = title,
-                titleAvatar = AvatarInfo(
-                    displayName = title,
-                    profilePictureUrl = s.titleAvatar?.profilePictureUrl
-                )
+                title = profile.title,
+                titleAvatar = AvatarInfo(displayName = profile.title, profilePictureUrl = null),
+                publicGroupMemberCount = profile.member_count,
+                publicGroupMetaLoading = false,
             )
         }
     }
@@ -353,6 +356,9 @@ class PublicChatPanel(
                 val obj = data.jsonObject
                 val c = obj["count"]?.jsonPrimitive?.content?.toIntOrNull()
                 if (c != null) {
+                    PublicChatProfileCache.profile?.let { cached ->
+                        PublicChatProfileCache.put(cached.copy(member_count = c))
+                    }
                     updateState { s ->
                         s.copy(publicGroupMemberCount = c, publicGroupMetaLoading = false)
                     }

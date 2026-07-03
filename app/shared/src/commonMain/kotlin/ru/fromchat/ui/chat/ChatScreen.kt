@@ -80,6 +80,8 @@ import ru.fromchat.api.local.download.resolveSavableMessageImage
 import ru.fromchat.api.local.messages.generateClientMessageId
 import ru.fromchat.api.local.messages.nowMessageTimestampIso
 import ru.fromchat.api.local.messages.optimisticMessageIdForClientMessageId
+import ru.fromchat.api.local.send.OutboundSendNotifier
+import ru.fromchat.api.local.send.OutboundSendProgress
 import ru.fromchat.api.local.send.OutgoingMessageCoordinator
 import ru.fromchat.api.local.send.prepareOutboundFileForSend
 import ru.fromchat.api.local.send.prepareOutboundImageForSend
@@ -94,7 +96,6 @@ import ru.fromchat.chat_group_label
 import ru.fromchat.status_connecting
 import ru.fromchat.status_updating
 import ru.fromchat.ui.LocalNavController
-import ru.fromchat.ui.chat.panels.publicchat.publicChatProfileSharedAvatarKey
 import ru.fromchat.ui.chat.utils.AttachmentDownloadVisibility
 import ru.fromchat.ui.chat.utils.getImageAspectRatio
 import ru.fromchat.ui.chat.utils.getImageDimensions
@@ -169,13 +170,6 @@ fun ChatScreen(
     val cdCall = stringResource(Res.string.cd_call)
     LaunchedEffect(currentTypingUsers) {
         Logger.d("ChatScreen", "currentTypingUsers updated (from panelState): ${currentTypingUsers.map { it.username }}")
-    }
-
-    var profileSharedSourceMessageId by remember(scrollToMessageId) {
-        mutableStateOf(scrollToMessageId?.takeIf { it > 0 })
-    }
-    LaunchedEffect(scrollToMessageId) {
-        scrollToMessageId?.takeIf { it > 0 }?.let { profileSharedSourceMessageId = it }
     }
 
     val subtitleKey = when {
@@ -437,6 +431,21 @@ fun ChatScreen(
     }
 
     LaunchedEffect(panel) {
+        OutboundSendNotifier.progressFlow.collect { progress ->
+            when (progress) {
+                is OutboundSendProgress.Pending ->
+                    panel.updateMessageByClientMessageId(progress.clientMessageId) {
+                        it.copy(uploadError = null)
+                    }
+                is OutboundSendProgress.Failed ->
+                    panel.updateMessageByClientMessageId(progress.clientMessageId) {
+                        it.copy(uploadError = progress.error)
+                    }
+            }
+        }
+    }
+
+    LaunchedEffect(panel) {
         if (panel.getRecipientId() != null) {
             AttachmentUploadNotifier.progressFlow.collect { progress ->
                 when (progress) {
@@ -635,7 +644,7 @@ fun ChatScreen(
                         }
                     }
             ) {
-                if (panelState.isLoading) {
+                if (panelState.isLoading && panelState.messages.isEmpty()) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
@@ -698,12 +707,8 @@ fun ChatScreen(
                                         message.user_id > 0
                                     ) {
                                         {
-                                            profileSharedSourceMessageId = message.id
                                             ProfileCache.mergePreviewFromPublicMessage(message)
-                                            navController.navigate(
-                                                "profile/${message.user_id}" +
-                                                    "?useSharedElement=true&sourceMessageId=${message.id}"
-                                            )
+                                            navController.navigate("profile/${message.user_id}")
                                         }
                                     } else {
                                         null
@@ -716,8 +721,6 @@ fun ChatScreen(
                                 isImageClosing = isImageClosing,
                                 showUsername = panel.showUsernamesInMessages,
                                 currentUserId = currentUserId,
-                                sharedTransitionScope = sharedTransitionScope,
-                                animatedVisibilityScope = animatedVisibilityScope,
                                 onCancelOutboundAttachment = { msg ->
                                     scope.launch { panel.cancelQueuedMessage(msg) }
                                 },
@@ -731,22 +734,6 @@ fun ChatScreen(
                                         OutgoingMessageCoordinator.retryDmAttachmentUpload(cid)
                                     }
                                 },
-                                sharedAvatarNavKey =
-                                    if (
-                                        panel.supportsNavigateToSenderProfile &&
-                                        sharedTransitionScope != null &&
-                                        animatedVisibilityScope != null &&
-                                        message.user_id != currentUserId &&
-                                        message.user_id > 0 &&
-                                        profileSharedSourceMessageId == message.id
-                                    ) {
-                                        publicChatProfileSharedAvatarKey(
-                                            message.user_id,
-                                            message.id,
-                                        )
-                                    } else {
-                                        null
-                                    }
                             )
                         }
 
@@ -836,6 +823,12 @@ fun ChatScreen(
                         },
                         onCancelSend = { message ->
                             scope.launch { panel.cancelQueuedMessage(message) }
+                        },
+                        onRetrySend = { message ->
+                            val cid = message.client_message_id?.trim().orEmpty()
+                            if (cid.isNotEmpty()) {
+                                OutgoingMessageCoordinator.retryOutboundMessage(cid, panel.outboxConversationId())
+                            }
                         },
                     )
                 }

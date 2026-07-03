@@ -20,6 +20,7 @@ CREATE TABLE conversation (
     lastMessagePreview TEXT,
     unreadCount INTEGER NOT NULL DEFAULT 0,
     updatedAt TEXT,
+    archived INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (instanceId, id)
 );
 
@@ -157,6 +158,11 @@ deleteMessageById:
 DELETE FROM message
 WHERE instanceId = ? AND conversationId = ? AND id = ?;
 
+updateMessageSendStatusByClientMessageId:
+UPDATE message
+SET sendStatus = ?
+WHERE instanceId = ? AND conversationId = ? AND clientMessageId = ?;
+
 upsertMessage:
 INSERT OR REPLACE INTO message(
     instanceId,
@@ -177,6 +183,16 @@ markMessageDeleted:
 UPDATE message
 SET deletedFlag = 1
 WHERE instanceId = ? AND id = ? AND conversationId = ?;
+
+selectUnreadPublicMessageIds:
+SELECT id
+FROM message
+WHERE instanceId = ? AND conversationId = ? AND isRead = 0 AND id > 0 AND deletedFlag = 0;
+
+markPublicMessagesRead:
+UPDATE message
+SET isRead = 1
+WHERE instanceId = ? AND conversationId = ? AND isRead = 0 AND deletedFlag = 0;
 
 deleteAllMessagesForInstance:
 DELETE FROM message WHERE instanceId = ?;
@@ -209,6 +225,67 @@ FROM conversation
 WHERE instanceId = ?
 ORDER BY updatedAt DESC;
 
+selectActiveDmConversationsForInstance:
+SELECT *
+FROM conversation
+WHERE instanceId = ? AND type = 'dm' AND archived = 0
+ORDER BY updatedAt DESC;
+
+selectConversationById:
+SELECT *
+FROM conversation
+WHERE instanceId = ? AND id = ?
+LIMIT 1;
+
+countNonDeletedMessagesForConversation:
+SELECT COUNT(*)
+FROM message
+WHERE instanceId = ? AND conversationId = ? AND deletedFlag = 0;
+
+countPendingMessagesForConversation:
+SELECT COUNT(*)
+FROM message
+WHERE instanceId = ? AND conversationId = ? AND deletedFlag = 0 AND id < 0;
+
+deleteConversationById:
+DELETE FROM conversation
+WHERE instanceId = ? AND id = ?;
+
+deleteEmptyDmConversations:
+DELETE FROM conversation
+WHERE instanceId = ? AND type = 'dm' AND id NOT IN (
+    SELECT DISTINCT conversationId FROM message
+    WHERE instanceId = ? AND deletedFlag = 0
+);
+
+selectForeignPendingMessages:
+SELECT *
+FROM message
+WHERE instanceId = ? AND id < 0 AND deletedFlag = 0 AND userId != ?;
+
+selectAllPendingMessagesForInstance:
+SELECT *
+FROM message
+WHERE instanceId = ? AND id < 0 AND deletedFlag = 0;
+
+deleteAllPendingMessagesForInstance:
+DELETE FROM message
+WHERE instanceId = ? AND id < 0;
+
+deletePendingMessagesNotFromUser:
+DELETE FROM message
+WHERE instanceId = ? AND id < 0 AND userId != ?;
+
+updateConversationArchived:
+UPDATE conversation
+SET archived = ?
+WHERE instanceId = ? AND id = ?;
+
+updateConversationUnreadCount:
+UPDATE conversation
+SET unreadCount = ?
+WHERE instanceId = ? AND id = ?;
+
 upsertConversation:
 INSERT OR REPLACE INTO conversation(
     instanceId,
@@ -219,8 +296,9 @@ INSERT OR REPLACE INTO conversation(
     lastMessageId,
     lastMessagePreview,
     unreadCount,
-    updatedAt
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+    updatedAt,
+    archived
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- outbox
 selectPendingOutboxForInstance:

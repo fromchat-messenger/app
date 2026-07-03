@@ -1,16 +1,15 @@
 package ru.fromchat.ui
 
 import androidx.compose.animation.AnimatedContentScope
-import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection.Companion.End
-import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection.Companion.Start
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.SharedTransitionLayout
-import androidx.compose.animation.core.FiniteAnimationSpec
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.SnackbarDuration
@@ -25,9 +24,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.IntOffset
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
@@ -38,7 +37,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import coil3.ImageLoader
 import coil3.compose.setSingletonImageLoaderFactory
+import coil3.network.ktor3.KtorNetworkFetcherFactory
 import coil3.svg.SvgDecoder
+import ru.fromchat.api.ApiClient
 import com.pr0gramm3r101.utils.LocalSystemBarsVisibility
 import com.pr0gramm3r101.utils.navigateAndWipeBackStack
 import com.pr0gramm3r101.utils.rememberSystemBarsController
@@ -54,7 +55,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import ru.fromchat.AppForeground
 import ru.fromchat.Logger
-import ru.fromchat.api.ApiClient
 import ru.fromchat.api.DeferredStartupNetwork
 import ru.fromchat.api.UpdateSyncManager
 import ru.fromchat.api.calls.CallStore
@@ -70,12 +70,16 @@ import ru.fromchat.api.local.send.scheduleOutboxProcessing
 import ru.fromchat.api.schema.websocket.WebSocketMessage
 import ru.fromchat.api.schema.websocket.types.WebSocketUpdatesData
 import ru.fromchat.config.ServerConfig
+import ru.fromchat.legal.DocumentScreen
+import ru.fromchat.legal.DocumentType
 import ru.fromchat.ui.auth.AuthScreen
 import ru.fromchat.ui.calls.CallOverlay
 import ru.fromchat.ui.chat.panels.dm.DmChatRoute
 import ru.fromchat.ui.chat.panels.dm.DmNav
 import ru.fromchat.ui.chat.panels.dm.DmProfileRoute
-import ru.fromchat.ui.chat.panels.publicchat.PublicChatScreen
+import ru.fromchat.ui.chat.panels.publicchat.PublicChatChatRoute
+import ru.fromchat.ui.chat.panels.publicchat.PublicChatNav
+import ru.fromchat.ui.chat.panels.publicchat.PublicChatProfileRoute
 import ru.fromchat.ui.main.MainScreen
 import ru.fromchat.ui.main.chats.ChatsSearchScreen
 import ru.fromchat.ui.main.settings.AboutScreen
@@ -84,13 +88,42 @@ import ru.fromchat.ui.main.settings.DevicesScreen
 import ru.fromchat.ui.main.settings.NotificationsScreen
 import ru.fromchat.ui.main.settings.SettingsRoutes
 import ru.fromchat.ui.main.settings.account.AccountScreen
-import ru.fromchat.ui.main.settings.account.delete.DeleteAccountScreen
 import ru.fromchat.ui.main.settings.account.changepassword.ChangePasswordScreen
+import ru.fromchat.ui.main.settings.account.delete.DeleteAccountScreen
 import ru.fromchat.ui.main.settings.server.ServerConfigScreen
+import ru.fromchat.ui.profile.EditProfileFocusField
+import ru.fromchat.ui.profile.EditProfileScreen
+import ru.fromchat.ui.profile.ProfileRoutes
 import ru.fromchat.ui.profile.ProfileScreen
 import ru.fromchat.utils.NetworkConnectivity
 
 val LocalNavController = compositionLocalOf<NavController> { error("NavController not provided") }
+
+private val rootNavTween = tween<Float>(durationMillis = 250, easing = FastOutSlowInEasing)
+
+private fun rootNavEnterTransition(): EnterTransition =
+    scaleIn(initialScale = 0.9f, animationSpec = rootNavTween) +
+        fadeIn(animationSpec = rootNavTween)
+
+private fun rootNavExitTransition(): ExitTransition =
+    scaleOut(targetScale = 1.1f, animationSpec = rootNavTween) +
+        fadeOut(animationSpec = rootNavTween)
+
+private fun rootNavPopEnterTransition(): EnterTransition =
+    scaleIn(initialScale = 1.1f, animationSpec = rootNavTween) +
+        fadeIn(animationSpec = rootNavTween)
+
+private fun rootNavPopExitTransition(): ExitTransition =
+    scaleOut(targetScale = 0.9f, animationSpec = rootNavTween) +
+        fadeOut(animationSpec = rootNavTween)
+
+private val searchScreenFade = tween<Float>(durationMillis = 260)
+
+private fun searchScreenEnterTransition(): EnterTransition =
+    fadeIn(animationSpec = searchScreenFade)
+
+private fun searchScreenExitTransition(): ExitTransition =
+    fadeOut(animationSpec = searchScreenFade)
 
 private fun handlePresenceStatus(data: JsonObject?) {
     val userId = data?.get("userId")?.jsonPrimitive?.content?.toIntOrNull() ?: return
@@ -149,25 +182,14 @@ private fun handlePresenceEvent(message: WebSocketMessage) {
     }
 }
 
-private fun NavGraphBuilder.settingsSlideComposable(
+private fun NavGraphBuilder.settingsComposable(
     route: String,
-    animationSpec: FiniteAnimationSpec<IntOffset>,
+    arguments: List<NamedNavArgument> = emptyList(),
     content: @Composable AnimatedContentScope.(NavBackStackEntry) -> Unit,
 ) {
     composable(
         route = route,
-        enterTransition = {
-            slideInHorizontally(animationSpec = animationSpec) { it }
-        },
-        exitTransition = {
-            slideOutHorizontally(animationSpec = animationSpec) { -it }
-        },
-        popEnterTransition = {
-            slideInHorizontally(animationSpec = animationSpec) { -it }
-        },
-        popExitTransition = {
-            slideOutHorizontally(animationSpec = animationSpec) { it }
-        },
+        arguments = arguments,
         content = content,
     )
 }
@@ -186,6 +208,7 @@ fun App(
         ImageLoader.Builder(context)
             .components {
                 add(SvgDecoder.Factory())
+                add(KtorNetworkFetcherFactory(httpClient = { ApiClient.http }))
             }
             .build()
     }
@@ -287,7 +310,6 @@ fun App(
         SharedTransitionLayout {
             val navController = rememberNavController()
             val profileLookupSnackbarHostState = remember { SnackbarHostState() }
-
             LaunchedEffect(profileLookupErrorMessage) {
                 profileLookupErrorMessage?.let { message ->
                     Logger.d("ProfileDeepLink", "showing snackbar for deep-link lookup failure: $message")
@@ -359,35 +381,14 @@ fun App(
                 LocalSystemBarsVisibility provides rememberSystemBarsController()
             ) {
                 if (startDestination != null) {
-                    val rootNavMotion = spring<IntOffset>(dampingRatio = 0.88f, stiffness = 420f)
                     Box(Modifier.fillMaxSize()) {
                         NavHost(
                             navController = navController,
                             startDestination = startDestination!!,
-                            enterTransition = {
-                                slideIntoContainer(
-                                    Start,
-                                    animationSpec = rootNavMotion
-                                )
-                            },
-                            exitTransition = {
-                                slideOutOfContainer(
-                                    Start,
-                                    animationSpec = rootNavMotion
-                                )
-                            },
-                            popEnterTransition = {
-                                slideIntoContainer(
-                                    End,
-                                    animationSpec = rootNavMotion
-                                )
-                            },
-                            popExitTransition = {
-                                slideOutOfContainer(
-                                    End,
-                                    animationSpec = rootNavMotion
-                                )
-                            }
+                            enterTransition = { rootNavEnterTransition() },
+                            exitTransition = { rootNavExitTransition() },
+                            popEnterTransition = { rootNavPopEnterTransition() },
+                            popExitTransition = { rootNavPopExitTransition() },
                         ) {
                             composable("serverConfig") {
                                 ServerConfigScreen()
@@ -426,21 +427,29 @@ fun App(
                                 )
                             }
 
-                            composable("chats/publicChat") {
-                                PublicChatScreen(
+                            composable(PublicChatNav.CHAT_ROUTE) {
+                                PublicChatChatRoute(
                                     scrollToMessageId = scrollToMessageId,
+                                    navController = navController,
                                     sharedTransitionScope = this@SharedTransitionLayout,
-                                    animatedContentScope = this@composable
+                                    animatedVisibilityScope = this,
                                 )
                             }
 
-                            val searchScreenFade = tween<Float>(260)
+                            composable(PublicChatNav.PROFILE_ROUTE) {
+                                PublicChatProfileRoute(
+                                    navController = navController,
+                                    sharedTransitionScope = this@SharedTransitionLayout,
+                                    animatedVisibilityScope = this,
+                                )
+                            }
+
                             composable(
                                 route = "search/conversations",
-                                enterTransition = { fadeIn(animationSpec = searchScreenFade) },
-                                exitTransition = { fadeOut(animationSpec = searchScreenFade) },
-                                popEnterTransition = { fadeIn(animationSpec = searchScreenFade) },
-                                popExitTransition = { fadeOut(animationSpec = searchScreenFade) }
+                                enterTransition = { searchScreenEnterTransition() },
+                                exitTransition = { searchScreenExitTransition() },
+                                popEnterTransition = { searchScreenEnterTransition() },
+                                popExitTransition = { searchScreenExitTransition() },
                             ) {
                                 ChatsSearchScreen(
                                     onBack = { navController.popBackStack() },
@@ -460,21 +469,13 @@ fun App(
                             }
 
                             composable(
-                                route = "profile/{userId}?fromDeepLink={fromDeepLink}&useSharedElement={useSharedElement}&sourceMessageId={sourceMessageId}",
+                                route = "profile/{userId}?fromDeepLink={fromDeepLink}",
                                 arguments = listOf(
                                     navArgument("userId") { type = NavType.StringType },
                                     navArgument("fromDeepLink") {
                                         type = NavType.BoolType
                                         defaultValue = false
                                     },
-                                    navArgument("useSharedElement") {
-                                        type = NavType.StringType
-                                        defaultValue = "false"
-                                    },
-                                    navArgument("sourceMessageId") {
-                                        type = NavType.StringType
-                                        defaultValue = "-1"
-                                    }
                                 )
                             ) { backStackEntry ->
                                 val args = backStackEntry.savedStateHandle
@@ -483,20 +484,8 @@ fun App(
                                 val userId = if ((parsedUserId ?: 0) > 0) parsedUserId else null
                                 val profileUsername = if (userId == null) {
                                     userIdParam?.trim()?.takeIf { it.isNotBlank() }
-                                } else {
-                                    null
-                                }
-                                val useSharedElement = when (val rawUseSharedElement = args.get<Any?>("useSharedElement")) {
-                                    is Boolean -> rawUseSharedElement
-                                    is String -> rawUseSharedElement == "true"
-                                    else -> false
-                                }
-                                val sourceMessageId = when (val rawSourceMessageId = args.get<Any?>("sourceMessageId")) {
-                                    is Int -> rawSourceMessageId
-                                    is String -> rawSourceMessageId.toIntOrNull() ?: -1
-                                    is Long -> rawSourceMessageId.toInt()
-                                    else -> -1
-                                }
+                                } else null
+
                                 val fromDeepLink = when (val rawFromDeepLink = args.get<Any?>("fromDeepLink")) {
                                     is Boolean -> rawFromDeepLink
                                     is String -> rawFromDeepLink == "true"
@@ -506,24 +495,39 @@ fun App(
                                 Logger.d(
                                     "ProfileRoute",
                                     "profile entry args: rawUserId=$userIdParam parsedUserId=$parsedUserId resolvedUserId=$userId " +
-                                        "resolvedUsername=$profileUsername sourceMessageId=$sourceMessageId fromDeepLink=$fromDeepLink " +
-                                        "useSharedElement=$useSharedElement currentRoute=${backStackEntry.destination.route}"
+                                        "resolvedUsername=$profileUsername fromDeepLink=$fromDeepLink " +
+                                        "currentRoute=${backStackEntry.destination.route}"
                                 )
 
                                 ProfileScreen(
                                     userId = userId,
                                     username = profileUsername,
+                                    showBackButton = true,
                                     onBack = { navController.navigateUp() },
                                     onChat = { navController.navigate(DmNav.chatRoute(it)) },
                                     sharedTransitionScope = this@SharedTransitionLayout,
                                     animatedVisibilityScope = this@composable,
-                                    useSharedElementFromNavigation = useSharedElement,
-                                    sharedSourceMessageId = sourceMessageId,
                                     showErrorAsToast = fromDeepLink
                                 )
                             }
 
-                            val dmChatProfileFade = tween<Float>(durationMillis = 280)
+                            composable(
+                                route = ProfileRoutes.Edit,
+                                arguments = listOf(
+                                    navArgument(ProfileRoutes.ARG_FOCUS) {
+                                        type = NavType.StringType
+                                        defaultValue = ""
+                                    },
+                                ),
+                            ) { entry ->
+                                val focusField = EditProfileFocusField.fromArg(
+                                    entry.arguments?.getString(ProfileRoutes.ARG_FOCUS),
+                                )
+                                EditProfileScreen(
+                                    onBack = { navController.navigateUp() },
+                                    initialFocusField = focusField,
+                                )
+                            }
 
                             composable(
                                 route = DmNav.CHAT_ROUTE,
@@ -531,30 +535,6 @@ fun App(
                                     navArgument("otherUserId") { type = NavType.StringType },
                                     navArgument("sourceMessageId") { type = NavType.IntType; defaultValue = -1 },
                                 ),
-                                enterTransition = {
-                                    when (initialState.destination.route) {
-                                        DmNav.PROFILE_ROUTE -> fadeIn(animationSpec = dmChatProfileFade)
-                                        else -> slideIntoContainer(Start, animationSpec = rootNavMotion)
-                                    }
-                                },
-                                exitTransition = {
-                                    when (targetState.destination.route) {
-                                        DmNav.PROFILE_ROUTE -> fadeOut(animationSpec = dmChatProfileFade)
-                                        else -> slideOutOfContainer(Start, animationSpec = rootNavMotion)
-                                    }
-                                },
-                                popEnterTransition = {
-                                    when (initialState.destination.route) {
-                                        DmNav.PROFILE_ROUTE -> fadeIn(animationSpec = dmChatProfileFade)
-                                        else -> slideIntoContainer(End, animationSpec = rootNavMotion)
-                                    }
-                                },
-                                popExitTransition = {
-                                    when (targetState.destination.route) {
-                                        DmNav.PROFILE_ROUTE -> fadeOut(animationSpec = dmChatProfileFade)
-                                        else -> slideOutOfContainer(End, animationSpec = rootNavMotion)
-                                    }
-                                },
                             ) { entry ->
                                 val otherUserId = entry.savedStateHandle.get<String>("otherUserId")?.toIntOrNull() ?: 0
                                 val sourceMessageId = entry.savedStateHandle.get<Int>("sourceMessageId") ?: -1
@@ -571,10 +551,6 @@ fun App(
                             composable(
                                 route = DmNav.PROFILE_ROUTE,
                                 arguments = listOf(navArgument("otherUserId") { type = NavType.StringType }),
-                                enterTransition = { fadeIn(animationSpec = dmChatProfileFade) },
-                                exitTransition = { fadeOut(animationSpec = dmChatProfileFade) },
-                                popEnterTransition = { fadeIn(animationSpec = dmChatProfileFade) },
-                                popExitTransition = { fadeOut(animationSpec = dmChatProfileFade) },
                             ) { entry ->
                                 val otherUserId = entry.savedStateHandle.get<String>("otherUserId")?.toIntOrNull() ?: 0
                                 if (otherUserId <= 0) return@composable
@@ -586,30 +562,51 @@ fun App(
                                 )
                             }
 
-                            settingsSlideComposable("about", rootNavMotion) {
+                            settingsComposable("about") {
                                 AboutScreen()
                             }
 
-                            settingsSlideComposable(SettingsRoutes.Appearance, rootNavMotion) {
+                            settingsComposable(
+                                route = DocumentType.ROUTE,
+                                arguments = listOf(
+                                    navArgument(DocumentType.ARG_DOCUMENT_TYPE) { type = NavType.StringType },
+                                ),
+                            ) { entry ->
+                                val type = entry.savedStateHandle
+                                    .get<String>(DocumentType.ARG_DOCUMENT_TYPE)
+                                    ?.let(DocumentType::typeFromArg)
+                                    ?: return@settingsComposable
+                                DocumentScreen(
+                                    type = type,
+                                    onBack = { navController.navigateUp() },
+                                    onOpenLegalDocument = { linkedType ->
+                                        navController.navigate(DocumentType.route(linkedType)) {
+                                            launchSingleTop = true
+                                        }
+                                    },
+                                )
+                            }
+
+                            settingsComposable(SettingsRoutes.Appearance) {
                                 AppearanceScreen(onBack = { navController.navigateUp() })
                             }
 
-                            settingsSlideComposable(SettingsRoutes.Notifications, rootNavMotion) {
+                            settingsComposable(SettingsRoutes.Notifications) {
                                 NotificationsScreen(onBack = { navController.navigateUp() })
                             }
 
-                            settingsSlideComposable(SettingsRoutes.Devices, rootNavMotion) {
+                            settingsComposable(SettingsRoutes.Devices) {
                                 DevicesScreen(onBack = { navController.navigateUp() })
                             }
 
-                            settingsSlideComposable(SettingsRoutes.SecurityPasswordFlow, rootNavMotion) {
+                            settingsComposable(SettingsRoutes.SecurityPasswordFlow) {
                                 ChangePasswordScreen(
                                     onBack = { navController.navigateUp() },
                                     onDone = { navController.popBackStack() },
                                 )
                             }
 
-                            settingsSlideComposable(SettingsRoutes.AccountDeleteFlow, rootNavMotion) {
+                            settingsComposable(SettingsRoutes.AccountDeleteFlow) {
                                 DeleteAccountScreen(
                                     onBack = { navController.navigateUp() },
                                     onDeleted = {
@@ -620,7 +617,7 @@ fun App(
                                 )
                             }
 
-                            settingsSlideComposable(SettingsRoutes.Account, rootNavMotion) {
+                            settingsComposable(SettingsRoutes.Account) {
                                 AccountScreen(
                                     onBack = { navController.navigateUp() },
                                     onLogout = {

@@ -1,3 +1,7 @@
+/**
+ * Мне лень чистить этот файл, я устал.
+ * TODO Почищу когда-нибудь потом.
+ */
 package ru.fromchat.ui.components
 
 import androidx.compose.animation.ExperimentalAnimationApi
@@ -344,7 +348,6 @@ fun ExpressiveStepFlowScaffold(
     val scope = flowState.scope
     val pageCount = pages.size.coerceAtLeast(1)
     val heroSpecs = remember(pages) { pages.map { it.hero } }
-    val isHazeLazyMode = hazeScaffold
     val pageOffset by derivedStateOf { pagerState.currentPageOffsetFraction }
     val predictiveThreshold = 0.15f
 
@@ -352,6 +355,7 @@ fun ExpressiveStepFlowScaffold(
         enabled = pagerState.currentPage > 0,
         onProgress = { p ->
             val clamped = p.coerceIn(0f, 1f)
+
             if (clamped <= 0f) {
                 flowState.resetPredictiveState()
             } else {
@@ -368,6 +372,7 @@ fun ExpressiveStepFlowScaffold(
             val fromPageSnapshot = flowState.predictiveFromPage
             val toPageSnapshot = flowState.predictiveToPage
             val lastProgress = flowState.predictiveProgress.coerceIn(0f, 1f)
+
             if (lastProgress < predictiveThreshold || fromPageSnapshot == null || toPageSnapshot == null) {
                 scope.launch {
                     finishPredictiveMorph(
@@ -426,6 +431,7 @@ fun ExpressiveStepFlowScaffold(
     val fromIndex: Int
     val toIndex: Int
     val morphProgress: Float
+
     if (flowState.predictiveFromPage != null && flowState.predictiveToPage != null && flowState.predictiveProgress > 0f) {
         fromIndex = flowState.predictiveFromPage!!
         toIndex = flowState.predictiveToPage!!
@@ -443,6 +449,7 @@ fun ExpressiveStepFlowScaffold(
         toIndex = fromIndex
         morphProgress = 0f
     }
+
     val effectiveMorphProgress = morphProgress.coerceIn(0f, 1f)
     val currentPage = pagerState.currentPage
     val morphing = fromIndex != toIndex
@@ -592,65 +599,139 @@ fun ExpressiveStepFlowScaffold(
         LocalExpressiveStepFocusEnabled provides isPageTransitionSettled,
         LocalExpressiveStepAutoFocusPrimary provides autoFocusPrimaryField,
     ) {
-    if (isHazeLazyMode) {
-        val hazeState = rememberHazeState()
-        val listState = rememberLazyListState()
-        val imeScrollState = rememberLazyListImeScrollState()
-        var listViewportBounds by remember { mutableStateOf<Rect?>(null) }
+        if (hazeScaffold) {
+            val hazeState = rememberHazeState()
+            val listState = rememberLazyListState()
+            val imeScrollState = rememberLazyListImeScrollState()
+            var listViewportBounds by remember { mutableStateOf<Rect?>(null) }
 
-        Box(
-            Modifier
-                .fillMaxSize()
-                .onGloballyPositioned { snackbarOverlayBounds = it.boundsInWindow() },
-        ) {
-            Scaffold(
-                modifier = Modifier.fillMaxSize(),
-                contentWindowInsets = WindowInsets.navigationBars,
-                containerColor = Color.Transparent,
-                contentColor = scheme.onSurface,
-                topBar = { HazeTopBar(hazeState = hazeState) },
-                bottomBar = {
-                    HazeBottomBar(hazeState = hazeState) {
-                        Box(
-                            Modifier.trackExpressiveStepSnackbarAnchor(
-                                anchors = snackbarAnchors,
-                                role = ExpressiveStepSnackbarAnchorRole.PrimaryCta,
-                            ),
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .onGloballyPositioned { snackbarOverlayBounds = it.boundsInWindow() },
+            ) {
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    contentWindowInsets = WindowInsets.navigationBars,
+                    containerColor = Color.Transparent,
+                    contentColor = scheme.onSurface,
+                    topBar = { HazeTopBar(hazeState = hazeState) },
+                    bottomBar = {
+                        HazeBottomBar(hazeState = hazeState) {
+                            Box(
+                                Modifier.trackExpressiveStepSnackbarAnchor(
+                                    anchors = snackbarAnchors,
+                                    role = ExpressiveStepSnackbarAnchorRole.PrimaryCta,
+                                ),
+                            ) {
+                                ExpressiveStepBottomBar()
+                            }
+                        }
+                    },
+                ) { innerPadding ->
+                    LazyListImeScrollEffect(
+                        listState = listState,
+                        scrollState = imeScrollState,
+                        viewportBoundsInWindow = listViewportBounds,
+                        contentPaddingTop = innerPadding.calculateTopPadding(),
+                        contentPaddingBottom = innerPadding.calculateBottomPadding(),
+                        predictiveBackProgress = { flowState.predictiveProgress },
+                    )
+
+                    DisabledBringIntoViewSpec {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(scheme.background)
+                                .hazeSource(hazeState)
+                                .onGloballyPositioned {
+                                    listViewportBounds = it.boundsInWindow()
+                                    listViewportBoundsForSnackbar = it.boundsInWindow()
+                                },
+                            contentPadding = innerPadding,
+                            verticalArrangement = remember { LastAnchoredBottomArrangement(space = 4.dp) },
                         ) {
-                            ExpressiveStepBottomBar()
+                            item { Spacer(Modifier.height(8.dp)) }
+
+                            item {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    ExpressiveStepHeroSection()
+                                    Spacer(Modifier.height(ExpressiveStepHeroTitleSpacing))
+                                    HorizontalPager(
+                                        state = pagerState,
+                                        userScrollEnabled = false,
+                                        beyondViewportPageCount = 1,
+                                        pageSpacing = 0.dp,
+                                        verticalAlignment = Alignment.Top,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) { page ->
+                                        Column(modifier = Modifier.pagerPageFullWidth()) {
+                                            pages[page].content(imeScrollState)
+                                        }
+                                    }
+                                }
+                            }
+
+                            val currentListFooter = pages.getOrNull(currentPage)?.listFooter
+                            if (currentListFooter != null) {
+                                item(key = "expressive_step_footer_$currentPage") {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 16.dp, bottom = 4.dp)
+                                            .trackExpressiveStepSnackbarAnchor(
+                                                anchors = snackbarAnchors,
+                                                role = ExpressiveStepSnackbarAnchorRole.SecondaryCta,
+                                            ),
+                                    ) {
+                                        currentListFooter()
+                                    }
+                                }
+                            } else {
+                                // Absorbs [LastAnchoredBottomArrangement] slack so hero/content stays at the top.
+                                item(key = "expressive_step_bottom_anchor") {
+                                    Spacer(Modifier.height(1.dp))
+                                }
+                            }
                         }
                     }
-                },
-            ) { innerPadding ->
-                LazyListImeScrollEffect(
-                    listState = listState,
-                    scrollState = imeScrollState,
-                    viewportBoundsInWindow = listViewportBounds,
-                    contentPaddingTop = innerPadding.calculateTopPadding(),
-                    contentPaddingBottom = innerPadding.calculateBottomPadding(),
-                    predictiveBackProgress = { flowState.predictiveProgress },
-                )
+                }
 
-                DisabledBringIntoViewSpec {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(scheme.background)
-                            .hazeSource(hazeState)
-                            .onGloballyPositioned {
-                                listViewportBounds = it.boundsInWindow()
-                                listViewportBoundsForSnackbar = it.boundsInWindow()
-                            },
-                        contentPadding = innerPadding,
-                        verticalArrangement = remember { LastAnchoredBottomArrangement(space = 4.dp) },
-                    ) {
-                        item { Spacer(Modifier.height(8.dp)) }
+                ExpressiveStepSnackbarHost()
+            }
+        } else {
+            val imeScrollState = rememberLazyListImeScrollState()
 
-                        item {
-                            Column(modifier = Modifier.fillMaxWidth()) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = scheme.surface,
+                contentColor = scheme.onSurface,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .imePadding()
+                        .onGloballyPositioned { snackbarOverlayBounds = it.boundsInWindow() },
+                ) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        BackButtonRow()
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .fillMaxWidth()
+                                    .verticalScroll(rememberScrollState()),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
                                 ExpressiveStepHeroSection()
                                 Spacer(Modifier.height(ExpressiveStepHeroTitleSpacing))
+
                                 HorizontalPager(
                                     state = pagerState,
                                     userScrollEnabled = false,
@@ -659,107 +740,34 @@ fun ExpressiveStepFlowScaffold(
                                     verticalAlignment = Alignment.Top,
                                     modifier = Modifier.fillMaxWidth(),
                                 ) { page ->
-                                    Column(modifier = Modifier.pagerPageFullWidth()) {
+                                    Column(
+                                        modifier = Modifier.pagerPageFullWidth(),
+                                    ) {
                                         pages[page].content(imeScrollState)
                                     }
                                 }
                             }
                         }
 
-                        val currentListFooter = pages.getOrNull(currentPage)?.listFooter
-                        if (currentListFooter != null) {
-                            item(key = "expressive_step_footer_$currentPage") {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 16.dp, bottom = 4.dp)
-                                        .trackExpressiveStepSnackbarAnchor(
-                                            anchors = snackbarAnchors,
-                                            role = ExpressiveStepSnackbarAnchorRole.SecondaryCta,
-                                        ),
-                                ) {
-                                    currentListFooter()
-                                }
-                            }
-                        } else {
-                            // Absorbs [LastAnchoredBottomArrangement] slack so hero/content stays at the top.
-                            item(key = "expressive_step_bottom_anchor") {
-                                Spacer(Modifier.height(1.dp))
-                            }
-                        }
-                    }
-                }
-            }
-
-            ExpressiveStepSnackbarHost()
-        }
-    } else {
-        val imeScrollState = rememberLazyListImeScrollState()
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = scheme.surface,
-            contentColor = scheme.onSurface,
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .imePadding()
-                    .onGloballyPositioned { snackbarOverlayBounds = it.boundsInWindow() },
-            ) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    BackButtonRow()
-
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                    ) {
-                        Column(
+                        Box(
                             modifier = Modifier
-                                .align(Alignment.TopStart)
                                 .fillMaxWidth()
-                                .verticalScroll(rememberScrollState()),
-                            horizontalAlignment = Alignment.CenterHorizontally,
+                                .navigationBarsPadding()
+                                .padding(horizontal = SettingsStepHorizontalPadding)
+                                .padding(top = 12.dp, bottom = 16.dp)
+                                .trackExpressiveStepSnackbarAnchor(
+                                    anchors = snackbarAnchors,
+                                    role = ExpressiveStepSnackbarAnchorRole.PrimaryCta,
+                                ),
                         ) {
-                            ExpressiveStepHeroSection()
-                            Spacer(Modifier.height(ExpressiveStepHeroTitleSpacing))
-
-                            HorizontalPager(
-                                state = pagerState,
-                                userScrollEnabled = false,
-                                beyondViewportPageCount = 1,
-                                pageSpacing = 0.dp,
-                                verticalAlignment = Alignment.Top,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) { page ->
-                                Column(
-                                    modifier = Modifier.pagerPageFullWidth(),
-                                ) {
-                                    pages[page].content(imeScrollState)
-                                }
-                            }
+                            ExpressiveStepBottomBar()
                         }
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .navigationBarsPadding()
-                            .padding(horizontal = SettingsStepHorizontalPadding)
-                            .padding(top = 12.dp, bottom = 16.dp)
-                            .trackExpressiveStepSnackbarAnchor(
-                                anchors = snackbarAnchors,
-                                role = ExpressiveStepSnackbarAnchorRole.PrimaryCta,
-                            ),
-                    ) {
-                        ExpressiveStepBottomBar()
-                    }
+                    ExpressiveStepSnackbarHost()
                 }
-
-                ExpressiveStepSnackbarHost()
             }
         }
-    }
     }
 }
 
@@ -791,6 +799,7 @@ fun MorphedExpressiveHero(
     ) {
         Canvas(Modifier.fillMaxSize()) {
             val unit = minOf(size.width, size.height) * 0.94f
+
             translate(left = size.width / 2f, top = size.height / 2f) {
                 scale(scaleX = unit, scaleY = unit, pivot = Offset.Zero) {
                     translate(left = -0.5f, top = -0.5f) {
@@ -800,7 +809,7 @@ fun MorphedExpressiveHero(
                                 colors = listOf(light, deep),
                                 start = Offset.Zero,
                                 end = Offset(1f, 1f),
-                            ),
+                            )
                         )
                     }
                 }
@@ -820,6 +829,7 @@ fun MorphedExpressiveHero(
                         .graphicsLayer { alpha = 1f - p },
                     tint = contentColor,
                 )
+
                 Icon(
                     imageVector = toSpec.icon,
                     contentDescription = null,

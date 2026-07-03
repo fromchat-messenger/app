@@ -162,6 +162,19 @@ object DecryptedFileCache {
         }
     }
 
+    suspend fun invalidateForMessage(messageId: Int) {
+        if (messageId <= 0) return
+        val dir = ensureCacheDir() ?: return
+        withContext(Dispatchers.Default) {
+            cacheMutex.withLock {
+                memoryCache.keys.removeAll { it.startsWith("file_${messageId}_") }
+            }
+            runCatching {
+                PlatformFileSystem.deleteFilesWithPrefix(dir, "file_${messageId}_")
+            }
+        }
+    }
+
     suspend fun getOrDecrypt(
         messageId: Int,
         fileIndex: Int,

@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import ru.fromchat.api.local.cache.CacheContext
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavController
+import ru.fromchat.api.local.db.store.ProfileCache
 import ru.fromchat.utils.haptic.HapticFeedbackEvent
 import ru.fromchat.ui.profile.ProfileScreen
 import ru.fromchat.utils.haptic.rememberHapticFeedback
@@ -75,9 +76,17 @@ fun DmProfileRoute(
     val stateSnapshot = panel.getState()
     val initialDisplayName = stateSnapshot.titleAvatar?.displayName?.takeIf { it.isNotBlank() }
         ?: stateSnapshot.title.takeIf { it.isNotBlank() }
+    val initialProfilePictureUrl = stateSnapshot.titleAvatar?.profilePictureUrl
+
+    ProfileCache.mergePreview(
+        id = otherUserId,
+        displayName = initialDisplayName,
+        profilePicture = initialProfilePictureUrl,
+    )
 
     ProfileScreen(
         userId = otherUserId,
+        showBackButton = true,
         onBack = {
             haptic(HapticFeedbackEvent.ProfileClosed)
             navController.popBackStack()
@@ -90,6 +99,7 @@ fun DmProfileRoute(
         sharedTransitionScope = sharedTransitionScope,
         animatedVisibilityScope = animatedVisibilityScope,
         sharedAvatarKey = sharedAvatarKey,
-        initialDisplayName = initialDisplayName
+        initialDisplayName = initialDisplayName,
+        initialProfilePictureUrl = initialProfilePictureUrl,
     )
 }

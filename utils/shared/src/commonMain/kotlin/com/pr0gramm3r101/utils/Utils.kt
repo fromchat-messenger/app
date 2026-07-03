@@ -70,6 +70,10 @@ operator fun Modifier.plus(other: Modifier) = then(other)
 @Composable
 expect fun ToggleNavScrimEffect(enabled: Boolean = false)
 
+/** Configures the hosting dialog window for edge-to-edge bottom sheets (Android). */
+@Composable
+expect fun DialogEdgeToEdgeEffect()
+
 // TODO fix implementation
 interface SupportClipboardManager {
     suspend fun setText(string: String)

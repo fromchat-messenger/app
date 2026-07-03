@@ -45,6 +45,63 @@ object ProfileCache {
 
     fun get(userId: Int): UserProfile? = profiles[userId]
 
+    fun findByUsername(username: String): UserProfile? =
+        username.trim().takeIf { it.isNotEmpty() }?.let { needle ->
+            profiles.values.firstOrNull { profile ->
+                profile.username.trim().equals(needle, ignoreCase = true)
+            }
+        }
+
+    /**
+     * Merges minimal identity (name, avatar) from any UI surface that showed this user.
+     * Skips when a full profile row is already cached.
+     */
+    fun mergePreview(
+        id: Int,
+        username: String? = null,
+        displayName: String? = null,
+        profilePicture: String? = null,
+    ) {
+        if (id <= 0) return
+        val existing = get(id)
+        if (existing != null && !existing.isClientPreviewOnly) return
+
+        val incomingUsername = username?.trim()?.takeIf { it.isNotEmpty() }
+            ?: existing?.username?.trim()?.takeIf { it.isNotEmpty() }
+        val incomingDisplayName = displayName?.trim()?.takeIf { it.isNotEmpty() }
+            ?: existing?.displayName?.takeIf { it.isNotBlank() }
+            ?: incomingUsername
+
+        if (incomingUsername.isNullOrEmpty() && incomingDisplayName.isNullOrBlank()) return
+
+        put(
+            UserProfile(
+                id = id,
+                username = incomingUsername.orEmpty(),
+                displayName = incomingDisplayName,
+                profilePicture = profilePicture?.takeIf { it.isNotBlank() }
+                    ?: existing?.profilePicture,
+                bio = existing?.bio,
+                online = existing?.online ?: false,
+                lastSeen = existing?.lastSeen,
+                createdAt = existing?.createdAt,
+                verified = existing?.verified,
+                suspended = existing?.suspended,
+                suspensionReason = existing?.suspensionReason,
+                deleted = existing?.deleted,
+                isClientPreviewOnly = true,
+            ),
+        )
+    }
+
+    fun mergeFromCachedConversation(conversation: CachedConversation) {
+        if (conversation.otherUserId <= 0) return
+        mergePreview(
+            id = conversation.otherUserId,
+            displayName = conversation.displayName.takeIf { it.isNotBlank() },
+        )
+    }
+
     fun put(profile: UserProfile) {
         if (profile.isClientPreviewOnly) {
             val hasIdentity =

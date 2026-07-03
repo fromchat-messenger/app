@@ -39,6 +39,9 @@ internal suspend fun streamEncryptedFileToDisk(
         header(HttpHeaders.Range, "bytes=$rangeOffset-")
     }
 }.execute { response ->
+    if (response.status.value == 404 || response.status.value == 410) {
+        error("HTTP ${response.status.value} for encrypted file download")
+    }
     if (response.status.value !in 200..299) {
         error("HTTP ${response.status.value} for encrypted file download")
     }

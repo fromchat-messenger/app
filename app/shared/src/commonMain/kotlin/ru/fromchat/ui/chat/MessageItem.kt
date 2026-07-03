@@ -1,7 +1,5 @@
 package ru.fromchat.ui.chat
 
-import androidx.compose.animation.AnimatedVisibilityScope
-import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -26,7 +24,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -47,6 +48,8 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pr0gramm3r101.utils.conditional
@@ -58,6 +61,7 @@ import ru.fromchat.api.local.messages.isQueuedOutbound
 import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.message_corrupted
 import ru.fromchat.message_edited_suffix
+import ru.fromchat.message_send_failed
 import ru.fromchat.ui.chat.components.getMessageGradient
 import ru.fromchat.ui.chat.components.getReplyMessageGradient
 import ru.fromchat.ui.chat.utils.imageAspectRatioForMessage
@@ -103,9 +107,6 @@ fun MessageItem(
     isImageClosing: Boolean = false,
     isContextMenuOpen: Boolean = false,
     isContextMenuForThisMessage: Boolean = false,
-    sharedTransitionScope: SharedTransitionScope? = null,
-    animatedVisibilityScope: AnimatedVisibilityScope? = null,
-    sharedAvatarNavKey: String? = null,
     onCancelOutboundAttachment: ((Message) -> Unit)? = null,
     onRetryOutboundAttachment: ((Message) -> Unit)? = null,
 ) {
@@ -118,6 +119,7 @@ fun MessageItem(
     }
     val corruptedBody = stringResource(Res.string.message_corrupted)
     val editedSuffix = stringResource(Res.string.message_edited_suffix)
+    val sendFailedLabel = stringResource(Res.string.message_send_failed)
     val displayUsername = messageDisplayUsername(message, currentUserId)
     val replyRef = message.reply_to
 
@@ -178,29 +180,11 @@ fun MessageItem(
                         )
                     }
             ) {
-                val navSharedKey = sharedAvatarNavKey
-                val navStScope = sharedTransitionScope
-                val navVisScope = animatedVisibilityScope
-                if (navSharedKey != null && navStScope != null && navVisScope != null) {
-                    with(navStScope) {
-                        Avatar(
-                            profilePictureUrl = message.profile_picture,
-                            displayName = message.username,
-                            modifier = Modifier
-                                .sharedElement(
-                                    rememberSharedContentState(key = navSharedKey),
-                                    animatedVisibilityScope = navVisScope
-                                )
-                                .size(32.dp)
-                        )
-                    }
-                } else {
-                    Avatar(
-                        profilePictureUrl = message.profile_picture,
-                        displayName = message.username,
-                        modifier = Modifier.size(32.dp)
-                    )
-                }
+                Avatar(
+                    profilePictureUrl = message.profile_picture,
+                    displayName = message.username,
+                    modifier = Modifier.size(32.dp)
+                )
             }
 
             Spacer(modifier = Modifier.width(8.dp))
@@ -608,13 +592,14 @@ fun MessageItem(
 
                         // Timestamp, sending indicator, and edited indicator
                         val isPendingOutbound = message.id < 0 && message.files.isNullOrEmpty()
+                        val sendFailed = isPendingOutbound && !message.uploadError.isNullOrBlank()
                         Row(
                             modifier = Modifier
                                 .padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 8.dp),
                             horizontalArrangement = Arrangement.End,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (isPendingOutbound) {
+                            if (isPendingOutbound && !sendFailed) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(12.dp),
                                     strokeWidth = 1.5.dp,
@@ -623,6 +608,20 @@ fun MessageItem(
                                     } else {
                                         MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                                     }
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                            } else if (sendFailed) {
+                                Icon(
+                                    imageVector = Icons.Rounded.ErrorOutline,
+                                    contentDescription = sendFailedLabel,
+                                    modifier = Modifier
+                                        .size(14.dp)
+                                        .semantics { contentDescription = sendFailedLabel },
+                                    tint = if (isAuthor) {
+                                        Color.White.copy(alpha = 0.85f)
+                                    } else {
+                                        MaterialTheme.colorScheme.error
+                                    },
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                             }

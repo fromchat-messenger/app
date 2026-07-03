@@ -1,0 +1,16 @@
+---
+description: Read CODE_STYLE.md before writing or refactoring Kotlin/Compose code
+alwaysApply: true
+---
+
+# Code style
+
+Before writing or editing Kotlin / Compose code in this repo:
+
+1. **Read** [`CODE_STYLE.md`](../../CODE_STYLE.md) at the repository root.
+2. **Follow** it — write idiomatic, well-structured code from the start; match neighboring files when a rule is ambiguous.
+3. **Do not ask the user style questions** when implementing new code.
+
+For style cleanup on an existing diff or file set, use the **`adapt-to-style`** skill.
+
+Build and platform rules remain in `android.mdc`.

@@ -6,6 +6,7 @@ import ru.fromchat.api.local.send.cancelOutboxProcessing
 import ru.fromchat.config.ServerConfigData
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.instance.configKey
+import ru.fromchat.api.local.db.store.PublicChatProfileCache
 import ru.fromchat.ui.chat.utils.PublicChatPanelCache
 import ru.fromchat.ui.chat.panels.dm.DmPanelCache
 import kotlin.time.Clock
@@ -68,6 +69,7 @@ object InstanceRegistryStore {
         }
         val userId = CacheContext.activeUserId.value
         CacheContext.setActiveInstance(newId, userId)
+        PublicChatProfileCache.clear()
         PublicChatPanelCache.clear()
         DmPanelCache.clearAll()
     }

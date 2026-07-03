@@ -3,18 +3,24 @@
 package com.pr0gramm3r101.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -28,6 +34,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CornerBasedShape
+import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
@@ -66,30 +74,49 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import com.pr0gramm3r101.utils.conditional
+import com.pr0gramm3r101.utils.currentWindowSize
 import com.pr0gramm3r101.utils.invoke
 import com.pr0gramm3r101.utils.left
 import com.pr0gramm3r101.utils.link
 import com.pr0gramm3r101.utils.plus
 import com.pr0gramm3r101.utils.right
+import com.pr0gramm3r101.utils.scaleOnPress
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import tech.annexflow.constraintlayout.compose.ConstraintLayout
@@ -102,6 +129,12 @@ val LocalDividerThickness = compositionLocalOf<Dp?> { null }
 val LocalBeforeDividerRadius = compositionLocalOf<Dp?> { null }
 val LocalContainerColor = compositionLocalOf<Color?> { null }
 
+enum class ListItemPosition {
+    START,
+    MIDDLE,
+    END,
+}
+
 object ListItemDefaults {
     val dividerColor @Composable get() = DividerDefaults.color
     val thickness = DividerDefaults.Thickness
@@ -110,11 +143,407 @@ object ListItemDefaults {
 }
 
 @Composable
+fun listItemClipShape(
+    position: ListItemPosition,
+    groupItemCount: Int? = null,
+    cornerShape: CornerBasedShape = CategoryDefaults.shape,
+    beforeDividerRadius: Dp = ListItemDefaults.beforeDividerRadius,
+): Shape {
+    val useGroupShape = position != ListItemPosition.MIDDLE || groupItemCount != null
+    if (!useGroupShape) {
+        return RoundedCornerShape(beforeDividerRadius)
+    }
+    val solo = groupItemCount == 1
+    val roundTop = position == ListItemPosition.START || solo
+    val roundBottom = position == ListItemPosition.END || solo
+    val innerRadius = CornerSize(beforeDividerRadius)
+    return RoundedCornerShape(
+        topStart = if (roundTop) cornerShape.topStart else innerRadius,
+        topEnd = if (roundTop) cornerShape.topEnd else innerRadius,
+        bottomStart = if (roundBottom) cornerShape.bottomStart else innerRadius,
+        bottomEnd = if (roundBottom) cornerShape.bottomEnd else innerRadius,
+    )
+}
+
+fun listItemPositionInGroup(index: Int, count: Int): ListItemPosition {
+    require(count > 0)
+    return when {
+        index == 0 -> ListItemPosition.START
+        index == count - 1 -> ListItemPosition.END
+        else -> ListItemPosition.MIDDLE
+    }
+}
+
+class ListItemContextMenuScope internal constructor(
+    private val dismiss: () -> Unit,
+) {
+    internal val items = mutableListOf<ListItemContextMenuEntry>()
+
+    fun item(
+        icon: ImageVector,
+        label: String,
+        onClick: () -> Unit,
+    ) {
+        items.add(ListItemContextMenuEntry(icon, label, onClick))
+    }
+
+    fun close() {
+        dismiss()
+    }
+}
+
+internal data class ListItemContextMenuEntry(
+    val icon: ImageVector,
+    val label: String,
+    val onClick: () -> Unit,
+)
+
+private val listItemContextMenuShape = RoundedCornerShape(16.dp)
+private val listItemContextMenuItemShape = RoundedCornerShape(12.dp)
+
+@Composable
+private fun ListItemContextMenuPopup(
+    open: Boolean,
+    position: IntOffset,
+    anchorPositionInRoot: Offset,
+    onDismiss: () -> Unit,
+    menuContent: ListItemContextMenuScope.() -> Unit,
+) {
+    var shouldShowPopup by remember { mutableStateOf(open) }
+    val animationProgress = remember { mutableFloatStateOf(0f) }
+    val latestMenuContent by rememberUpdatedState(menuContent)
+    val windowSize = currentWindowSize()
+    val screenWidthPx = windowSize.width
+    val screenHeightPx = windowSize.height
+
+    LaunchedEffect(open) {
+        if (!open) {
+            animate(
+                initialValue = 1f,
+                targetValue = 0f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioLowBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            ) { value, _ ->
+                animationProgress.floatValue = value
+            }
+            shouldShowPopup = false
+        }
+    }
+
+    LaunchedEffect(open) {
+        if (open) {
+            shouldShowPopup = true
+            animationProgress.floatValue = 0f
+        }
+    }
+
+    if (!shouldShowPopup) return
+
+    val scope = remember(onDismiss) { ListItemContextMenuScope(onDismiss) }
+    scope.items.clear()
+    latestMenuContent(scope)
+    val items = scope.items.toList()
+    if (items.isEmpty()) {
+        if (open) onDismiss()
+        return
+    }
+
+    var measuredSize by remember { mutableStateOf(IntSize.Zero) }
+
+    SubcomposeLayout(Modifier.size(0.dp)) { _ ->
+        val looseConstraints = Constraints(
+            minWidth = 0,
+            minHeight = 0,
+            maxWidth = screenWidthPx,
+            maxHeight = screenHeightPx,
+        )
+        val placeables = subcompose("measure") {
+            ListItemContextMenuContent(
+                items = items,
+                animated = false,
+                withShadow = false,
+                modifier = Modifier.graphicsLayer(alpha = 0f),
+            )
+        }.map { it.measure(looseConstraints) }
+        val p = placeables.firstOrNull()
+        if (p != null && measuredSize == IntSize.Zero) {
+            measuredSize = IntSize(p.width, p.height)
+        }
+        layout(0, 0) {
+            placeables.forEach { it.placeRelative(-10000, -10000) }
+        }
+    }
+
+    val density = LocalDensity.current
+    val paddingPx = with(density) { 16.dp.toPx().toInt() }
+    val rightEdge = screenWidthPx - paddingPx
+    val bottomEdge = screenHeightPx - paddingPx
+
+    val adjustedOffset = remember(
+        measuredSize,
+        position,
+        anchorPositionInRoot,
+        rightEdge,
+        bottomEdge,
+        paddingPx,
+    ) {
+        if (measuredSize == IntSize.Zero) {
+            position
+        } else {
+            var screenX = anchorPositionInRoot.x.toInt() + position.x
+            var screenY = anchorPositionInRoot.y.toInt() + position.y
+            if (screenX + measuredSize.width > rightEdge) screenX = rightEdge - measuredSize.width
+            if (screenY + measuredSize.height > bottomEdge) screenY = bottomEdge - measuredSize.height
+            if (screenX < paddingPx) screenX = paddingPx
+            if (screenY < paddingPx) screenY = paddingPx
+            IntOffset(
+                screenX - anchorPositionInRoot.x.toInt(),
+                screenY - anchorPositionInRoot.y.toInt(),
+            )
+        }
+    }
+
+    val transformOriginX = if (measuredSize.width > 0) {
+        ((position.x - adjustedOffset.x).toFloat() / measuredSize.width).coerceIn(0f, 1f)
+    } else 0f
+    val transformOriginY = if (measuredSize.height > 0) {
+        ((position.y - adjustedOffset.y).toFloat() / measuredSize.height).coerceIn(0f, 1f)
+    } else 0f
+
+    LaunchedEffect(measuredSize) {
+        if (measuredSize != IntSize.Zero) {
+            animate(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioLowBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            ) { value, _ ->
+                animationProgress.floatValue = value
+            }
+        }
+    }
+
+    if (measuredSize == IntSize.Zero) return
+
+    val scale = 0.5f + 0.5f * animationProgress.floatValue
+    val alpha = animationProgress.floatValue
+
+    Popup(
+        onDismissRequest = onDismiss,
+        alignment = Alignment.TopStart,
+        offset = adjustedOffset,
+        properties = PopupProperties(
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true,
+            clippingEnabled = false,
+        ),
+    ) {
+        ListItemContextMenuContent(
+            items = items,
+            animated = true,
+            scale = scale,
+            alpha = alpha,
+            transformOriginX = transformOriginX,
+            transformOriginY = transformOriginY,
+            onItemClick = { entry ->
+                entry.onClick()
+                onDismiss()
+            },
+        )
+    }
+}
+
+@Composable
+private fun ListItemContextMenuContent(
+    items: List<ListItemContextMenuEntry>,
+    animated: Boolean,
+    withShadow: Boolean = true,
+    scale: Float = 1f,
+    alpha: Float = 1f,
+    transformOriginX: Float = 0f,
+    transformOriginY: Float = 0f,
+    modifier: Modifier = Modifier,
+    onItemClick: (ListItemContextMenuEntry) -> Unit = { it.onClick() },
+) {
+    val density = LocalDensity.current
+    val shadowElevationPx = if (withShadow) with(density) { 12.dp.toPx() } else 0f
+    val menuColor = MaterialTheme.colorScheme.surfaceContainerHighest
+    val baseModifier = modifier.width(IntrinsicSize.Max)
+    val containerModifier = if (animated) {
+        baseModifier.graphicsLayer(
+            scaleX = scale,
+            scaleY = scale,
+            alpha = alpha,
+            transformOrigin = TransformOrigin(transformOriginX, transformOriginY),
+            shadowElevation = shadowElevationPx,
+            shape = listItemContextMenuShape,
+            clip = true,
+        )
+    } else {
+        baseModifier.graphicsLayer(
+            shadowElevation = shadowElevationPx,
+            shape = listItemContextMenuShape,
+            clip = true,
+        )
+    }
+
+    CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+        Box(modifier = containerModifier) {
+            Box(modifier = Modifier.matchParentSize().background(menuColor, listItemContextMenuShape))
+            Column(
+                modifier = Modifier.padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                items.forEach { entry ->
+                    ListItemContextMenuRow(
+                        icon = entry.icon,
+                        label = entry.label,
+                        onClick = { onItemClick(entry) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ListItemContextMenuRow(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(4.dp)
+            .clip(listItemContextMenuItemShape)
+            .scaleOnPress(
+                scale = 0.96f,
+                onClick = onClick,
+                indication = LocalIndication.current,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMedium,
+                ),
+            )
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
+}
+
+@Composable
+fun ContextMenuPressable(
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    openMenuOnTap: Boolean = false,
+    pressScale: Float = 0.96f,
+    onContextMenuOpen: (() -> Unit)? = null,
+    contextMenu: ListItemContextMenuScope.() -> Unit,
+    content: @Composable () -> Unit,
+) {
+    if (!enabled) {
+        Box(modifier = modifier) { content() }
+        return
+    }
+
+    var isPressed by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
+    var menuPosition by remember { mutableStateOf(IntOffset.Zero) }
+    var anchorPositionInRoot by remember { mutableStateOf(Offset.Zero) }
+    val latestContextMenu by rememberUpdatedState(contextMenu)
+    val scaleTarget = if (isPressed && !menuOpen) pressScale else 1f
+    val scale by animateFloatAsState(
+        targetValue = scaleTarget,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        visibilityThreshold = 0.001f,
+        label = "contextMenuPressableScale",
+    )
+
+    Column(
+        modifier = Modifier.onGloballyPositioned { coordinates ->
+            anchorPositionInRoot = coordinates.positionInRoot()
+        },
+    ) {
+        Box(
+            modifier = modifier
+                .graphicsLayer(
+                    scaleX = scale,
+                    scaleY = scale,
+                    transformOrigin = TransformOrigin.Center,
+                )
+                .pointerInput(latestContextMenu, openMenuOnTap) {
+                    detectTapGestures(
+                        onPress = {
+                            isPressed = true
+                            try {
+                                awaitRelease()
+                            } finally {
+                                isPressed = false
+                            }
+                        },
+                        onTap = {
+                            if (openMenuOnTap) {
+                                onContextMenuOpen?.invoke()
+                                menuPosition = IntOffset.Zero
+                                menuOpen = true
+                            }
+                        },
+                        onLongPress = { localOffset ->
+                            onContextMenuOpen?.invoke()
+                            menuPosition = IntOffset(
+                                localOffset.x.toInt(),
+                                localOffset.y.toInt(),
+                            )
+                            menuOpen = true
+                        },
+                    )
+                },
+        ) {
+            content()
+        }
+
+        ListItemContextMenuPopup(
+            open = menuOpen,
+            position = menuPosition,
+            anchorPositionInRoot = anchorPositionInRoot,
+            onDismiss = { menuOpen = false },
+            menuContent = latestContextMenu,
+        )
+    }
+}
+
+@Composable
 fun ListItem(
     modifier: Modifier = Modifier,
     bodyModifier: Modifier = Modifier,
     headline: String,
     supportingText: String? = null,
+    supportingSlot: (@Composable () -> Unit)? = null,
     leadingContent: (@Composable () -> Unit)? = null,
     trailingContent: (@Composable ConstraintLayoutScope.() -> Unit)? = null,
     containerColor: Color = LocalContainerColor.current ?: ListItemDefaults.containerColor,
@@ -124,12 +553,43 @@ fun ListItem(
     dividerThickness: Dp = LocalDividerThickness.current ?: ListItemDefaults.thickness,
     dividerAnimated: Boolean = false,
     beforeDividerRadius: Dp = LocalBeforeDividerRadius.current ?: ListItemDefaults.beforeDividerRadius,
+    position: ListItemPosition = ListItemPosition.MIDDLE,
+    groupItemCount: Int? = null,
     onClick: (() -> Unit)? = null,
     bodyOnClick: (() -> Unit)? = null,
     leadingAndBodyShared: Boolean = false,
-    bottomContent: (@Composable () -> Unit)? = null
+    bottomContent: (@Composable () -> Unit)? = null,
+    onContextMenuOpen: (() -> Unit)? = null,
+    contextMenu: (ListItemContextMenuScope.() -> Unit)? = null,
 ) {
-    Column {
+    val showDivider = divider && position != ListItemPosition.END
+    val clipShape = listItemClipShape(
+        position = position,
+        groupItemCount = groupItemCount,
+        beforeDividerRadius = beforeDividerRadius,
+    )
+    var isPressed by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
+    var menuPosition by remember { mutableStateOf(IntOffset.Zero) }
+    var anchorPositionInRoot by remember { mutableStateOf(Offset.Zero) }
+    val latestContextMenu by rememberUpdatedState(contextMenu)
+    val hasContextMenu = contextMenu != null
+    val scaleTarget = if (isPressed && !menuOpen) 0.96f else 1f
+    val scale by animateFloatAsState(
+        targetValue = scaleTarget,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        visibilityThreshold = 0.001f,
+        label = "listItemScale",
+    )
+
+    Column(
+        modifier = Modifier.onGloballyPositioned { coordinates ->
+            anchorPositionInRoot = coordinates.positionInRoot()
+        },
+    ) {
         @Composable
         fun ProvideStyle(
             content: @Composable BoxScope?.() -> Unit
@@ -149,12 +609,44 @@ fun ListItem(
         }
 
         ProvideStyle {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer(
+                        scaleX = scale,
+                        scaleY = scale,
+                        transformOrigin = TransformOrigin.Center,
+                    )
+                    .conditional(hasContextMenu) {
+                        pointerInput(latestContextMenu, onClick) {
+                            detectTapGestures(
+                                onPress = {
+                                    isPressed = true
+                                    try {
+                                        awaitRelease()
+                                    } finally {
+                                        isPressed = false
+                                    }
+                                },
+                                onTap = { onClick?.invoke() },
+                                onLongPress = { localOffset ->
+                                    onContextMenuOpen?.invoke()
+                                    menuPosition = IntOffset(
+                                        localOffset.x.toInt(),
+                                        localOffset.y.toInt(),
+                                    )
+                                    menuOpen = true
+                                },
+                            )
+                        }
+                    },
+            ) {
             ConstraintLayout(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(beforeDividerRadius))
+                    .clip(clipShape)
                     .background(containerColor)
-                    .conditional(onClick != null) {
+                    .conditional(onClick != null && !hasContextMenu) {
                         clickable(onClick = onClick!!)
                     }
                     .then(modifier)
@@ -187,7 +679,12 @@ fun ListItem(
 
                     ListItem(
                         headlineContent = { Text(headline) },
-                        supportingContent = { if (supportingText != null) Text(supportingText) },
+                        supportingContent = {
+                            when {
+                                supportingSlot != null -> supportingSlot()
+                                supportingText != null -> Text(supportingText)
+                            }
+                        },
                         modifier = Modifier
                             .constrainAs(listItem) {
                                 top link parent.top
@@ -203,7 +700,7 @@ fun ListItem(
 
                                 width = Dimension.fillToConstraints
                             }
-                            .conditional(bodyOnClick != null && !leadingAndBodyShared) {
+                            .conditional(bodyOnClick != null && !leadingAndBodyShared && !hasContextMenu) {
                                 Modifier.clickable(onClick = bodyOnClick!!)
                             }
                             .then(bodyModifier),
@@ -227,7 +724,7 @@ fun ListItem(
                                     else parent.right
                                 width = Dimension.fillToConstraints
                             }
-                            .conditional(bodyOnClick != null) {
+                            .conditional(bodyOnClick != null && !hasContextMenu) {
                                 Modifier.clickable(onClick = bodyOnClick!!)
                             },
                         verticalAlignment = Alignment.CenterVertically
@@ -273,12 +770,13 @@ fun ListItem(
                     }
                 }
             }
+            }
         }
 
         when {
-            dividerAnimated && divider -> {
+            dividerAnimated && showDivider -> {
                 AnimatedVisibility(
-                    visible = divider,
+                    visible = showDivider,
                     enter = expandVertically(),
                     exit = shrinkVertically()
                 ) {
@@ -288,12 +786,22 @@ fun ListItem(
                     )
                 }
             }
-            divider -> {
+            showDivider -> {
                 HorizontalDivider(
                     color = dividerColor,
                     thickness = dividerThickness
                 )
             }
+        }
+
+        if (hasContextMenu) {
+            ListItemContextMenuPopup(
+                open = menuOpen,
+                position = menuPosition,
+                anchorPositionInRoot = anchorPositionInRoot,
+                onDismiss = { menuOpen = false },
+                menuContent = { latestContextMenu?.invoke(this) },
+            )
         }
     }
 }
@@ -311,7 +819,11 @@ inline fun SwitchListItem(
     dividerColor: Color = LocalDividerColor.current ?: DividerDefaults.color,
     dividerThickness: Dp = LocalDividerThickness.current ?: DividerDefaults.Thickness,
     dividerAnimated: Boolean = false,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    position: ListItemPosition = ListItemPosition.MIDDLE,
+    groupItemCount: Int? = null,
+    noinline onContextMenuOpen: (() -> Unit)? = null,
+    noinline contextMenu: (ListItemContextMenuScope.() -> Unit)? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     ListItem(
@@ -341,7 +853,11 @@ inline fun SwitchListItem(
         dividerColor = dividerColor,
         dividerThickness = dividerThickness,
         dividerAnimated = dividerAnimated,
-        enabled = enabled
+        enabled = enabled,
+        position = position,
+        groupItemCount = groupItemCount,
+        onContextMenuOpen = onContextMenuOpen,
+        contextMenu = contextMenu,
     )
 }
 
@@ -359,7 +875,11 @@ inline fun SeparatedSwitchListItem(
     dividerColor: Color = LocalDividerColor.current ?: DividerDefaults.color,
     dividerThickness: Dp = LocalDividerThickness.current ?: DividerDefaults.Thickness,
     dividerAnimated: Boolean = false,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    position: ListItemPosition = ListItemPosition.MIDDLE,
+    groupItemCount: Int? = null,
+    noinline onContextMenuOpen: (() -> Unit)? = null,
+    noinline contextMenu: (ListItemContextMenuScope.() -> Unit)? = null,
 ) {
     ListItem(
         modifier = modifier,
@@ -399,7 +919,11 @@ inline fun SeparatedSwitchListItem(
         dividerThickness = dividerThickness,
         dividerAnimated = dividerAnimated,
         leadingAndBodyShared = true,
-        enabled = enabled
+        enabled = enabled,
+        position = position,
+        groupItemCount = groupItemCount,
+        onContextMenuOpen = onContextMenuOpen,
+        contextMenu = contextMenu,
     )
 }
 

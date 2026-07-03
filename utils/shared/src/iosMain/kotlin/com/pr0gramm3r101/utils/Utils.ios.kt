@@ -16,6 +16,9 @@ actual fun Modifier.clearFocusOnKeyboardDismiss() = this
 
 @Composable
 actual fun ToggleNavScrimEffect(enabled: Boolean) {}
+
+@Composable
+actual fun DialogEdgeToEdgeEffect() {}
 actual val materialYouAvailable get() = false
 
 inline fun htons(short: UShort) = if (isLittleEndian) _OSSwapInt16(short) else short

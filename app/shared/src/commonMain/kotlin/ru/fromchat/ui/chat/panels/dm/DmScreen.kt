@@ -36,8 +36,13 @@ fun DmScreen(
     val activeInstanceId by CacheContext.activeInstanceId.collectAsState()
     val otherUserId = panel.getState().profileUserId
 
-    LaunchedEffect(panel, otherUserId) {
-        if (otherUserId != null && otherUserId > 0) {
+    LaunchedEffect(panel, activeInstanceId, otherUserId) {
+        if (activeInstanceId.isBlank()) return@LaunchedEffect
+        val peerId = otherUserId ?: return@LaunchedEffect
+        if (peerId <= 0) return@LaunchedEffect
+        // Panel is retained in [DmPanelCache]; only cold-load when the list is still empty
+        // (e.g. returning from profile must not call loadMessages and flash the chat spinner).
+        if (panel.getState().messages.isEmpty()) {
             panel.loadMessages()
         }
     }

@@ -54,7 +54,7 @@ class OutboxSendWorker(
         } finally {
             progressJob?.cancel()
         }
-        Result.success()
+        if (allOk) Result.success() else Result.retry()
     }
 
     companion object {

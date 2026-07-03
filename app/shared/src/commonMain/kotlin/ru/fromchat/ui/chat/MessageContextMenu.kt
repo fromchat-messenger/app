@@ -23,6 +23,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SaveAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -55,6 +56,7 @@ import ru.fromchat.action_copy
 import ru.fromchat.action_delete
 import ru.fromchat.action_edit
 import ru.fromchat.action_reply
+import ru.fromchat.action_retry_send
 import ru.fromchat.action_save
 import ru.fromchat.api.local.download.resolveSavableMessageFile
 import ru.fromchat.api.local.download.resolveSavableMessageImage
@@ -76,9 +78,11 @@ internal fun messageContextMenuFingerprint(
     isReadOnly: Boolean,
 ): String {
     val isQueued = message.isQueuedOutbound() && isAuthor
+    val sendFailed = isQueued && !message.uploadError.isNullOrBlank()
     val corrupted = message.isContentCorrupted
     return buildString {
         append("q=").append(isQueued)
+        append("|failed=").append(sendFailed)
         append("|copy=").append(!corrupted)
         append("|save=").append(resolveSavableMessageImage(message) != null)
         if (!isQueued && !isReadOnly) {
@@ -100,6 +104,7 @@ fun MessageContextMenu(
     onCopy: (Message) -> Unit,
     onSave: (Message) -> Unit,
     onCancelSend: (Message) -> Unit,
+    onRetrySend: (Message) -> Unit = {},
     isReadOnly: Boolean = false,
     screenWidthPx: Int,
     screenHeightPx: Int,
@@ -162,6 +167,7 @@ fun MessageContextMenu(
                     onCopy = {},
                     onSave = {},
                     onCancelSend = {},
+                    onRetrySend = {},
                     modifier = modifier.graphicsLayer(alpha = 0f),
                     animated = false,
                     withShadow = false,
@@ -260,6 +266,10 @@ fun MessageContextMenu(
                         onCancelSend(it)
                         onDismiss()
                     },
+                    onRetrySend = {
+                        onRetrySend(it)
+                        onDismiss()
+                    },
                     modifier = modifier,
                     animated = true,
                     scale = scale,
@@ -283,6 +293,7 @@ private fun ContextMenuContent(
     onCopy: (Message) -> Unit,
     onSave: (Message) -> Unit,
     onCancelSend: (Message) -> Unit,
+    onRetrySend: (Message) -> Unit,
     isReadOnly: Boolean = false,
     modifier: Modifier,
     animated: Boolean,
@@ -330,7 +341,9 @@ private fun ContextMenuContent(
     val labelCopy = stringResource(Res.string.action_copy)
     val labelSave = stringResource(Res.string.action_save)
     val labelCancelSend = stringResource(Res.string.action_cancel_send)
+    val labelRetrySend = stringResource(Res.string.action_retry_send)
     val isQueued = message.isQueuedOutbound() && isAuthor
+    val sendFailed = isQueued && !message.uploadError.isNullOrBlank()
     val savableImage = resolveSavableMessageImage(message)
     val savableFile = resolveSavableMessageFile(message)
     val canSave = savableImage != null || savableFile != null
@@ -357,7 +370,19 @@ private fun ContextMenuContent(
                     onClick = { onSave(message) }
                 )
             }
-            if (isQueued) {
+            if (sendFailed) {
+                ContextMenuItem(
+                    icon = Icons.Rounded.Refresh,
+                    text = labelRetrySend,
+                    onClick = { onRetrySend(message) },
+                )
+                ContextMenuItem(
+                    icon = Icons.Rounded.Close,
+                    text = labelCancelSend,
+                    onClick = { onCancelSend(message) },
+                    isError = true,
+                )
+            } else if (isQueued) {
                 ContextMenuItem(
                     icon = Icons.Rounded.Close,
                     text = labelCancelSend,

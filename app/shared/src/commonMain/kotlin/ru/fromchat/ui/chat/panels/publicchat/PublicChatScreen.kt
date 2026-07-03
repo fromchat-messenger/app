@@ -1,19 +1,18 @@
 package ru.fromchat.ui.chat.panels.publicchat
 
-import androidx.compose.animation.AnimatedContentScope
+import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import org.jetbrains.compose.resources.stringResource
-import ru.fromchat.Res
+import androidx.compose.ui.Modifier
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.db.store.MessageRepository
-import ru.fromchat.public_chat
 import ru.fromchat.ui.chat.ChatScreen
 import ru.fromchat.ui.chat.utils.PublicChatPanelCache
 
@@ -21,14 +20,15 @@ import ru.fromchat.ui.chat.utils.PublicChatPanelCache
 fun PublicChatScreen(
     scrollToMessageId: Int? = null,
     sharedTransitionScope: SharedTransitionScope? = null,
-    animatedContentScope: AnimatedContentScope? = null
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
+    sharedAvatarKey: Any? = null,
+    onTitleClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
 ) {
     val currentUserId = ApiClient.user?.id
-    val publicChatTitle = stringResource(Res.string.public_chat)
 
-    // Reuse one panel for the session (like DM [DmPanelCache]); avoids full reload on every visit.
-    val panel = remember(currentUserId, publicChatTitle) {
-        PublicChatPanelCache.getOrCreateGeneralChat(publicChatTitle, currentUserId)
+    val panel = remember(currentUserId) {
+        PublicChatPanelCache.getOrCreateGeneralChat(currentUserId)
     }
 
     val activeInstanceId by CacheContext.activeInstanceId.collectAsState()
@@ -47,7 +47,6 @@ fun PublicChatScreen(
         }
     }
 
-    // Track visibility for notifications
     DisposableEffect(Unit) {
         isPublicChatVisible = true
         onDispose {
@@ -55,14 +54,15 @@ fun PublicChatScreen(
         }
     }
 
-    // Render with ChatScreen
     ChatScreen(
         panel = panel,
         currentUserId = currentUserId,
         scrollToMessageId = scrollToMessageId,
         sharedTransitionScope = sharedTransitionScope,
-        animatedVisibilityScope = animatedContentScope,
-        sharedAvatarKey = null,
+        animatedVisibilityScope = animatedVisibilityScope,
+        sharedAvatarKey = sharedAvatarKey,
+        onTitleClick = onTitleClick,
+        modifier = modifier.fillMaxSize(),
     )
 }
 

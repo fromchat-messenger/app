@@ -1,5 +1,7 @@
 package ru.fromchat.ui.auth.register
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -10,6 +12,7 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -17,11 +20,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
+import ru.fromchat.about_link_privacy
+import ru.fromchat.about_link_terms
 import ru.fromchat.auth_char_count
+import ru.fromchat.auth_legal_notice_and
+import ru.fromchat.auth_legal_notice_prefix
 import ru.fromchat.auth_step_profile_body
 import ru.fromchat.auth_step_profile_title
 import ru.fromchat.auth_username_taken
@@ -30,6 +38,8 @@ import ru.fromchat.display_name_error
 import ru.fromchat.error_unexpected
 import ru.fromchat.profile_headline_bio
 import ru.fromchat.register_button
+import ru.fromchat.legal.DocumentType
+import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.auth.RegisterResult
 import ru.fromchat.ui.auth.register
 import ru.fromchat.ui.components.ActionButton
@@ -60,6 +70,7 @@ internal fun profileStepPage(
     onSnackbar: (String) -> Unit,
 ): ExpressiveStepPage {
     val scope = rememberCoroutineScope()
+    val navController = LocalNavController.current
     val fieldColors = expressiveStepFieldColors()
     val colorScheme = MaterialTheme.colorScheme
 
@@ -123,6 +134,36 @@ internal fun profileStepPage(
             )
         },
         button = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = SettingsStepHorizontalPadding, vertical = 8.dp),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    text = stringResource(Res.string.auth_legal_notice_prefix),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+                TextButton(onClick = { navController.navigate(DocumentType.route(DocumentType.Terms)) }) {
+                    Text(
+                        text = stringResource(Res.string.about_link_terms),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Text(
+                    text = stringResource(Res.string.auth_legal_notice_and),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(onClick = { navController.navigate(DocumentType.route(DocumentType.Privacy)) }) {
+                    Text(
+                        text = stringResource(Res.string.about_link_privacy),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
             ActionButton(
                 onClick = {
                     if (busy) return@ActionButton

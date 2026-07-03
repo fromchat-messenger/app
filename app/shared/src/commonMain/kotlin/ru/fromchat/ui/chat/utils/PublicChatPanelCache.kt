@@ -24,7 +24,6 @@ object PublicChatPanelCache {
 
     private var panel: PublicChatPanel? = null
     private var cachedPanelKey: String? = null
-    private var cachedDisplayTitle: String? = null
     private var cachedUserId: Int? = null
     private var cachedInstanceId: String = ""
 
@@ -42,10 +41,7 @@ object PublicChatPanelCache {
         }
     }
 
-    /**
-     * @param displayTitle Localized title from e.g. [ru.fromchat.Res.string.public_chat].
-     */
-    fun getOrCreateGeneralChat(displayTitle: String, currentUserId: Int?): PublicChatPanel {
+    fun getOrCreateGeneralChat(currentUserId: Int?): PublicChatPanel {
         ensureScope()
         val instanceId = CacheContext.activeInstanceId.value.trim()
         if (instanceId.isNotEmpty() && cachedInstanceId.isNotEmpty() && cachedInstanceId != instanceId) {
@@ -58,21 +54,15 @@ object PublicChatPanelCache {
             cachedUserId == currentUserId &&
             (instanceId.isEmpty() || cachedInstanceId == instanceId)
         ) {
-            if (cachedDisplayTitle != displayTitle) {
-                cachedDisplayTitle = displayTitle
-                panel!!.applyDisplayTitle(displayTitle)
-            }
             return panel!!
         }
         panel?.destroy()
         panel = PublicChatPanel(
             panelKey = GeneralPublicPanelKey,
-            displayTitle = displayTitle,
             currentUserId = currentUserId,
             scope = panelScope
         )
         cachedPanelKey = GeneralPublicPanelKey
-        cachedDisplayTitle = displayTitle
         cachedUserId = currentUserId
         return panel!!
     }
@@ -81,8 +71,6 @@ object PublicChatPanelCache {
         panel?.destroy()
         panel = null
         cachedPanelKey = null
-        cachedDisplayTitle = null
         cachedUserId = null
-        supervisorJob.cancel()
     }
 }

@@ -8,6 +8,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.db.store.InstanceRegistryStore
+import ru.fromchat.api.local.db.store.MessageRepository
 import ru.fromchat.api.local.download.AttachmentDownloadNotifier
 import ru.fromchat.api.local.send.scheduleOutboxProcessing
 import ru.fromchat.config.Settings
@@ -35,6 +36,11 @@ private fun activateInstance(instanceId: String) {
     CacheContext.setActiveInstance(instanceId, ApiClient.user?.id)
     scheduleOutboxProcessing(instanceId)
     scheduleAttachmentResumeAfterSession()
+    ApiClient.user?.id?.let { userId ->
+        bootstrapScope.launch {
+            runCatching { MessageRepository.purgePendingNotFromUser(userId) }
+        }
+    }
 }
 
 /**

@@ -38,7 +38,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,6 +51,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.pr0gramm3r101.utils.resetFocus
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -59,15 +59,17 @@ import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.db.store.CachedConversation
 import ru.fromchat.api.local.db.store.MessageCacheStore
+import ru.fromchat.api.local.db.store.MessageRepository
 import ru.fromchat.api.local.db.store.ProfileCache
 import ru.fromchat.api.local.db.store.UserStatusStore
 import ru.fromchat.api.local.db.store.visibleUsername
+import ru.fromchat.api.schema.user.User
 import ru.fromchat.chat_last_mesaage
+import ru.fromchat.chat_preview_attachment
 import ru.fromchat.search_hint
 import ru.fromchat.search_not_found
 import ru.fromchat.search_not_found_message
 import ru.fromchat.search_title
-import ru.fromchat.ui.components.BackHandler
 import ru.fromchat.ui.components.SearchBar
 import ru.fromchat.ui.components.SearchBarSharedElement
 import ru.fromchat.ui.components.Text
@@ -85,9 +87,11 @@ fun ChatsSearchScreen(
     val searchListState = rememberLazyListState()
     val statusMap by UserStatusStore.status.collectAsState()
     val defaultLastMessage = stringResource(Res.string.chat_last_mesaage)
+    val attachmentOnlyPreview = stringResource(Res.string.chat_preview_attachment)
     val searchHint = stringResource(Res.string.search_hint)
     val searchBarHint = stringResource(Res.string.search_title)
     var dmConversations by remember { mutableStateOf<List<CachedConversation>>(emptyList()) }
+    var remoteUsers by remember { mutableStateOf<List<User>>(emptyList()) }
     val statusSubscriptionScope = rememberCoroutineScope()
     var subscribedDmUserIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -99,7 +103,7 @@ fun ChatsSearchScreen(
     val searchQuery = searchText.trim().lowercase().trimStart('@')
     val filteredDmConversations = remember(dmConversations, searchQuery) {
         if (searchQuery.isBlank()) {
-            dmConversations
+            emptyList()
         } else {
             dmConversations.filter { conv ->
                 matchesSearchConversations(conv, searchQuery)
@@ -107,19 +111,50 @@ fun ChatsSearchScreen(
         }
     }
 
-    val searchUiState by remember(searchText, filteredDmConversations) {
-        derivedStateOf {
-            when {
-                searchText.isBlank() -> SearchScreenState.EmptyQuery
-                filteredDmConversations.isEmpty() -> SearchScreenState.NotFound
-                else -> SearchScreenState.Results
+    val searchResults = remember(filteredDmConversations, remoteUsers, searchQuery) {
+        if (searchQuery.isBlank()) {
+            emptyList()
+        } else {
+            val dmUserIds = filteredDmConversations.map { it.otherUserId }.toSet()
+            val remoteOnly = remoteUsers.filter { it.id !in dmUserIds }
+            filteredDmConversations.map { SearchResult.Conversation(it) } +
+                remoteOnly.map { SearchResult.UserResult(it) }
+        }
+    }
+
+    val searchUiState = when {
+        searchText.isBlank() -> SearchScreenState.EmptyQuery
+        searchResults.isEmpty() -> SearchScreenState.NotFound
+        else -> SearchScreenState.Results
+    }
+    LaunchedEffect(searchQuery) {
+        if (searchQuery.length < 2) {
+            remoteUsers = emptyList()
+            return@LaunchedEffect
+        }
+        delay(300)
+        val querySnapshot = searchQuery
+        runCatching {
+            ApiClient.searchUsers(querySnapshot)
+        }.onSuccess { users ->
+            if (querySnapshot == searchText.trim().lowercase().trimStart('@')) {
+                users.forEach { ProfileCache.mergeFromDmUser(it) }
+                remoteUsers = users
+            }
+        }.onFailure {
+            if (querySnapshot == searchText.trim().lowercase().trimStart('@')) {
+                remoteUsers = emptyList()
             }
         }
     }
+
     LaunchedEffect(Unit) {
         // Load cached DM conversations first for immediate display.
         runCatching {
-            dmConversations = MessageCacheStore.loadCachedDmConversations()
+            MessageCacheStore.loadCachedDmConversations()
+        }.onSuccess { conversations ->
+            conversations.forEach { ProfileCache.mergeFromCachedConversation(it) }
+            dmConversations = conversations
         }
 
         // Then refresh from network and update cache + state.
@@ -128,17 +163,18 @@ fun ChatsSearchScreen(
         }.onSuccess { conversations ->
             runCatching {
                 conversations.forEach { ProfileCache.mergeFromDmUser(it.user) }
-                MessageCacheStore.replaceDmConversations(conversations)
-                dmConversations = MessageCacheStore.loadCachedDmConversations()
+                MessageRepository.replaceDmConversations(conversations, attachmentOnlyPreview)
+                dmConversations = MessageRepository.loadCachedDmConversations()
             }
         }
     }
 
-    LaunchedEffect(filteredDmConversations, searchListState) {
+    LaunchedEffect(searchResults, searchListState) {
         snapshotFlow {
             searchListState.layoutInfo.visibleItemsInfo
                 .mapNotNull { item ->
-                    filteredDmConversations.getOrNull(item.index)?.otherUserId
+                    SearchListIndices.resultIndexFromLazy(item.index)
+                        ?.let { searchResults.getOrNull(it)?.userId }
                 }
                 .filter { it > 0 }
                 .toSet()
@@ -160,6 +196,7 @@ fun ChatsSearchScreen(
 
     DisposableEffect(Unit) {
         onDispose {
+            hideIme()
             if (subscribedDmUserIds.isNotEmpty()) {
                 statusSubscriptionScope.launch {
                     subscribedDmUserIds.forEach { ApiClient.sendUnsubscribeStatus(it) }
@@ -167,11 +204,6 @@ fun ChatsSearchScreen(
             }
             subscribedDmUserIds = emptySet()
         }
-    }
-
-    BackHandler(enabled = true) {
-        hideIme()
-        onBack()
     }
 
     Scaffold(
@@ -244,16 +276,12 @@ fun ChatsSearchScreen(
                         SearchConversationsList(
                             listState = searchListState,
                             conversations = filteredDmConversations,
+                            remoteUsers = remoteUsers.filter { user ->
+                                filteredDmConversations.none { it.otherUserId == user.id }
+                            },
                             defaultLastMessage = defaultLastMessage,
                             statusMap = statusMap,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 12.dp),
-                            onOpenProfile = { userId ->
-                                if (userId != 0) {
-                                    onOpenProfile(userId)
-                                }
-                            },
+                            modifier = Modifier.fillMaxSize(),
                             onOpenConversation = { userId ->
                                 if (userId != 0) {
                                     onOpenConversation(userId)
@@ -267,16 +295,26 @@ fun ChatsSearchScreen(
     }
 }
 
-private fun matchesSearchConversations(conv: CachedConversation, normalizedQuery: String): Boolean {
-    val cached = ProfileCache.get(conv.otherUserId)
-    val candidates = buildList {
-        add(conv.displayName)
-        cached?.displayName?.let { add(it) }
-        cached?.visibleUsername(ApiClient.user?.id)?.let { add(it) }
+private fun matchesSearchConversations(conv: CachedConversation, normalizedQuery: String) =
+    ProfileCache.get(conv.otherUserId).let { cached ->
+        buildList {
+            add(conv.displayName)
+            cached?.displayName?.let { add(it) }
+            cached?.visibleUsername(ApiClient.user?.id)?.let { add(it) }
+        }.any { candidate ->
+            candidate.lowercase().contains(normalizedQuery)
+        }
     }
 
-    return candidates.any { candidate ->
-        candidate.lowercase().contains(normalizedQuery)
+private sealed interface SearchResult {
+    val userId: Int
+
+    data class Conversation(val conversation: CachedConversation) : SearchResult {
+        override val userId: Int = conversation.otherUserId
+    }
+
+    data class UserResult(val user: User) : SearchResult {
+        override val userId: Int = user.id
     }
 }
 

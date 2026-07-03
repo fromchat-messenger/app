@@ -10,6 +10,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -38,11 +40,14 @@ import org.jetbrains.compose.resources.vectorResource
 import ru.fromchat.Res
 import ru.fromchat.about
 import ru.fromchat.about_link_max
+import ru.fromchat.about_link_privacy
 import ru.fromchat.about_link_telegram
+import ru.fromchat.about_link_terms
 import ru.fromchat.about_link_website
 import ru.fromchat.about_version
 import ru.fromchat.app_desc
 import ru.fromchat.back
+import ru.fromchat.legal.DocumentType
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.components.BrandTitle
 
@@ -146,9 +151,37 @@ fun AboutScreen() {
                     headline = stringResource(Res.string.about_link_website),
                     supportingText = URL_WEBSITE,
                     onClick = { uriHandler.openUri(URL_WEBSITE) },
+                    divider = true,
                     leadingContent = {
                         Icon(
                             imageVector = Icons.Outlined.Website,
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                            tint = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                )
+
+                ListItem(
+                    headline = stringResource(Res.string.about_link_privacy),
+                    onClick = { navController.navigate(DocumentType.route(DocumentType.Privacy)) },
+                    divider = true,
+                    leadingContent = {
+                        Icon(
+                            imageVector = Icons.Outlined.Shield,
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                            tint = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                )
+
+                ListItem(
+                    headline = stringResource(Res.string.about_link_terms),
+                    onClick = { navController.navigate(DocumentType.route(DocumentType.Terms)) },
+                    leadingContent = {
+                        Icon(
+                            imageVector = Icons.Outlined.Description,
                             contentDescription = null,
                             modifier = Modifier.size(24.dp),
                             tint = MaterialTheme.colorScheme.onSurface,

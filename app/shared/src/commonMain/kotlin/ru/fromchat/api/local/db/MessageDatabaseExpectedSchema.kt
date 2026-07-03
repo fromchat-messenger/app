@@ -40,6 +40,7 @@ internal object MessageDatabaseExpectedSchema {
                 lastMessagePreview TEXT,
                 unreadCount INTEGER NOT NULL DEFAULT 0,
                 updatedAt TEXT,
+                archived INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (instanceId, id)
             )
         """.trimIndent(),
@@ -122,6 +123,7 @@ internal object MessageDatabaseExpectedSchema {
             "lastMessagePreview" to "TEXT",
             "unreadCount" to "INTEGER NOT NULL DEFAULT 0",
             "updatedAt" to "TEXT",
+            "archived" to "INTEGER NOT NULL DEFAULT 0",
         ),
         "message" to mapOf(
             "instanceId" to "TEXT NOT NULL",

@@ -10,3 +10,12 @@ actual suspend fun wipeFromChatCacheDirectory() {
         File(UtilsLibrary.context.cacheDir, "fromchat").deleteRecursively()
     }
 }
+
+actual suspend fun wipeAttachmentCacheDirectories() {
+    withContext(Dispatchers.IO) {
+        val cacheDir = UtilsLibrary.context.cacheDir
+        listOf("decrypted_images", "decrypted_files", "encrypted_downloads").forEach { name ->
+            File(cacheDir, name).deleteRecursively()
+        }
+    }
+}

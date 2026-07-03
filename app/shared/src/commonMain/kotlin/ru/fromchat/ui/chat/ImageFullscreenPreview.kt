@@ -148,16 +148,20 @@ fun ImageFullscreenPreview(
         fileIndex = fileIndex,
         confirmed = message.id > 0,
     )
-    val thumbLayoutAspect = thumbnailBounds?.takeIf { it.width > 0f && it.height > 0f }
+    var animationBounds by remember(decryptCacheKey) { mutableStateOf<Rect?>(null) }
+    if (animationBounds == null && thumbnailBounds != null) {
+        animationBounds = thumbnailBounds
+    }
+    val thumbLayoutAspect = animationBounds?.takeIf { it.width > 0f && it.height > 0f }
         ?.let { bounds -> bounds.width / bounds.height }
 
     var menusVisible by remember { mutableStateOf(true) }
     var dismissRequested by remember { mutableStateOf(false) }
     val backgroundAlpha = remember { Animatable(1f) }
-    var hasPlayedOpenAnimation by remember(thumbnailBounds) { mutableStateOf(thumbnailBounds == null) }
+    var hasPlayedOpenAnimation by remember(decryptCacheKey) { mutableStateOf(false) }
     var isOpenAnimationPlaying by remember { mutableStateOf(false) }
     var dismissProgress by remember { mutableStateOf(0f) }
-    val isInitialOpenState = thumbnailBounds != null && !hasPlayedOpenAnimation
+    val isInitialOpenState = animationBounds != null && !hasPlayedOpenAnimation
     val isTransitioning = isOpenAnimationPlaying || dismissRequested
     val effectiveMenusVisible = if (isInitialOpenState) false else menusVisible && dismissProgress < 0.01f
     var effectiveBgAlpha by remember { mutableStateOf(1f) }
@@ -168,8 +172,10 @@ fun ImageFullscreenPreview(
 
     val systemBarsVisibility = LocalSystemBarsVisibility.current
 
-    LaunchedEffect(menusVisible) {
-        systemBarsVisibility?.invoke(menusVisible)
+    // Keep status bars visible while dismissing so ChatScreen underneath keeps
+    // correct status-bar insets until the overlay is removed.
+    LaunchedEffect(menusVisible, dismissRequested) {
+        systemBarsVisibility?.invoke(menusVisible || dismissRequested)
     }
     DisposableEffect(Unit) {
         onDispose {
@@ -237,7 +243,9 @@ fun ImageFullscreenPreview(
                             .background(Color.Black)
                     )
                     LaunchedEffect(dismissRequested) {
-                        if (dismissRequested) onDismiss()
+                        if (!dismissRequested) return@LaunchedEffect
+                        onClosingChange(true)
+                        onDismiss()
                     }
                     androidx.compose.material3.CircularProgressIndicator(
                         modifier = Modifier.size(48.dp),
@@ -255,16 +263,17 @@ fun ImageFullscreenPreview(
                         contentHeightAtScale1
                     }
                     val initial = remember(
-                        thumbnailBounds, containerWidth, containerHeight, layoutContentHeight,
+                        animationBounds, containerWidth, containerHeight, layoutContentHeight,
                     ) {
-                        if (thumbnailBounds != null && layoutAspect != null) {
+                        val bounds = animationBounds
+                        if (bounds != null && layoutAspect != null) {
                             val fullTop = (containerHeight - layoutContentHeight) / 2f
                             val fullCenter = Offset(
                                 x = containerWidth / 2f,
                                 y = fullTop + layoutContentHeight / 2f,
                             )
-                            val thumbCenter = thumbnailBounds.center
-                            val thumbWidth = thumbnailBounds.width
+                            val thumbCenter = bounds.center
+                            val thumbWidth = bounds.width
                             val s = thumbWidth / containerWidth
                             val o = thumbCenter - fullCenter
                             InitialTransform(s, o.x, o.y, 12f, 0f)
@@ -288,8 +297,9 @@ fun ImageFullscreenPreview(
                     var lastStableOffsetX by remember { mutableStateOf(initial.offsetX) }
                     var lastStableOffsetY by remember { mutableStateOf(initial.offsetY) }
 
-                    LaunchedEffect(thumbnailBounds) {
-                        if (thumbnailBounds != null && !hasPlayedOpenAnimation) {
+                    LaunchedEffect(animationBounds) {
+                        val bounds = animationBounds ?: return@LaunchedEffect
+                        if (!hasPlayedOpenAnimation) {
                             hasPlayedOpenAnimation = true
                             isOpenAnimationPlaying = true
 
@@ -298,8 +308,8 @@ fun ImageFullscreenPreview(
                                 x = containerWidth / 2f,
                                 y = fullTop + layoutContentHeight / 2f,
                             )
-                            val thumbCenter = thumbnailBounds.center
-                            val thumbWidth = thumbnailBounds.width
+                            val thumbCenter = bounds.center
+                            val thumbWidth = bounds.width
 
                             val startScale = thumbWidth / containerWidth
                             val startOffset = thumbCenter - fullCenter
@@ -342,12 +352,14 @@ fun ImageFullscreenPreview(
                     }
                     LaunchedEffect(dismissRequested) {
                         if (!dismissRequested) return@LaunchedEffect
+                        onClosingChange(true)
 
                         val hasTransform = lastStableScale != 1f ||
                             lastStableOffsetX != 0f ||
                             lastStableOffsetY != 0f
 
-                        if (thumbnailBounds != null) {
+                        val bounds = animationBounds
+                        if (bounds != null) {
                             menusVisible = false
                             val wasOpenAnimating = isOpenAnimationPlaying
                             isOpenAnimationPlaying = false
@@ -357,8 +369,8 @@ fun ImageFullscreenPreview(
                                 x = containerWidth / 2f,
                                 y = fullTop + layoutContentHeight / 2f,
                             )
-                            val thumbCenter = thumbnailBounds.center
-                            val thumbWidth = thumbnailBounds.width
+                            val thumbCenter = bounds.center
+                            val thumbWidth = bounds.width
 
                             val targetScale = thumbWidth / containerWidth
                             val targetOffset = thumbCenter - fullCenter
@@ -395,9 +407,6 @@ fun ImageFullscreenPreview(
                             }
                         }
 
-                        onClosingChange(true)
-                        delay(50)
-                        onClosingChange(false)
                         onDismiss()
                     }
                     LaunchedEffect(scale, offset, isTransformInProgress) {

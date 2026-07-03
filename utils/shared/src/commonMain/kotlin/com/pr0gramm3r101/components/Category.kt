@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.pr0gramm3r101.utils.conditional
 
 object CategoryDefaults {
     val margin = PaddingValues(start = 16.dp, end = 16.dp, bottom = 20.dp)
@@ -42,6 +43,7 @@ private fun CategoryBase(
     margin: PaddingValues = CategoryDefaults.margin,
     containerColor: Color = CategoryDefaults.containerColor,
     backgroundColor: Color = Color.Transparent,
+    roundedCorners: Boolean = true,
     content: @Composable ColumnScope.() -> Unit
 ) {
     CompositionLocalProvider(
@@ -70,7 +72,7 @@ private fun CategoryBase(
             modifier = modifier
                 .padding(margin)
                 .fillMaxWidth(),
-            shape = CategoryDefaults.shape,
+            shape = if (roundedCorners) CategoryDefaults.shape else RoundedCornerShape(0.dp),
             colors = cardColors(containerColor = backgroundColor),
             content = content
         )
@@ -84,6 +86,7 @@ fun LazyItemScope.Category(
     margin: PaddingValues = CategoryDefaults.margin,
     containerColor: Color = CategoryDefaults.containerColor,
     backgroundColor: Color = Color.Transparent,
+    roundedCorners: Boolean = true,
     content: @Composable ColumnScope.() -> Unit
 ) {
     CategoryBase(
@@ -92,6 +95,7 @@ fun LazyItemScope.Category(
         margin = margin,
         containerColor = containerColor,
         backgroundColor = backgroundColor,
+        roundedCorners = roundedCorners,
         content = content
     )
 }
@@ -103,6 +107,7 @@ fun ColumnScope.Category(
     margin: PaddingValues = CategoryDefaults.margin,
     containerColor: Color = CategoryDefaults.containerColor,
     backgroundColor: Color = Color.Transparent,
+    roundedCorners: Boolean = true,
     content: @Composable ColumnScope.() -> Unit
 ) {
     CategoryBase(
@@ -111,6 +116,7 @@ fun ColumnScope.Category(
         margin = margin,
         containerColor = containerColor,
         backgroundColor = backgroundColor,
+        roundedCorners = roundedCorners,
         content = content
     )
 }
@@ -128,6 +134,7 @@ fun LazyListScope.Category(
     title: String? = null,
     margin: PaddingValues = CategoryDefaults.margin,
     containerColor: Color? = null,
+    roundedCorners: Boolean = true,
     content: CategoryScope.() -> Unit
 ) {
     val scope = CategoryScope().apply(content)
@@ -165,26 +172,28 @@ fun LazyListScope.Category(
                             start = margin.calculateStartPadding(LocalLayoutDirection.current),
                             end = margin.calculateEndPadding(LocalLayoutDirection.current)
                         )
-                        .clip(
-                            RoundedCornerShape(
-                                topStart =
-                                    if (index == 0)
-                                        CategoryDefaults.shape.topStart
-                                    else CornerSize(0.dp),
-                                topEnd =
-                                    if (index == 0)
-                                        CategoryDefaults.shape.topEnd
-                                    else CornerSize(0.dp),
-                                bottomStart =
-                                    if (index == items.lastIndex)
-                                        CategoryDefaults.shape.bottomStart
-                                    else CornerSize(0.dp),
-                                bottomEnd =
-                                    if (index == items.lastIndex)
-                                        CategoryDefaults.shape.bottomEnd
-                                    else CornerSize(0.dp)
+                        .conditional(roundedCorners) {
+                            clip(
+                                RoundedCornerShape(
+                                    topStart =
+                                        if (index == 0)
+                                            CategoryDefaults.shape.topStart
+                                        else CornerSize(0.dp),
+                                    topEnd =
+                                        if (index == 0)
+                                            CategoryDefaults.shape.topEnd
+                                        else CornerSize(0.dp),
+                                    bottomStart =
+                                        if (index == items.lastIndex)
+                                            CategoryDefaults.shape.bottomStart
+                                        else CornerSize(0.dp),
+                                    bottomEnd =
+                                        if (index == items.lastIndex)
+                                            CategoryDefaults.shape.bottomEnd
+                                        else CornerSize(0.dp)
+                                )
                             )
-                        )
+                        }
                 ) {
                     composableItem()
                 }

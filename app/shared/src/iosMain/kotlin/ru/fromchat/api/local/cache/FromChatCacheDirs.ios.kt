@@ -21,3 +21,20 @@ actual suspend fun wipeFromChatCacheDirectory() {
         NSFileManager.defaultManager.removeItemAtPath(path, error = null)
     }
 }
+
+@OptIn(ExperimentalForeignApi::class)
+actual suspend fun wipeAttachmentCacheDirectories() {
+    withContext(Dispatchers.Default) {
+        val url = NSFileManager.defaultManager.URLForDirectory(
+            directory = NSCachesDirectory,
+            inDomain = NSUserDomainMask,
+            appropriateForURL = null,
+            create = false,
+            error = null,
+        ) ?: return@withContext
+        val base = url.path ?: return@withContext
+        listOf("decrypted_images", "decrypted_files", "encrypted_downloads").forEach { name ->
+            NSFileManager.defaultManager.removeItemAtPath("$base/$name", error = null)
+        }
+    }
+}

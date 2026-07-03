@@ -7,6 +7,7 @@ import ru.fromchat.api.local.db.store.InstanceRegistryStore
 import ru.fromchat.config.ServerConfigData
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.config.ServerConfig
+import ru.fromchat.legal.DocumentRepository
 import kotlin.time.TimeSource
 
 sealed interface ServerProbeResult {
@@ -64,6 +65,7 @@ suspend fun applyServerConfig(
 ) {
     val tentative = config.copy(callsEnabled = callsOk)
     ServerConfig.updateServerConfig(tentative)
+    DocumentRepository.invalidate()
     val userId = ApiClient.user?.id
     InstanceRegistryStore.rebindServerInstance(tentative, instanceId)
     CacheContext.setActiveInstance(instanceId, userId)

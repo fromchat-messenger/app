@@ -18,7 +18,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import ru.fromchat.ui.components.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -64,16 +63,6 @@ fun SearchBar(
     Surface(
         modifier = modifier
             .conditional(
-                readOnly && onReadOnlyActivate != null,
-                `if` = {
-                    clickable(
-                        interactionSource = interactionSource,
-                        indication = null,
-                        onClick = onReadOnlyActivate!!
-                    )
-                }
-            )
-            .conditional(
                 (
                     sharedTransitionScope != null &&
                     animatedVisibilityScope != null &&
@@ -98,49 +87,78 @@ fun SearchBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp)
-                .padding(horizontal = 14.dp),
+                .padding(horizontal = 14.dp)
+                .conditional(
+                    readOnly && onReadOnlyActivate != null,
+                    `if` = {
+                        clickable(
+                            interactionSource = interactionSource,
+                            indication = null,
+                            onClick = onReadOnlyActivate!!,
+                        )
+                    },
+                ),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(modifier = Modifier.size(24.dp)) {
                 leadingIcon()
             }
 
-            BasicTextField(
-                value = query,
-                onValueChange = onQueryChange,
-                singleLine = true,
-                textStyle = typography.copy(
-                    color = MaterialTheme.colorScheme.onSurface
-                ),
-                enabled = !readOnly,
-                readOnly = readOnly,
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(
-                    onSearch = { onSearch() }
-                ),
-                decorationBox = { innerTextField ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .fillMaxWidth()
-                            .padding(start = 12.dp, end = 8.dp),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        if (query.isEmpty()) {
-                            Text(
-                                text = placeholder,
-                                style = typography.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            )
+            if (readOnly) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .padding(start = 12.dp, end = 8.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    Text(
+                        text = query.ifEmpty { placeholder },
+                        style = typography.copy(
+                            color = if (query.isEmpty()) {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                        ),
+                    )
+                }
+            } else {
+                BasicTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    singleLine = true,
+                    textStyle = typography.copy(
+                        color = MaterialTheme.colorScheme.onSurface
+                    ),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(
+                        onSearch = { onSearch() }
+                    ),
+                    decorationBox = { innerTextField ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth()
+                                .padding(start = 12.dp, end = 8.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            if (query.isEmpty()) {
+                                Text(
+                                    text = placeholder,
+                                    style = typography.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                )
+                            }
+                            innerTextField()
                         }
-                        innerTextField()
-                    }
-                },
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 4.dp)
-                    .focusRequester(focusRequester)
-            )
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 4.dp)
+                        .focusRequester(focusRequester)
+                )
+            }
 
             Box(modifier = Modifier.width(6.dp))
             Box(modifier = Modifier.size(24.dp)) {

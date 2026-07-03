@@ -19,13 +19,17 @@ import ru.fromchat.api.local.db.parseDmMessageContent
 import ru.fromchat.api.local.db.resolveLocalPreviewUri
 import ru.fromchat.api.local.messages.sortMessagesForChatDisplay
 import ru.fromchat.api.local.send.DmAttachmentOutboxPayload
+import ru.fromchat.api.local.send.SEND_ERROR_FAILED
 import ru.fromchat.api.local.send.OutgoingMessageCoordinator
 import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.api.schema.messages.dm.DmConversation
+import ru.fromchat.api.schema.messages.dm.DmEnvelope
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.cache.CacheValidator
 import ru.fromchat.db.Conversation
 import ru.fromchat.db.MessageDatabase
+import ru.fromchat.api.crypto.decryptEnvelope
+import ru.fromchat.api.local.cache.DecryptedFileCache
 import ru.fromchat.api.local.cache.DecryptedImageCache
 import ru.fromchat.api.local.download.DownloadedFileRegistry
 import ru.fromchat.ui.chat.utils.dedupeMessagesByClientId
@@ -118,6 +122,7 @@ object MessageCacheStore {
             purgeSupersededPendingRows(iid, convId, before, merged)
         }
         replaceMessages(convId, merged)
+        pruneEmptyConversations()
     }
 
     private suspend fun filterStillPendingForReplace(
@@ -154,6 +159,34 @@ object MessageCacheStore {
 
     suspend fun upsertPublicMessage(message: Message) {
         upsertSingle(conversationIdForPublic(), message)
+    }
+
+    suspend fun markSendFailed(conversationId: String, clientMessageId: String) {
+        val cid = clientMessageId.trim()
+        if (cid.isEmpty()) return
+        val iid = instanceId()
+        withContext(Dispatchers.Default) {
+            db.messageDatabaseQueries.updateMessageSendStatusByClientMessageId(
+                sendStatus = "failed",
+                instanceId = iid,
+                conversationId = conversationId,
+                clientMessageId = cid,
+            )
+        }
+    }
+
+    suspend fun clearSendFailed(conversationId: String, clientMessageId: String) {
+        val cid = clientMessageId.trim()
+        if (cid.isEmpty()) return
+        val iid = instanceId()
+        withContext(Dispatchers.Default) {
+            db.messageDatabaseQueries.updateMessageSendStatusByClientMessageId(
+                sendStatus = "pending",
+                instanceId = iid,
+                conversationId = conversationId,
+                clientMessageId = cid,
+            )
+        }
     }
 
     suspend fun upsertDmMessage(otherUserId: Int, message: Message) {
@@ -228,33 +261,247 @@ object MessageCacheStore {
         }
     }
 
-    suspend fun replaceDmConversations(conversations: List<DmConversation>) {
+    suspend fun replaceDmConversations(
+        conversations: List<DmConversation>,
+        attachmentOnlyPreview: String,
+    ) {
+        val iid = instanceId()
+        val currentUserId = ApiClient.user?.id
+        withContext(Dispatchers.Default) {
+            val upserts = conversations.map { conv ->
+                val conversationId = conversationIdForDm(conv.user.id)
+                val displayLabel = conv.user.displayName?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: conv.user.username.trim()
+                UpsertDmConversationRow(
+                    conversationId = conversationId,
+                    otherUserId = conv.user.id,
+                    displayName = displayLabel,
+                    lastMessageId = conv.lastMessage.id,
+                    lastMessagePreview = buildDmListPreview(
+                        conv.lastMessage,
+                        currentUserId,
+                        attachmentOnlyPreview,
+                    ),
+                    unreadCount = conv.unreadCount,
+                    updatedAt = conv.lastMessage.timestamp,
+                )
+            }
+            db.messageDatabaseQueries.transaction {
+                upserts.forEach { row ->
+                    val archived = db.messageDatabaseQueries
+                        .selectConversationById(iid, row.conversationId)
+                        .executeAsOneOrNull()
+                        ?.archived ?: 0L
+                    db.messageDatabaseQueries.upsertConversation(
+                        instanceId = iid,
+                        id = row.conversationId,
+                        type = "dm",
+                        otherUserId = row.otherUserId.toLong(),
+                        displayName = row.displayName,
+                        lastMessageId = row.lastMessageId.toLong(),
+                        lastMessagePreview = row.lastMessagePreview,
+                        unreadCount = row.unreadCount.toLong(),
+                        updatedAt = row.updatedAt,
+                        archived = archived,
+                    )
+                }
+                reconcileDmConversationsLocked(iid, upserts.map { it.otherUserId }.toSet())
+                pruneEmptyConversationsLocked(iid)
+            }
+        }
+    }
+
+    private data class UpsertDmConversationRow(
+        val conversationId: String,
+        val otherUserId: Int,
+        val displayName: String,
+        val lastMessageId: Int,
+        val lastMessagePreview: String?,
+        val unreadCount: Int,
+        val updatedAt: String,
+    )
+
+    private suspend fun buildDmListPreview(
+        envelope: DmEnvelope,
+        currentUserId: Int?,
+        attachmentOnlyPreview: String,
+    ): String? {
+        val hasFiles = !envelope.files.isNullOrEmpty()
+        val decrypted = runCatching { decryptEnvelope(envelope, currentUserId) }.getOrNull()
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+        val previewSource = when {
+            decrypted != null -> decrypted
+            hasFiles -> attachmentOnlyPreview
+            else -> null
+        }
+        return previewSource?.let { truncateDmListPreview(it) }?.takeIf { it.isNotEmpty() }
+    }
+
+    private fun reconcileDmConversationsLocked(instanceId: String, serverOtherUserIds: Set<Int>) {
+        val localDm = db.messageDatabaseQueries
+            .selectConversationsForInstance(instanceId)
+            .executeAsList()
+            .filter { it.type == "dm" }
+        localDm.forEach { row ->
+            val otherId = row.otherUserId?.toInt() ?: return@forEach
+            if (otherId !in serverOtherUserIds) {
+                db.messageDatabaseQueries.deleteConversationById(instanceId, row.id)
+            }
+        }
+    }
+
+    suspend fun pruneEmptyConversations() {
         val iid = instanceId()
         withContext(Dispatchers.Default) {
             db.messageDatabaseQueries.transaction {
-                conversations.forEach { conv ->
-                    val conversationId = conversationIdForDm(conv.user.id)
-                    val displayLabel = conv.user.displayName?.trim()?.takeIf { it.isNotEmpty() }
-                        ?: conv.user.username.trim()
-                    val recent = db.messageDatabaseQueries
-                        .selectRecentMessagesByConversation(iid, conversationId, 1)
-                        .executeAsList()
-                        .firstOrNull()
-                    val rawPreview = recent?.content.orEmpty().trim()
-                    val preview = rawPreview.takeIf { it.isNotEmpty() }
-                        ?.let { truncateDmListPreview(it) }
-                        ?.takeIf { it.isNotEmpty() }
-                    db.messageDatabaseQueries.upsertConversation(
+                pruneEmptyConversationsLocked(iid)
+            }
+        }
+    }
+
+    private fun pruneEmptyConversationsLocked(instanceId: String) {
+        db.messageDatabaseQueries.deleteEmptyDmConversations(instanceId, instanceId)
+    }
+
+    suspend fun ensureDmConversationRow(otherUserId: Int, displayName: String? = null) {
+        val iid = instanceId()
+        val convId = conversationIdForDm(otherUserId)
+        withContext(Dispatchers.Default) {
+            val existing = db.messageDatabaseQueries
+                .selectConversationById(iid, convId)
+                .executeAsOneOrNull()
+            if (existing != null) return@withContext
+            val label = displayName?.trim()?.takeIf { it.isNotEmpty() }
+                ?: ProfileCache.get(otherUserId)?.displayName?.trim()?.takeIf { it.isNotEmpty() }
+                ?: ProfileCache.get(otherUserId)?.username?.trim()?.takeIf { it.isNotEmpty() }
+                ?: ""
+            db.messageDatabaseQueries.upsertConversation(
+                instanceId = iid,
+                id = convId,
+                type = "dm",
+                otherUserId = otherUserId.toLong(),
+                displayName = label,
+                lastMessageId = null,
+                lastMessagePreview = null,
+                unreadCount = 0L,
+                updatedAt = null,
+                archived = 0L,
+            )
+        }
+    }
+
+    suspend fun markDmConversationRead(otherUserId: Int) {
+        val iid = instanceId()
+        val convId = conversationIdForDm(otherUserId)
+        withContext(Dispatchers.Default) {
+            db.messageDatabaseQueries.updateConversationUnreadCount(
+                unreadCount = 0L,
+                instanceId = iid,
+                id = convId,
+            )
+        }
+    }
+
+    suspend fun selectUnreadPublicMessageIds(): List<Int> {
+        val iid = instanceId()
+        val convId = conversationIdForPublic()
+        return withContext(Dispatchers.Default) {
+            db.messageDatabaseQueries
+                .selectUnreadPublicMessageIds(iid, convId)
+                .executeAsList()
+                .map { it.toInt() }
+        }
+    }
+
+    suspend fun markPublicMessagesReadLocally() {
+        val iid = instanceId()
+        val convId = conversationIdForPublic()
+        withContext(Dispatchers.Default) {
+            db.messageDatabaseQueries.markPublicMessagesRead(iid, convId)
+        }
+    }
+
+    suspend fun archiveDmConversation(otherUserId: Int) {
+        val iid = instanceId()
+        val convId = conversationIdForDm(otherUserId)
+        withContext(Dispatchers.Default) {
+            db.messageDatabaseQueries.updateConversationArchived(
+                archived = 1L,
+                instanceId = iid,
+                id = convId,
+            )
+        }
+    }
+
+    suspend fun deleteDmConversation(otherUserId: Int) {
+        val iid = instanceId()
+        val convId = conversationIdForDm(otherUserId)
+        withContext(Dispatchers.Default) {
+            val messages = db.messageDatabaseQueries
+                .selectMessagesByConversation(iid, convId)
+                .executeAsList()
+            messages.forEach { row ->
+                val msgId = row.id.toInt()
+                DecryptedImageCache.invalidateForMessage(msgId)
+                DecryptedFileCache.invalidateForMessage(msgId)
+                row.clientMessageId?.trim()?.takeIf { it.isNotEmpty() }?.let { cid ->
+                    DecryptedImageCache.invalidateForClientMessage(cid)
+                    DecryptedFileCache.invalidateForClientMessage(cid)
+                }
+            }
+            db.messageDatabaseQueries.transaction {
+                db.messageDatabaseQueries.deleteMessagesForConversation(iid, convId)
+                val outbox = db.messageDatabaseQueries.selectPendingOutboxForInstance(iid).executeAsList()
+                outbox.filter { it.conversationId == convId }.forEach { row ->
+                    db.messageDatabaseQueries.deleteOutboxItem(iid, row.clientMessageId)
+                }
+                db.messageDatabaseQueries.deleteConversationById(iid, convId)
+            }
+        }
+    }
+
+    suspend fun purgePendingNotFromUser(userId: Int) {
+        val iid = instanceId()
+        withContext(Dispatchers.Default) {
+            val foreign = db.messageDatabaseQueries
+                .selectForeignPendingMessages(iid, userId.toLong())
+                .executeAsList()
+            foreign.forEach { row ->
+                val cid = row.clientMessageId?.trim().orEmpty()
+                if (cid.isNotEmpty()) {
+                    OutgoingMessageCoordinator.cancelOutboundMessage(cid, row.conversationId)
+                } else {
+                    db.messageDatabaseQueries.deleteMessageById(
                         instanceId = iid,
-                        id = conversationId,
-                        type = "dm",
-                        otherUserId = conv.user.id.toLong(),
-                        displayName = displayLabel,
-                        lastMessageId = conv.lastMessage.id.toLong(),
-                        lastMessagePreview = preview,
-                        unreadCount = conv.unreadCount.toLong(),
-                        updatedAt = conv.lastMessage.timestamp
+                        conversationId = row.conversationId,
+                        id = row.id,
                     )
+                }
+            }
+        }
+    }
+
+    suspend fun purgeAllPendingForInstance() {
+        val iid = runCatching { instanceId() }.getOrNull()?.trim().orEmpty()
+        if (iid.isEmpty()) return
+        withContext(Dispatchers.Default) {
+            val pending = db.messageDatabaseQueries
+                .selectAllPendingMessagesForInstance(iid)
+                .executeAsList()
+            pending.forEach { row ->
+                val cid = row.clientMessageId?.trim().orEmpty()
+                if (cid.isNotEmpty()) {
+                    runCatching {
+                        OutgoingMessageCoordinator.cancelOutboundMessage(cid, row.conversationId)
+                    }
+                }
+            }
+            db.messageDatabaseQueries.transaction {
+                db.messageDatabaseQueries.deleteAllPendingMessagesForInstance(iid)
+                val outbox = db.messageDatabaseQueries.selectPendingOutboxForInstance(iid).executeAsList()
+                outbox.forEach { row ->
+                    db.messageDatabaseQueries.deleteOutboxItem(iid, row.clientMessageId)
                 }
             }
         }
@@ -263,9 +510,8 @@ object MessageCacheStore {
     suspend fun loadCachedDmConversations(): List<CachedConversation> =
         withContext(Dispatchers.Default) {
             db.messageDatabaseQueries
-                .selectConversationsForInstance(instanceId())
+                .selectActiveDmConversationsForInstance(instanceId())
                 .executeAsList()
-                .filter { row: Conversation -> row.type == "dm" }
                 .map { row: Conversation ->
                     CachedConversation(
                         id = row.id,
@@ -302,7 +548,8 @@ object MessageCacheStore {
                 lastMessageId = row.lastMessageId,
                 lastMessagePreview = preview,
                 unreadCount = row.unreadCount,
-                updatedAt = row.updatedAt
+                updatedAt = row.updatedAt,
+                archived = row.archived,
             )
         }
     }
@@ -374,7 +621,10 @@ object MessageCacheStore {
                 )
             }
         }
-        dmOtherUserIdFromConversationId(conversationId)?.let { syncDmConversationPreviewFromCache(it) }
+        dmOtherUserIdFromConversationId(conversationId)?.let {
+            syncDmConversationPreviewFromCache(it)
+            pruneEmptyConversations()
+        }
     }
 
     private suspend fun loadMessages(conversationId: String): List<Message> {
@@ -558,6 +808,7 @@ object MessageCacheStore {
                 ?: parsed.fileDimensions?.firstOrNull()?.let { (w, h) ->
                     aspectRatioFromDimensionPair(w, h)
                 },
+            uploadError = if (sendStatus == "failed") SEND_ERROR_FAILED else null,
         )
     }
 
@@ -610,7 +861,10 @@ object MessageCacheStore {
                 }
             }
         }
-        dmOtherUserIdFromConversationId(conversationId)?.let { syncDmConversationPreviewFromCache(it) }
+        dmOtherUserIdFromConversationId(conversationId)?.let {
+            syncDmConversationPreviewFromCache(it)
+            pruneEmptyConversations()
+        }
     }
 
     suspend fun hasSentMessageWithClientId(conversationId: String, clientMessageId: String): Boolean {

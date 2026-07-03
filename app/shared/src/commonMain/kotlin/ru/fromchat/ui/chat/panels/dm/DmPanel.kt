@@ -61,6 +61,7 @@ class DmPanel(
     private var otherDisplayName: String = ""
     private var otherProfilePicture: String? = null
     private val dmEnvelopeMutex = Mutex()
+    private var messagesLoaded = false
 
     private data class DmDecryptOutcome(val plaintext: String, val isCorrupted: Boolean)
 
@@ -168,16 +169,28 @@ class DmPanel(
     }
 
     override suspend fun loadMessages() {
-        setLoading(true)
+        if (messagesLoaded) return
+        messagesLoaded = true
+
+        runCatching { MessageRepository.ensureDmConversationRow(otherUserId) }
+
+        // Read cache first. Do not setLoading(true) before this: that forced a 1-frame spinner
+        // when the chat screen re-entered composition (e.g. pop back from profile).
+        val cached = runCatching { MessageCacheStore.loadDmMessages(otherUserId) }.getOrDefault(emptyList())
+        if (cached.isNotEmpty()) {
+            batchStateUpdates {
+                clearMessages()
+                addMessages(cached)
+                setLoading(false)
+            }
+        } else {
+            setLoading(true)
+        }
+
         try {
             OutgoingMessageCoordinator.pruneStaleAttachmentOutboxForInstance(
                 CacheContext.requireActiveInstanceId(),
             )
-            val cached = runCatching { MessageCacheStore.loadDmMessages(otherUserId) }.getOrDefault(emptyList())
-            if (cached.isNotEmpty()) {
-                clearMessages()
-                addMessages(cached)
-            }
 
             val historyResult = runCatching { ApiClient.getDmHistory(otherUserId) }
             if (historyResult.isSuccess) {
@@ -512,9 +525,11 @@ class DmPanel(
         deleteMessageImmediately(messageId)
         DownloadedFileRegistry.invalidateForMessage(messageId)
         DecryptedImageCache.invalidateForMessage(messageId)
+        DecryptedFileCache.invalidateForMessage(messageId)
         clientId?.trim()?.takeIf { it.isNotEmpty() }?.let {
             DownloadedFileRegistry.invalidateForClientMessage(it)
             DecryptedImageCache.invalidateForClientMessage(it)
+            DecryptedFileCache.invalidateForClientMessage(it)
         }
         runCatching { ApiClient.deleteDm(messageId, otherUserId) }
         withContext(Dispatchers.Default) {
@@ -535,9 +550,11 @@ class DmPanel(
             val clientId = _state.messages.find { it.id == data.id }?.client_message_id
             DownloadedFileRegistry.invalidateForMessage(data.id)
             DecryptedImageCache.invalidateForMessage(data.id)
+            DecryptedFileCache.invalidateForMessage(data.id)
             clientId?.trim()?.takeIf { it.isNotEmpty() }?.let {
                 DownloadedFileRegistry.invalidateForClientMessage(it)
                 DecryptedImageCache.invalidateForClientMessage(it)
+                DecryptedFileCache.invalidateForClientMessage(it)
             }
             deleteMessageImmediately(data.id)
             MessageRepository.deleteDmMessageById(otherUserId, data.id)

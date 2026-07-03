@@ -4,5 +4,6 @@ enum class HapticFeedbackEvent {
     ProfileOpened,
     ProfileClosed,
     MessageSent,
-    ContextMenuOpened
+    ContextMenuOpened,
+    SelectionModeEntered,
 }

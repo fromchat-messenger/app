@@ -1,6 +1,7 @@
 package ru.fromchat.api.local.db.store
 
 import kotlinx.coroutines.flow.Flow
+import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.messages.GENERAL_PUBLIC_GROUP_ID
 import ru.fromchat.api.local.messages.conversationIdForDm
 import ru.fromchat.api.local.messages.conversationIdForGroup
@@ -63,11 +64,46 @@ object MessageRepository {
     suspend fun deleteDmMessageById(otherUserId: Int, messageId: Int) =
         MessageCacheStore.deleteDmMessageById(otherUserId, messageId)
 
-    suspend fun replaceDmConversations(conversations: List<DmConversation>) =
-        MessageCacheStore.replaceDmConversations(conversations)
+    suspend fun replaceDmConversations(
+        conversations: List<DmConversation>,
+        attachmentOnlyPreview: String,
+    ) = MessageCacheStore.replaceDmConversations(conversations, attachmentOnlyPreview)
 
     suspend fun loadCachedDmConversations(): List<CachedConversation> =
         MessageCacheStore.loadCachedDmConversations()
+
+    suspend fun ensureDmConversationRow(otherUserId: Int, displayName: String? = null) =
+        MessageCacheStore.ensureDmConversationRow(otherUserId, displayName)
+
+    suspend fun markDmConversationRead(otherUserId: Int) =
+        MessageCacheStore.markDmConversationRead(otherUserId)
+
+    suspend fun markPublicConversationRead() {
+        val localIds = MessageCacheStore.selectUnreadPublicMessageIds()
+        val serverIds = runCatching {
+            ApiClient.getNewMessages().messages.map { it.id }
+        }.getOrDefault(emptyList())
+        val ids = (localIds + serverIds).distinct()
+        if (ids.isNotEmpty()) {
+            runCatching { ApiClient.markMessagesRead(ids) }
+        }
+        MessageCacheStore.markPublicMessagesReadLocally()
+    }
+
+    suspend fun archiveDmConversation(otherUserId: Int) =
+        MessageCacheStore.archiveDmConversation(otherUserId)
+
+    suspend fun deleteDmConversation(otherUserId: Int) =
+        MessageCacheStore.deleteDmConversation(otherUserId)
+
+    suspend fun purgePendingNotFromUser(userId: Int) =
+        MessageCacheStore.purgePendingNotFromUser(userId)
+
+    suspend fun purgeAllPendingForInstance() =
+        MessageCacheStore.purgeAllPendingForInstance()
+
+    suspend fun pruneEmptyConversations() =
+        MessageCacheStore.pruneEmptyConversations()
 
     suspend fun clearAllCache() = MessageCacheStore.clearAll()
 }

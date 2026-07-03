@@ -19,9 +19,9 @@ kotlin {
     }
 
     listOf(
-        iosX64(),
         iosArm64(),
-        iosSimulatorArm64()
+        iosSimulatorArm64(),
+        iosX64(),
     ).forEach { iosTarget ->
         iosTarget.binaries.framework {
             baseName = "ComposeApp"
@@ -84,6 +84,7 @@ kotlin {
         }
 
         androidMain.dependencies {
+            implementation(libs.markdown.renderer.m3)
             implementation(libs.bouncycastle.bcprov)
             implementation(libs.androidx.exifinterface)
             implementation(libs.ktor.client.okhttp)
