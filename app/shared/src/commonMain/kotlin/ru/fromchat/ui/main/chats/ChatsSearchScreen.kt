@@ -66,6 +66,9 @@ import ru.fromchat.api.local.db.store.visibleUsername
 import ru.fromchat.api.schema.user.User
 import ru.fromchat.chat_last_mesaage
 import ru.fromchat.chat_preview_attachment
+import ru.fromchat.chat_preview_image
+import ru.fromchat.chat_preview_image_emoji
+import ru.fromchat.api.local.messages.ChatListPreviewStrings
 import ru.fromchat.search_hint
 import ru.fromchat.search_not_found
 import ru.fromchat.search_not_found_message
@@ -86,8 +89,13 @@ fun ChatsSearchScreen(
     var searchText by remember { mutableStateOf("") }
     val searchListState = rememberLazyListState()
     val statusMap by UserStatusStore.status.collectAsState()
+    val imageEmoji = stringResource(Res.string.chat_preview_image_emoji)
+    val previewStrings = ChatListPreviewStrings(
+        imageEmoji = imageEmoji,
+        imageOnly = stringResource(Res.string.chat_preview_image, imageEmoji),
+        attachmentOnly = stringResource(Res.string.chat_preview_attachment),
+    )
     val defaultLastMessage = stringResource(Res.string.chat_last_mesaage)
-    val attachmentOnlyPreview = stringResource(Res.string.chat_preview_attachment)
     val searchHint = stringResource(Res.string.search_hint)
     val searchBarHint = stringResource(Res.string.search_title)
     var dmConversations by remember { mutableStateOf<List<CachedConversation>>(emptyList()) }
@@ -163,7 +171,7 @@ fun ChatsSearchScreen(
         }.onSuccess { conversations ->
             runCatching {
                 conversations.forEach { ProfileCache.mergeFromDmUser(it.user) }
-                MessageRepository.replaceDmConversations(conversations, attachmentOnlyPreview)
+                MessageRepository.replaceDmConversations(conversations, previewStrings)
                 dmConversations = MessageRepository.loadCachedDmConversations()
             }
         }

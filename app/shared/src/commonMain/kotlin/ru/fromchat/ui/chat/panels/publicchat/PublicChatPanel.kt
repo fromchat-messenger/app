@@ -68,13 +68,18 @@ class PublicChatPanel(
         get() = true
 
     init {
-        updateState {
-            it.copy(
-                title = "",
-                titleAvatar = null,
-                publicGroupMetaLoading = true,
-                publicGroupMemberCount = null
-            )
+        val cachedProfile = PublicChatProfileCache.profile
+        if (cachedProfile != null) {
+            applyPublicChatProfile(cachedProfile)
+        } else {
+            updateState {
+                it.copy(
+                    title = "",
+                    titleAvatar = null,
+                    publicGroupMetaLoading = true,
+                    publicGroupMemberCount = null,
+                )
+            }
         }
         scope.launch {
             typingHandler.typingUsers.collect { users ->
@@ -83,17 +88,13 @@ class PublicChatPanel(
             }
         }
         scope.launch(Dispatchers.Default) {
-            val cached = PublicChatProfileCache.profile
-            if (cached != null) {
-                applyPublicChatProfile(cached)
-            }
             runCatching { ApiClient.getPublicChatProfile() }
                 .onSuccess { profile ->
                     PublicChatProfileCache.put(profile)
                     applyPublicChatProfile(profile)
                 }
                 .onFailure {
-                    if (cached == null) {
+                    if (cachedProfile == null) {
                         updateState { s -> s.copy(publicGroupMetaLoading = false) }
                     }
                 }
@@ -118,39 +119,37 @@ class PublicChatPanel(
     }
 
     /**
-     * Server often omits [Message.client_message_id] on broadcast [newMessage] / [SendMessageResponse.message].
-     * Match the oldest pending optimistic row (same user, text, reply) and replace it; otherwise append.
+     * Match optimistic rows via [Message.client_message_id] from the server ack (never by text).
      */
     private suspend fun confirmIncomingOwnMessageOrAdd(newMsg: Message) {
         val uid = currentUserId
-        if (uid == null) {
-            addMessage(newMsg)
-            return
+        if (uid != null && newMsg.user_id == uid) {
+            val cid = newMsg.client_message_id?.trim().orEmpty()
+            if (cid.isNotEmpty()) {
+                handleMessageConfirmed(cid, newMsg)
+                return
+            }
+            if (newMsg.id > 0 && _state.messages.any { it.id == newMsg.id }) {
+                return
+            }
         }
-        if (newMsg.user_id != uid) {
-            addMessage(newMsg)
-            return
+        ingestIncomingPublicMessage(newMsg)
+    }
+
+    private suspend fun ingestIncomingPublicMessage(newMsg: Message) {
+        addMessage(newMsg)
+        withContext(Dispatchers.Default) {
+            MessageCacheStore.upsertPublicMessage(newMsg)
         }
-        if (newMsg.client_message_id != null) {
-            handleMessageConfirmed(newMsg.client_message_id, newMsg)
-            return
-        }
-        if (newMsg.id <= 0) {
-            addMessage(newMsg)
-            return
-        }
-        val pending = _state.messages.firstOrNull { msg ->
-            msg.id < 0 &&
-                msg.user_id == uid &&
-                msg.client_message_id != null &&
-                msg.content == newMsg.content &&
-                msg.reply_to?.id == newMsg.reply_to?.id
-        }
-        if (pending?.client_message_id != null) {
-            handleMessageConfirmed(pending.client_message_id, newMsg)
-        } else {
-            addMessage(newMsg)
-        }
+    }
+
+    private fun mergeNetworkHistoryWithShown(shown: List<Message>, fromNetwork: List<Message>): List<Message> {
+        val networkIds = fromNetwork.map { it.id }.toSet()
+        val ahead = shown.filter { it.id > 0 && it.id !in networkIds }
+        if (ahead.isEmpty()) return fromNetwork
+        return ru.fromchat.api.local.messages.sortMessagesForChatDisplay(
+            ru.fromchat.ui.chat.utils.dedupeMessagesByClientId(fromNetwork + ahead),
+        )
     }
 
     override suspend fun sendMessage(content: String, replyToId: Int?, clientMessageId: String?) {
@@ -224,15 +223,17 @@ class PublicChatPanel(
                     if (_state.isLoading) setLoading(false)
                 } else {
                     batchStateUpdates {
+                        val merged = mergeNetworkHistoryWithShown(shown, response.messages)
                         clearMessages()
-                        addMessages(response.messages)
+                        addMessages(merged)
                         setHasMoreMessages(false) // TODO: Implement has_more from API
                         setLoading(false)
                     }
                 }
             }
             withContext(Dispatchers.Default) {
-                MessageCacheStore.replacePublicMessages(response.messages)
+                val mergedForCache = mergeNetworkHistoryWithShown(_state.messages, response.messages)
+                MessageCacheStore.replacePublicMessages(mergedForCache)
             }
         } else if (responseResult.isFailure) {
             val cause = responseResult.exceptionOrNull()

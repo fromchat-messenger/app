@@ -18,6 +18,9 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -25,17 +28,21 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.navigation.NavController
 import com.pr0gramm3r101.components.ListItemPosition
+import com.pr0gramm3r101.utils.SupportClipboardManager
 import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import ru.fromchat.api.local.db.store.PublicChatProfileCache
 import ru.fromchat.api.schema.chats.publicchat.PublicChatProfile
@@ -73,8 +80,9 @@ import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarDuration
@@ -114,6 +122,7 @@ import ru.fromchat.Logger
 import ru.fromchat.Res
 import ru.fromchat.action_copy
 import ru.fromchat.action_edit
+import ru.fromchat.action_retry_send
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.calls.CallStore
 import ru.fromchat.api.local.db.store.ProfileCache
@@ -143,8 +152,10 @@ import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.chat.Avatar
 import ru.fromchat.ui.chat.TypingIndicator
 import ru.fromchat.ui.components.FromChatSnackbarHost
+import ru.fromchat.ui.components.ShimmerBox
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.showReplacingSnackbar
+import ru.fromchat.utils.RegistrationDateFormatStrings
 import ru.fromchat.utils.formatLastSeen
 import ru.fromchat.utils.formatProfileRegistrationDate
 import ru.fromchat.utils.haptic.HapticFeedbackEvent
@@ -275,6 +286,8 @@ fun ProfileScreen(
         mutableStateOf(hasDisplayableProfile(state.profile, initialDisplayName, ownUserId))
     }
 
+    var reloadAttempt by remember(lookupKey) { mutableIntStateOf(0) }
+
     val latestUi by rememberUpdatedState(state)
 
     val backStackEntry = navController.currentBackStackEntry
@@ -296,7 +309,11 @@ fun ProfileScreen(
         }
     }
 
-    LaunchedEffect(lookupMode, lookupIdentifier) {
+    LaunchedEffect(lookupMode, lookupIdentifier, reloadAttempt) {
+        if (reloadAttempt > 0) {
+            state = latestUi.copy(isLoading = true, error = null)
+        }
+
         Logger.d(
             "ProfileScreen",
             "load start: mode=$lookupMode identifier=$lookupIdentifier cacheLookupId=$cacheLookupId ownUserId=$ownUserId"
@@ -355,7 +372,7 @@ fun ProfileScreen(
 
             val resolvedErrorMessage = when {
                 err is ClientRequestException && err.response.status.value == 404 -> profileNotFound
-                else -> err.message?.takeIf { it.isNotBlank() } ?: profileLoadFailed
+                else -> profileLoadFailed
             }
 
             if (err is ClientRequestException) {
@@ -410,6 +427,7 @@ fun ProfileScreen(
     val headlineVerification = stringResource(Res.string.profile_headline_verification)
     val verifiedSupport = stringResource(Res.string.profile_verified_support)
     val verifyPromptSupport = stringResource(Res.string.profile_verify_prompt_support)
+    val labelRetry = stringResource(Res.string.action_retry_send)
 
     val profile = state.profile ?: resolveCachedProfile(targetUserId, targetUsername, ownUserId)
     if (hasDisplayableProfile(profile, initialDisplayName, ownUserId)) {
@@ -418,7 +436,8 @@ fun ProfileScreen(
     val statusMap by UserStatusStore.status.collectAsState()
     val lastSeenFormatStrings = rememberLastSeenFormatStrings()
     val loadError = state.error
-    val showLoadingSpinner = state.isLoading && !hasShownContent.value
+    val hasDisplayable = hasDisplayableProfile(profile, initialDisplayName, ownUserId)
+    val showSkeleton = !hasDisplayable && (state.isLoading || loadError != null)
     val currentProfileUserId = targetUserId ?: ownUserId ?: profile?.id
     val displayName =
         profile?.visibleDisplayName(currentProfileUserId)
@@ -426,7 +445,7 @@ fun ProfileScreen(
             ?: "?"
     val usernameForLinks = profile?.visibleUsername(currentProfileUserId)
 
-    val resolvedProfile = profile?.takeIf { loadError == null && !showLoadingSpinner }
+    val resolvedProfile = profile?.takeIf { !showSkeleton }
     val profileLink = resolvedProfile?.let {
         usernameForLinks?.let { name -> "https://fromchat.ru/@$name" }
             ?: "https://fromchat.ru/?u=${it.id}"
@@ -539,6 +558,18 @@ fun ProfileScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 when {
+                    showSkeleton && !hideAvatar -> {
+                        item {
+                            ShimmerBox(
+                                modifier = Modifier
+                                    .padding(top = profileAvatarTop)
+                                    .size(104.dp),
+                                shape = CircleShape,
+                            )
+                        }
+                        item { Spacer(Modifier.height(12.dp)) }
+                    }
+
                     useSharedAvatar -> {
                         item {
                             with(sharedTransitionScope) {
@@ -597,271 +628,59 @@ fun ProfileScreen(
                     }
                 }
 
-                when {
-                    showLoadingSpinner -> {
-                        item {
-                            CircularProgressIndicator(modifier = Modifier.padding(top = 24.dp))
-                        }
-                    }
-
-                    loadError != null -> {
-                        item {
-                            Text(
-                                text = when (loadError) {
-                                    ProfileLoadError.Generic -> profileLoadFailed
-                                    is ProfileLoadError.Message -> loadError.text
-                                },
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.padding(top = 24.dp)
-                            )
-                        }
-                    }
-
-                    resolvedProfile != null -> {
-                        item {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                                ContextMenuPressable(
-                                    pressScale = ProfileDisplayNamePressScale,
-                                    onContextMenuOpen = openContextMenuHaptic,
-                                    contextMenu = {
-                                        item(Icons.Rounded.ContentCopy, labelCopy) {
-                                            clipboardManager.setText(AnnotatedString(displayName))
-                                        }
-                                        if (isOwnProfile) {
-                                            item(Icons.Rounded.Edit, labelEdit) {
-                                                navController.navigate(
-                                                    ProfileRoutes.editRoute(EditProfileFocusField.DisplayName),
-                                                )
-                                            }
-                                        }
-                                    },
-                                ) {
-                                    Text(
-                                        text = displayName,
-                                        style = MaterialTheme.typography.titleLarge,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                    )
-                                }
-                                StatusBadge(
-                                    verified = resolvedProfile.verified,
-                                    userId = resolvedProfile.id,
-                                )
-                            }
-                        }
-
-                        item { Spacer(Modifier.height(4.dp)) }
-
-                        item {
-                            AnimatedContent(
-                                targetState = when {
-                                    typingUsers.isNotEmpty() -> "typing:${typingUsers.joinToString("|")}"
-                                    statusState?.online == true -> "online"
-                                    else -> "offline"
-                                },
-                                transitionSpec = {
-                                    (slideInVertically { it / 2 } + fadeIn()) togetherWith
-                                        (slideOutVertically { -it / 2 } + fadeOut())
-                                },
-                                label = "profile_status_${resolvedProfile.id}"
-                            ) { animatedState ->
-                                if (animatedState.startsWith("typing:")) {
-                                    TypingIndicator(typingUsers = typingUsers)
+                item {
+                    AnimatedContent(
+                        targetState = showSkeleton,
+                        transitionSpec = {
+                            fadeIn() togetherWith fadeOut()
+                        },
+                        label = "profile_body",
+                    ) { skeleton ->
+                        if (skeleton) {
+                            ProfileSkeletonBody(
+                                onRetry = if (loadError != null) {
+                                    { reloadAttempt++ }
                                 } else {
-                                    Text(
-                                        text = statusText,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = if (animatedState == "online") {
-                                            MaterialTheme.colorScheme.primary
-                                        } else {
-                                            MaterialTheme.colorScheme.onSurfaceVariant
-                                        }
-                                    )
-                                }
-                            }
-                        }
-
-                        item { Spacer(Modifier.height(24.dp)) }
-
-                        item {
-                            ProfileActionButtonRow(
-                                actions = profileActions.orEmpty(),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp),
+                                    null
+                                },
+                                retryLabel = labelRetry,
                             )
-                        }
-
-                        if (showDetailsSection) {
-                            val detailCount = listOf(
-                                showDetailsUsername,
-                                showDetailsMemberSince,
-                                showDetailsBio,
-                                showDetailsVerify,
-                            ).count { it }
-                            var detailIndex = 0
-
-                            Category(
-                                modifier = Modifier.bringIntoViewRequester(detailsBringIntoView),
-                                margin = PaddingValues(
-                                    start = 16.dp,
-                                    end = 16.dp,
-                                    top = 28.dp,
-                                    bottom = 20.dp,
-                                ),
-                                roundedCorners = false,
-                            ) {
-                                if (showDetailsUsername) {
-                                    val position = listItemPositionInGroup(detailIndex, detailCount)
-                                    detailIndex++
-                                    item {
-                                        ListItem(
-                                            headline = headlineUsername,
-                                            supportingText = usernameForLinks.orEmpty(),
-                                            divider = true,
-                                            position = position,
-                                            groupItemCount = detailCount,
-                                            onContextMenuOpen = openContextMenuHaptic,
-                                            leadingContent = {
-                                                Icon(
-                                                    imageVector = Icons.Filled.AlternateEmail,
-                                                    contentDescription = null,
-                                                    tint = listItemIconTint,
-                                                )
-                                            },
-                                            contextMenu = {
-                                                item(Icons.Rounded.ContentCopy, labelCopy) {
-                                                    clipboardManager.setText(
-                                                        AnnotatedString(usernameForLinks.orEmpty()),
-                                                    )
-                                                }
-                                                if (isOwnProfile) {
-                                                    item(Icons.Rounded.Edit, labelEdit) {
-                                                        navController.navigate(
-                                                            ProfileRoutes.editRoute(EditProfileFocusField.Username),
-                                                        )
-                                                    }
-                                                }
-                                            },
-                                        )
-                                    }
-                                }
-
-                                if (showDetailsMemberSince) {
-                                    val memberSinceText = formatProfileRegistrationDate(
-                                        resolvedProfile.createdAt,
-                                        registrationDateStrings,
-                                    ).orEmpty()
-                                    val position = listItemPositionInGroup(detailIndex, detailCount)
-                                    detailIndex++
-                                    item {
-                                        ListItem(
-                                            headline = headlineMemberSince,
-                                            supportingText = memberSinceText,
-                                            divider = true,
-                                            position = position,
-                                            groupItemCount = detailCount,
-                                            onContextMenuOpen = openContextMenuHaptic,
-                                            leadingContent = {
-                                                Icon(
-                                                    imageVector = Icons.Filled.CalendarMonth,
-                                                    contentDescription = null,
-                                                    tint = listItemIconTint,
-                                                )
-                                            },
-                                            contextMenu = {
-                                                item(Icons.Rounded.ContentCopy, labelCopy) {
-                                                    clipboardManager.setText(AnnotatedString(memberSinceText))
-                                                }
-                                            },
-                                        )
-                                    }
-                                }
-
-                                if (showDetailsBio) {
-                                    val position = listItemPositionInGroup(detailIndex, detailCount)
-                                    detailIndex++
-                                    item {
-                                        ListItem(
-                                            headline = headlineBio,
-                                            supportingSlot = {
-                                                ProfileBioMarkdown(
-                                                    content = resolvedProfile.bio.orEmpty(),
-                                                )
-                                            },
-                                            divider = true,
-                                            position = position,
-                                            groupItemCount = detailCount,
-                                            onContextMenuOpen = openContextMenuHaptic,
-                                            leadingContent = {
-                                                Icon(
-                                                    imageVector = Icons.Filled.Info,
-                                                    contentDescription = null,
-                                                    tint = listItemIconTint,
-                                                )
-                                            },
-                                            contextMenu = {
-                                                item(Icons.Rounded.ContentCopy, labelCopy) {
-                                                    scope.launch {
-                                                        clipboard.setText(resolvedProfile.bio.orEmpty())
-                                                    }
-                                                }
-                                                if (isOwnProfile) {
-                                                    item(Icons.Rounded.Edit, labelEdit) {
-                                                        navController.navigate(
-                                                            ProfileRoutes.editRoute(EditProfileFocusField.Bio),
-                                                        )
-                                                    }
-                                                }
-                                            },
-                                        )
-                                    }
-                                }
-
-                                if (showDetailsVerify) {
-                                    val position = listItemPositionInGroup(detailIndex, detailCount)
-                                    detailIndex++
-                                    item {
-                                        ListItem(
-                                            headline = headlineVerification,
-                                            supportingText = if (resolvedProfile.verified == true) {
-                                                verifiedSupport
-                                            } else {
-                                                verifyPromptSupport
-                                            },
-                                            divider = true,
-                                            position = position,
-                                            groupItemCount = detailCount,
-                                            leadingContent = {
-                                                Icon(
-                                                    imageVector = Icons.Filled.Verified,
-                                                    contentDescription = null,
-                                                    tint = listItemIconTint,
-                                                )
-                                            },
-                                            onClick = if (ApiClient.user?.id == 1) {
-                                                {
-                                                    scope.launch {
-                                                        val result = withContext(Dispatchers.Default) {
-                                                            runCatching {
-                                                                ApiClient.verifyUser(resolvedProfile.id)
-                                                            }.getOrNull()
-                                                        }
-                                                        result?.verified?.let { newVerified ->
-                                                            val updated =
-                                                                state.profile?.copy(verified = newVerified)
-                                                            state = state.copy(profile = updated)
-                                                            updated?.let { ProfileCache.put(it) }
-                                                        }
-                                                    }
-                                                }
-                                            } else null,
-                                        )
-                                    }
-                                }
-                            }
+                        } else if (resolvedProfile != null) {
+                            ProfileLoadedBody(
+                                resolvedProfile = resolvedProfile,
+                                displayName = displayName,
+                                isOwnProfile = isOwnProfile,
+                                typingUsers = typingUsers,
+                                statusState = statusState,
+                                statusText = statusText,
+                                profileActions = profileActions.orEmpty(),
+                                showDetailsSection = showDetailsSection,
+                                showDetailsUsername = showDetailsUsername,
+                                showDetailsMemberSince = showDetailsMemberSince,
+                                showDetailsBio = showDetailsBio,
+                                showDetailsVerify = showDetailsVerify,
+                                headlineUsername = headlineUsername,
+                                headlineMemberSince = headlineMemberSince,
+                                headlineBio = headlineBio,
+                                headlineVerification = headlineVerification,
+                                usernameForLinks = usernameForLinks,
+                                verifiedSupport = verifiedSupport,
+                                verifyPromptSupport = verifyPromptSupport,
+                                registrationDateStrings = registrationDateStrings,
+                                listItemIconTint = listItemIconTint,
+                                labelCopy = labelCopy,
+                                labelEdit = labelEdit,
+                                detailsBringIntoView = detailsBringIntoView,
+                                clipboardManager = clipboardManager,
+                                clipboard = clipboard,
+                                navController = navController,
+                                scope = scope,
+                                openContextMenuHaptic = openContextMenuHaptic,
+                                onProfileUpdated = { updated ->
+                                    state = state.copy(profile = updated)
+                                    ProfileCache.put(updated)
+                                },
+                            )
                         }
                     }
                 }
@@ -1209,6 +1028,391 @@ private fun targetWeightForPress(
     if (pressedIndex < 0 || count <= 1) return ProfileActionDefaultWeight
     if (index == pressedIndex) return ProfileActionPressExpansionRatio
     return (count * ProfileActionDefaultWeight - ProfileActionPressExpansionRatio) / (count - 1)
+}
+
+@Composable
+private fun ProfileSkeletonBody(
+    onRetry: (() -> Unit)?,
+    retryLabel: String,
+    modifier: Modifier = Modifier,
+) {
+    val barShape = RoundedCornerShape(8.dp)
+    val pillShape = MaterialTheme.shapes.extraLarge
+    val listBarShape = RoundedCornerShape(4.dp)
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        ShimmerBox(
+            modifier = Modifier
+                .width(168.dp)
+                .height(28.dp),
+            shape = barShape,
+        )
+        Spacer(Modifier.height(8.dp))
+        ShimmerBox(
+            modifier = Modifier
+                .width(112.dp)
+                .height(16.dp),
+            shape = barShape,
+        )
+        Spacer(Modifier.height(24.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            repeat(3) {
+                ShimmerBox(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(52.dp),
+                    shape = pillShape,
+                )
+            }
+        }
+        Category(
+            margin = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = 28.dp,
+                bottom = 20.dp,
+            ),
+            roundedCorners = false,
+        ) {
+            ProfileSkeletonListRow(listBarShape = listBarShape, showDivider = true)
+            ProfileSkeletonListRow(listBarShape = listBarShape, showDivider = true)
+            ProfileSkeletonListRow(listBarShape = listBarShape, showDivider = false)
+        }
+        if (onRetry != null) {
+            Spacer(Modifier.height(8.dp))
+            TextButton(onClick = onRetry) {
+                Text(
+                    text = retryLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileSkeletonListRow(
+    listBarShape: RoundedCornerShape,
+    showDivider: Boolean,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ShimmerBox(
+            modifier = Modifier.size(24.dp),
+            shape = CircleShape,
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ShimmerBox(
+                modifier = Modifier
+                    .fillMaxWidth(0.38f)
+                    .height(14.dp),
+                shape = listBarShape,
+            )
+            ShimmerBox(
+                modifier = Modifier
+                    .fillMaxWidth(0.62f)
+                    .height(12.dp),
+                shape = listBarShape,
+            )
+        }
+    }
+    if (showDivider) {
+        Spacer(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .height(1.dp)
+                .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+        )
+    }
+}
+
+@Composable
+private fun ProfileLoadedBody(
+    resolvedProfile: UserProfile,
+    displayName: String,
+    isOwnProfile: Boolean,
+    typingUsers: List<String>,
+    statusState: UserStatus?,
+    statusText: String,
+    profileActions: List<ProfileAction>,
+    showDetailsSection: Boolean,
+    showDetailsUsername: Boolean,
+    showDetailsMemberSince: Boolean,
+    showDetailsBio: Boolean,
+    showDetailsVerify: Boolean,
+    headlineUsername: String,
+    headlineMemberSince: String,
+    headlineBio: String,
+    headlineVerification: String,
+    usernameForLinks: String?,
+    verifiedSupport: String,
+    verifyPromptSupport: String,
+    registrationDateStrings: RegistrationDateFormatStrings,
+    listItemIconTint: Color,
+    labelCopy: String,
+    labelEdit: String,
+    detailsBringIntoView: BringIntoViewRequester,
+    clipboardManager: ClipboardManager,
+    clipboard: SupportClipboardManager,
+    navController: NavController,
+    scope: CoroutineScope,
+    openContextMenuHaptic: () -> Unit,
+    onProfileUpdated: (UserProfile) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            ContextMenuPressable(
+                pressScale = ProfileDisplayNamePressScale,
+                onContextMenuOpen = openContextMenuHaptic,
+                contextMenu = {
+                    item(Icons.Rounded.ContentCopy, labelCopy) {
+                        clipboardManager.setText(AnnotatedString(displayName))
+                    }
+                    if (isOwnProfile) {
+                        item(Icons.Rounded.Edit, labelEdit) {
+                            navController.navigate(
+                                ProfileRoutes.editRoute(EditProfileFocusField.DisplayName),
+                            )
+                        }
+                    }
+                },
+            ) {
+                Text(
+                    text = displayName,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            StatusBadge(
+                verified = resolvedProfile.verified,
+                userId = resolvedProfile.id,
+            )
+        }
+
+        Spacer(Modifier.height(4.dp))
+
+        AnimatedContent(
+            targetState = when {
+                typingUsers.isNotEmpty() -> "typing:${typingUsers.joinToString("|")}"
+                statusState?.online == true -> "online"
+                else -> "offline"
+            },
+            transitionSpec = {
+                (slideInVertically { it / 2 } + fadeIn()) togetherWith
+                    (slideOutVertically { -it / 2 } + fadeOut())
+            },
+            label = "profile_status_${resolvedProfile.id}",
+        ) { animatedState ->
+            if (animatedState.startsWith("typing:")) {
+                TypingIndicator(typingUsers = typingUsers)
+            } else {
+                Text(
+                    text = statusText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (animatedState == "online") {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        ProfileActionButtonRow(
+            actions = profileActions,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+        )
+
+        if (showDetailsSection) {
+            val detailCount = listOf(
+                showDetailsUsername,
+                showDetailsMemberSince,
+                showDetailsBio,
+                showDetailsVerify,
+            ).count { it }
+            var detailIndex = 0
+
+            Category(
+                modifier = Modifier.bringIntoViewRequester(detailsBringIntoView),
+                margin = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 28.dp,
+                    bottom = 20.dp,
+                ),
+                roundedCorners = false,
+            ) {
+                if (showDetailsUsername) {
+                    val position = listItemPositionInGroup(detailIndex, detailCount)
+                    detailIndex++
+                    ListItem(
+                        headline = headlineUsername,
+                        supportingText = usernameForLinks.orEmpty(),
+                        divider = true,
+                        position = position,
+                        groupItemCount = detailCount,
+                        onContextMenuOpen = openContextMenuHaptic,
+                        leadingContent = {
+                            Icon(
+                                imageVector = Icons.Filled.AlternateEmail,
+                                contentDescription = null,
+                                tint = listItemIconTint,
+                            )
+                        },
+                        contextMenu = {
+                            item(Icons.Rounded.ContentCopy, labelCopy) {
+                                clipboardManager.setText(
+                                    AnnotatedString(usernameForLinks.orEmpty()),
+                                )
+                            }
+                            if (isOwnProfile) {
+                                item(Icons.Rounded.Edit, labelEdit) {
+                                    navController.navigate(
+                                        ProfileRoutes.editRoute(EditProfileFocusField.Username),
+                                    )
+                                }
+                            }
+                        },
+                    )
+                }
+
+                if (showDetailsMemberSince) {
+                    val memberSinceText = formatProfileRegistrationDate(
+                        resolvedProfile.createdAt,
+                        registrationDateStrings,
+                    ).orEmpty()
+                    val position = listItemPositionInGroup(detailIndex, detailCount)
+                    detailIndex++
+                    ListItem(
+                        headline = headlineMemberSince,
+                        supportingText = memberSinceText,
+                        divider = true,
+                        position = position,
+                        groupItemCount = detailCount,
+                        onContextMenuOpen = openContextMenuHaptic,
+                        leadingContent = {
+                            Icon(
+                                imageVector = Icons.Filled.CalendarMonth,
+                                contentDescription = null,
+                                tint = listItemIconTint,
+                            )
+                        },
+                        contextMenu = {
+                            item(Icons.Rounded.ContentCopy, labelCopy) {
+                                clipboardManager.setText(AnnotatedString(memberSinceText))
+                            }
+                        },
+                    )
+                }
+
+                if (showDetailsBio) {
+                    val position = listItemPositionInGroup(detailIndex, detailCount)
+                    detailIndex++
+                    ListItem(
+                        headline = headlineBio,
+                        supportingSlot = {
+                            ProfileBioMarkdown(
+                                content = resolvedProfile.bio.orEmpty(),
+                            )
+                        },
+                        divider = true,
+                        position = position,
+                        groupItemCount = detailCount,
+                        onContextMenuOpen = openContextMenuHaptic,
+                        leadingContent = {
+                            Icon(
+                                imageVector = Icons.Filled.Info,
+                                contentDescription = null,
+                                tint = listItemIconTint,
+                            )
+                        },
+                        contextMenu = {
+                            item(Icons.Rounded.ContentCopy, labelCopy) {
+                                scope.launch {
+                                    clipboard.setText(resolvedProfile.bio.orEmpty())
+                                }
+                            }
+                            if (isOwnProfile) {
+                                item(Icons.Rounded.Edit, labelEdit) {
+                                    navController.navigate(
+                                        ProfileRoutes.editRoute(EditProfileFocusField.Bio),
+                                    )
+                                }
+                            }
+                        },
+                    )
+                }
+
+                if (showDetailsVerify) {
+                    val position = listItemPositionInGroup(detailIndex, detailCount)
+                    detailIndex++
+                    ListItem(
+                            headline = headlineVerification,
+                            supportingText = if (resolvedProfile.verified == true) {
+                                verifiedSupport
+                            } else {
+                                verifyPromptSupport
+                            },
+                            divider = true,
+                            position = position,
+                            groupItemCount = detailCount,
+                            leadingContent = {
+                                Icon(
+                                    imageVector = Icons.Filled.Verified,
+                                    contentDescription = null,
+                                    tint = listItemIconTint,
+                                )
+                            },
+                            onClick = if (ApiClient.user?.id == 1) {
+                                {
+                                    scope.launch {
+                                        val result = withContext(Dispatchers.Default) {
+                                            runCatching {
+                                                ApiClient.verifyUser(resolvedProfile.id)
+                                            }.getOrNull()
+                                        }
+                                        result?.verified?.let { newVerified ->
+                                            onProfileUpdated(
+                                                resolvedProfile.copy(verified = newVerified),
+                                            )
+                                        }
+                                    }
+                                }
+                            } else null,
+                        )
+                }
+            }
+        }
+    }
 }
 
 @Composable

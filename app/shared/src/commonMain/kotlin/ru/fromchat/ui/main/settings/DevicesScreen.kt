@@ -2,12 +2,14 @@
 
 package ru.fromchat.ui.main.settings
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalAnimationApi
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -66,6 +68,8 @@ import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
 import dev.chrisbanes.haze.rememberHazeState
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
@@ -95,6 +99,16 @@ import ru.fromchat.ui.components.FromChatSnackbarHost
 import ru.fromchat.ui.components.HazeActionButton
 import ru.fromchat.ui.components.Text
 import ru.fromchat.unknown
+
+private const val DEVICE_SESSIONS_POLL_INTERVAL_MS = 15_000L
+
+private fun enrichDevicesList(list: List<DeviceSessionInfo>): List<DeviceSessionInfo> {
+    val currentIndex = list.indexOfFirst { it.current }
+    if (currentIndex < 0) return list
+    return list
+        .toMutableList()
+        .also { it[currentIndex] = deviceSessionForCurrentDevice(it[currentIndex]) }
+}
 
 private fun formatDeviceLine(d: DeviceSessionInfo, fallbackLabel: String) =
     listOfNotNull(
@@ -339,8 +353,10 @@ fun DevicesScreen(onBack: () -> Unit) {
 
     val snackbarHostState = remember { SnackbarHostState() }
     val initialCache = remember { Settings.readDeviceSessionsCache() }
-    var devices by remember { mutableStateOf(initialCache) }
-    var loading by remember { mutableStateOf(initialCache == null) }
+    var devices by remember {
+        mutableStateOf(initialCache?.let(::enrichDevicesList).orEmpty())
+    }
+    var refreshing by remember { mutableStateOf(initialCache == null) }
     var sheetDevice by remember { mutableStateOf<DeviceSessionInfo?>(null) }
     var sheetSigningOut by remember { mutableStateOf(false) }
     var showLogoutAllConfirm by remember { mutableStateOf(false) }
@@ -351,41 +367,27 @@ fun DevicesScreen(onBack: () -> Unit) {
         sheetSigningOut = false
     }
 
-    fun reload() {
-        scope.launch {
-            if (devices == null) loading = true
+    suspend fun fetchDevices() {
+        refreshing = true
 
-            devices = runCatching { ApiClient.listDevices() }
-                .let {
-                    if (it.isSuccess) {
-                        Settings.writeDeviceSessionsCache(it.getOrNull()!!)
-                        it.getOrNull()!!
-                    } else {
-                        snackbarHostState.showSnackbar(errUnexpected)
+        runCatching { ApiClient.listDevices() }
+            .onSuccess { list ->
+                Settings.writeDeviceSessionsCache(list)
+                devices = enrichDevicesList(list)
+            }
+            .onFailure {
+                snackbarHostState.showSnackbar(errUnexpected)
+            }
 
-                        if (devices == null) {
-                            emptyList()
-                        } else {
-                            devices
-                        }
-                    }
-                }?.let {
-                    it.indexOfFirst { it.current }.let { index ->
-                        it
-                            .toMutableList()
-                            .also {
-                                it[index] = deviceSessionForCurrentDevice(it[index])
-                            }
-                            .toList()
-                    }
-                }
-
-            loading = false
-        }
+        refreshing = false
     }
 
     LaunchedEffect(Unit) {
-        reload()
+        fetchDevices()
+        while (isActive) {
+            delay(DEVICE_SESSIONS_POLL_INTERVAL_MS)
+            fetchDevices()
+        }
     }
 
     Scaffold(
@@ -414,7 +416,7 @@ fun DevicesScreen(onBack: () -> Unit) {
             )
         },
         bottomBar = {
-            if (devices?.let { it.size > 1 } == true) {
+            if (devices.size > 1) {
                 HazeActionButton(
                     hazeState = hazeState,
                     onClick = { showLogoutAllConfirm = true }
@@ -424,119 +426,119 @@ fun DevicesScreen(onBack: () -> Unit) {
             }
         }
     ) { innerPadding ->
-        if (loading) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .hazeSource(hazeState),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                CircularProgressIndicator()
-            }
-        } else {
-            val active_sessions = stringResource(Res.string.settings_devices_active_sessions)
+        val activeSessionsTitle = stringResource(Res.string.settings_devices_active_sessions)
+        val (currentDevice, sessionList) = remember(devices) {
+            val mutable = devices.toMutableList()
+            val current = mutable.firstOrNull { it.current }
+            current?.let { mutable.remove(it) }
+            current to mutable
+        }
 
-            LazyColumn(
-                modifier = Modifier
-                    .hazeSource(hazeState)
-                    .padding()
-                    .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
-                contentPadding = innerPadding
-            ) {
-                item {
-                    Column(Modifier.fillMaxWidth()) {
-                        ExpressiveIconFrame(
-                            icon = Icons.Filled.Devices,
-                            modifier = Modifier.align(Alignment.CenterHorizontally),
-                            materialPolygon = MaterialShapes.VerySunny
-                        )
-
-                        Spacer(Modifier.height(8.dp))
-
-                        Text(
-                            text = stringResource(Res.string.settings_devices_title),
-                            style = MaterialTheme.typography.headlineMedium,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Spacer(Modifier.height(16.dp))
-                    }
-                }
-
-                var currentDevice: DeviceSessionInfo? = null
-                val sessionList = devices!!
-                    .toMutableList()
-                    .also { mutable ->
-                        currentDevice = mutable.first { it.current }.also {
-                            mutable.remove(it)
-                        }
-                    }
-                    .toList()
-
-                @Composable
-                fun Device(
-                    device: DeviceSessionInfo,
-                    divider: Boolean
-                ) {
-                    val osLogo = remember(device) { deviceSessionLogoResource(device) }
-
-                    ListItem(
-                        headline = remember(device) {
-                            deviceHeadline(device, unknownDeviceLabel)
-                        },
-                        supportingText = stringResource(
-                            Res.string.settings_devices_last_active,
-                            formatDeviceLastSeen(device.lastSeen)
-                        ),
-                        leadingContent = {
-                            if (osLogo != null) {
-                                AsyncImage(
-                                    model = Res.getUri(osLogo),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(24.dp),
-                                    contentScale = ContentScale.Fit,
-                                    colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface)
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = remember(device) {
-                                        deviceSessionIcon(
-                                            device
-                                        )
-                                    },
-                                    contentDescription = null,
-                                    modifier = Modifier.size(24.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        },
-                        divider = divider,
-                        onClick = { sheetDevice = device }
+        LazyColumn(
+            modifier = Modifier
+                .hazeSource(hazeState)
+                .padding()
+                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
+            contentPadding = innerPadding
+        ) {
+            item {
+                Column(Modifier.fillMaxWidth()) {
+                    ExpressiveIconFrame(
+                        icon = Icons.Filled.Devices,
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                        materialPolygon = MaterialShapes.VerySunny
                     )
-                }
 
-                if (currentDevice != null) {
-                    item {
-                        Category(
-                            title = stringResource(Res.string.settings_devices_this_device),
-                            margin = PaddingValues(bottom = 20.dp)
-                        ) {
-                            Device(currentDevice, false)
+                    Spacer(Modifier.height(8.dp))
+
+                    Text(
+                        text = stringResource(Res.string.settings_devices_title),
+                        style = MaterialTheme.typography.headlineMedium,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(Modifier.height(16.dp))
+                }
+            }
+
+            @Composable
+            fun Device(
+                device: DeviceSessionInfo,
+                divider: Boolean
+            ) {
+                val osLogo = remember(device) { deviceSessionLogoResource(device) }
+
+                ListItem(
+                    headline = remember(device) {
+                        deviceHeadline(device, unknownDeviceLabel)
+                    },
+                    supportingText = stringResource(
+                        Res.string.settings_devices_last_active,
+                        formatDeviceLastSeen(device.lastSeen)
+                    ),
+                    leadingContent = {
+                        if (osLogo != null) {
+                            AsyncImage(
+                                model = Res.getUri(osLogo),
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp),
+                                contentScale = ContentScale.Fit,
+                                colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface)
+                            )
+                        } else {
+                            Icon(
+                                imageVector = remember(device) {
+                                    deviceSessionIcon(device)
+                                },
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
+                    },
+                    divider = divider,
+                    onClick = { sheetDevice = device }
+                )
+            }
+
+            if (currentDevice != null) {
+                item {
+                    Category(
+                        title = stringResource(Res.string.settings_devices_this_device),
+                        margin = PaddingValues(bottom = 20.dp)
+                    ) {
+                        Device(currentDevice, false)
                     }
                 }
+            }
 
+            if (sessionList.isNotEmpty()) {
                 Category(
                     margin = PaddingValues(bottom = 20.dp),
-                    title = active_sessions
+                    title = activeSessionsTitle
                 ) {
                     sessionList.forEachIndexed { index, it ->
                         item {
                             Device(it, index < sessionList.lastIndex)
                         }
+                    }
+                }
+            }
+
+            item {
+                AnimatedVisibility(
+                    visible = refreshing,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 16.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
                     }
                 }
             }
@@ -564,7 +566,7 @@ fun DevicesScreen(onBack: () -> Unit) {
                         }.onSuccess {
                             sheetState.hide()
                             sheetDevice = null
-                            reload()
+                            fetchDevices()
                         }.onFailure {
                             snackbarHostState.showSnackbar(errUnexpected)
                         }
@@ -587,7 +589,7 @@ fun DevicesScreen(onBack: () -> Unit) {
                         showLogoutAllConfirm = false
                         scope.launch {
                             runCatching { ApiClient.revokeAllOtherDeviceSessions() }
-                                .onSuccess { reload() }
+                                .onSuccess { fetchDevices() }
                                 .onFailure { snackbarHostState.showSnackbar(errUnexpected) }
                         }
                     }

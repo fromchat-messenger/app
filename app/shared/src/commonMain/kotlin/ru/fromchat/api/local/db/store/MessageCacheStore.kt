@@ -3,12 +3,21 @@ package ru.fromchat.api.local.db.store
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import ru.fromchat.api.ApiClient
+import ru.fromchat.api.local.messages.ChatListPreviewPendingIndicator
+import ru.fromchat.api.local.messages.ChatListPreviewState
+import ru.fromchat.api.local.messages.ChatListPreviewStrings
 import ru.fromchat.api.local.messages.GENERAL_PUBLIC_GROUP_ID
+import ru.fromchat.api.local.messages.buildChatListPreview
+import ru.fromchat.api.local.messages.buildChatListPreviewFromEnvelope
+import ru.fromchat.api.local.messages.buildChatListPreviewState
 import ru.fromchat.api.local.db.aspectRatioFromDimensionPair
 import ru.fromchat.api.local.messages.conversationIdForDm
 import ru.fromchat.api.local.messages.conversationIdForGroup
@@ -41,12 +50,17 @@ data class CachedConversation(
     val otherUserId: Int,
     val displayName: String,
     val lastMessagePreview: String?,
-    val unreadCount: Int
+    val lastMessagePendingIndicator: ChatListPreviewPendingIndicator = ChatListPreviewPendingIndicator.None,
+    val lastMessageUploadProgress: Int? = null,
+    val unreadCount: Int,
 )
 
 object MessageCacheStore {
     private val db: MessageDatabase get() = MessageDatabaseProvider.database
     private val outboxJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+
+    @Volatile
+    var listPreviewStrings: ChatListPreviewStrings? = null
 
     private fun instanceId(): String = CacheContext.requireActiveInstanceId()
 
@@ -81,6 +95,26 @@ object MessageCacheStore {
 
     suspend fun loadRecentPublicMessages(limit: Long): List<Message> =
         loadRecentMessages(conversationIdForPublic(), limit)
+
+    suspend fun loadRecentPublicChatPreviewState(
+        strings: ChatListPreviewStrings,
+        limit: Long = 1,
+    ): ChatListPreviewState? = withContext(Dispatchers.Default) {
+        val convId = conversationIdForPublic()
+        val iid = instanceId()
+        val recent = db.messageDatabaseQueries
+            .selectRecentMessagesByConversation(iid, convId, limit)
+            .executeAsList()
+            .firstOrNull() ?: return@withContext null
+        val message = enrichQueuedOutboundUi(listOf(recent.toAppMessage()), convId).firstOrNull()
+            ?: return@withContext null
+        buildChatListPreviewState(message, strings, ApiClient.user?.id)
+            .let { state ->
+                state.copy(
+                    text = state.text?.trim()?.takeIf { it.isNotEmpty() },
+                )
+            }
+    }
 
     suspend fun replacePublicMessages(messages: List<Message>) {
         conversationIdForPublic().let {
@@ -190,6 +224,7 @@ object MessageCacheStore {
     }
 
     suspend fun upsertDmMessage(otherUserId: Int, message: Message) {
+        ensureDmConversationRow(otherUserId)
         upsertSingle(conversationIdForDm(otherUserId), message)
         syncDmConversationPreviewFromCache(otherUserId)
     }
@@ -263,8 +298,9 @@ object MessageCacheStore {
 
     suspend fun replaceDmConversations(
         conversations: List<DmConversation>,
-        attachmentOnlyPreview: String,
+        previewStrings: ChatListPreviewStrings,
     ) {
+        listPreviewStrings = previewStrings
         val iid = instanceId()
         val currentUserId = ApiClient.user?.id
         withContext(Dispatchers.Default) {
@@ -280,7 +316,7 @@ object MessageCacheStore {
                     lastMessagePreview = buildDmListPreview(
                         conv.lastMessage,
                         currentUserId,
-                        attachmentOnlyPreview,
+                        previewStrings,
                     ),
                     unreadCount = conv.unreadCount,
                     updatedAt = conv.lastMessage.timestamp,
@@ -324,17 +360,10 @@ object MessageCacheStore {
     private suspend fun buildDmListPreview(
         envelope: DmEnvelope,
         currentUserId: Int?,
-        attachmentOnlyPreview: String,
+        previewStrings: ChatListPreviewStrings,
     ): String? {
-        val hasFiles = !envelope.files.isNullOrEmpty()
         val decrypted = runCatching { decryptEnvelope(envelope, currentUserId) }.getOrNull()
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
-        val previewSource = when {
-            decrypted != null -> decrypted
-            hasFiles -> attachmentOnlyPreview
-            else -> null
-        }
+        val previewSource = buildChatListPreviewFromEnvelope(envelope, decrypted, previewStrings)
         return previewSource?.let { truncateDmListPreview(it) }?.takeIf { it.isNotEmpty() }
     }
 
@@ -509,34 +538,120 @@ object MessageCacheStore {
 
     suspend fun loadCachedDmConversations(): List<CachedConversation> =
         withContext(Dispatchers.Default) {
+            val iid = instanceId()
+            val previewStrings = listPreviewStrings
+            val currentUserId = ApiClient.user?.id
             db.messageDatabaseQueries
-                .selectActiveDmConversationsForInstance(instanceId())
+                .selectActiveDmConversationsForInstance(iid)
                 .executeAsList()
                 .map { row: Conversation ->
+                    val previewState = previewStrings?.let { strings ->
+                        previewStateForRecentMessage(iid, row.id, strings, currentUserId)
+                    }
                     CachedConversation(
                         id = row.id,
                         otherUserId = row.otherUserId?.toInt() ?: 0,
                         displayName = row.displayName ?: "",
-                        lastMessagePreview = row.lastMessagePreview,
-                        unreadCount = row.unreadCount.toInt()
+                        lastMessagePreview = previewState?.text ?: row.lastMessagePreview,
+                        lastMessagePendingIndicator = previewState?.pendingIndicator
+                            ?: ChatListPreviewPendingIndicator.None,
+                        lastMessageUploadProgress = previewState?.uploadProgress,
+                        unreadCount = row.unreadCount.toInt(),
                     )
                 }
         }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun observeActiveDmConversations(instanceId: String): Flow<List<CachedConversation>> {
+        val conversationsFlow = db.messageDatabaseQueries
+            .selectActiveDmConversationsForInstance(instanceId)
+            .asFlow()
+            .mapToList(Dispatchers.Default)
+        val pendingFlow = db.messageDatabaseQueries
+            .selectAllPendingMessagesForInstance(instanceId)
+            .asFlow()
+            .mapToList(Dispatchers.Default)
+        val outboxFlow = db.messageDatabaseQueries
+            .selectPendingOutboxForInstance(instanceId)
+            .asFlow()
+            .mapToList(Dispatchers.Default)
+        return merge(conversationsFlow, pendingFlow, outboxFlow)
+            .mapLatest { loadCachedDmConversations() }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun observePublicChatPreviewState(
+        instanceId: String,
+        strings: ChatListPreviewStrings,
+    ): Flow<ChatListPreviewState?> {
+        val convId = conversationIdForPublic()
+        val messagesFlow = db.messageDatabaseQueries
+            .selectMessagesByConversation(instanceId, convId)
+            .asFlow()
+            .mapToList(Dispatchers.Default)
+        val pendingFlow = db.messageDatabaseQueries
+            .selectAllPendingMessagesForInstance(instanceId)
+            .asFlow()
+            .mapToList(Dispatchers.Default)
+        val outboxFlow = db.messageDatabaseQueries
+            .selectPendingOutboxForInstance(instanceId)
+            .asFlow()
+            .mapToList(Dispatchers.Default)
+        return merge(messagesFlow, pendingFlow, outboxFlow)
+            .mapLatest { loadRecentPublicChatPreviewState(strings) }
+    }
+
+    private fun previewStateForRecentMessage(
+        instanceId: String,
+        conversationId: String,
+        strings: ChatListPreviewStrings,
+        currentUserId: Int?,
+    ): ChatListPreviewState? {
+        val recent = db.messageDatabaseQueries
+            .selectRecentMessagesByConversation(instanceId, conversationId, 1)
+            .executeAsList()
+            .firstOrNull() ?: return null
+        val message = enrichQueuedOutboundUi(
+            listOf(recent.toAppMessage()),
+            conversationId,
+        ).firstOrNull() ?: return null
+        return buildChatListPreviewState(message, strings, currentUserId)
+            .let { state ->
+                state.copy(
+                    text = state.text
+                        ?.let { truncateDmListPreview(it) }
+                        ?.takeIf { it.isNotEmpty() },
+                )
+            }
+    }
 
     private suspend fun syncDmConversationPreviewFromCache(otherUserId: Int) {
         val iid = instanceId()
         val convId = conversationIdForDm(otherUserId)
         withContext(Dispatchers.Default) {
-            val row = db.messageDatabaseQueries
-                .selectConversationsForInstance(iid)
-                .executeAsList()
-                .find { it.id == convId } ?: return@withContext
+            var row = db.messageDatabaseQueries
+                .selectConversationById(iid, convId)
+                .executeAsOneOrNull()
+            if (row == null) {
+                ensureDmConversationRow(otherUserId)
+                row = db.messageDatabaseQueries
+                    .selectConversationById(iid, convId)
+                    .executeAsOneOrNull()
+                    ?: return@withContext
+            }
             val recent = db.messageDatabaseQueries
                 .selectRecentMessagesByConversation(iid, convId, 1)
                 .executeAsList()
                 .firstOrNull()
-            val rawPreview = recent?.content.orEmpty().trim()
-            val preview = rawPreview.takeIf { it.isNotEmpty() }
+            val previewStrings = listPreviewStrings
+            val preview = previewStrings?.let { strings ->
+                recent?.toAppMessage()?.let { message ->
+                    val enriched = enrichQueuedOutboundUi(listOf(message), convId).firstOrNull()
+                    enriched?.let {
+                        buildChatListPreviewState(it, strings, ApiClient.user?.id).text
+                    }
+                }
+            }
                 ?.let { truncateDmListPreview(it) }
                 ?.takeIf { it.isNotEmpty() }
             db.messageDatabaseQueries.upsertConversation(
@@ -545,13 +660,14 @@ object MessageCacheStore {
                 type = row.type,
                 otherUserId = row.otherUserId,
                 displayName = row.displayName,
-                lastMessageId = row.lastMessageId,
-                lastMessagePreview = preview,
+                lastMessageId = recent?.id ?: row.lastMessageId,
+                lastMessagePreview = preview ?: row.lastMessagePreview,
                 unreadCount = row.unreadCount,
-                updatedAt = row.updatedAt,
+                updatedAt = recent?.timestamp ?: row.updatedAt,
                 archived = row.archived,
             )
         }
+        DmConversationListNotifier.notifyChanged()
     }
 
     private suspend fun clearConversationMessages(conversationId: String) {

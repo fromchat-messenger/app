@@ -7,7 +7,10 @@ import com.pr0gramm3r101.utils.settings.secureSettings
 import com.pr0gramm3r101.utils.settings.settings
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.network.sockets.ConnectTimeoutException
+import io.ktor.client.network.sockets.SocketTimeoutException
 import io.ktor.client.plugins.ClientRequestException
+import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.request.forms.formData
 import io.ktor.client.request.forms.submitFormWithBinaryData
 import io.ktor.client.plugins.HttpResponseValidator
@@ -33,6 +36,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -306,12 +310,39 @@ object ApiClient {
             httpProbe.get(url.trim())
         }.isSuccess
 
-    suspend fun checkAuthAt(apiBaseUrl: String, bearer: String): Boolean =
+    sealed interface CheckAuthResult {
+        data object Authenticated : CheckAuthResult
+        data object NotAuthenticated : CheckAuthResult
+        data object Unreachable : CheckAuthResult
+    }
+
+    suspend fun checkAuthAt(apiBaseUrl: String, bearer: String): CheckAuthResult =
         runCatching {
             httpProbe.get("${apiBaseUrl.trimEnd('/')}/check_auth") {
                 bearerAuth(bearer)
             }.body<CheckAuthResponse>().authenticated
-        }.getOrDefault(false)
+        }.fold(
+            onSuccess = { authenticated ->
+                if (authenticated) CheckAuthResult.Authenticated else CheckAuthResult.NotAuthenticated
+            },
+            onFailure = { e ->
+                when (e) {
+                    is TimeoutCancellationException,
+                    is HttpRequestTimeoutException,
+                    is SocketTimeoutException,
+                    is ConnectTimeoutException,
+                    -> CheckAuthResult.Unreachable
+                    is ClientRequestException -> {
+                        if (e.response.status.value in 400..499) {
+                            CheckAuthResult.NotAuthenticated
+                        } else {
+                            CheckAuthResult.Unreachable
+                        }
+                    }
+                    else -> CheckAuthResult.Unreachable
+                }
+            },
+        )
 
     suspend fun refreshServerInstanceFingerprint() {
         if (token.isNullOrEmpty()) return
@@ -1381,17 +1412,31 @@ object ApiClient {
 
     fun getTokenSafely() = token ?: throw IllegalStateException("Not authenticated")
 
-    suspend fun sendMessageViaHttp(content: String, replyToId: Int? = null) {
-        if (_suspensionState.value.isSuspended) return
+    suspend fun sendMessageViaHttp(
+        content: String,
+        replyToId: Int? = null,
+        clientMessageId: String? = null,
+    ): ru.fromchat.api.schema.messages.Message {
+        if (_suspensionState.value.isSuspended) {
+            throw IllegalStateException("Account suspended")
+        }
         val payloadJson = json.encodeToString(
-            SendMessageRequest(content = content.trim(), reply_to_id = replyToId),
+            SendMessageRequest(
+                content = content.trim(),
+                reply_to_id = replyToId,
+                client_message_id = clientMessageId?.trim()?.takeIf { it.isNotEmpty() },
+            ),
         )
-        http.submitFormWithBinaryData(
+        val response = http.submitFormWithBinaryData(
             url = "${ServerConfig.apiBaseUrl}/send_message",
             formData = formData {
                 append("payload", payloadJson)
             },
-        )
+        ).body<ru.fromchat.api.schema.messages.publicchat.SendMessageResponse>()
+        if (!response.status.equals("success", ignoreCase = true)) {
+            throw IllegalStateException("send_message failed: ${response.status}")
+        }
+        return response.message
     }
 
     // WebSocket send helpers

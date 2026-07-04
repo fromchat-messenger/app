@@ -79,13 +79,7 @@ class DmPanel(
     }
 
     init {
-        updateState {
-            it.copy(
-                title = "",
-                titleAvatar = null,
-                profileUserId = otherUserId
-            )
-        }
+        applyCachedPeerProfileOrReset()
         coroutineScope.launch {
             typingHandler.typingUsers.collect { users ->
                 updateState { it.copy(typingUsers = users) }
@@ -108,35 +102,73 @@ class DmPanel(
             }
         }
         coroutineScope.launch(Dispatchers.Default) {
+            if (_state.title.isBlank()) {
+                loadPeerTitleFromConversationCache()
+            }
             runCatching {
                 ApiClient.getProfileById(otherUserId)
             }.onSuccess { profile ->
                 if (profile.username.isBlank() && profile.displayName.isNullOrBlank()) {
                     ProfileCache.evictUnusableClientPreview(otherUserId)
-                    updateState {
-                        it.copy(title = "", titleAvatar = null, profileUserId = otherUserId)
+                    if (_state.title.isBlank()) {
+                        updateState {
+                            it.copy(title = "", titleAvatar = null, profileUserId = otherUserId)
+                        }
                     }
                     return@onSuccess
                 }
                 ProfileCache.put(profile)
                 val displayName = profile.visibleDisplayName(ApiClient.user?.id).orEmpty()
-                otherDisplayName = displayName
-                otherProfilePicture = profile.profilePicture
-                updateState {
-                    it.copy(
-                        title = displayName,
-                        titleAvatar = AvatarInfo(
-                            displayName = displayName,
-                            profilePictureUrl = otherProfilePicture
-                        ),
-                        profileUserId = otherUserId
-                    )
+                if (displayName.isNotBlank()) {
+                    applyPeerTitle(displayName, profile.profilePicture)
                 }
             }.onFailure {
                 ProfileCache.evictUnusableClientPreview(otherUserId)
-                updateState {
-                    it.copy(title = "", titleAvatar = null, profileUserId = otherUserId)
+                if (_state.title.isBlank()) {
+                    updateState {
+                        it.copy(title = "", titleAvatar = null, profileUserId = otherUserId)
+                    }
                 }
+            }
+        }
+    }
+
+    private fun applyCachedPeerProfileOrReset() {
+        val cached = ProfileCache.get(otherUserId)
+        val displayName = cached?.visibleDisplayName(ApiClient.user?.id).orEmpty()
+        if (displayName.isNotBlank()) {
+            applyPeerTitle(displayName, cached?.profilePicture)
+        } else {
+            updateState {
+                it.copy(title = "", titleAvatar = null, profileUserId = otherUserId)
+            }
+        }
+    }
+
+    private fun applyPeerTitle(displayName: String, profilePicture: String?) {
+        otherDisplayName = displayName
+        otherProfilePicture = profilePicture
+        updateState {
+            it.copy(
+                title = displayName,
+                titleAvatar = AvatarInfo(
+                    displayName = displayName,
+                    profilePictureUrl = profilePicture,
+                ),
+                profileUserId = otherUserId,
+            )
+        }
+    }
+
+    private suspend fun loadPeerTitleFromConversationCache() {
+        val conversation = runCatching {
+            MessageCacheStore.loadCachedDmConversations()
+        }.getOrNull()?.find { it.otherUserId == otherUserId } ?: return
+        val displayName = conversation.displayName.takeIf { it.isNotBlank() } ?: return
+        ProfileCache.mergeFromCachedConversation(conversation)
+        withContext(Dispatchers.Main) {
+            if (_state.title.isBlank()) {
+                applyPeerTitle(displayName, ProfileCache.get(otherUserId)?.profilePicture)
             }
         }
     }
@@ -313,13 +345,14 @@ class DmPanel(
                 if (envelope.senderId == currentUserId) {
                     mergeConfirmedOwnMessage(envelope, outcome.plaintext, outcome.isCorrupted)
                 } else {
-                    addMessage(createMessage(envelope, outcome.plaintext, outcome.isCorrupted))
+                    val incoming = createMessage(envelope, outcome.plaintext, outcome.isCorrupted)
+                    withContext(Dispatchers.Default) {
+                        MessageCacheStore.upsertDmMessage(otherUserId, incoming)
+                    }
+                    addMessage(incoming)
                     if (envelope.replyToId != null) {
                         val replyTo = _state.messages.find { it.id == envelope.replyToId }
                         updateMessage(envelope.id) { it.copy(reply_to = replyTo) }
-                    }
-                    scope.launch(Dispatchers.Default) {
-                        MessageCacheStore.replaceDmMessages(otherUserId, _state.messages)
                     }
                 }
             }

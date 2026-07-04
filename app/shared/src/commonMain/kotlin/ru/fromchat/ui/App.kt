@@ -66,7 +66,6 @@ import ru.fromchat.api.local.cache.ensureFromChatCacheGeneration
 import ru.fromchat.api.local.db.store.ProfileCache
 import ru.fromchat.api.local.db.store.UserStatusStore
 import ru.fromchat.api.local.send.OutgoingMessageCoordinator
-import ru.fromchat.api.local.send.scheduleOutboxProcessing
 import ru.fromchat.api.schema.websocket.WebSocketMessage
 import ru.fromchat.api.schema.websocket.types.WebSocketUpdatesData
 import ru.fromchat.config.ServerConfig
@@ -278,10 +277,7 @@ fun App(
                     MainScope().launch {
                         val instanceId = CacheContext.activeInstanceId.value.trim()
                         if (instanceId.isNotEmpty()) {
-                            scheduleOutboxProcessing(instanceId)
-                            kotlinx.coroutines.withContext(Dispatchers.Default) {
-                                OutgoingMessageCoordinator.drainOutboxForInstance(instanceId)
-                            }
+                            OutgoingMessageCoordinator.onTransportReady()
                         }
                     }
                 }

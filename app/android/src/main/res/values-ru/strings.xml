@@ -1,0 +1,5 @@
+<resources>
+    <string name="chat_preview_attachment">Вложение</string>
+    <string name="chat_preview_image_emoji">📷</string>
+    <string name="chat_preview_image">%1$s 1 фото</string>
+</resources>

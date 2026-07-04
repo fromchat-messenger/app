@@ -10,11 +10,18 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.cache.CacheContext
+import ru.fromchat.api.local.db.store.ConnectionStateStore
 import ru.fromchat.api.local.db.store.MessageRepository
+import ru.fromchat.api.local.db.store.ConnectionStatus
+import ru.fromchat.api.local.send.OutgoingMessageCoordinator
+import ru.fromchat.api.local.send.scheduleOutboxProcessing
 import ru.fromchat.ui.chat.ChatScreen
 import ru.fromchat.ui.chat.utils.PublicChatPanelCache
+import ru.fromchat.utils.NetworkConnectivity
 
 @Composable
 fun PublicChatScreen(
@@ -32,11 +39,22 @@ fun PublicChatScreen(
     }
 
     val activeInstanceId by CacheContext.activeInstanceId.collectAsState()
+    val online by NetworkConnectivity.isOnline.collectAsState(initial = true)
+    val connectionStatus by ConnectionStateStore.status.collectAsState()
 
     LaunchedEffect(panel, activeInstanceId) {
         if (activeInstanceId.isBlank()) return@LaunchedEffect
         if (panel.getState().messages.isEmpty()) {
             panel.loadMessages()
+        }
+    }
+
+    LaunchedEffect(activeInstanceId, online, connectionStatus) {
+        val instanceId = activeInstanceId.trim()
+        if (instanceId.isBlank() || !online) return@LaunchedEffect
+        scheduleOutboxProcessing(instanceId)
+        withContext(Dispatchers.Default) {
+            OutgoingMessageCoordinator.drainOutboxForInstance(instanceId)
         }
     }
 

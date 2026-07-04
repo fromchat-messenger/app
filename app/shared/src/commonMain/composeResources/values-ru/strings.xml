@@ -61,6 +61,10 @@
     <string name="public_chat">Общий чат</string>
     <string name="chat_last_mesaage">Вы: последнее сообщение</string>
     <string name="chat_preview_attachment">Вложение</string>
+    <string name="chat_preview_image_emoji">📷</string>
+    <string name="chat_preview_image">%1$s 1 фото</string>
+    <string name="cd_chat_preview_sending">Отправка сообщения</string>
+    <string name="cd_chat_preview_uploading">Загрузка файла</string>
     <string name="action_mark_read">Прочитано</string>
     <string name="action_select">Выбрать</string>
     <string name="action_archive">В архив</string>

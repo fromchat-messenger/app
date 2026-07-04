@@ -204,11 +204,13 @@ fun ChatScreen(
         }
     }
 
-    // Subscribe to other user's status when DM is visible; unsubscribe on leave
-    LaunchedEffect(panelState.profileUserId) {
+    // Subscribe to other user's status when DM is visible; re-subscribe after reconnect
+    LaunchedEffect(panelState.profileUserId, connectionStatus) {
         val userId = panelState.profileUserId
         if (userId != null) {
-            runCatching { ApiClient.sendSubscribeStatus(userId) }
+            if (connectionStatus == ConnectionStatus.CONNECTED) {
+                runCatching { ApiClient.sendSubscribeStatus(userId) }
+            }
             try {
                 kotlinx.coroutines.awaitCancellation()
             } finally {
@@ -302,10 +304,10 @@ fun ChatScreen(
                                     val lastSeen = data["lastSeen"]?.jsonPrimitive?.content
                                     if (userId != null) UserStatusStore.update(userId, online, lastSeen)
                                 }
-                                "newMessage", "messageEdited", "messageDeleted",
+                                "newMessage", "messageEdited", "messageDeleted", "sendMessage",
                                 "dmNew", "dmEdited", "dmDeleted",
                                 "typing", "stopTyping", "dmTyping", "stopDmTyping",
-                                "registeredUserCount" -> {
+                                "reactionUpdate", "registeredUserCount" -> {
                                     Logger.d("ChatScreen", "handleWebSocketMessage for ${update.type}")
                                     try {
                                         panel.handleWebSocketMessage(wsMessage)
@@ -327,7 +329,8 @@ fun ChatScreen(
                     if (userId != null) UserStatusStore.update(userId, online, lastSeen)
                 }
                 "newMessage", "messageEdited", "messageDeleted", "dmNew", "dmEdited", "dmDeleted",
-                "dmTyping", "stopDmTyping", "registeredUserCount" -> {
+                "dmTyping", "stopDmTyping", "typing", "stopTyping", "reactionUpdate",
+                "registeredUserCount" -> {
                     scope.launch {
                         panel.handleWebSocketMessage(message)
                     }

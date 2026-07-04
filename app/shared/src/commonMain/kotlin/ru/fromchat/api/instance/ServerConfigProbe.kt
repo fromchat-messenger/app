@@ -36,12 +36,22 @@ suspend fun probeCallsReachable(config: ServerConfigData): Boolean {
     }.getOrDefault(false)
 }
 
+sealed interface ApplyServerResult {
+    data object Applied : ApplyServerResult
+    data object ServerUnreachable : ApplyServerResult
+}
+
 suspend fun probeServer(config: ServerConfigData): ServerProbeResult {
     val apiBase = apiBaseUrlFor(config)
     val mark = TimeSource.Monotonic.markNow()
     InstanceIdGuard.probeConfig = config
     try {
-        val resolve = resolveInstanceId(config, apiBase, forceNetwork = true)
+        val resolve = resolveInstanceId(
+            config = config,
+            apiBaseUrl = apiBase,
+            forceNetwork = true,
+            allowCachedOnFailure = false,
+        )
         val pingMs = mark.elapsedNow().inWholeMilliseconds.toInt().coerceAtLeast(0)
         val instanceId = when (resolve) {
             is InstanceIdResolveResult.Cached -> resolve.instanceId
@@ -78,25 +88,32 @@ suspend fun applyServerAndNavigate(
     onNavigateLogin: suspend () -> Unit,
     onNavigateChat: suspend () -> Unit,
     onLogoutOldHost: suspend () -> Unit,
-) {
+): ApplyServerResult {
     val apiBase = apiBaseUrlFor(config)
     val token = bearer.trim()
     if (token.isEmpty()) {
         applyServerConfig(config, probe.instanceId, probe.callsOk)
         WebSocketManager.disconnect()
         onNavigateLogin()
-        return
+        return ApplyServerResult.Applied
     }
-    val authOk = ApiClient.checkAuthAt(apiBase, token)
-    if (!authOk) {
-        onLogoutOldHost()
-        applyServerConfig(config, probe.instanceId, probe.callsOk)
-        WebSocketManager.disconnect()
-        onNavigateLogin()
-        return
+    when (val auth = ApiClient.checkAuthAt(apiBase, token)) {
+        ApiClient.CheckAuthResult.Authenticated -> {
+            applyServerConfig(config, probe.instanceId, probe.callsOk)
+            WebSocketManager.disconnect()
+            WebSocketManager.connect(forceRestart = true)
+            onNavigateChat()
+            return ApplyServerResult.Applied
+        }
+        ApiClient.CheckAuthResult.Unreachable -> {
+            return ApplyServerResult.ServerUnreachable
+        }
+        ApiClient.CheckAuthResult.NotAuthenticated -> {
+            onLogoutOldHost()
+            applyServerConfig(config, probe.instanceId, probe.callsOk)
+            WebSocketManager.disconnect()
+            onNavigateLogin()
+            return ApplyServerResult.Applied
+        }
     }
-    applyServerConfig(config, probe.instanceId, probe.callsOk)
-    WebSocketManager.disconnect()
-    WebSocketManager.connect(forceRestart = true)
-    onNavigateChat()
 }

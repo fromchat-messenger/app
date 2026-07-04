@@ -34,6 +34,7 @@ suspend fun resolveInstanceId(
     config: ServerConfigData,
     apiBaseUrl: String,
     forceNetwork: Boolean,
+    allowCachedOnFailure: Boolean = true,
 ): InstanceIdResolveResult {
     val cached = InstanceRegistryStore.getActiveInstanceIdForConfig(config)?.trim().orEmpty()
     if (!forceNetwork && cached.isNotEmpty() && isValidInstanceUuid(cached)) {
@@ -46,7 +47,11 @@ suspend fun resolveInstanceId(
         }
     }
     if (fetchResult.isFailure) {
-        return networkFailureToResolveResult(fetchResult.exceptionOrNull(), cached)
+        return networkFailureToResolveResult(
+            e = fetchResult.exceptionOrNull(),
+            cached = cached,
+            allowCachedOnFailure = allowCachedOnFailure,
+        )
     }
     val fetched = fetchResult.getOrThrow().trim()
 
@@ -74,19 +79,20 @@ fun apiBaseUrlFor(config: ServerConfigData): String {
 private fun networkFailureToResolveResult(
     e: Throwable?,
     cached: String,
+    allowCachedOnFailure: Boolean,
 ): InstanceIdResolveResult = when (e) {
     is TimeoutCancellationException,
     is HttpRequestTimeoutException,
     is SocketTimeoutException,
     -> {
-        if (cached.isNotEmpty() && isValidInstanceUuid(cached)) {
+        if (allowCachedOnFailure && cached.isNotEmpty() && isValidInstanceUuid(cached)) {
             InstanceIdResolveResult.Cached(cached)
         } else {
             InstanceIdResolveResult.Timeout
         }
     }
     is ConnectTimeoutException -> {
-        if (cached.isNotEmpty() && isValidInstanceUuid(cached)) {
+        if (allowCachedOnFailure && cached.isNotEmpty() && isValidInstanceUuid(cached)) {
             InstanceIdResolveResult.Cached(cached)
         } else {
             InstanceIdResolveResult.Unreachable
@@ -95,14 +101,14 @@ private fun networkFailureToResolveResult(
     is ClientRequestException -> {
         if (e.response.status.value in 400..499) {
             InstanceIdResolveResult.Unsupported
-        } else if (cached.isNotEmpty() && isValidInstanceUuid(cached)) {
+        } else if (allowCachedOnFailure && cached.isNotEmpty() && isValidInstanceUuid(cached)) {
             InstanceIdResolveResult.Cached(cached)
         } else {
             InstanceIdResolveResult.Unreachable
         }
     }
     else -> {
-        if (cached.isNotEmpty() && isValidInstanceUuid(cached)) {
+        if (allowCachedOnFailure && cached.isNotEmpty() && isValidInstanceUuid(cached)) {
             InstanceIdResolveResult.Cached(cached)
         } else {
             InstanceIdResolveResult.Unreachable

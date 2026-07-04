@@ -88,6 +88,9 @@ import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.db.store.CachedConversation
 import ru.fromchat.api.local.db.store.ConnectionStateStore
 import ru.fromchat.api.local.db.store.ConnectionStatus
+import ru.fromchat.api.local.messages.ChatListPreviewState
+import ru.fromchat.api.local.messages.ChatListPreviewStrings
+import ru.fromchat.api.local.db.store.MessageCacheStore
 import ru.fromchat.api.local.db.store.MessageRepository
 import ru.fromchat.api.local.db.store.ProfileCache
 import ru.fromchat.api.local.db.store.PublicChatProfileCache
@@ -100,6 +103,8 @@ import ru.fromchat.chat_delete_confirm_body
 import ru.fromchat.chat_delete_confirm_title
 import ru.fromchat.chat_last_mesaage
 import ru.fromchat.chat_preview_attachment
+import ru.fromchat.chat_preview_image
+import ru.fromchat.chat_preview_image_emoji
 import ru.fromchat.chats_selected_count
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.search_title
@@ -281,7 +286,7 @@ fun ChatsTab(
     val connectionStatus by ConnectionStateStore.status.collectAsState()
     val online by NetworkConnectivity.isOnline.collectAsState(initial = true)
     var dmConversations by remember { mutableStateOf<List<CachedConversation>>(emptyList()) }
-    var publicLastMessagePreview by remember { mutableStateOf<String?>(null) }
+    var publicChatPreviewState by remember { mutableStateOf<ChatListPreviewState?>(null) }
     var publicChatProfile by remember { mutableStateOf(PublicChatProfileCache.profile) }
     val searchBarHint = stringResource(Res.string.search_title)
     val tabListState = rememberLazyListState()
@@ -289,8 +294,21 @@ fun ChatsTab(
     var subscribedDmUserIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
     val statusSubscriptionScope = rememberCoroutineScope()
     val suspensionState by ApiClient.suspensionState.collectAsState()
-    val attachmentOnlyPreview = stringResource(Res.string.chat_preview_attachment)
+    val imageEmoji = stringResource(Res.string.chat_preview_image_emoji)
+    val previewStrings = ChatListPreviewStrings(
+        imageEmoji = imageEmoji,
+        imageOnly = stringResource(Res.string.chat_preview_image, imageEmoji),
+        attachmentOnly = stringResource(Res.string.chat_preview_attachment),
+    )
     val defaultLastMessage = stringResource(Res.string.chat_last_mesaage)
+
+    LaunchedEffect(previewStrings.imageOnly, previewStrings.attachmentOnly) {
+        MessageCacheStore.listPreviewStrings = previewStrings
+    }
+
+    SideEffect {
+        MessageCacheStore.listPreviewStrings = previewStrings
+    }
 
     var listMode by remember { mutableStateOf(ChatsListMode.Normal) }
     var publicChatSelected by remember { mutableStateOf(false) }
@@ -399,7 +417,7 @@ fun ChatsTab(
         onDispose { chatContextMenuOverlay.clear() }
     }
 
-    LaunchedEffect(dmConversations, tabListState, isVisible, onOpenSearch) {
+    LaunchedEffect(dmConversations, tabListState, isVisible, onOpenSearch, connectionStatus) {
         snapshotFlow {
             if (!isVisible) {
                 emptySet()
@@ -415,8 +433,10 @@ fun ChatsTab(
         }
             .distinctUntilChanged()
             .collect { visibleIds ->
-                (visibleIds - subscribedDmUserIds).forEach { userId ->
-                    runCatching { ApiClient.sendSubscribeStatus(userId) }
+                if (connectionStatus == ConnectionStatus.CONNECTED) {
+                    visibleIds.forEach { userId ->
+                        runCatching { ApiClient.sendSubscribeStatus(userId) }
+                    }
                 }
 
                 (subscribedDmUserIds - visibleIds).forEach { userId ->
@@ -441,6 +461,32 @@ fun ChatsTab(
     val serverConfig by ServerConfig.serverConfig.collectAsState()
     val activeInstanceId by CacheContext.activeInstanceId.collectAsState()
 
+    LaunchedEffect(activeInstanceId, previewStrings.imageOnly, previewStrings.attachmentOnly) {
+        if (activeInstanceId.isBlank()) {
+            publicChatPreviewState = null
+            return@LaunchedEffect
+        }
+        publicChatProfile = PublicChatProfileCache.profile
+        runCatching {
+            publicChatPreviewState = MessageRepository.loadRecentPublicChatPreviewState(previewStrings)
+        }
+    }
+
+    LaunchedEffect(activeInstanceId, previewStrings.imageOnly, previewStrings.attachmentOnly) {
+        if (activeInstanceId.isBlank()) return@LaunchedEffect
+        MessageRepository.observeActiveDmConversations().collect { conversations ->
+            conversations.forEach { ProfileCache.mergeFromCachedConversation(it) }
+            dmConversations = conversations
+        }
+    }
+
+    LaunchedEffect(activeInstanceId, previewStrings.imageOnly, previewStrings.attachmentOnly) {
+        if (activeInstanceId.isBlank()) return@LaunchedEffect
+        MessageRepository.observePublicChatPreviewState(previewStrings).collect { state ->
+            publicChatPreviewState = state
+        }
+    }
+
     LaunchedEffect(serverConfig, activeInstanceId) {
         if (activeInstanceId.isBlank()) return@LaunchedEffect
 
@@ -452,20 +498,11 @@ fun ChatsTab(
         }
 
         runCatching {
-            publicLastMessagePreview = MessageRepository
-                .loadRecentPublicMessages(1)
-                .lastOrNull()
-                ?.content
-                ?.trim()
-                ?.takeIf { it.isNotEmpty() }
-        }
-
-        runCatching {
             ApiClient.getDmConversations()
         }.onSuccess { conversations ->
             runCatching {
                 conversations.forEach { ProfileCache.mergeFromDmUser(it.user) }
-                MessageRepository.replaceDmConversations(conversations, attachmentOnlyPreview)
+                MessageRepository.replaceDmConversations(conversations, previewStrings)
                 dmConversations = MessageRepository.loadCachedDmConversations()
             }
         }
@@ -652,7 +689,7 @@ fun ChatsTab(
                     listFilter = ChatListFilter.Active,
                     conversations = dmConversations,
                     publicChatTitle = publicChatTitle,
-                    publicLastMessagePreview = publicLastMessagePreview,
+                    publicChatPreviewState = publicChatPreviewState,
                     defaultLastMessage = defaultLastMessage,
                     statusMap = statusMap,
                     listMode = listMode,
@@ -813,7 +850,7 @@ fun ChatsTab(
                 blurProgress = chatContextMenuOverlay.blurProgress,
                 listFilter = ChatListFilter.Active,
                 publicChatTitle = publicChatTitle,
-                publicLastMessagePreview = publicLastMessagePreview,
+                publicChatPreviewState = publicChatPreviewState,
                 publicChatLink = publicChatLink,
                 defaultLastMessage = defaultLastMessage,
                 conversations = dmConversations,
@@ -1238,7 +1275,7 @@ private fun ChatContextMenuOverlay(
                         ChatContextMenuTarget.Public -> {
                             PublicChatRowContent(
                                 publicChatTitle = uiState.publicChatTitle,
-                                publicLastMessagePreview = uiState.publicLastMessagePreview,
+                                publicChatPreviewState = uiState.publicChatPreviewState,
                                 defaultLastMessage = uiState.defaultLastMessage,
                                 listMode = uiState.listMode,
                                 selectionTransitionProgress = uiState.selectionTransitionProgress,

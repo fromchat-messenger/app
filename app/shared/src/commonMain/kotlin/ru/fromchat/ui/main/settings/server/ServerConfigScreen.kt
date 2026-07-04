@@ -98,6 +98,7 @@ import ru.fromchat.config.DEFAULT_CALLS_PORT
 import ru.fromchat.config.ServerConfigData
 import ru.fromchat.config.Settings
 import ru.fromchat.api.instance.ServerProbeResult
+import ru.fromchat.api.instance.ApplyServerResult
 import ru.fromchat.api.instance.applyServerAndNavigate
 import ru.fromchat.api.instance.probeServer
 import ru.fromchat.save_continue
@@ -305,15 +306,9 @@ fun ServerConfigScreen() {
                                 busy = true
 
                                 val tentative = buildTentativeConfig() ?: return@launch
-                                val probe = if (
-                                    lastProbedConfig == tentative && lastProbe != null
-                                ) {
-                                    lastProbe!!
-                                } else {
-                                    probeServer(tentative).also {
-                                        lastProbe = it
-                                        lastProbedConfig = tentative
-                                    }
+                                val probe = probeServer(tentative).also {
+                                    lastProbe = it
+                                    lastProbedConfig = tentative
                                 }
 
                                 when (probe) {
@@ -332,38 +327,45 @@ fun ServerConfigScreen() {
                                     }
 
                                     is ServerProbeResult.Supported -> {
-                                        Settings.lastKnownServerInstanceId =
-                                            probe.instanceId
-
-                                        applyServerAndNavigate(
-                                            probe = probe,
-                                            config = tentative,
-                                            bearer = ApiClient.token?.trim().orEmpty(),
-                                            onNavigateLogin = {
-                                                withContext(Dispatchers.Main) {
-                                                    navController.navigateAndWipeBackStack("auth")
-                                                }
-                                            },
-                                            onNavigateChat = {
-                                                withContext(Dispatchers.Main) {
-                                                    if (!navController.popBackStack()) {
-                                                        navController.navigate("chat") {
-                                                            popUpTo("welcome") {
-                                                                inclusive = true
+                                        when (
+                                            applyServerAndNavigate(
+                                                probe = probe,
+                                                config = tentative,
+                                                bearer = ApiClient.token?.trim().orEmpty(),
+                                                onNavigateLogin = {
+                                                    withContext(Dispatchers.Main) {
+                                                        navController.navigateAndWipeBackStack("auth")
+                                                    }
+                                                },
+                                                onNavigateChat = {
+                                                    withContext(Dispatchers.Main) {
+                                                        if (!navController.popBackStack()) {
+                                                            navController.navigate("chat") {
+                                                                popUpTo("welcome") {
+                                                                    inclusive = true
+                                                                }
                                                             }
                                                         }
                                                     }
-                                                }
-                                            },
-                                            onLogoutOldHost = {
-                                                withContext(Dispatchers.Main) {
-                                                    WebSocketManager.disconnect()
-                                                    runCatching { ApiClient.logout() }
-                                                    ApiClient.clearMemorySession()
-                                                    navController.navigateAndWipeBackStack("auth")
-                                                }
+                                                },
+                                                onLogoutOldHost = {
+                                                    withContext(Dispatchers.Main) {
+                                                        WebSocketManager.disconnect()
+                                                        runCatching { ApiClient.logout() }
+                                                        ApiClient.clearMemorySession()
+                                                        navController.navigateAndWipeBackStack("auth")
+                                                    }
+                                                },
+                                            )
+                                        ) {
+                                            ApplyServerResult.Applied -> {
+                                                Settings.lastKnownServerInstanceId =
+                                                    probe.instanceId
                                             }
-                                        )
+                                            ApplyServerResult.ServerUnreachable -> {
+                                                snackbarHostState.showSnackbar(strSnackbarApiFail)
+                                            }
+                                        }
                                     }
                                 }
                             } finally {

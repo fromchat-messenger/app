@@ -23,6 +23,7 @@ class FromChatFirebaseMessagingService : FirebaseMessagingService() {
                 val pushData = remoteMessage.data
                 val fallbackMessageId = pushData["message_id"]?.toIntOrNull()
                     ?: pushData["dm_id"]?.toIntOrNull()
+                val senderId = pushData["sender_id"]?.toIntOrNull()
                 val sender = pushData["sender_username"] ?: remoteMessage.data["senderUsername"]
                 val title = remoteMessage.notification?.title ?: pushData["title"] ?: "FromChat"
                 val body = remoteMessage.notification?.body ?: pushData["body"] ?: "New message"
@@ -33,14 +34,20 @@ class FromChatFirebaseMessagingService : FirebaseMessagingService() {
                     ApiClient.loadPersistedData()
                     Log.d("FromChatFCM", "Token loaded from storage for push sync: hasToken=${ApiClient.token?.isNotBlank() ?: false}")
                 }
+                val currentUserId = settings.getInt("current_user_id", -1)
+                if (senderId != null && senderId == currentUserId) {
+                    Log.d("FromChatFCM", "Skipping push for own message senderId=$senderId")
+                    return@launch
+                }
                 if (!isDirectMessage && (title.isNotBlank() || body.isNotBlank())) {
                     NotificationHelper.showFallbackPushNotification(
-                        applicationContext,
-                        title,
-                        body,
-                        sender,
-                        fallbackMessageId,
-                        messageType == "dm"
+                        context = applicationContext,
+                        title = title,
+                        body = body,
+                        sender = sender,
+                        messageId = fallbackMessageId,
+                        isDirectMessage = false,
+                        senderId = senderId,
                     )
                 }
                 if (isDirectMessage) {

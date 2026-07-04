@@ -8,6 +8,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.IntSize
 import com.pr0gramm3r101.components.ListItemPosition
 import ru.fromchat.api.local.db.store.CachedConversation
+import ru.fromchat.api.local.messages.ChatListPreviewState
 import ru.fromchat.api.local.db.store.UserStatus
 
 enum class ChatsListMode {
@@ -83,7 +84,7 @@ data class ChatContextMenuOverlayUiState(
     val blurProgress: Float = 0f,
     val listFilter: ChatListFilter = ChatListFilter.Active,
     val publicChatTitle: String? = null,
-    val publicLastMessagePreview: String? = null,
+    val publicChatPreviewState: ChatListPreviewState? = null,
     val publicChatLink: String? = null,
     val defaultLastMessage: String = "",
     val conversations: List<CachedConversation> = emptyList(),

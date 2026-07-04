@@ -27,6 +27,9 @@ import kotlinx.coroutines.launch
 import ru.fromchat.MainActivity
 import ru.fromchat.R
 import ru.fromchat.api.ApiClient
+import ru.fromchat.api.local.messages.ChatListPreviewStrings
+import ru.fromchat.api.local.messages.buildChatListPreview
+import ru.fromchat.api.local.messages.buildChatListPreviewFromEnvelope
 import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.api.schema.messages.MessagesResponse
 import ru.fromchat.api.schema.messages.dm.DmHistoryResponse
@@ -54,6 +57,18 @@ object NotificationHelper {
     private const val PREF_LAST_DM_MESSAGE_ID = "last_dm_message_id"
     private const val PREF_LAST_NOTIFICATION_TIME = "last_notification_time"
     const val KEY_TEXT_REPLY = "key_text_reply"
+
+    private fun listPreviewStrings(context: Context): ChatListPreviewStrings {
+        val emoji = context.getString(R.string.chat_preview_image_emoji)
+        return ChatListPreviewStrings(
+            imageEmoji = emoji,
+            imageOnly = context.getString(R.string.chat_preview_image, emoji),
+            attachmentOnly = context.getString(R.string.chat_preview_attachment),
+        )
+    }
+
+    private fun notificationBodyForMessage(message: Message, strings: ChatListPreviewStrings): String =
+        buildChatListPreview(message, strings)?.takeIf { it.isNotBlank() } ?: message.content
 
     fun summaryNotificationId(): Int = SUMMARY_NOTIFICATION_ID
 
@@ -145,7 +160,8 @@ object NotificationHelper {
                 .get("${ServerConfig.apiBaseUrl}/messages/new")
                 .body<MessagesResponse>()
                 .messages
-            Log.d("NotificationHelper", "fetchAndNotify: fetched ${messages.size} public messages")
+                .filter { it.user_id != currentUserId }
+            Log.d("NotificationHelper", "fetchAndNotify: fetched ${messages.size} public messages (excluding self)")
             if (messages.isNotEmpty()) {
                 settings.putLong(PREF_LAST_NOTIFICATION_TIME, System.currentTimeMillis())
                 CoroutineScope(Dispatchers.Main).launch {
@@ -168,6 +184,7 @@ object NotificationHelper {
                         .get("${ServerConfig.apiBaseUrl}/messages/new")
                         .body<MessagesResponse>()
                         .messages
+                        .filter { it.user_id != settings.getInt("current_user_id", -1) }
                     Log.d(
                         "NotificationHelper",
                         "fetchAndNotify retry: fetched ${retryMessages.size} public messages"
@@ -241,6 +258,8 @@ object NotificationHelper {
         val shownDm = settings.getStringSet(PREF_SHOWN_DM_KEY, emptySet()).toMutableSet()
         val latestMessageId = settings.getInt(PREF_LAST_DM_MESSAGE_ID, 0)
 
+        val previewStrings = listPreviewStrings(context)
+
         dmMessages
             .filter { envelope ->
                 envelope.id > 0 && envelope.senderId != currentUserId
@@ -290,11 +309,16 @@ object NotificationHelper {
                     "User ${envelope.senderId}"
                 }
                 val dmConversationUserId = envelope.senderId
+                val notificationBody = buildChatListPreviewFromEnvelope(
+                    envelope = envelope,
+                    decryptedPlaintext = plaintext,
+                    strings = previewStrings,
+                )?.takeIf { it.isNotBlank() } ?: plaintext
 
                 showFallbackPushNotification(
                     context = context,
                     title = "Direct message from $senderName",
-                    body = plaintext,
+                    body = notificationBody,
                     sender = senderName,
                     messageId = envelopeId,
                     allowWhenPublicChatVisible = true,
@@ -321,10 +345,21 @@ object NotificationHelper {
         allowWhenPublicChatVisible: Boolean = false,
         isDirectMessage: Boolean = false,
         targetDmUserId: Int? = null,
-        conversationTitle: String = "Public Chat"
+        conversationTitle: String = "Public Chat",
+        senderId: Int? = null,
     ) {
         CoroutineScope(Dispatchers.Main).launch {
             createChannel(context)
+
+            val currentUserId = settings.getInt("current_user_id", -1)
+            if (!isDirectMessage && senderId != null && senderId == currentUserId) {
+                Log.d("NotificationHelper", "Fallback push skipped: own public message senderId=$senderId")
+                return@launch
+            }
+            if (isDirectMessage && targetDmUserId != null && targetDmUserId == currentUserId) {
+                Log.d("NotificationHelper", "Fallback push skipped: own DM targetDmUserId=$targetDmUserId")
+                return@launch
+            }
 
             if (isPublicChatVisible && !allowWhenPublicChatVisible) {
                 Log.d("NotificationHelper", "Fallback push notification skipped: public chat is visible")
@@ -429,6 +464,7 @@ object NotificationHelper {
         GlobalScope.launch {
             val shown = settings.getStringSet(PREF_SHOWN_KEY, emptySet()).toMutableSet()
             var newMessageCount = 0
+            val previewStrings = listPreviewStrings(context)
 
             with(NotificationManagerCompat.from(context)) {
                 if (
@@ -468,17 +504,17 @@ object NotificationHelper {
                             .setStyle(
                                 NotificationCompat.MessagingStyle(
                                     Person.Builder().setName("FromChat").build()
-                                ).setConversationTitle("Public Chat").let {
-                                    for (msg in messages.takeLast(10)) {
+                                ).setConversationTitle("Public Chat").let { style ->
+                                    for (msg in newMessages.takeLast(10)) {
                                         val timestamp = try {
                                             Instant.parse(msg.timestamp).toEpochMilliseconds()
                                         } catch (_: Exception) {
                                             System.currentTimeMillis()
                                         }
 
-                                        it.addMessage(
+                                        style.addMessage(
                                             NotificationCompat.MessagingStyle.Message(
-                                                msg.content,
+                                                notificationBodyForMessage(msg, previewStrings),
                                                 timestamp,
                                                 Person.Builder()
                                                     .setName(msg.username)
@@ -487,7 +523,7 @@ object NotificationHelper {
                                         )
                                     }
 
-                                    it
+                                    style
                                 }
                             )
                             .setPriority(NotificationCompat.PRIORITY_HIGH)

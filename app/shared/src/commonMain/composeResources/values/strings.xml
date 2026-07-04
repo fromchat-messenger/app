@@ -69,6 +69,10 @@
     <string name="public_chat">Main chat</string>
     <string name="chat_last_mesaage">You: last message</string>
     <string name="chat_preview_attachment">Attachment</string>
+    <string name="chat_preview_image_emoji">📷</string>
+    <string name="chat_preview_image">%1$s 1 photo</string>
+    <string name="cd_chat_preview_sending">Sending message</string>
+    <string name="cd_chat_preview_uploading">Uploading file</string>
     <string name="action_mark_read">Mark as read</string>
     <string name="action_select">Select</string>
     <string name="action_archive">Archive</string>

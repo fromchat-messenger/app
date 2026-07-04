@@ -2,6 +2,8 @@ package ru.fromchat.api.local.db.store
 
 import kotlinx.coroutines.flow.Flow
 import ru.fromchat.api.ApiClient
+import ru.fromchat.api.local.messages.ChatListPreviewState
+import ru.fromchat.api.local.messages.ChatListPreviewStrings
 import ru.fromchat.api.local.messages.GENERAL_PUBLIC_GROUP_ID
 import ru.fromchat.api.local.messages.conversationIdForDm
 import ru.fromchat.api.local.messages.conversationIdForGroup
@@ -28,6 +30,17 @@ object MessageRepository {
 
     suspend fun loadRecentPublicMessages(limit: Long): List<Message> =
         MessageCacheStore.loadRecentPublicMessages(limit)
+
+    suspend fun loadRecentPublicChatPreviewState(
+        strings: ChatListPreviewStrings,
+        limit: Long = 1,
+    ): ChatListPreviewState? = MessageCacheStore.loadRecentPublicChatPreviewState(strings, limit)
+
+    fun observePublicChatPreviewState(strings: ChatListPreviewStrings): Flow<ChatListPreviewState?> =
+        MessageCacheStore.observePublicChatPreviewState(activeInstance(), strings)
+
+    fun observeActiveDmConversations(): Flow<List<CachedConversation>> =
+        MessageCacheStore.observeActiveDmConversations(activeInstance())
 
     suspend fun replacePublicMessages(messages: List<Message>) =
         MessageCacheStore.replacePublicMessages(messages)
@@ -66,8 +79,8 @@ object MessageRepository {
 
     suspend fun replaceDmConversations(
         conversations: List<DmConversation>,
-        attachmentOnlyPreview: String,
-    ) = MessageCacheStore.replaceDmConversations(conversations, attachmentOnlyPreview)
+        previewStrings: ChatListPreviewStrings,
+    ) = MessageCacheStore.replaceDmConversations(conversations, previewStrings)
 
     suspend fun loadCachedDmConversations(): List<CachedConversation> =
         MessageCacheStore.loadCachedDmConversations()

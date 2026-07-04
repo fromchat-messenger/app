@@ -32,6 +32,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -46,6 +47,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -68,10 +71,15 @@ import ru.fromchat.api.local.db.store.CachedConversation
 import ru.fromchat.api.local.db.store.ProfileCache
 import ru.fromchat.api.local.db.store.UserStatus
 import ru.fromchat.api.local.db.store.visibleUsername
+import ru.fromchat.api.local.messages.ChatListPreviewPendingIndicator
+import ru.fromchat.api.local.messages.ChatListPreviewState
 import ru.fromchat.api.schema.user.User
+import ru.fromchat.cd_chat_preview_sending
+import ru.fromchat.cd_chat_preview_uploading
 import ru.fromchat.cd_chat_selected
 import ru.fromchat.presence_online
 import ru.fromchat.ui.chat.Avatar
+import ru.fromchat.ui.chat.ExpressiveUploadIndicator
 import ru.fromchat.ui.chat.TypingIndicator
 import ru.fromchat.ui.components.Text
 import ru.fromchat.unread_count
@@ -118,7 +126,7 @@ internal fun ChatConversationsList(
     listFilter: ChatListFilter,
     conversations: List<CachedConversation>,
     publicChatTitle: String?,
-    publicLastMessagePreview: String?,
+    publicChatPreviewState: ChatListPreviewState?,
     defaultLastMessage: String,
     statusMap: Map<Int, UserStatus>,
     listMode: ChatsListMode,
@@ -175,7 +183,7 @@ internal fun ChatConversationsList(
                         val position = listItemPositionInGroup(0, groupCount)
                         PublicChatRow(
                             publicChatTitle = publicChatTitle,
-                            publicLastMessagePreview = publicLastMessagePreview,
+                            publicChatPreviewState = publicChatPreviewState,
                             defaultLastMessage = defaultLastMessage,
                             lazyIndex = ChatListLayout.PUBLIC_CHAT_ROW,
                             listMode = listMode,
@@ -507,7 +515,7 @@ internal fun ChatRowAvatar(
 @Composable
 internal fun PublicChatRow(
     publicChatTitle: String?,
-    publicLastMessagePreview: String?,
+    publicChatPreviewState: ChatListPreviewState?,
     defaultLastMessage: String,
     lazyIndex: Int,
     listMode: ChatsListMode,
@@ -569,7 +577,7 @@ internal fun PublicChatRow(
     ) {
         PublicChatRowContent(
             publicChatTitle = publicChatTitle,
-            publicLastMessagePreview = publicLastMessagePreview,
+            publicChatPreviewState = publicChatPreviewState,
             defaultLastMessage = defaultLastMessage,
             listMode = listMode,
             selectionTransitionProgress = selectionTransitionProgress,
@@ -591,7 +599,7 @@ internal fun PublicChatRow(
 @Composable
 internal fun PublicChatRowContent(
     publicChatTitle: String?,
-    publicLastMessagePreview: String?,
+    publicChatPreviewState: ChatListPreviewState?,
     defaultLastMessage: String,
     listMode: ChatsListMode,
     selectionTransitionProgress: Float,
@@ -606,11 +614,22 @@ internal fun PublicChatRowContent(
     onBodyLongPress: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val preview = publicLastMessagePreview ?: defaultLastMessage
+    val preview = publicChatPreviewState?.displayText(defaultLastMessage) ?: defaultLastMessage
 
     ListItem(
         headline = publicChatTitle.orEmpty(),
-        supportingText = if (publicChatTitle != null) preview else null,
+        supportingSlot = if (publicChatTitle != null) {
+            {
+                ChatListPreviewSupportingText(
+                    preview = preview,
+                    pendingIndicator = publicChatPreviewState?.pendingIndicator
+                        ?: ChatListPreviewPendingIndicator.None,
+                    uploadProgress = publicChatPreviewState?.uploadProgress,
+                )
+            }
+        } else {
+            null
+        },
         containerColor = Color.Transparent,
         position = listItemPosition,
         groupItemCount = groupItemCount,
@@ -783,11 +802,10 @@ internal fun DmConversationRowContent(
                         overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.primary,
                     )
-                    else -> Text(
-                        text = preview,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    else -> ChatListPreviewSupportingText(
+                        preview = preview,
+                        pendingIndicator = conversation.lastMessagePendingIndicator,
+                        uploadProgress = conversation.lastMessageUploadProgress,
                     )
                 }
             }
@@ -863,6 +881,65 @@ internal fun chatContextMenuClampedMenuX(
 }
 
 internal const val ChatRowContextMenuPressScale = 0.96f
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+internal fun ChatListPreviewSupportingText(
+    preview: String,
+    pendingIndicator: ChatListPreviewPendingIndicator,
+    uploadProgress: Int?,
+    modifier: Modifier = Modifier,
+) {
+    val previewColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val indicatorColor = previewColor.copy(alpha = 0.7f)
+    val sendingCd = stringResource(Res.string.cd_chat_preview_sending)
+    val uploadingCd = stringResource(Res.string.cd_chat_preview_uploading)
+
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        when (pendingIndicator) {
+            ChatListPreviewPendingIndicator.SendingText -> {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(12.dp),
+                    strokeWidth = 1.5.dp,
+                    color = indicatorColor,
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+            }
+            ChatListPreviewPendingIndicator.UploadingFile -> {
+                Box(
+                    modifier = Modifier.size(12.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    ExpressiveUploadIndicator(
+                        uploadProgress = uploadProgress,
+                        modifier = Modifier.fillMaxSize(),
+                        indicatorColor = indicatorColor,
+                        trackColorOverride = indicatorColor.copy(alpha = 0.35f),
+                    )
+                }
+                Spacer(modifier = Modifier.width(6.dp))
+            }
+            ChatListPreviewPendingIndicator.None -> Unit
+        }
+        Text(
+            text = preview,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            color = previewColor,
+            modifier = when (pendingIndicator) {
+                ChatListPreviewPendingIndicator.SendingText ->
+                    Modifier.semantics { contentDescription = "$sendingCd. $preview" }
+                ChatListPreviewPendingIndicator.UploadingFile ->
+                    Modifier.semantics { contentDescription = "$uploadingCd. $preview" }
+                ChatListPreviewPendingIndicator.None -> Modifier
+            },
+        )
+    }
+}
+
 internal val ChatRowPressSpring = spring<Float>(
     dampingRatio = Spring.DampingRatioNoBouncy,
     stiffness = Spring.StiffnessMediumLow,

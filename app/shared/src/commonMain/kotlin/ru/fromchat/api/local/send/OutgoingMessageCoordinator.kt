@@ -39,6 +39,101 @@ object OutgoingMessageCoordinator {
     private val drainMutex = Mutex()
     private val drainScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    /** Called when network or WebSocket transport is ready; drains pending outbox rows. */
+    fun onTransportReady() {
+        kickOutboxDrain(CacheContext.activeInstanceId.value.trim())
+    }
+
+    private fun scheduleOutboxRetry(instanceId: String) {
+        drainScope.launch {
+            delay(3_000)
+            drainOutboxForInstance(instanceId)
+        }
+    }
+
+    private suspend fun handlePublicOutboxSend(
+        instanceId: String,
+        row: ru.fromchat.db.Outbox,
+    ): Boolean {
+        val sendResult = runCatching {
+            val payload = json.decodeFromString<PublicOutboxPayload>(row.payloadJson)
+            ApiClient.sendMessageViaHttp(
+                content = payload.content,
+                replyToId = payload.replyToId,
+                clientMessageId = row.clientMessageId,
+            )
+        }
+        var ok = true
+        sendResult.onSuccess { confirmed ->
+            withContext(Dispatchers.Default) {
+                MessageCacheStore.confirmPublicMessage(
+                    row.clientMessageId,
+                    confirmed.copy(client_message_id = row.clientMessageId),
+                )
+                MessageDatabaseProvider.database.messageDatabaseQueries
+                    .deleteOutboxItem(instanceId, row.clientMessageId)
+            }
+        }.onFailure { error ->
+            when {
+                error.isOutboundPermanentFailure() -> {
+                    val errorKey = outboundFailureErrorKey(error)
+                    withContext(Dispatchers.Default) {
+                        MessageCacheStore.markSendFailed(row.conversationId, row.clientMessageId)
+                    }
+                    OutboundSendNotifier.emit(
+                        OutboundSendProgress.Failed(row.clientMessageId, errorKey),
+                    )
+                }
+                error.isOutboundTransientFailure() -> {
+                    ok = false
+                    scheduleOutboxRetry(instanceId)
+                }
+            }
+        }
+        return ok
+    }
+
+    private suspend fun handleDmOutboxSend(
+        instanceId: String,
+        row: ru.fromchat.db.Outbox,
+    ): Boolean {
+        val sendResult = runCatching {
+            val payload = json.decodeFromString<DmOutboxPayload>(row.payloadJson)
+            ApiClient.sendDm(
+                recipientId = payload.recipientId,
+                plaintext = payload.plaintext,
+                clientMessageId = payload.clientMessageId,
+                replyToId = payload.replyToId,
+                transportFiles = payload.transportFiles,
+                uploadedFileIds = payload.uploadedFileIds,
+            )
+        }
+        var ok = true
+        sendResult.onSuccess {
+            withContext(Dispatchers.Default) {
+                MessageDatabaseProvider.database.messageDatabaseQueries
+                    .deleteOutboxItem(instanceId, row.clientMessageId)
+            }
+        }.onFailure { error ->
+            when {
+                error.isOutboundPermanentFailure() -> {
+                    val errorKey = outboundFailureErrorKey(error)
+                    withContext(Dispatchers.Default) {
+                        MessageCacheStore.markSendFailed(row.conversationId, row.clientMessageId)
+                    }
+                    OutboundSendNotifier.emit(
+                        OutboundSendProgress.Failed(row.clientMessageId, errorKey),
+                    )
+                }
+                error.isOutboundTransientFailure() -> {
+                    ok = false
+                    scheduleOutboxRetry(instanceId)
+                }
+            }
+        }
+        return ok
+    }
+
     private fun kickOutboxDrain(instanceId: String) {
         val id = instanceId.trim()
         if (id.isEmpty()) return
@@ -253,60 +348,19 @@ object OutgoingMessageCoordinator {
             for (row in rows) {
                 when (row.kind) {
                     KIND_SEND_PUBLIC -> {
-                        val sendResult = runCatching {
-                            val payload = json.decodeFromString<PublicOutboxPayload>(row.payloadJson)
-                            ApiClient.sendMessageViaHttp(payload.content, payload.replyToId)
-                        }
-                        sendResult.onSuccess {
-                            withContext(Dispatchers.Default) {
-                                MessageDatabaseProvider.database.messageDatabaseQueries
-                                    .deleteOutboxItem(id, row.clientMessageId)
-                            }
-                        }.onFailure { error ->
-                            when {
-                                error.isOutboundPermanentFailure() -> {
-                                    val errorKey = outboundFailureErrorKey(error)
-                                    withContext(Dispatchers.Default) {
-                                        MessageCacheStore.markSendFailed(row.conversationId, row.clientMessageId)
-                                    }
-                                    OutboundSendNotifier.emit(
-                                        OutboundSendProgress.Failed(row.clientMessageId, errorKey),
-                                    )
-                                }
-                                error.isOutboundTransientFailure() -> {
-                                    allOk = false
-                                    drainScope.launch {
-                                        delay(3_000)
-                                        drainOutboxForInstance(id)
-                                    }
-                                }
-                            }
+                        if (!handlePublicOutboxSend(id, row)) {
+                            allOk = false
                         }
                     }
                     KIND_SEND_DM -> {
-                        runCatching {
-                            val payload = json.decodeFromString<DmOutboxPayload>(row.payloadJson)
-                            ApiClient.sendDm(
-                                recipientId = payload.recipientId,
-                                plaintext = payload.plaintext,
-                                clientMessageId = payload.clientMessageId,
-                                replyToId = payload.replyToId,
-                                transportFiles = payload.transportFiles,
-                                uploadedFileIds = payload.uploadedFileIds,
-                            )
-                            withContext(Dispatchers.Default) {
-                                MessageDatabaseProvider.database.messageDatabaseQueries
-                                    .deleteOutboxItem(id, row.clientMessageId)
-                            }
+                        if (!handleDmOutboxSend(id, row)) {
+                            allOk = false
                         }
                     }
                     KIND_SEND_DM_ATTACHMENT -> {
                         if (!DmAttachmentOutboxHandler.process(row)) {
                             allOk = false
-                            drainScope.launch {
-                                delay(3_000)
-                                drainOutboxForInstance(id)
-                            }
+                            scheduleOutboxRetry(id)
                         }
                     }
                     KIND_SEND_DM_ATTACHMENT_AWAITING_ACK -> Unit

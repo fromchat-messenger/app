@@ -34,6 +34,7 @@ import ru.fromchat.api.UpdateSyncManager
 import ru.fromchat.api.instance.InstanceIdGuard
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.db.store.ConnectionStateStore
+import ru.fromchat.api.local.send.OutgoingMessageCoordinator
 import ru.fromchat.api.schema.websocket.WebSocketCredentials
 import ru.fromchat.api.schema.websocket.WebSocketMessage
 import ru.fromchat.api.schema.websocket.types.WebSocketUpdatesData
@@ -61,6 +62,7 @@ object WebSocketManager {
     val messages = _messages.asSharedFlow()
 
     private val globalHandlers = mutableListOf<((WebSocketMessage) -> Unit)>()
+    private val sessionReadyHandlers = mutableListOf<suspend () -> Unit>()
 
     fun addGlobalMessageHandler(handler: ((WebSocketMessage) -> Unit)) {
         globalHandlers += handler
@@ -68,6 +70,25 @@ object WebSocketManager {
 
     fun removeGlobalMessageHandler(handler: ((WebSocketMessage) -> Unit)) {
         globalHandlers -= handler
+    }
+
+    fun addSessionReadyHandler(handler: suspend () -> Unit) {
+        sessionReadyHandlers += handler
+    }
+
+    fun removeSessionReadyHandler(handler: suspend () -> Unit) {
+        sessionReadyHandlers -= handler
+    }
+
+    private fun notifySessionReady() {
+        OutgoingMessageCoordinator.onTransportReady()
+        scope.launch {
+            sessionReadyHandlers.forEach { handler ->
+                runCatching { handler() }.onFailure {
+                    logW("Session-ready handler failed: ${it.message}", it)
+                }
+            }
+        }
     }
 
     @Volatile private var connecting = false
@@ -190,6 +211,8 @@ object WebSocketManager {
                             }
                         }
 
+                        notifySessionReady()
+
                         for (frame in incoming) {
                             val text = (frame as? Frame.Text)?.readText() ?: continue
                             logD("Received payload: $text")
@@ -278,8 +301,8 @@ object WebSocketManager {
         var handler: ((WebSocketMessage) -> Unit)? = null
 
         return try {
-            if (session == null) {
-                logW("No active WebSocket session")
+            if (session == null && !waitForConnection(timeoutMs)) {
+                logW("No active WebSocket session after waiting")
                 return null
             }
 
@@ -324,19 +347,17 @@ object WebSocketManager {
 
     fun onNetworkLost() {
         logD("onNetworkLost")
+        session?.cancel()
+        session = null
+        connecting = false
         connectionJob?.cancel()
         connectionJob = null
-        disconnect()
         ConnectionStateStore.onConnecting()
     }
 
     fun onNetworkAvailable() {
         if (!AppForeground.isInForeground.value) return
 
-        if (session != null) {
-            logD("onNetworkAvailable: session active, skip")
-            return
-        }
         val now = Clock.System.now().toEpochMilliseconds()
         val prev = lastOnNetworkAvailableWallMs
         if (now - prev < NETWORK_AVAILABLE_DEBOUNCE_MS) {
@@ -344,7 +365,8 @@ object WebSocketManager {
             return
         }
         lastOnNetworkAvailableWallMs = now
-        logD("onNetworkAvailable: reconnect")
+        logD("onNetworkAvailable: reconnect and flush outbox")
         connect(forceRestart = true)
+        OutgoingMessageCoordinator.onTransportReady()
     }
 }
