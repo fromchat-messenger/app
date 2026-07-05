@@ -12,6 +12,7 @@ import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.cache.DecryptedImageCache
 import ru.fromchat.api.local.db.store.MessageCacheStore
+import ru.fromchat.api.local.db.store.ProfileCache
 import ru.fromchat.api.local.db.store.PublicChatProfileCache
 import ru.fromchat.api.local.db.store.MessageRepository
 import ru.fromchat.api.local.messages.GENERAL_PUBLIC_GROUP_ID
@@ -61,6 +62,25 @@ class PublicChatPanel(
             if (x.content != y.content || x.is_edited != y.is_edited) return true
         }
         return false
+    }
+
+    private fun mergePublicSenderFieldsFromNetwork(
+        shown: List<Message>,
+        fromNetwork: List<Message>,
+    ): List<Message> {
+        val byId = fromNetwork.associateBy { it.id }
+        return shown.map { message ->
+            val fresh = byId[message.id] ?: return@map message
+            ProfileCache.mergePreviewFromPublicMessage(fresh)
+            ProfileCache.enrichPublicMessageForDisplay(
+                message.copy(
+                    username = fresh.username,
+                    profile_picture = fresh.profile_picture,
+                    verified = fresh.verified,
+                    verificationStatus = fresh.verificationStatus,
+                ),
+            )
+        }
     }
 
     override val supportsNavigateToSenderProfile: Boolean
@@ -187,7 +207,9 @@ class PublicChatPanel(
     }
 
     private suspend fun ingestIncomingPublicMessage(newMsg: Message) {
-        addMessage(newMsg)
+        ProfileCache.mergePreviewFromPublicMessage(newMsg)
+        val displayMessage = ProfileCache.enrichPublicMessageForDisplay(newMsg)
+        addMessage(displayMessage)
         withContext(Dispatchers.Default) {
             MessageCacheStore.upsertPublicMessage(newMsg)
         }
@@ -252,17 +274,24 @@ class PublicChatPanel(
         val response = responseResult.getOrNull()
 
         if (response != null && response.messages.isNotEmpty()) {
+            ProfileCache.mergePreviewFromPublicMessages(response.messages)
             withContext(Dispatchers.Main) {
                 val shown = _state.messages
                 if (shown.isNotEmpty() && !publicHistoryDiffersForUi(shown, response.messages)) {
                     Logger.d("PublicChatPanel", "Network history matches UI; skip clear/re-add")
+                    val withSenders = mergePublicSenderFieldsFromNetwork(shown, response.messages)
+                    if (withSenders != shown) {
+                        updateState { it.copy(messages = sortMessagesForChatDisplay(withSenders)) }
+                    }
                     if (_state.hasMoreMessages) setHasMoreMessages(false)
                     if (_state.isLoading) setLoading(false)
                 } else {
                     batchStateUpdates {
                         val merged = mergeNetworkHistoryWithShown(shown, response.messages)
                         clearMessages()
-                        addMessages(merged)
+                        addMessages(
+                            ProfileCache.enrichPublicMessagesForDisplay(merged),
+                        )
                         setHasMoreMessages(false) // TODO: Implement has_more from API
                         setLoading(false)
                     }
@@ -315,10 +344,11 @@ class PublicChatPanel(
                 ApiClient.getMessages(limit = 50, beforeId = oldestMessage.id)
             }
             if (response.messages.isNotEmpty()) {
-                // Prepend older messages (they come in reverse chronological order)
+                ProfileCache.mergePreviewFromPublicMessages(response.messages)
+                val older = ProfileCache.enrichPublicMessagesForDisplay(response.messages.reversed())
                 updateState { currentState ->
                     currentState.copy(
-                        messages = response.messages.reversed() + currentState.messages
+                        messages = older + currentState.messages
                     )
                 }
             }

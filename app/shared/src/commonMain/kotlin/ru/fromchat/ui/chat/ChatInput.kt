@@ -434,6 +434,7 @@ fun ChatInput(
                                 enabled = !isReadOnly,
                                 modifier = Modifier
                                     .weight(1f)
+                                    .fillMaxWidth()
                                     .align(Alignment.Bottom),
                                 textStyle = inputTextStyle,
                                 singleLine = false,
@@ -452,6 +453,7 @@ fun ChatInput(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .defaultMinSize(minHeight = ChatInputIconSlotSize)
+                                                .animateContentSize()
                                                 .align(Alignment.BottomStart),
                                             contentAlignment = Alignment.CenterStart,
                                         ) {
@@ -469,9 +471,7 @@ fun ChatInput(
                                                     modifier = Modifier.fillMaxWidth(),
                                                 )
                                             }
-                                            Box(modifier = Modifier.animateContentSize()) {
-                                                innerTextField()
-                                            }
+                                            innerTextField()
                                         }
                                     }
                                 },

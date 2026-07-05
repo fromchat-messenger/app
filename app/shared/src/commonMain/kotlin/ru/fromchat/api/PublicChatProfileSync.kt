@@ -2,6 +2,7 @@ package ru.fromchat.api
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -22,6 +23,7 @@ object PublicChatProfileSync {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var started = false
+    private var syncJob: Job? = null
 
     fun ensureStarted() {
         if (started) return
@@ -31,10 +33,16 @@ object PublicChatProfileSync {
             scope.launch { refreshFromNetworkIfNeeded() }
         }
 
-        scope.launch {
+        syncJob = scope.launch {
             runCatching { PublicChatProfileCache.hydrateFromDisk() }
             syncUntilLoaded()
         }
+    }
+
+    fun resetOnLogout() {
+        syncJob?.cancel()
+        syncJob = null
+        started = false
     }
 
     suspend fun refreshFromNetwork(): PublicChatProfile {

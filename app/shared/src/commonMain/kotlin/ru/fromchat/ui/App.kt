@@ -59,8 +59,10 @@ import ru.fromchat.api.DeferredStartupNetwork
 import ru.fromchat.api.PublicChatProfileSync
 import ru.fromchat.api.UpdateSyncManager
 import ru.fromchat.api.calls.CallStore
+import ru.fromchat.api.instance.bootstrapSessionInstance
 import ru.fromchat.api.instance.bootstrapSessionOnStartup
 import ru.fromchat.api.instance.logoutIfInstanceUnsupported
+import ru.fromchat.api.instance.scheduleSessionInstanceNetworkRefresh
 import ru.fromchat.api.local.WebSocketManager
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.cache.ensureFromChatCacheGeneration
@@ -427,6 +429,16 @@ fun App(
                             composable("auth") {
                                 AuthScreen(
                                     onAuthSuccess = {
+                                        MainScope().launch {
+                                            runCatching {
+                                                bootstrapSessionInstance(
+                                                    hasToken = true,
+                                                    forceNetwork = false,
+                                                )
+                                            }
+                                            PublicChatProfileSync.ensureStarted()
+                                            scheduleSessionInstanceNetworkRefresh()
+                                        }
                                         WebSocketManager.connect(forceRestart = true)
                                         navController.navigateAndWipeBackStack("chat")
                                     },

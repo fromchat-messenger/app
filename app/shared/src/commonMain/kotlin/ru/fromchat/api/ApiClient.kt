@@ -52,12 +52,11 @@ import ru.fromchat.api.instance.InstanceIdGuard
 import ru.fromchat.api.instance.InstanceIdResolveResult
 import ru.fromchat.api.instance.resolveInstanceId
 import ru.fromchat.api.local.WebSocketManager
-import ru.fromchat.api.local.db.store.MessageRepository
-import ru.fromchat.api.local.send.cancelOutboxProcessing
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.cache.readOutboundFileBytes
+import ru.fromchat.api.local.db.clearAccountCacheOnLogout
+import ru.fromchat.api.local.db.store.MessageRepository
 import ru.fromchat.api.local.db.store.ProfileCache
-import ru.fromchat.api.local.db.store.PublicChatProfileCache
 import ru.fromchat.api.local.download.streamEncryptedFileToDisk
 import ru.fromchat.api.local.send.scheduleOutboxProcessing
 import ru.fromchat.api.schema.calls.CallSignalingLiveKitControl
@@ -115,8 +114,6 @@ import ru.fromchat.api.schema.websocket.types.DmTypingData
 import ru.fromchat.api.schema.websocket.types.SubscribeStatusData
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.config.Settings
-import ru.fromchat.ui.chat.panels.dm.DmPanelCache
-import ru.fromchat.ui.chat.utils.PublicChatPanelCache
 import kotlin.concurrent.Volatile
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -236,13 +233,10 @@ object ApiClient {
                     val path = response.call.request.url.encodedPath
                     val isCredentialCheck = path.endsWith("/login") || path.endsWith("/register")
                     if (!isCredentialCheck) {
-                        token = null
-                        user = null
-                        clearSuspensionState()
-                        onAuthError?.let {
-                            MainScope().launch {
-                                it()
-                            }
+                        MainScope().launch {
+                            runCatching { WebSocketManager.disconnect() }
+                            runCatching { clearLocalSession() }
+                            onAuthError?.invoke()
                         }
                     }
                 }
@@ -370,6 +364,7 @@ object ApiClient {
                     }
                     Settings.lastKnownServerInstanceId = id
                     CacheContext.setActiveInstance(id, user?.id)
+                    PublicChatProfileSync.ensureStarted()
                     scheduleOutboxProcessing(id)
                 }
                 else -> Unit
@@ -1150,6 +1145,17 @@ object ApiClient {
         }
     }
 
+    /** Clears in-memory and on-disk partial download state on logout. */
+    suspend fun clearAllDownloadCachesOnLogout() {
+        val keys = partialDownloadMetaCache.keys.toList()
+        keys.forEach { clearPartialEncryptedDownload(it) }
+        partialDownloadMetaCache.clear()
+        pausedDownloadIndexCache = emptySet()
+        pausedDownloadIndexPath()?.let { path ->
+            runCatching { PlatformFileSystem.delete(path) }
+        }
+    }
+
     private fun pausedDownloadIndexPath(): String? {
         val dir = encryptedDownloadsDir() ?: return null
         return "$dir/paused_keys.txt"
@@ -1383,10 +1389,7 @@ object ApiClient {
      */
     suspend fun clearLocalSession() {
         val instanceId = runCatching { CacheContext.activeInstanceId.value.trim() }.getOrDefault("")
-        if (instanceId.isNotEmpty()) {
-            runCatching { cancelOutboxProcessing(instanceId) }
-            runCatching { MessageRepository.purgeAllPendingForInstance() }
-        }
+        runCatching { clearAccountCacheOnLogout(instanceId) }
         val uid = user?.id
         secureSettings.remove("auth_token")
         settings.remove("user_info")
@@ -1399,10 +1402,6 @@ object ApiClient {
         uid?.let { UpdateSyncManager.clearPersistedSeqForUser(it) }
         UpdateSyncManager.resetInMemoryOnLogout()
         runCatching { IdentityKeyManager.clearLocalKeys() }
-        runCatching { ProfileCache.clear() }
-        runCatching { DmPanelCache.clearAll() }
-        runCatching { PublicChatProfileCache.clear() }
-        runCatching { PublicChatPanelCache.clear() }
         runCatching { CacheContext.clearActive() }
     }
 

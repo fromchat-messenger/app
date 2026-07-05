@@ -501,4 +501,10 @@ object DecryptedImageCache {
     private fun invalidatePath(path: String) {
         runCatching { PlatformFileSystem.delete(path) }
     }
+
+    suspend fun clearMemoryCache() {
+        cacheMutex.withLock {
+            memoryCache.clear()
+        }
+    }
 }

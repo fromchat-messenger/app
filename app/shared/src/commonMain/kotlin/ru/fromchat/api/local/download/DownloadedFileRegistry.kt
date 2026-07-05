@@ -142,14 +142,29 @@ object DownloadedFileRegistry {
     private fun sanitizeKeyPart(value: String): String =
         value.replace(Regex("[^a-zA-Z0-9._-]"), "_")
 
-    private fun indexPath(): String? {
+    private fun indexPath(): String? = instanceIndexPath(
+        runCatching { CacheContext.requireActiveInstanceId() }.getOrNull() ?: "default",
+    )
+
+    private fun instanceIndexPath(instanceId: String): String? {
         val base = PlatformFileSystem.getAppCacheDirectory()
         if (base.isEmpty()) return null
-        val instanceId = runCatching { CacheContext.requireActiveInstanceId() }.getOrNull() ?: "default"
-        val safe = instanceId.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+        val safe = instanceId.trim().replace(Regex("[^a-zA-Z0-9._-]"), "_")
+        if (safe.isEmpty()) return null
         val dir = "$base/fromchat/instances/$safe"
         PlatformFileSystem.ensureDirectory(dir)
         return "$dir/$INDEX_FILE"
+    }
+
+    suspend fun clearForInstance(instanceId: String) {
+        val path = instanceIndexPath(instanceId) ?: return
+        mutex.withLock {
+            memory.clear()
+            diskIndexLoaded = false
+        }
+        withContext(Dispatchers.Default) {
+            runCatching { PlatformFileSystem.delete(path) }
+        }
     }
 
     private suspend fun readIndexFromDisk(): Map<String, String> {

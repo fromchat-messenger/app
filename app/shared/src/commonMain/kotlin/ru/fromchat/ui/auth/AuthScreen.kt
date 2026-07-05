@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import com.pr0gramm3r101.utils.crypto.deriveAuthSecret
 import io.ktor.client.call.body
@@ -22,6 +23,8 @@ import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.crypto.IdentityKeyManager
+import ru.fromchat.api.local.cache.CacheContext
+import ru.fromchat.api.local.db.clearAccountCacheOnLogout
 import ru.fromchat.api.instance.ServerProbeResult
 import ru.fromchat.api.instance.probeServer
 import ru.fromchat.api.schema.core.ErrorResponse
@@ -98,6 +101,8 @@ private suspend fun fullLogin(
     password: String,
     request: suspend () -> LoginResponse,
 ) {
+    val previousInstanceId = runCatching { CacheContext.activeInstanceId.value.trim() }.getOrDefault("")
+    runCatching { clearAccountCacheOnLogout(previousInstanceId) }
     ApiClient.clearMemorySession()
 
     val response = request()
@@ -255,6 +260,31 @@ fun AuthScreen(
         confirmPassword = ""
         displayName = ""
         bio = ""
+    }
+
+    LaunchedEffect(flowState.pagerState) {
+        var settledPage = flowState.pagerState.currentPage
+        snapshotFlow { flowState.pagerState.currentPage }
+            .collect { page ->
+                if (page < settledPage) {
+                    when (page) {
+                        AuthFlowStep.Username.ordinal -> {
+                            password = ""
+                            confirmPassword = ""
+                        }
+
+                        AuthFlowStep.Password.ordinal -> {
+                            password = ""
+                            confirmPassword = ""
+                        }
+
+                        AuthFlowStep.ConfirmPassword.ordinal -> {
+                            confirmPassword = ""
+                        }
+                    }
+                }
+                settledPage = page
+            }
     }
 
     ExpressiveStepFlowScaffold(

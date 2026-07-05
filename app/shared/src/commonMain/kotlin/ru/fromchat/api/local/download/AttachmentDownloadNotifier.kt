@@ -369,4 +369,11 @@ object AttachmentDownloadNotifier {
         val id = keys.firstOrNull() ?: return DownloadProgressThrottle()
         return progressThrottleByKey.getOrPut(id) { DownloadProgressThrottle() }
     }
+
+    fun resetOnLogout() {
+        _progressPercentByKey.value = emptyMap()
+        _failedKeys.value = emptySet()
+        _cancelledKeys.value = emptySet()
+        progressThrottleByKey.clear()
+    }
 }

@@ -420,4 +420,10 @@ object DecryptedFileCache {
 
     private fun sanitizeKeyPart(value: String): String =
         value.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+
+    suspend fun clearMemoryCache() {
+        cacheMutex.withLock {
+            memoryCache.clear()
+        }
+    }
 }

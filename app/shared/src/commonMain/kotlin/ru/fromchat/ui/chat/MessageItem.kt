@@ -56,6 +56,8 @@ import com.pr0gramm3r101.utils.conditional
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.api.local.cache.DecryptedImageCache
+import ru.fromchat.api.local.db.store.ProfileCache
+import ru.fromchat.api.local.db.store.visibleUsername
 import ru.fromchat.api.local.messages.formatMessageTimeLocal
 import ru.fromchat.api.local.messages.isQueuedOutbound
 import ru.fromchat.api.schema.messages.Message
@@ -123,6 +125,11 @@ fun MessageItem(
     val editedSuffix = stringResource(Res.string.message_edited_suffix)
     val sendFailedLabel = stringResource(Res.string.message_send_failed)
     val displayUsername = messageDisplayUsername(message, currentUserId)
+    val senderProfile = ProfileCache.get(message.user_id)
+    val avatarPictureUrl = senderProfile?.profilePicture?.takeIf { it.isNotBlank() }
+        ?: message.profile_picture
+    val avatarDisplayName = senderProfile?.visibleUsername(currentUserId)?.takeIf { it.isNotBlank() }
+        ?: message.username
     val senderVerificationStatus = resolveVerificationStatus(message.user_id, message)
     val replyRef = message.reply_to
 
@@ -184,8 +191,8 @@ fun MessageItem(
                     }
             ) {
                 Avatar(
-                    profilePictureUrl = message.profile_picture,
-                    displayName = message.username,
+                    profilePictureUrl = avatarPictureUrl,
+                    displayName = avatarDisplayName,
                     modifier = Modifier.size(32.dp)
                 )
             }

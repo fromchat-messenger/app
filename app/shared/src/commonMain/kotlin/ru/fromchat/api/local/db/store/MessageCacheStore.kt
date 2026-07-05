@@ -91,10 +91,10 @@ object MessageCacheStore {
             }
 
     suspend fun loadPublicMessages(): List<Message> =
-        loadMessages(conversationIdForPublic())
+        ProfileCache.enrichPublicMessagesForDisplay(loadMessages(conversationIdForPublic()))
 
     suspend fun loadRecentPublicMessages(limit: Long): List<Message> =
-        loadRecentMessages(conversationIdForPublic(), limit)
+        ProfileCache.enrichPublicMessagesForDisplay(loadRecentMessages(conversationIdForPublic(), limit))
 
     fun loadRecentPublicMessagesImmediate(instanceId: String, limit: Long = 128): List<Message> {
         if (instanceId.isBlank()) return emptyList()
@@ -105,11 +105,13 @@ object MessageCacheStore {
             .map { row: DbMessage -> row.toAppMessage() }
             .reversed()
         val withoutSuperseded = dropSupersededOptimisticMessages(raw, ApiClient.user?.id)
-        return sortMessagesForChatDisplay(
-            validatedOrEmpty(
-                convId,
-                dedupeMessagesByClientId(
-                    enrichQueuedOutboundUi(withoutSuperseded, convId),
+        return ProfileCache.enrichPublicMessagesForDisplay(
+            sortMessagesForChatDisplay(
+                validatedOrEmpty(
+                    convId,
+                    dedupeMessagesByClientId(
+                        enrichQueuedOutboundUi(withoutSuperseded, convId),
+                    ),
                 ),
             ),
         )
@@ -150,6 +152,7 @@ object MessageCacheStore {
     }
 
     suspend fun replacePublicMessages(messages: List<Message>) {
+        ProfileCache.mergePreviewFromPublicMessages(messages)
         conversationIdForPublic().let {
             replaceMessages(
                 it,
@@ -225,6 +228,7 @@ object MessageCacheStore {
     }
 
     suspend fun upsertPublicMessage(message: Message) {
+        ProfileCache.mergePreviewFromPublicMessage(message)
         upsertSingle(conversationIdForPublic(), message)
     }
 
@@ -280,6 +284,7 @@ object MessageCacheStore {
     }
 
     suspend fun confirmPublicMessage(clientMessageId: String, confirmed: Message) {
+        ProfileCache.mergePreviewFromPublicMessage(confirmed)
         confirmMessage(conversationIdForPublic(), clientMessageId, confirmed)
     }
 

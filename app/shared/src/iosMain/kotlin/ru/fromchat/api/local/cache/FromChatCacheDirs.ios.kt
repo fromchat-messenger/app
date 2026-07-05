@@ -38,3 +38,20 @@ actual suspend fun wipeAttachmentCacheDirectories() {
         }
     }
 }
+
+@OptIn(ExperimentalForeignApi::class)
+actual suspend fun wipeInstanceAuxiliaryCacheDirectory(instanceId: String) {
+    withContext(Dispatchers.Default) {
+        val safe = instanceId.trim().replace(Regex("[^a-zA-Z0-9._-]"), "_")
+        if (safe.isEmpty()) return@withContext
+        val url = NSFileManager.defaultManager.URLForDirectory(
+            directory = NSCachesDirectory,
+            inDomain = NSUserDomainMask,
+            appropriateForURL = null,
+            create = false,
+            error = null,
+        ) ?: return@withContext
+        val base = url.path ?: return@withContext
+        NSFileManager.defaultManager.removeItemAtPath("$base/fromchat/instances/$safe", error = null)
+    }
+}

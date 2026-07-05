@@ -149,4 +149,8 @@ object MessageRepository {
         MessageCacheStore.pruneEmptyConversations()
 
     suspend fun clearAllCache() = MessageCacheStore.clearAll()
+
+    fun resetListPreviewStringsOnLogout() {
+        MessageCacheStore.listPreviewStrings = null
+    }
 }

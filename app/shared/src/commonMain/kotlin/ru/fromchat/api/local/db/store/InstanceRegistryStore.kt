@@ -9,6 +9,7 @@ import ru.fromchat.api.instance.configKey
 import ru.fromchat.api.local.db.store.PublicChatProfileCache
 import ru.fromchat.ui.chat.utils.PublicChatPanelCache
 import ru.fromchat.ui.chat.panels.dm.DmPanelCache
+import ru.fromchat.config.Settings
 import kotlin.time.Clock
 
 object InstanceRegistryStore {
@@ -108,6 +109,14 @@ object InstanceRegistryStore {
         withContext(Dispatchers.Default) {
             MessageDatabaseProvider.withDatabaseRecover {
                 db.messageDatabaseQueries.purgeAllCache()
+            }
+        }
+    }
+
+    suspend fun clearServerBindingForCurrentConfig() {
+        withContext(Dispatchers.Default) {
+            MessageDatabaseProvider.withDatabaseRecover {
+                db.messageDatabaseQueries.deleteServerBinding(Settings.serverConfig.configKey())
             }
         }
     }

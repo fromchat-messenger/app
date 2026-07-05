@@ -6,6 +6,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import ru.fromchat.api.ApiClient
 import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.api.schema.user.User
 import ru.fromchat.api.schema.user.profile.UserProfile
@@ -182,7 +183,8 @@ object ProfileCache {
         val existing = get(uid)
         if (existing != null && !existing.isClientPreviewOnly) return
 
-        val uname = message.username.ifBlank { existing?.username ?: return }
+        val uname = message.username.trim().ifBlank { existing?.username?.trim().orEmpty() }
+        if (uname.isBlank()) return
         val display = existing?.displayName?.takeIf { it.isNotBlank() } ?: uname
         val pic = message.profile_picture?.takeIf { it.isNotBlank() } ?: existing?.profilePicture
 
@@ -205,6 +207,43 @@ object ProfileCache {
             ),
         )
     }
+
+    fun mergePreviewFromPublicMessages(messages: Iterable<Message>) {
+        messages.forEach(::mergePreviewFromPublicMessage)
+    }
+
+    /**
+     * Fills blank sender fields on a public-chat [Message] from [ProfileCache] or the current user.
+     */
+    fun enrichPublicMessageForDisplay(
+        message: Message,
+        currentUserId: Int? = ApiClient.user?.id,
+    ): Message {
+        val self = currentUserId
+        if (self != null && message.user_id == self) {
+            val user = ApiClient.user
+            return message.copy(
+                username = message.username.trim().ifBlank { user?.username.orEmpty() },
+                profile_picture = message.profile_picture?.takeIf { it.isNotBlank() }
+                    ?: user?.profile_picture,
+            )
+        }
+        val profile = get(message.user_id)
+        return message.copy(
+            username = message.username.trim().ifBlank {
+                profile?.visibleUsername(self).orEmpty()
+            },
+            profile_picture = message.profile_picture?.takeIf { it.isNotBlank() }
+                ?: profile?.profilePicture,
+            verified = message.verified ?: profile?.verified,
+            verificationStatus = message.verificationStatus ?: profile?.verificationStatus,
+        )
+    }
+
+    fun enrichPublicMessagesForDisplay(
+        messages: List<Message>,
+        currentUserId: Int? = ApiClient.user?.id,
+    ): List<Message> = messages.map { enrichPublicMessageForDisplay(it, currentUserId) }
 
     fun onActiveInstanceChanged(instanceId: String) {
         ioScope.launch {

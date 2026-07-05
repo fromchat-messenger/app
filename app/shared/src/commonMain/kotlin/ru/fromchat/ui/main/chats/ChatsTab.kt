@@ -108,6 +108,7 @@ import ru.fromchat.chat_preview_image
 import ru.fromchat.chat_preview_image_emoji
 import ru.fromchat.chats_selected_count
 import ru.fromchat.config.ServerConfig
+import ru.fromchat.public_chat
 import ru.fromchat.search_title
 import ru.fromchat.status_connecting
 import ru.fromchat.status_updating
@@ -517,7 +518,7 @@ fun ChatsTab(
         }
     }
 
-    LaunchedEffect(serverConfig, activeInstanceId) {
+    LaunchedEffect(serverConfig, activeInstanceId, connectionStatus) {
         if (activeInstanceId.isBlank()) return@LaunchedEffect
 
         runCatching {
@@ -547,7 +548,9 @@ fun ChatsTab(
     val selectedCountTitle = stringResource(Res.string.chats_selected_count, selectedCount)
     val suspendBannerTitle = stringResource(Res.string.suspend_chat_banner_message)
     val suspendDefaultReason = stringResource(Res.string.suspended_default_reason)
+    val publicChatFallbackTitle = stringResource(Res.string.public_chat)
     val publicChatTitle = publicChatProfile?.title?.takeIf { it.isNotBlank() }
+        ?: publicChatFallbackTitle.takeIf { activeInstanceId.isNotBlank() }
     val publicChatLink = publicChatProfile?.let { "https://fromchat.ru/chats/${it.id}" }
     val deleteConfirmTitle = stringResource(Res.string.chat_delete_confirm_title)
     val deleteConfirmBody = stringResource(Res.string.chat_delete_confirm_body)

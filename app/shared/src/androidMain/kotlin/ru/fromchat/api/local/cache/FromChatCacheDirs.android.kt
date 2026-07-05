@@ -19,3 +19,11 @@ actual suspend fun wipeAttachmentCacheDirectories() {
         }
     }
 }
+
+actual suspend fun wipeInstanceAuxiliaryCacheDirectory(instanceId: String) {
+    withContext(Dispatchers.IO) {
+        val safe = instanceId.trim().replace(Regex("[^a-zA-Z0-9._-]"), "_")
+        if (safe.isEmpty()) return@withContext
+        File(UtilsLibrary.context.cacheDir, "fromchat/instances/$safe").deleteRecursively()
+    }
+}

@@ -202,6 +202,13 @@ object AttachmentDownloadScheduler {
             }.thenBy { it.enqueuedAt },
         )
     }
+
+    suspend fun cancelAllOnLogout() {
+        val keys = mutex.withLock {
+            (activeJobs.keys + waiting.map { it.storageKey } + keyToDeferred.keys).toSet()
+        }
+        keys.forEach { cancel(it) }
+    }
 }
 
 internal fun checkAttachmentDownloadActive(storageKey: String) {

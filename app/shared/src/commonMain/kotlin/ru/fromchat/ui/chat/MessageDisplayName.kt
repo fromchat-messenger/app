@@ -3,9 +3,11 @@ package ru.fromchat.ui.chat
 import androidx.compose.runtime.Composable
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
+import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.db.store.ProfileCache
 import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.api.local.db.store.visibleUsername
+import ru.fromchat.api.local.db.store.visibleDisplayName
 import ru.fromchat.message_sender_you
 import ru.fromchat.user_fallback
 
@@ -37,4 +39,28 @@ fun messageDisplayUsername(message: Message, currentUserId: Int?): String {
         if (id != null) return stringResource(Res.string.user_fallback, id)
     }
     return message.username
+}
+
+fun messageSenderProfilePicture(
+    message: Message,
+    currentUserId: Int? = ApiClient.user?.id,
+): String? {
+    if (currentUserId != null && message.user_id == currentUserId) {
+        return message.profile_picture?.takeIf { it.isNotBlank() }
+            ?: ApiClient.user?.profile_picture?.takeIf { it.isNotBlank() }
+    }
+    return message.profile_picture?.takeIf { it.isNotBlank() }
+        ?: ProfileCache.get(message.user_id)?.profilePicture?.takeIf { it.isNotBlank() }
+}
+
+fun messageSenderAvatarLabel(
+    message: Message,
+    currentUserId: Int? = ApiClient.user?.id,
+): String {
+    if (currentUserId != null && message.user_id == currentUserId) {
+        return ApiClient.user?.username?.takeIf { it.isNotBlank() }.orEmpty()
+    }
+    return message.username.trim().ifBlank {
+        ProfileCache.get(message.user_id)?.visibleDisplayName(currentUserId).orEmpty()
+    }
 }
