@@ -8,7 +8,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -57,8 +56,8 @@ import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.api.local.cache.DecryptedImageCache
 import ru.fromchat.api.local.db.store.ProfileCache
-import ru.fromchat.api.local.db.store.visibleUsername
-import ru.fromchat.api.local.messages.formatMessageTimeLocal
+import ru.fromchat.ui.chat.messageSenderAvatarLabel
+import ru.fromchat.api.local.messages.formatMessageBubbleTimeLocal
 import ru.fromchat.api.local.messages.isQueuedOutbound
 import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.message_corrupted
@@ -69,6 +68,7 @@ import ru.fromchat.ui.chat.components.getReplyMessageGradient
 import ru.fromchat.ui.chat.utils.imageAspectRatioForMessage
 import ru.fromchat.ui.chat.utils.imageAttachmentKey
 import ru.fromchat.ui.components.Text
+import ru.fromchat.ui.isAppInDarkTheme
 import ru.fromchat.ui.profile.StatusBadge
 import ru.fromchat.ui.profile.resolveVerificationStatus
 
@@ -119,7 +119,7 @@ fun MessageItem(
         isMessageCorrupted(message)
     }
     val formattedTime = remember(message.timestamp) {
-        formatMessageTimeLocal(message.timestamp)
+        formatMessageBubbleTimeLocal(message.timestamp)
     }
     val corruptedBody = stringResource(Res.string.message_corrupted)
     val editedSuffix = stringResource(Res.string.message_edited_suffix)
@@ -128,9 +128,9 @@ fun MessageItem(
     val senderProfile = ProfileCache.get(message.user_id)
     val avatarPictureUrl = senderProfile?.profilePicture?.takeIf { it.isNotBlank() }
         ?: message.profile_picture
-    val avatarDisplayName = senderProfile?.visibleUsername(currentUserId)?.takeIf { it.isNotBlank() }
-        ?: message.username
+    val avatarDisplayName = messageSenderAvatarLabel(message, currentUserId)
     val senderVerificationStatus = resolveVerificationStatus(message.user_id, message)
+    val isDeletedSender = messageSenderIsDeleted(message, currentUserId)
     val replyRef = message.reply_to
 
     // No AnimatedVisibility here: visible=true still ran enter transitions for every item on first
@@ -193,7 +193,9 @@ fun MessageItem(
                 Avatar(
                     profilePictureUrl = avatarPictureUrl,
                     displayName = avatarDisplayName,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(32.dp),
+                    isDeletedUser = isDeletedSender,
+                    userId = message.user_id,
                 )
             }
 
@@ -210,7 +212,7 @@ fun MessageItem(
                 horizontalAlignment = if (isAuthor) Alignment.End else Alignment.Start
             ) {
                 // Message bubble
-                val isDark = isSystemInDarkTheme()
+                val isDark = isAppInDarkTheme()
                 val pendingIsImage = when {
                     message.pendingFilename?.isNotBlank() == true -> isImageFilename(message.pendingFilename)
                     message.pendingFileUri != null -> isImageFilename(

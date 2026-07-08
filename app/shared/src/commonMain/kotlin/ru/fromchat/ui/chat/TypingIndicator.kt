@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
+import ru.fromchat.typing_alone
 import ru.fromchat.typing_many
 import ru.fromchat.typing_single
 import ru.fromchat.typing_two
@@ -29,6 +30,7 @@ import ru.fromchat.typing_two
 @Composable
 fun TypingIndicator(
     typingUsers: List<String>,
+    showUsernames: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     if (typingUsers.isEmpty()) return
@@ -40,7 +42,7 @@ fun TypingIndicator(
         TypingDots()
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = formatTypingText(typingUsers),
+            text = formatTypingText(typingUsers, showUsernames),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.primary
         )
@@ -48,11 +50,13 @@ fun TypingIndicator(
 }
 
 @Composable
-private fun formatTypingText(typingUsers: List<String>): String {
-    return when (typingUsers.size) {
-        0 -> ""
-        1 -> stringResource(Res.string.typing_single, typingUsers[0])
-        2 -> stringResource(Res.string.typing_two, typingUsers[0], typingUsers[1])
+private fun formatTypingText(typingUsers: List<String>, showUsernames: Boolean): String {
+    return when {
+        typingUsers.isEmpty() -> ""
+        !showUsernames && typingUsers.size == 1 ->
+            stringResource(Res.string.typing_alone)
+        typingUsers.size == 1 -> stringResource(Res.string.typing_single, typingUsers[0])
+        typingUsers.size == 2 -> stringResource(Res.string.typing_two, typingUsers[0], typingUsers[1])
         else -> stringResource(
             Res.string.typing_many,
             typingUsers[0],

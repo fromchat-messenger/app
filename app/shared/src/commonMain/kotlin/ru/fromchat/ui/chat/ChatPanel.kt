@@ -321,25 +321,35 @@ abstract class ChatPanel(
         pending?.first?.cancel()
 
         updateState { currentState ->
-            val withoutDupReal = if (confirmedMessage.id > 0) {
-                currentState.messages.filter { it.id != confirmedMessage.id }
+            val optimistic = currentState.messages.find { it.client_message_id == tempId }
+            val resolvedConfirmed = if (confirmedMessage.reply_to == null) {
+                val reply = optimistic?.reply_to
+                if (reply != null) confirmedMessage.copy(reply_to = reply) else confirmedMessage
+            } else {
+                confirmedMessage
+            }
+            val withoutDupReal = if (resolvedConfirmed.id > 0) {
+                currentState.messages.filter { it.id != resolvedConfirmed.id }
             } else {
                 currentState.messages
             }
             val hadTemp = withoutDupReal.any { it.client_message_id == tempId }
             val mapped = withoutDupReal.map { msg ->
-                if (msg.client_message_id == tempId) confirmedMessage else msg
+                if (msg.client_message_id == tempId) resolvedConfirmed else msg
             }
             val messages = when {
                 hadTemp -> mapped
-                confirmedMessage.id > 0 && mapped.none { it.id == confirmedMessage.id } ->
-                    mapped + confirmedMessage
+                resolvedConfirmed.id > 0 && mapped.none { it.id == resolvedConfirmed.id } ->
+                    mapped + resolvedConfirmed
                 else -> mapped
             }
             currentState.copy(messages = sortMessagesForChatDisplay(messages))
         }
         scope.launch(Dispatchers.Default) {
-            runCatching { onOptimisticMessageConfirmed(tempId, confirmedMessage) }
+            val resolved = _state.messages.find { it.client_message_id == tempId }
+                ?: _state.messages.find { it.id == confirmedMessage.id }
+            val toPersist = resolved ?: confirmedMessage
+            runCatching { onOptimisticMessageConfirmed(tempId, toPersist) }
         }
     }
 

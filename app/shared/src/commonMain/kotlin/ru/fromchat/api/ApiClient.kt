@@ -232,7 +232,7 @@ object ApiClient {
                 if (response.status.value == 401) {
                     val path = response.call.request.url.encodedPath
                     val isCredentialCheck = path.endsWith("/login") || path.endsWith("/register")
-                    if (!isCredentialCheck) {
+                    if (!isCredentialCheck && !logoutInProgress) {
                         MainScope().launch {
                             runCatching { WebSocketManager.disconnect() }
                             runCatching { clearLocalSession() }
@@ -407,6 +407,9 @@ object ApiClient {
 
     @Volatile
     var user: User? = null
+
+    @Volatile
+    private var logoutInProgress = false
 
     var onAuthError: (() -> Unit)? = null
 
@@ -1406,13 +1409,20 @@ object ApiClient {
     }
 
     suspend fun logout() {
-        runCatching {
-            http.get("${ServerConfig.apiBaseUrl}/logout")
-        }.onFailure { e ->
-            ru.fromchat.Logger.e("ApiClient", "Server logout failed", e)
+        if (logoutInProgress) return
+        logoutInProgress = true
+        try {
+            runCatching { WebSocketManager.disconnect() }
+            runCatching { unregisterFcmTokenFromServer() }
+            runCatching {
+                http.get("${ServerConfig.apiBaseUrl}/logout")
+            }.onFailure { e ->
+                ru.fromchat.Logger.e("ApiClient", "Server logout failed", e)
+            }
+            clearLocalSession()
+        } finally {
+            logoutInProgress = false
         }
-        runCatching { unregisterFcmTokenFromServer() }
-        clearLocalSession()
     }
 
     fun getTokenSafely() = token ?: throw IllegalStateException("Not authenticated")

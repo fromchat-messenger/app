@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
@@ -108,6 +109,7 @@ import ru.fromchat.ui.components.Text
 import com.pr0gramm3r101.utils.scaleOnPress
 
 private val IMAGE_SIZE = 160.dp
+private val IMAGE_MAX_HEIGHT = 240.dp
 private const val BLUR_FADE_MS = 450
 
 internal fun isImageFilename(name: String): Boolean =
@@ -210,11 +212,12 @@ fun AttachmentPreview(
                         fileAspectRatio != null && fileAspectRatio > 0f,
                         `if` = {
                             Modifier
-                                .aspectRatio(fileAspectRatio!!)
-                                .sizeIn(maxWidth = IMAGE_SIZE, maxHeight = IMAGE_SIZE)
+                                .heightIn(max = IMAGE_MAX_HEIGHT)
+                                .widthIn(max = IMAGE_SIZE)
+                                .aspectRatio(fileAspectRatio!!, matchHeightConstraintsFirst = true)
                         },
                         `else` = {
-                            Modifier.size(IMAGE_SIZE)
+                            Modifier.sizeIn(maxWidth = IMAGE_SIZE, maxHeight = IMAGE_MAX_HEIGHT)
                         }
                     )
                     .clip(attachmentImageCornerShape(isAuthor))

@@ -18,6 +18,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,6 +34,7 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.api.ensureFcmTokenRegistered
+import ru.fromchat.api.isFcmPushRegisteredLocally
 import ru.fromchat.api.unregisterFcmTokenFromServer
 import ru.fromchat.back
 import ru.fromchat.error_unexpected
@@ -51,7 +53,10 @@ fun NotificationsScreen(onBack: () -> Unit) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    var notificationsEnabled by remember { mutableStateOf(areAppNotificationsEnabled()) }
+    var notificationsEnabled by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        notificationsEnabled = areAppNotificationsEnabled() && isFcmPushRegisteredLocally()
+    }
     val notificationsPermissionText = stringResource(Res.string.settings_notifications_permission_required)
     val unexpectedErrorText = stringResource(Res.string.error_unexpected)
 
@@ -86,23 +91,27 @@ fun NotificationsScreen(onBack: () -> Unit) {
                         Icon(Icons.Filled.Notifications, null)
                     },
                     checked = notificationsEnabled,
-                    onCheckedChange = {
+                    onCheckedChange = { enabled ->
                         coroutineScope.launch {
-                            if (!areAppNotificationsEnabled()) {
-                                if (!openAppNotificationSettings()) {
-                                    snackbarHostState.showSnackbar(message = unexpectedErrorText)
-                                } else {
-                                    snackbarHostState.showSnackbar(message = notificationsPermissionText)
+                            if (enabled) {
+                                if (!areAppNotificationsEnabled()) {
+                                    if (!openAppNotificationSettings()) {
+                                        snackbarHostState.showSnackbar(message = unexpectedErrorText)
+                                    } else {
+                                        snackbarHostState.showSnackbar(message = notificationsPermissionText)
+                                    }
+                                    return@launch
                                 }
-                                return@launch
-                            }
 
-                            if (notificationsEnabled) {
-                                unregisterFcmTokenFromServer()
-                                notificationsEnabled = !notificationsEnabled
+                                val registered = ensureFcmTokenRegistered()
+                                if (registered) {
+                                    notificationsEnabled = true
+                                } else {
+                                    snackbarHostState.showSnackbar(message = unexpectedErrorText)
+                                }
                             } else {
-                                ensureFcmTokenRegistered()
-                                snackbarHostState.showSnackbar(message = unexpectedErrorText)
+                                unregisterFcmTokenFromServer()
+                                notificationsEnabled = false
                             }
                         }
                     },

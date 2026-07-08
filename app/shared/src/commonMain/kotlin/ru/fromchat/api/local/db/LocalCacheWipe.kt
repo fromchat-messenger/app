@@ -3,6 +3,7 @@ package ru.fromchat.api.local.db
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import ru.fromchat.api.ApiClient
+import ru.fromchat.api.ChatListSync
 import ru.fromchat.api.PublicChatProfileSync
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.cache.DecryptedFileCache
@@ -48,6 +49,7 @@ suspend fun wipeLocalCacheOnDisk() {
 suspend fun clearAccountCacheOnLogout(instanceId: String) {
     val id = instanceId.trim()
     PublicChatProfileSync.resetOnLogout()
+    ChatListSync.resetOnLogout()
     if (id.isNotEmpty()) {
         cancelOutboxProcessing(id)
         runCatching { MessageRepository.purgeAllPendingForInstance() }

@@ -122,6 +122,9 @@
     <!-- Messages -->
     <string name="message_sender_you">You</string>
     <string name="user_fallback">Person %1$d</string>
+    <string name="deleted_account">Deleted account</string>
+    <string name="account_suspended">Account suspended</string>
+    <string name="action_delete_chat">Delete chat</string>
     <string name="message_corrupted">This message could not be shown.</string>
     <string name="message_edited_suffix">(edited)</string>
     <string name="message_replying_to">Reply to %1$s</string>
@@ -200,11 +203,13 @@
 
     <!-- Status badge -->
     <string name="cd_verified_account">Verified account</string>
+    <string name="cd_account_blocked">Account blocked</string>
     <string name="cd_similar_verified">May be a verified account</string>
 
     <!-- Presence / last seen -->
     <string name="presence_online">Online</string>
     <string name="presence_recently">Active recently</string>
+    <string name="presence_long_ago">last seen a long time ago</string>
     <string name="presence_today_at">Today at %1$s</string>
     <string name="presence_yesterday_at">Yesterday at %1$s</string>
     <string name="presence_weekday_at">%1$s at %2$s</string>
@@ -409,6 +414,8 @@
     <string name="logs_file_size_kb">%1$d KB</string>
     <string name="logs_file_size_mb">%1$s MB</string>
     <string name="logs_scroll_to_bottom_cd">Scroll to latest logs</string>
+    <string name="logs_search">Search</string>
+    <string name="logs_search_hint">Search log entries</string>
 
     <string name="settings_account_title">Account</string>
     <string name="settings_account_logout_confirm_title">Log out?</string>
@@ -443,6 +450,7 @@
 
     <!-- Typing Indicators -->
     <string name="typing_single">%1$s is typing…</string>
+    <string name="typing_alone">typing…</string>
     <string name="typing_two">%1$s and %2$s are typing…</string>
     <string name="typing_many">%1$s, %2$s and %3$d more are typing…</string>
 

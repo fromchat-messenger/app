@@ -13,3 +13,6 @@ expect suspend fun ensureFcmTokenRegistered(): Boolean
  * Returns true when the unregister request succeeds.
  */
 expect suspend fun unregisterFcmTokenFromServer(): Boolean
+
+/** Whether this device has an FCM token registered with the server for the current session. */
+expect suspend fun isFcmPushRegisteredLocally(): Boolean

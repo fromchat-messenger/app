@@ -217,7 +217,7 @@ fun EditProfileScreen(
 
     val canSave = loaded && hasChanges && !hasValidationErrors && !busy
 
-    val avatarDisplayName = trimmedDisplayName.ifBlank { trimmedUsername }.ifBlank { "?" }
+    val avatarDisplayName = trimmedDisplayName.ifBlank { "?" }
 
     fun showSnack(text: String) {
         scope.launch {

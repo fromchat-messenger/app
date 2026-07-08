@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
@@ -37,6 +38,9 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -54,6 +58,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Report
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.automirrored.filled.Subject
 import androidx.compose.material.icons.filled.Sync
@@ -98,7 +103,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -108,12 +116,17 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import com.pr0gramm3r101.components.Category
+import com.pr0gramm3r101.utils.ToggleNavScrimEffect
 import com.pr0gramm3r101.components.ListItem
+import com.pr0gramm3r101.utils.resetFocus
 import com.pr0gramm3r101.utils.supportClipboardManagerImpl
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -158,6 +171,8 @@ import ru.fromchat.logs_rotate
 import ru.fromchat.logs_rotate_confirm_body
 import ru.fromchat.logs_rotate_confirm_title
 import ru.fromchat.logs_scroll_to_bottom_cd
+import ru.fromchat.logs_search
+import ru.fromchat.logs_search_hint
 import ru.fromchat.logs_selected_count
 import ru.fromchat.logs_share
 import ru.fromchat.logs_share_compressed
@@ -167,6 +182,7 @@ import ru.fromchat.logs_share_uncompressed
 import ru.fromchat.logs_share_uncompressed_desc
 import ru.fromchat.logs_title
 import ru.fromchat.more
+import ru.fromchat.search_not_found
 import ru.fromchat.logging.AppLogEntry
 import ru.fromchat.logging.AppLogLevel
 import ru.fromchat.logging.AppLogStore
@@ -218,6 +234,8 @@ fun LogsScreen() {
     val clipboard = supportClipboardManagerImpl
     val haptic = rememberHapticFeedback()
     val density = LocalDensity.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
     val topAppBarState = rememberTopAppBarState()
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(topAppBarState)
     val listState = rememberLazyListState()
@@ -246,7 +264,21 @@ fun LogsScreen() {
 
     var listMode by remember { mutableStateOf(LogsListMode.Normal) }
     var selectedEntryIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var searchMode by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    val listEntries = remember(displayEntries, searchMode, searchQuery) {
+        if (!searchMode || searchQuery.isBlank()) {
+            displayEntries
+        } else {
+            val needle = searchQuery.lowercase()
+            displayEntries.filter { entry ->
+                entry.displayText().lowercase().contains(needle)
+            }
+        }
+    }
     val selectionTransitionProgress = remember { Animatable(0f) }
+    val searchTransitionProgress = remember { Animatable(0f) }
+    val searchFocusRequester = remember { FocusRequester() }
     val gestureState = rememberLogsListGestureState()
     var dragAnchorIndex by remember { mutableIntStateOf(-1) }
     var dragLastY by remember { mutableFloatStateOf(0f) }
@@ -273,19 +305,42 @@ fun LogsScreen() {
     val shareTitle = stringResource(Res.string.logs_title)
     val selectionMode = listMode == LogsListMode.Selecting
     val selectionProgress = selectionTransitionProgress.value
-    val showBrowseFab = AppLogStore.hasFilesBesidesCurrent() && !selectionMode
+    val searchProgress = searchTransitionProgress.value
+    val showBrowseFab = AppLogStore.hasFilesBesidesCurrent() && !selectionMode && !searchMode
     val showScrollToBottomFab = isViewingCurrent &&
         !selectionMode &&
+        !searchMode &&
         displayEntries.isNotEmpty() &&
         !isAtBottom &&
         !isProgrammaticScroll
     val scrollToBottomCd = stringResource(Res.string.logs_scroll_to_bottom_cd)
+    val logsSearchLabel = stringResource(Res.string.logs_search)
+    val logsSearchHint = stringResource(Res.string.logs_search_hint)
+    val searchNotFoundLabel = stringResource(Res.string.search_not_found)
+
+    val hideIme: () -> Unit = {
+        resetFocus(keyboardController, focusManager)
+    }
 
     val selectedCountTitle = stringResource(Res.string.logs_selected_count, selectedEntryIds.size)
     val closeSelectionCd = stringResource(Res.string.cd_close_selection)
     val copyLabel = stringResource(Res.string.action_copy)
     val shareLabel = stringResource(Res.string.logs_share)
     val deleteLabel = stringResource(Res.string.action_delete)
+
+    fun exitSearchMode() {
+        searchQuery = ""
+        searchMode = false
+        hideIme()
+        scope.launch { searchTransitionProgress.snapTo(0f) }
+    }
+
+    fun requestExitSearchMode() {
+        scope.launch {
+            searchTransitionProgress.animateTo(0f, ChatSelectionTransitionSpring)
+            exitSearchMode()
+        }
+    }
 
     fun scrollToLatestLogs() {
         if (displayEntries.isEmpty()) return
@@ -339,6 +394,14 @@ fun LogsScreen() {
         }
     }
 
+    fun enterSearchMode() {
+        if (selectionMode) {
+            exitEntrySelection()
+        }
+        scope.launch { searchTransitionProgress.snapTo(0f) }
+        searchMode = true
+    }
+
     fun performShare(compression: LogShareCompression) {
         val request = pendingShareRequest ?: return
         scope.launch {
@@ -361,19 +424,20 @@ fun LogsScreen() {
     }
 
     fun applyDragSelectionRange(toIndex: Int) {
+        if (searchMode) return
         val anchor = dragAnchorIndex
         if (anchor < 0 || toIndex < 0) return
         val start = minOf(anchor, toIndex)
         val end = maxOf(anchor, toIndex)
-        selectedEntryIds = displayEntries.subList(start, end + 1).map { it.id }.toSet()
+        selectedEntryIds = listEntries.subList(start, end + 1).map { it.id }.toSet()
     }
 
     fun beginDragSelection(index: Int) {
-        if (index !in displayEntries.indices) return
+        if (searchMode || index !in listEntries.indices) return
         gestureState.onDragSelectionStart()
         dragAnchorIndex = index
         if (!selectionMode) {
-            enterEntrySelection(displayEntries[index].id)
+            enterEntrySelection(listEntries[index].id)
         } else {
             applyDragSelectionRange(index)
         }
@@ -414,11 +478,12 @@ fun LogsScreen() {
             }
     }
 
-    LaunchedEffect(displayEntries.size, isViewingCurrent, followLatest, selectionMode) {
+    LaunchedEffect(displayEntries.size, isViewingCurrent, followLatest, selectionMode, searchMode) {
         if (
             isViewingCurrent &&
             displayEntries.isNotEmpty() &&
             !selectionMode &&
+            !searchMode &&
             followLatest
         ) {
             isProgrammaticScroll = true
@@ -462,8 +527,8 @@ fun LogsScreen() {
         }
     }
 
-    LaunchedEffect(selectionMode) {
-        if (selectionMode) {
+    LaunchedEffect(selectionMode, searchMode) {
+        if (selectionMode || searchMode) {
             followLatest = false
         } else if (isAtBottom) {
             followLatest = true
@@ -476,6 +541,13 @@ fun LogsScreen() {
         }
     }
 
+    LaunchedEffect(searchMode) {
+        if (searchMode) {
+            searchTransitionProgress.animateTo(1f, ChatSelectionTransitionSpring)
+            searchFocusRequester.requestFocus()
+        }
+    }
+
     LaunchedEffect(selectedEntryIds, listMode) {
         if (listMode == LogsListMode.Selecting && selectedEntryIds.isEmpty()) {
             requestExitEntrySelection()
@@ -483,7 +555,10 @@ fun LogsScreen() {
     }
 
     DisposableEffect(Unit) {
-        onDispose { exitEntrySelection() }
+        onDispose {
+            exitEntrySelection()
+            exitSearchMode()
+        }
     }
 
     if (showDecompressDialog) {
@@ -606,6 +681,7 @@ fun LogsScreen() {
     }
 
     BackHandler(enabled = selectionMode) { requestExitEntrySelection() }
+    BackHandler(enabled = searchMode && !selectionMode) { requestExitSearchMode() }
     PredictiveBackHandler(
         enabled = selectionMode,
         onProgress = { backProgress ->
@@ -622,7 +698,26 @@ fun LogsScreen() {
             }
         },
     )
+    PredictiveBackHandler(
+        enabled = searchMode && !selectionMode,
+        onProgress = { backProgress ->
+            scope.launch {
+                searchTransitionProgress.snapTo((1f - backProgress).coerceIn(0f, 1f))
+            }
+        },
+        onCommit = { requestExitSearchMode() },
+        onCancel = {
+            if (searchMode) {
+                scope.launch {
+                    searchTransitionProgress.animateTo(1f, ChatSelectionTransitionSpring)
+                }
+            }
+        },
+    )
 
+    if (searchMode) {
+        ToggleNavScrimEffect()
+    }
 
     Scaffold(
         modifier = Modifier
@@ -632,7 +727,7 @@ fun LogsScreen() {
         contentWindowInsets = WindowInsets.navigationBars,
         floatingActionButtonPosition = FabPosition.End,
         floatingActionButton = {
-            val fabReveal = (1f - selectionProgress).coerceIn(0f, 1f)
+            val fabReveal = ((1f - selectionProgress) * (1f - searchProgress)).coerceIn(0f, 1f)
             Column(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -657,11 +752,13 @@ fun LogsScreen() {
         topBar = {
             Box {
                 TopAppBar(
-                    modifier = Modifier.graphicsLayer { alpha = 1f - selectionProgress },
+                    modifier = Modifier.graphicsLayer {
+                        alpha = (1f - selectionProgress) * (1f - searchProgress)
+                    },
                     navigationIcon = {
                         IconButton(
                             onClick = { navController.navigateUp() },
-                            enabled = selectionProgress < 1f,
+                            enabled = selectionProgress < 1f && searchProgress < 1f,
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -682,7 +779,7 @@ fun LogsScreen() {
                         }
                     },
                     actions = {
-                        if (isViewingCurrent && !selectionMode) {
+                        if (isViewingCurrent && !selectionMode && searchProgress < 1f) {
                             IconButton(
                                 onClick = {
                                     pendingShareRequest = LogsShareRequest(
@@ -699,7 +796,10 @@ fun LogsScreen() {
                             }
                         }
                         Box {
-                            IconButton(onClick = { menuExpanded = true }) {
+                            IconButton(
+                                onClick = { menuExpanded = true },
+                                enabled = searchProgress < 1f,
+                            ) {
                                 Icon(
                                     imageVector = Icons.Default.MoreVert,
                                     contentDescription = stringResource(Res.string.more),
@@ -709,6 +809,16 @@ fun LogsScreen() {
                                 expanded = menuExpanded,
                                 onDismissRequest = { menuExpanded = false },
                             ) {
+                                DropdownMenuItem(
+                                    text = { Text(logsSearchLabel) },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Search, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        menuExpanded = false
+                                        enterSearchMode()
+                                    },
+                                )
                                 if (isViewingCurrent) {
                                     DropdownMenuItem(
                                         text = { Text(stringResource(Res.string.logs_rotate)) },
@@ -750,6 +860,66 @@ fun LogsScreen() {
                     },
                     scrollBehavior = scrollBehavior,
                 )
+                if (searchMode || searchProgress > 0f) {
+                    TopAppBar(
+                        modifier = Modifier.graphicsLayer { alpha = searchProgress },
+                        colors = logsTransparentTopAppBarColors(),
+                        navigationIcon = {
+                            IconButton(
+                                onClick = { requestExitSearchMode() },
+                                enabled = searchProgress > 0f,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = stringResource(Res.string.back),
+                                )
+                            }
+                        },
+                        title = {
+                            BasicTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                singleLine = true,
+                                textStyle = MaterialTheme.typography.titleLarge.copy(
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                ),
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                keyboardActions = KeyboardActions(onSearch = { hideIme() }),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .focusRequester(searchFocusRequester),
+                                decorationBox = { innerTextField ->
+                                    Box(contentAlignment = Alignment.CenterStart) {
+                                        if (searchQuery.isEmpty()) {
+                                            Text(
+                                                text = logsSearchHint,
+                                                style = MaterialTheme.typography.titleLarge,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
+                                        innerTextField()
+                                    }
+                                },
+                            )
+                        },
+                        actions = {
+                            if (searchQuery.isNotBlank()) {
+                                IconButton(
+                                    onClick = { searchQuery = "" },
+                                    enabled = searchProgress > 0f,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = stringResource(Res.string.cancel),
+                                    )
+                                }
+                            }
+                        },
+                    )
+                }
                 if (selectionMode || selectionProgress > 0f) {
                     TopAppBar(
                         modifier = Modifier.graphicsLayer { alpha = selectionProgress },
@@ -806,11 +976,13 @@ fun LogsScreen() {
             }
         },
     ) { innerPadding ->
-        if (displayEntries.isEmpty()) {
+        when {
+            displayEntries.isEmpty() -> {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding),
+                    .padding(innerPadding)
+                    .then(if (searchMode) Modifier.imePadding() else Modifier),
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -820,7 +992,26 @@ fun LogsScreen() {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        } else {
+            }
+
+            searchMode && searchQuery.isNotBlank() && listEntries.isEmpty() -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .imePadding(),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = searchNotFoundLabel,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            else -> {
             val listContent: @Composable () -> Unit = {
                 LazyColumn(
                     state = listState,
@@ -837,7 +1028,7 @@ fun LogsScreen() {
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     itemsIndexed(
-                        items = displayEntries,
+                        items = listEntries,
                         key = { _, entry -> entry.id },
                     ) { index, entry ->
                         LogEntryRow(
@@ -861,13 +1052,22 @@ fun LogsScreen() {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding),
+                    .padding(innerPadding)
+                    .then(if (searchMode) Modifier.imePadding() else Modifier),
             ) {
                 listContent()
+            }
             }
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun logsTransparentTopAppBarColors() = TopAppBarDefaults.topAppBarColors(
+    containerColor = Color.Transparent,
+    scrolledContainerColor = Color.Transparent,
+)
 
 @Composable
 internal fun LogsAnimatedFab(

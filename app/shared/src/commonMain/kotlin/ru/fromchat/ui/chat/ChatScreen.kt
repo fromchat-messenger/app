@@ -20,6 +20,9 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -69,6 +72,7 @@ import ru.fromchat.api.calls.CallStore
 import ru.fromchat.api.local.WebSocketManager
 import ru.fromchat.api.local.db.store.ConnectionStateStore
 import ru.fromchat.api.local.db.store.ConnectionStatus
+import ru.fromchat.api.local.db.store.MessageRepository
 import ru.fromchat.api.local.db.store.ProfileCache
 import ru.fromchat.api.local.db.store.UserStatusStore
 import ru.fromchat.api.local.download.SavableMessageImage
@@ -94,6 +98,8 @@ import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.api.schema.websocket.WebSocketMessage
 import ru.fromchat.api.schema.websocket.types.WebSocketUpdatesData
 import ru.fromchat.back
+import ru.fromchat.action_delete_chat
+import ru.fromchat.ui.profile.peerIsDeleted
 import ru.fromchat.cd_call
 import ru.fromchat.chat_group_label
 import ru.fromchat.status_connecting
@@ -104,6 +110,7 @@ import ru.fromchat.ui.chat.utils.getImageAspectRatio
 import ru.fromchat.ui.chat.utils.getImageDimensions
 import ru.fromchat.ui.chat.utils.imageAttachmentKey
 import ru.fromchat.ui.chat.utils.visibleMessageIdsInChatList
+import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.SuspendedAccountSupportSheet
 import ru.fromchat.utils.NetworkConnectivity
 import ru.fromchat.utils.formatLastSeen
@@ -167,6 +174,24 @@ fun ChatScreen(
     val online by NetworkConnectivity.isOnline.collectAsState(initial = true)
     val suspensionState by ApiClient.suspensionState.collectAsState()
     val isReadOnly = suspensionState.isSuspended
+    val dmRecipientId = panel.getRecipientId()
+    var peerDeleted by remember(dmRecipientId) { mutableStateOf(false) }
+    val deleteChatLabel = stringResource(Res.string.action_delete_chat)
+    LaunchedEffect(dmRecipientId) {
+        val userId = dmRecipientId ?: return@LaunchedEffect
+        peerDeleted = peerIsDeleted(userId = userId, currentUserId = currentUserId)
+        if (!peerDeleted) {
+            runCatching { ApiClient.getProfileById(userId) }.onSuccess { profile ->
+                ProfileCache.put(profile)
+                peerDeleted = peerIsDeleted(
+                    userId = userId,
+                    currentUserId = currentUserId,
+                    deleted = profile.deleted,
+                    username = profile.username,
+                )
+            }
+        }
+    }
     val lastSeenFormat = rememberLastSeenFormatStrings()
     var showSuspendedSupportSheet by remember { mutableStateOf(false) }
     val statusConnecting = stringResource(Res.string.status_connecting)
@@ -507,6 +532,36 @@ fun ChatScreen(
                             )
                         }
                 ) {
+                    if (peerDeleted && dmRecipientId != null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+                        ) {
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        val messages = runCatching {
+                                            MessageRepository.loadDmMessages(dmRecipientId)
+                                        }.getOrDefault(emptyList()).filter { it.id > 0 }
+                                        messages.forEach { msg ->
+                                            runCatching { ApiClient.deleteDm(msg.id, dmRecipientId) }
+                                        }
+                                        runCatching { MessageRepository.deleteDmConversation(dmRecipientId) }
+                                        navController.popBackStack()
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.error,
+                                ),
+                            ) {
+                                Text(deleteChatLabel)
+                            }
+                        }
+                    } else {
                     ChatInput(
                         text = inputText,
                         onTextChange = { inputText = it },
@@ -632,6 +687,7 @@ fun ChatScreen(
                             }
                         }
                     )
+                    }
                 }
             }
         ) { innerPadding ->
@@ -775,6 +831,7 @@ fun ChatScreen(
                                     sharedAvatarKey = sharedAvatarKey,
                                     subtitleKey = subtitleKey,
                                     currentTypingUsers = currentTypingUsers,
+                                    typingShowsUsernames = panel.usesPublicGroupSubtitle,
                                     statusConnecting = statusConnecting,
                                     statusUpdating = statusUpdating,
                                     chatGroupLabel = chatGroupLabel,

@@ -39,7 +39,6 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
-import ru.fromchat.api.local.WebSocketManager
 import ru.fromchat.back
 import ru.fromchat.cancel
 import ru.fromchat.logout
@@ -139,7 +138,6 @@ fun AccountScreen(
                         showLogoutConfirm = false
                         scope.launch {
                             runCatching { ApiClient.logout() }
-                            WebSocketManager.disconnect()
                             onLogout()
                         }
                     },

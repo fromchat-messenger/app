@@ -13,6 +13,9 @@ enum class VerificationStatus {
 
     @SerialName("none")
     None,
+
+    @SerialName("blocked")
+    Blocked,
 }
 
 fun VerificationStatus?.orFromLegacyVerified(verified: Boolean?): VerificationStatus =

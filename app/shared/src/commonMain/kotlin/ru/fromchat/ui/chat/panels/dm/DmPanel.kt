@@ -28,7 +28,8 @@ import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.api.schema.messages.dm.DmEnvelope
 import ru.fromchat.api.schema.websocket.WebSocketMessage
 import ru.fromchat.api.schema.websocket.types.DmDeletedData
-import ru.fromchat.api.local.db.store.visibleDisplayName
+import ru.fromchat.ui.profile.displayNameText
+import ru.fromchat.ui.profile.isDeletedAccount
 import ru.fromchat.Logger
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.api.crypto.CorruptedDmMessagePlaceholder
@@ -106,28 +107,37 @@ class DmPanel(
             if (_state.title.isBlank()) {
                 loadPeerTitleFromConversationCache()
             }
-            runCatching {
-                ApiClient.getProfileById(otherUserId)
-            }.onSuccess { profile ->
-                if (profile.username.isBlank() && profile.displayName.isNullOrBlank()) {
+            try {
+                val profile = ApiClient.getProfileById(otherUserId)
+                if (
+                    !profile.isDeletedAccount(ApiClient.user?.id) &&
+                    profile.username.isBlank() &&
+                    profile.displayName.isNullOrBlank()
+                ) {
                     ProfileCache.evictUnusableClientPreview(otherUserId)
                     if (_state.title.isBlank()) {
+                        withContext(Dispatchers.Main) {
+                            updateState {
+                                it.copy(title = "", titleAvatar = null, profileUserId = otherUserId)
+                            }
+                        }
+                    }
+                    return@launch
+                }
+                ProfileCache.put(profile)
+                val displayName = profile.displayNameText(ApiClient.user?.id)
+                if (displayName.isNotBlank()) {
+                    withContext(Dispatchers.Main) {
+                        applyPeerTitle(displayName, profile.profilePicture)
+                    }
+                }
+            } catch (_: Throwable) {
+                ProfileCache.evictUnusableClientPreview(otherUserId)
+                if (_state.title.isBlank()) {
+                    withContext(Dispatchers.Main) {
                         updateState {
                             it.copy(title = "", titleAvatar = null, profileUserId = otherUserId)
                         }
-                    }
-                    return@onSuccess
-                }
-                ProfileCache.put(profile)
-                val displayName = profile.visibleDisplayName(ApiClient.user?.id).orEmpty()
-                if (displayName.isNotBlank()) {
-                    applyPeerTitle(displayName, profile.profilePicture)
-                }
-            }.onFailure {
-                ProfileCache.evictUnusableClientPreview(otherUserId)
-                if (_state.title.isBlank()) {
-                    updateState {
-                        it.copy(title = "", titleAvatar = null, profileUserId = otherUserId)
                     }
                 }
             }
@@ -135,13 +145,17 @@ class DmPanel(
     }
 
     private fun applyCachedPeerProfileOrReset() {
-        val cached = ProfileCache.get(otherUserId)
-        val displayName = cached?.visibleDisplayName(ApiClient.user?.id).orEmpty()
-        if (displayName.isNotBlank()) {
-            applyPeerTitle(displayName, cached?.profilePicture)
-        } else {
-            updateState {
-                it.copy(title = "", titleAvatar = null, profileUserId = otherUserId)
+        scope.launch(Dispatchers.Default) {
+            val cached = ProfileCache.get(otherUserId)
+            val displayName = cached?.displayNameText(ApiClient.user?.id).orEmpty()
+            withContext(Dispatchers.Main) {
+                if (displayName.isNotBlank()) {
+                    applyPeerTitle(displayName, cached?.profilePicture)
+                } else {
+                    updateState {
+                        it.copy(title = "", titleAvatar = null, profileUserId = otherUserId)
+                    }
+                }
             }
         }
     }
@@ -423,6 +437,9 @@ class DmPanel(
                 pendingFileAspectRatio = aspect,
                 fileAspectRatios = confirmed.fileAspectRatios ?: aspect?.let { listOf(it) },
                 fileDimensions = confirmed.fileDimensions ?: stateSourceBeforeMerge?.fileDimensions,
+                reply_to = envelope.replyToId?.let { replyId ->
+                    _state.messages.find { it.id == replyId }
+                } ?: stateSourceBeforeMerge?.reply_to,
             )
             val mergedForPersistence = merged.copy(pendingFilename = null)
             AttachmentMediaLog.persist(
@@ -460,10 +477,6 @@ class DmPanel(
                     }
                     val deduped = dedupeMessagesByClientId(newMessages)
                     currentState.copy(messages = deduped)
-                }
-                if (envelope.replyToId != null) {
-                    val replyTo = _state.messages.find { it.id == envelope.replyToId }
-                    updateMessage(envelope.id) { it.copy(reply_to = replyTo) }
                 }
             }
 

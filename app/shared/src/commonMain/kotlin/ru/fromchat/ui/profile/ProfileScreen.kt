@@ -150,7 +150,12 @@ import ru.fromchat.profile_load_failed
 import ru.fromchat.profile_not_found
 import ru.fromchat.profile_verified_support
 import ru.fromchat.profile_verify_prompt_support
+import ru.fromchat.ui.profile.deletedUserDisplayNameForUi
+import ru.fromchat.ui.profile.avatarLabelForInitials
+import ru.fromchat.ui.profile.displayNameForUi
 import ru.fromchat.ui.profile.effectiveVerificationStatus
+import ru.fromchat.ui.profile.isDeletedAccount
+import ru.fromchat.ui.profile.peerIsDeleted
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.chat.Avatar
 import ru.fromchat.ui.chat.TypingIndicator
@@ -196,6 +201,7 @@ private fun hasDisplayableProfile(
     currentUserId: Int?,
 ) = !initialDisplayName.isNullOrBlank() ||
     (profile != null && profile.id > 0 && (
+        profile.isDeletedAccount(currentUserId) ||
         !profile.visibleDisplayName(currentUserId).isNullOrBlank() ||
             profile.username.isNotBlank()
         ))
@@ -461,12 +467,27 @@ fun ProfileScreen(
     val showBodySkeleton = resolvedProfile == null
     val showAvatarSkeleton = showBodySkeleton && !hasDisplayable
     val currentProfileUserId = targetUserId ?: ownUserId ?: profile?.id
-    val displayName =
-        profile?.visibleDisplayName(currentProfileUserId)
+    val viewerUserId = ownUserId
+    val resolvedUserId = resolvedProfile?.id ?: targetUserId
+    val isDeletedProfile = resolvedUserId != null && peerIsDeleted(
+        userId = resolvedUserId,
+        currentUserId = viewerUserId,
+        deleted = resolvedProfile?.deleted,
+        username = resolvedProfile?.username,
+    )
+    val displayName = when {
+        isDeletedProfile -> deletedUserDisplayNameForUi()
+        else -> profile?.displayNameForUi(viewerUserId)?.takeIf { it.isNotBlank() }
             ?: initialDisplayName?.takeIf { it.isNotBlank() }
-            ?: profile?.username?.takeIf { it.isNotBlank() }
             ?: ""
-    val usernameForLinks = profile?.visibleUsername(currentProfileUserId)
+    }
+    val avatarLabel = when {
+        isDeletedProfile -> displayName
+        else -> profile?.avatarLabelForInitials(viewerUserId)?.takeIf { it.isNotBlank() }
+            ?: initialDisplayName?.takeIf { it.isNotBlank() }
+            ?: ""
+    }
+    val usernameForLinks = if (isDeletedProfile) null else profile?.visibleUsername(viewerUserId)
     val profileLink = resolvedProfile?.let {
         usernameForLinks?.let { name -> "https://fromchat.ru/@$name" }
             ?: "https://fromchat.ru/?u=${it.id}"
@@ -505,6 +526,28 @@ fun ProfileScreen(
                     icon = Icons.Filled.Settings,
                     holdsExpansionOnNavigate = true,
                     onClick = onOpenSettings,
+                ),
+            )
+        } else if (p.isDeletedAccount(viewerUserId)) {
+            listOf(
+                ProfileAction(
+                    label = labelChat,
+                    icon = Icons.AutoMirrored.Filled.Chat,
+                    holdsExpansionOnNavigate = true,
+                    onClick = { onChat(p.id) },
+                ),
+                ProfileAction(
+                    label = labelSearch,
+                    icon = Icons.Filled.Search,
+                    onClick = {
+                        scope.launch {
+                            snackbarHostState.showReplacingSnackbar(
+                                message = notImplementedMessage,
+                                withDismissAction = false,
+                                duration = SnackbarDuration.Short,
+                            )
+                        }
+                    },
                 ),
             )
         } else {
@@ -554,8 +597,10 @@ fun ProfileScreen(
     val showDetailsUsername = usernameForLinks != null
     val showDetailsMemberSince = !resolvedProfile?.createdAt.isNullOrBlank()
     val showDetailsBio = !resolvedProfile?.bio.isNullOrBlank()
-    val showDetailsVerify = resolvedProfile?.verified == true || ApiClient.user?.id == 1
-    val showDetailsSection = resolvedProfile != null && (
+    val showDetailsVerify = !isDeletedProfile && (
+        resolvedProfile?.verified == true || ApiClient.user?.id == 1
+        )
+    val showDetailsSection = resolvedProfile != null && !isDeletedProfile && (
         showDetailsUsername || showDetailsMemberSince || showDetailsBio || showDetailsVerify
         )
 
@@ -596,14 +641,16 @@ fun ProfileScreen(
                             with(sharedTransitionScope) {
                                 Avatar(
                                     profilePictureUrl = profile?.profilePicture,
-                                    displayName = displayName,
+                                    displayName = avatarLabel,
                                     modifier = Modifier
                                         .padding(top = profileAvatarTop)
                                         .sharedElement(
                                             rememberSharedContentState(key = sharedAvatarKey),
                                             animatedVisibilityScope = animatedVisibilityScope
                                         )
-                                        .size(104.dp)
+                                        .size(104.dp),
+                                    isDeletedUser = isDeletedProfile,
+                                    userId = resolvedUserId,
                                 )
                             }
                         }
@@ -614,10 +661,12 @@ fun ProfileScreen(
                         item {
                                 Avatar(
                                     profilePictureUrl = profile?.profilePicture,
-                                    displayName = displayName,
+                                    displayName = avatarLabel,
                                 modifier = Modifier
                                     .padding(top = profileAvatarTop)
-                                    .size(104.dp)
+                                    .size(104.dp),
+                                    isDeletedUser = isDeletedProfile,
+                                    userId = resolvedUserId,
                             )
                         }
                         item { Spacer(Modifier.height(12.dp)) }
@@ -665,6 +714,7 @@ fun ProfileScreen(
                                 resolvedProfile = resolvedProfile!!,
                                 displayName = displayName,
                                 isOwnProfile = isOwnProfile,
+                                isDeletedProfile = isDeletedProfile,
                                 typingUsers = typingUsers,
                                 statusState = statusState,
                                 statusText = statusText,
@@ -1145,6 +1195,7 @@ private fun ProfileLoadedBody(
     resolvedProfile: UserProfile,
     displayName: String,
     isOwnProfile: Boolean,
+    isDeletedProfile: Boolean,
     typingUsers: List<String>,
     statusState: UserStatus?,
     statusText: String,
@@ -1204,38 +1255,44 @@ private fun ProfileLoadedBody(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
             }
-            StatusBadge(
-                verificationStatus = resolvedProfile.effectiveVerificationStatus(),
-            )
-        }
-
-        Spacer(Modifier.height(4.dp))
-
-        AnimatedContent(
-            targetState = when {
-                typingUsers.isNotEmpty() -> "typing:${typingUsers.joinToString("|")}"
-                statusState?.online == true -> "online"
-                else -> "offline"
-            },
-            transitionSpec = {
-                (slideInVertically { it / 2 } + fadeIn()) togetherWith
-                    (slideOutVertically { -it / 2 } + fadeOut())
-            },
-            label = "profile_status_${resolvedProfile.id}",
-        ) { animatedState ->
-            if (animatedState.startsWith("typing:")) {
-                TypingIndicator(typingUsers = typingUsers)
-            } else {
-                Text(
-                    text = statusText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (animatedState == "online") {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
+            if (!isDeletedProfile) {
+                StatusBadge(
+                    verificationStatus = resolvedProfile.effectiveVerificationStatus(),
                 )
             }
+        }
+
+        if (!isDeletedProfile) {
+            Spacer(Modifier.height(4.dp))
+
+            AnimatedContent(
+                targetState = when {
+                    typingUsers.isNotEmpty() -> "typing:${typingUsers.joinToString("|")}"
+                    statusState?.online == true -> "online"
+                    else -> "offline"
+                },
+                transitionSpec = {
+                    (slideInVertically { it / 2 } + fadeIn()) togetherWith
+                        (slideOutVertically { -it / 2 } + fadeOut())
+                },
+                label = "profile_status_${resolvedProfile.id}",
+            ) { animatedState ->
+                if (animatedState.startsWith("typing:")) {
+                    TypingIndicator(typingUsers = typingUsers)
+                } else {
+                    Text(
+                        text = statusText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (animatedState == "online") {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
+            }
+        } else {
+            Spacer(Modifier.height(4.dp))
         }
 
         Spacer(Modifier.height(24.dp))

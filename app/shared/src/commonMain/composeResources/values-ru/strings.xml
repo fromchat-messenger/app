@@ -110,6 +110,9 @@
     <string name="notif_media_upload_text">Загрузка продолжается в фоне</string>
     <string name="message_sender_you">Вы</string>
     <string name="user_fallback">Человек %1$d</string>
+    <string name="deleted_account">Удалённый аккаунт</string>
+    <string name="account_suspended">Аккаунт заблокирован</string>
+    <string name="action_delete_chat">Удалить чат</string>
     <string name="message_corrupted">Это сообщение не удалось показать.</string>
     <string name="message_edited_suffix">(изменено)</string>
     <string name="message_replying_to">Ответ %1$s</string>
@@ -178,9 +181,11 @@
     <string name="verify">Сделать официальным</string>
     <string name="unverify">Снять официальный статус</string>
     <string name="cd_verified_account">Официальный аккаунт</string>
+    <string name="cd_account_blocked">Аккаунт заблокирован</string>
     <string name="cd_similar_verified">Похож на официальный аккаунт</string>
     <string name="presence_online">В сети</string>
     <string name="presence_recently">Недавно заходил</string>
+    <string name="presence_long_ago">был(а) давно</string>
     <string name="presence_today_at">Сегодня в %1$s</string>
     <string name="presence_yesterday_at">Вчера в %1$s</string>
     <string name="presence_weekday_at">%1$s в %2$s</string>
@@ -383,6 +388,8 @@
     <string name="logs_file_size_kb">%1$d КБ</string>
     <string name="logs_file_size_mb">%1$s МБ</string>
     <string name="logs_scroll_to_bottom_cd">Прокрутить к последним записям</string>
+    <string name="logs_search">Поиск</string>
+    <string name="logs_search_hint">Поиск по записям журнала</string>
 
     <string name="settings_account_title">Аккаунт</string>
     <string name="settings_account_logout_confirm_title">Выйти?</string>
@@ -413,6 +420,7 @@
     <string name="error_connection">Не удалось подключиться. Проверьте интернет.</string>
     <string name="error_unknown">Что-то пошло не так. Попробуйте ещё раз.</string>
     <string name="typing_single">%1$s печатает…</string>
+    <string name="typing_alone">печатает…</string>
     <string name="typing_two">%1$s и %2$s печатают…</string>
     <string name="typing_many">%1$s, %2$s и ещё %3$d печатают…</string>
     <string name="more">Ещё</string>

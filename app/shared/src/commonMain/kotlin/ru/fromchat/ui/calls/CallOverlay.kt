@@ -32,7 +32,7 @@ import ru.fromchat.api.ApiClient
 import ru.fromchat.api.calls.CallStore
 import ru.fromchat.api.calls.CallUiState
 import ru.fromchat.api.local.db.store.ProfileCache
-import ru.fromchat.api.local.db.store.visibleDisplayName
+import ru.fromchat.ui.profile.displayNameForUi
 import ru.fromchat.ui.profile.DisplayName
 import ru.fromchat.ui.profile.effectiveVerificationStatus
 import ru.fromchat.ui.profile.resolveVerificationStatus
@@ -94,7 +94,7 @@ fun CallOverlay(modifier: Modifier = Modifier) {
             val me = ApiClient.user?.id
             val cached = ProfileCache.get(s.fromUserId)
             val title =
-                cached?.visibleDisplayName(me)?.takeIf { it.isNotBlank() }
+                cached?.displayNameForUi(me)?.takeIf { it.isNotBlank() }
                     ?: cached?.username?.takeIf { it.isNotBlank() }
                     ?: stringResource(Res.string.user_fallback, s.fromUserId)
             Box(

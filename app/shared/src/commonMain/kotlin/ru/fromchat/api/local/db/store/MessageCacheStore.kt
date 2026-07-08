@@ -99,11 +99,11 @@ object MessageCacheStore {
     fun loadRecentPublicMessagesImmediate(instanceId: String, limit: Long = 128): List<Message> {
         if (instanceId.isBlank()) return emptyList()
         val convId = conversationIdForPublic()
-        val raw = db.messageDatabaseQueries
-            .selectRecentMessagesByConversation(instanceId, convId, limit)
-            .executeAsList()
-            .map { row: DbMessage -> row.toAppMessage() }
-            .reversed()
+        val raw = hydrateReplyReferences(
+            db.messageDatabaseQueries
+                .selectRecentMessagesByConversation(instanceId, convId, limit)
+                .executeAsList(),
+        ).reversed()
         val withoutSuperseded = dropSupersededOptimisticMessages(raw, ApiClient.user?.id)
         return ProfileCache.enrichPublicMessagesForDisplay(
             sortMessagesForChatDisplay(
@@ -345,8 +345,11 @@ object MessageCacheStore {
         withContext(Dispatchers.Default) {
             val upserts = conversations.map { conv ->
                 val conversationId = conversationIdForDm(conv.user.id)
-                val displayLabel = conv.user.displayName?.trim()?.takeIf { it.isNotEmpty() }
-                    ?: conv.user.username.trim()
+                val displayLabel = when {
+                    conv.user.deleted == true -> ""
+                    else -> conv.user.displayName?.trim()?.takeIf { it.isNotEmpty() }
+                        ?: conv.user.username.trim()
+                }
                 val localUnread = db.messageDatabaseQueries
                     .countUnreadInboundDmMessages(iid, conversationId, conv.user.id.toLong())
                     .executeAsOne()
@@ -388,6 +391,7 @@ object MessageCacheStore {
                 pruneEmptyConversationsLocked(iid)
             }
         }
+        DmConversationListNotifier.notifyChanged()
     }
 
     private data class UpsertDmConversationRow(
@@ -853,10 +857,10 @@ object MessageCacheStore {
         val iid = instanceId()
         OutgoingMessageCoordinator.pruneStaleAttachmentOutboxForInstance(iid)
         return withContext(Dispatchers.Default) {
-            val raw = db.messageDatabaseQueries
+            val rows = db.messageDatabaseQueries
                 .selectMessagesByConversation(iid, conversationId)
                 .executeAsList()
-                .map { row: DbMessage -> row.toAppMessage() }
+            val raw = rows.map { it.toAppMessage() }
             val withoutSuperseded = dropSupersededOptimisticMessages(raw, ApiClient.user?.id)
             purgeSupersededPendingRows(iid, conversationId, raw, withoutSuperseded)
             sortMessagesForChatDisplay(
@@ -873,11 +877,10 @@ object MessageCacheStore {
     private suspend fun loadRecentMessages(conversationId: String, limit: Long): List<Message> {
         val iid = instanceId()
         return withContext(Dispatchers.Default) {
-            db.messageDatabaseQueries
+            val rows = db.messageDatabaseQueries
                 .selectRecentMessagesByConversation(iid, conversationId, limit)
                 .executeAsList()
-                .map { row: DbMessage -> row.toAppMessage() }
-                .reversed()
+            rows.map { it.toAppMessage() }.reversed()
         }
     }
 
@@ -979,6 +982,19 @@ object MessageCacheStore {
                     cid,
                 )
                 db.messageDatabaseQueries.deleteOutboxItem(instanceId, cid)
+            }
+        }
+    }
+
+    private fun hydrateReplyReferences(rows: List<DbMessage>): List<Message> {
+        val messages = rows.map { it.toAppMessage() }
+        val byId = messages.associateBy { it.id }
+        return rows.zip(messages).map { (row, message) ->
+            val replyId = row.replyToId?.toInt()
+            if (replyId != null) {
+                message.copy(reply_to = byId[replyId])
+            } else {
+                message
             }
         }
     }

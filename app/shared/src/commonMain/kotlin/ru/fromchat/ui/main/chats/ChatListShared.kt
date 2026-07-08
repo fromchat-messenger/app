@@ -87,6 +87,9 @@ import ru.fromchat.ui.chat.TypingIndicator
 import ru.fromchat.ui.components.Text
 import ru.fromchat.unread_count_badge
 import ru.fromchat.unread_count_overflow
+import ru.fromchat.ui.profile.deletedUserDisplayNameForUi
+import ru.fromchat.ui.profile.displayNameForUi
+import ru.fromchat.ui.profile.peerIsDeleted
 import ru.fromchat.user_fallback
 
 internal object ChatListLayout {
@@ -394,12 +397,33 @@ internal fun SearchConversationsList(
                     resultIndex++
                     item {
                         val cached = ProfileCache.get(user.id)
-                        val avatarUrl = cached?.profilePicture ?: user.profile_picture
-                        val peerTitle = cached?.displayName?.takeIf { it.isNotBlank() }
-                            ?: user.displayName?.takeIf { it.isNotBlank() }
-                            ?: cached?.visibleUsername(ApiClient.user?.id)
-                            ?: user.username
-                        val username = cached?.visibleUsername(ApiClient.user?.id) ?: user.username
+                        val isPeerDeleted = peerIsDeleted(
+                            userId = user.id,
+                            currentUserId = ApiClient.user?.id,
+                            deleted = user.deleted ?: cached?.deleted,
+                            username = user.username,
+                        )
+                        val avatarUrl = if (isPeerDeleted) null else cached?.profilePicture ?: user.profile_picture
+                        val peerTitle = if (isPeerDeleted) {
+                            deletedUserDisplayNameForUi()
+                        } else {
+                            cached?.displayName?.takeIf { it.isNotBlank() }
+                                ?: user.displayName?.takeIf { it.isNotBlank() }
+                                ?: cached?.visibleUsername(ApiClient.user?.id)
+                                ?: user.username
+                        }
+                        val avatarInitialsLabel = if (isPeerDeleted) {
+                            deletedUserDisplayNameForUi()
+                        } else {
+                            cached?.displayName?.takeIf { it.isNotBlank() }
+                                ?: user.displayName?.takeIf { it.isNotBlank() }
+                                ?: ""
+                        }
+                        val username = if (isPeerDeleted) {
+                            deletedUserDisplayNameForUi()
+                        } else {
+                            cached?.visibleUsername(ApiClient.user?.id) ?: user.username
+                        }
 
                         ChatRowScaleContainer(
                             listItemPosition = position,
@@ -418,11 +442,13 @@ internal fun SearchConversationsList(
                                 leadingContent = {
                                     ChatRowAvatar(
                                         profilePictureUrl = avatarUrl,
-                                        displayNameForInitials = peerTitle,
+                                        displayNameForInitials = avatarInitialsLabel,
                                         enabled = false,
                                         onPressStart = {},
                                         onPressEnd = {},
                                         onLongPress = {},
+                                        isDeletedUser = isPeerDeleted,
+                                        userId = user.id,
                                     )
                                 },
                             )
@@ -503,6 +529,8 @@ internal fun ChatRowAvatar(
     modifier: Modifier = Modifier,
     showOnlineIndicator: Boolean = false,
     onlineIndicatorBorderColor: Color = MaterialTheme.colorScheme.surfaceContainerLow,
+    isDeletedUser: Boolean = false,
+    userId: Int? = null,
 ) {
     Box(
         modifier
@@ -526,6 +554,8 @@ internal fun ChatRowAvatar(
             profilePictureUrl = profilePictureUrl,
             displayName = displayNameForInitials,
             modifier = Modifier.fillMaxSize(),
+            isDeletedUser = isDeletedUser,
+            userId = userId,
         )
         if (showOnlineIndicator) {
             Box(
@@ -830,13 +860,27 @@ internal fun DmConversationRowContent(
     onBodyLongPress: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val currentUserId = ApiClient.user?.id
     val cached = ProfileCache.get(conversation.otherUserId)
-    val avatarUrl = cached?.profilePicture
-    val peerTitle = cached?.displayName?.takeIf { it.isNotBlank() }
-        ?: cached?.visibleUsername(ApiClient.user?.id)
-        ?: conversation.displayName.ifBlank {
-            stringResource(Res.string.user_fallback, conversation.otherUserId)
-        }
+    val isPeerDeleted = peerIsDeleted(
+        userId = conversation.otherUserId,
+        currentUserId = currentUserId,
+        deleted = cached?.deleted,
+        username = cached?.username ?: conversation.displayName.takeIf { it.isNotBlank() },
+    )
+    val avatarUrl = if (isPeerDeleted) null else cached?.profilePicture
+    val peerTitle = when {
+        isPeerDeleted -> deletedUserDisplayNameForUi()
+        !cached?.displayName.isNullOrBlank() -> cached.displayName!!.trim()
+        conversation.displayName.isNotBlank() -> conversation.displayName
+        else -> stringResource(Res.string.user_fallback, conversation.otherUserId)
+    }
+    val avatarInitialsLabel = when {
+        isPeerDeleted -> deletedUserDisplayNameForUi()
+        !cached?.displayName.isNullOrBlank() -> cached.displayName!!.trim()
+        conversation.displayName.isNotBlank() -> conversation.displayName
+        else -> ""
+    }
     val preview = conversation.lastMessagePreview?.trim().orEmpty().ifEmpty { defaultLastMessage }
     val status = statusMap[conversation.otherUserId]
     val typingUsers = status?.typingUsernames.orEmpty()
@@ -869,13 +913,15 @@ internal fun DmConversationRowContent(
                 )
                 ChatRowAvatar(
                     profilePictureUrl = avatarUrl,
-                    displayNameForInitials = peerTitle,
+                    displayNameForInitials = avatarInitialsLabel,
                     enabled = avatarEnabled,
                     onPressStart = onAvatarPressStart,
                     onPressEnd = onAvatarPressEnd,
                     onLongPress = onAvatarLongPress,
                     showOnlineIndicator = isOnline,
                     onlineIndicatorBorderColor = listSurfaceColor,
+                    isDeletedUser = isPeerDeleted,
+                    userId = conversation.otherUserId,
                 )
             }
         },

@@ -3,16 +3,10 @@ package ru.fromchat.api
 import com.google.android.gms.tasks.Task
 import com.google.firebase.messaging.FirebaseMessaging
 import com.pr0gramm3r101.utils.settings.settings
-import io.ktor.client.call.body
-import io.ktor.client.request.header
-import io.ktor.client.request.post
-import io.ktor.client.request.setBody
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import ru.fromchat.Logger
-import ru.fromchat.api.schema.core.SimpleStatusResponse
-import ru.fromchat.config.ServerConfig
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -34,14 +28,8 @@ private suspend fun fetchCurrentFcmToken(): String? = suspendCancellableCoroutin
 
 private suspend fun postFcmToken(token: String): Boolean {
     return runCatching {
-        val suffix = token.takeLast(8)
-        ApiClient.http
-            .post("${ServerConfig.apiBaseUrl}/push/register") {
-                header("Content-Type", "application/json")
-                setBody(ApiClient.json.encodeToString(mapOf("token" to token)))
-            }
-            .body<SimpleStatusResponse>()
-        Logger.i("FcmReg", "Uploaded FCM token to server: ...$suffix")
+        ApiClient.registerFcmToken(token)
+        Logger.i("FcmReg", "Uploaded FCM token to server: ...${token.takeLast(8)}")
         true
     }.getOrElse { e ->
         Logger.e("FcmReg", "Failed to upload FCM token: ${e.message}", e)
@@ -53,8 +41,11 @@ actual suspend fun uploadPendingFcmTokenIfAvailable() = withContext(Dispatchers.
     try {
         val pending = settings.getString(PENDING_FCM_TOKEN_KEY, "")
 
-        if (ApiClient.token.isNullOrEmpty() || pending.isBlank()) {
-            Logger.d("FcmReg", "Auth token missing or no FCM token; deferring FCM token upload")
+        if (ApiClient.token.isNullOrEmpty()) {
+            Logger.d("FcmReg", "Auth token missing; deferring FCM token upload")
+            return@withContext
+        }
+        if (pending.isBlank()) {
             return@withContext
         }
 
@@ -102,22 +93,21 @@ actual suspend fun unregisterFcmTokenFromServer(): Boolean = withContext(Dispatc
         return@withContext false
     }
 
-    val token = settings.getString(CURRENT_FCM_TOKEN_KEY, "").trim()
+    val storedToken = settings.getString(CURRENT_FCM_TOKEN_KEY, "").trim()
+    val token = storedToken.ifBlank {
+        runCatching { fetchCurrentFcmToken()?.trim().orEmpty() }.getOrDefault("")
+    }
     Logger.i("FcmReg", "unregisterFcmTokenFromServer requested with token=...${token.takeLast(8)}")
     return@withContext runCatching {
-        ApiClient.http.post("${ServerConfig.apiBaseUrl}/push/unregister") {
-            header("Content-Type", "application/json")
-            if (token.isNotEmpty()) {
-                setBody(ApiClient.json.encodeToString(mapOf("token" to token)))
-            }
-        }
+        ApiClient.unregisterFcmToken(token.takeIf { it.isNotBlank() })
         settings.remove(PENDING_FCM_TOKEN_KEY)
-        if (token.isNotBlank()) {
-            settings.remove(CURRENT_FCM_TOKEN_KEY)
-        }
+        settings.remove(CURRENT_FCM_TOKEN_KEY)
         true
     }.getOrElse { e ->
         Logger.e("FcmReg", "Failed to unregister FCM token: ${e.message}")
         false
     }
 }
+
+actual suspend fun isFcmPushRegisteredLocally(): Boolean =
+    settings.getString(CURRENT_FCM_TOKEN_KEY, "").isNotBlank()

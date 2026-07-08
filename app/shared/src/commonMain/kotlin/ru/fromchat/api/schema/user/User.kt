@@ -19,5 +19,6 @@ data class User(
     @SerialName("verification_status") val verificationStatus: VerificationStatus? = null,
     val suspended: Boolean? = null,
     @SerialName("suspension_reason") val suspensionReason: String? = null,
+    val deleted: Boolean? = null,
 )
 

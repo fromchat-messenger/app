@@ -165,7 +165,6 @@ private fun handleAccountLifecycleEvent(message: WebSocketMessage) {
             MainScope().launch {
                 ApiClient.logout()
             }
-            WebSocketManager.disconnect()
         }
     }
 }

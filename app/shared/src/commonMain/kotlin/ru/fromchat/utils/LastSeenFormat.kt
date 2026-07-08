@@ -25,6 +25,7 @@ import ru.fromchat.month_sep
 import ru.fromchat.presence_date_full
 import ru.fromchat.presence_date_this_year
 import ru.fromchat.presence_online
+import ru.fromchat.presence_long_ago
 import ru.fromchat.presence_recently
 import ru.fromchat.presence_today_at
 import ru.fromchat.presence_weekday_at
@@ -53,6 +54,7 @@ private fun formatFromXmlTemplate(template: String, vararg args: Any): String {
 data class LastSeenFormatStrings(
     val online: String,
     val recently: String,
+    val longAgo: String,
     val todayAt: String,
     val yesterdayAt: String,
     val weekdayAt: String,
@@ -66,6 +68,7 @@ data class LastSeenFormatStrings(
 fun rememberLastSeenFormatStrings(): LastSeenFormatStrings {
     val online = stringResource(Res.string.presence_online)
     val recently = stringResource(Res.string.presence_recently)
+    val longAgo = stringResource(Res.string.presence_long_ago)
     val todayAt = stringResource(Res.string.presence_today_at)
     val yesterdayAt = stringResource(Res.string.presence_yesterday_at)
     val weekdayAt = stringResource(Res.string.presence_weekday_at)
@@ -91,7 +94,7 @@ fun rememberLastSeenFormatStrings(): LastSeenFormatStrings {
     val mNov = stringResource(Res.string.month_nov)
     val mDec = stringResource(Res.string.month_dec)
     return remember(
-        online, recently, todayAt, yesterdayAt, weekdayAt, dateThisYear, dateFull,
+        online, recently, longAgo, todayAt, yesterdayAt, weekdayAt, dateThisYear, dateFull,
         mon, tue, wed, thu, fri, sat, sun,
         mJan, mFeb, mMar, mApr, mMay, mJun, mJul, mAug, mSep, mOct, mNov, mDec
     ) {
@@ -99,6 +102,7 @@ fun rememberLastSeenFormatStrings(): LastSeenFormatStrings {
         LastSeenFormatStrings(
             online = online,
             recently = recently,
+            longAgo = longAgo,
             todayAt = todayAt,
             yesterdayAt = yesterdayAt,
             weekdayAt = weekdayAt,
@@ -128,6 +132,7 @@ fun formatLastSeen(online: Boolean, lastSeenIso: String?, s: LastSeenFormatStrin
     if (online) return s.online
     val iso = lastSeenIso ?: return ""
     val instant = runCatching { Instant.parse(iso) }.getOrNull() ?: return s.recently
+    if (instant.toEpochMilliseconds() <= 0L) return s.longAgo
 
     val timeZone = TimeZone.currentSystemDefault()
     val lastLocal = instant.toLocalDateTime(timeZone)

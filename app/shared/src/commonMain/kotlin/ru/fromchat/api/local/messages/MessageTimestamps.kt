@@ -30,6 +30,23 @@ internal fun parseMessageInstant(timestamp: String): Instant? {
 internal fun parseMessageTimestampMillis(timestamp: String): Long? =
     parseMessageInstant(timestamp)?.toEpochMilliseconds()
 
+/** HH:mm today; date + time when the message is from another day (bubble footer). */
+internal fun formatMessageBubbleTimeLocal(timestamp: String): String {
+    val local = parseMessageInstant(timestamp)?.toDeviceLocal() ?: return ""
+    val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+    val hour = local.hour.toString().padStart(2, '0')
+    val minute = local.minute.toString().padStart(2, '0')
+    val time = "$hour:$minute"
+    if (local.date == now.date) return time
+    val day = local.day.toString().padStart(2, '0')
+    val month = local.month.number.toString().padStart(2, '0')
+    return if (local.year == now.year) {
+        "$day.$month $time"
+    } else {
+        "$day.$month.${local.year} $time"
+    }
+}
+
 /** HH:mm in the device time zone (bubble footer). */
 internal fun formatMessageTimeLocal(timestamp: String): String {
     val local = parseMessageInstant(timestamp)?.toDeviceLocal() ?: return ""

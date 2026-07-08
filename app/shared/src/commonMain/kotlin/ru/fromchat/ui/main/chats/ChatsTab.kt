@@ -30,6 +30,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.rounded.Block
+import com.pr0gramm3r101.components.ListItem
+import com.pr0gramm3r101.components.ListItemPosition
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.AlertDialog
@@ -112,8 +115,7 @@ import ru.fromchat.public_chat
 import ru.fromchat.search_title
 import ru.fromchat.status_connecting
 import ru.fromchat.status_updating
-import ru.fromchat.suspend_chat_banner_message
-import ru.fromchat.suspended_default_reason
+import ru.fromchat.account_suspended
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.chat.panels.dm.DmNav
 import ru.fromchat.ui.components.BackHandler
@@ -122,8 +124,7 @@ import ru.fromchat.ui.components.ConnectingEllipsis
 import ru.fromchat.ui.components.PredictiveBackHandler
 import ru.fromchat.ui.components.SearchBar
 import ru.fromchat.ui.components.SearchBarSharedElement
-import ru.fromchat.ui.components.SuspendedAccountBannerStyle
-import ru.fromchat.ui.components.SuspendedAccountNoticeHost
+import ru.fromchat.ui.components.SuspendedAccountSupportSheet
 import ru.fromchat.ui.components.Text
 import ru.fromchat.utils.NetworkConnectivity
 import ru.fromchat.utils.haptic.HapticFeedbackEvent
@@ -250,7 +251,7 @@ private fun ChatsSelectionTopBar(
                 Box {
                     IconButton(onClick = { overflowOpen = true }) {
                         Icon(
-                            imageVector = Icons.Default.MoreVert,
+                            imageVector = Icons.Filled.MoreVert,
                             contentDescription = moreActionsCd,
                         )
                     }
@@ -330,6 +331,7 @@ fun ChatsTab(
     var subscribedDmUserIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
     val statusSubscriptionScope = rememberCoroutineScope()
     val suspensionState by ApiClient.suspensionState.collectAsState()
+    var showSuspendedSupportSheet by remember { mutableStateOf(false) }
     val defaultLastMessage = stringResource(Res.string.chat_last_mesaage)
 
     LaunchedEffect(previewStrings.imageOnly, previewStrings.attachmentOnly) {
@@ -519,7 +521,7 @@ fun ChatsTab(
     }
 
     LaunchedEffect(serverConfig, activeInstanceId, connectionStatus) {
-        if (activeInstanceId.isBlank()) return@LaunchedEffect
+        if (activeInstanceId.isBlank() || connectionStatus != ConnectionStatus.CONNECTED) return@LaunchedEffect
 
         runCatching {
             ApiClient.getDmConversations()
@@ -546,8 +548,7 @@ fun ChatsTab(
     val updatingTitle = stringResource(Res.string.status_updating)
     val selectedCount = selectedOtherUserIds.size + if (publicChatSelected) 1 else 0
     val selectedCountTitle = stringResource(Res.string.chats_selected_count, selectedCount)
-    val suspendBannerTitle = stringResource(Res.string.suspend_chat_banner_message)
-    val suspendDefaultReason = stringResource(Res.string.suspended_default_reason)
+    val accountSuspendedTitle = stringResource(Res.string.account_suspended)
     val publicChatFallbackTitle = stringResource(Res.string.public_chat)
     val publicChatTitle = publicChatProfile?.title?.takeIf { it.isNotBlank() }
         ?: publicChatFallbackTitle.takeIf { activeInstanceId.isNotBlank() }
@@ -696,15 +697,25 @@ fun ChatsTab(
                     }
                 }
 
-                SuspendedAccountNoticeHost(
-                    isSuspended = suspensionState.isSuspended,
-                    reason = suspensionState.reason,
-                    fallbackReason = suspendDefaultReason,
-                    bannerTitle = suspendBannerTitle,
-                    style = SuspendedAccountBannerStyle.Tabs,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                )
-
+                if (suspensionState.isSuspended) {
+                    ListItem(
+                        headline = accountSuspendedTitle,
+                        position = ListItemPosition.START,
+                        groupItemCount = 1,
+                        divider = false,
+                        leadingContent = {
+                            Icon(
+                                imageVector = Icons.Rounded.Block,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                        },
+                        onClick = { showSuspendedSupportSheet = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                } else {
                 ChatConversationsList(
                     listState = tabListState,
                     listFilter = ChatListFilter.Active,
@@ -797,6 +808,7 @@ fun ChatsTab(
                         }
                     },
                 )
+                }
             }
         }
 
@@ -903,6 +915,11 @@ fun ChatsTab(
                 }
             }
         }
+
+        SuspendedAccountSupportSheet(
+            isVisible = showSuspendedSupportSheet,
+            onDismissRequest = { showSuspendedSupportSheet = false },
+        )
     }
 }
 

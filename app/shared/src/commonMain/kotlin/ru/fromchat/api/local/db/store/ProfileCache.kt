@@ -19,7 +19,10 @@ import kotlin.concurrent.Volatile
  * to the UI (for suspended or deleted users), except for the current user.
  */
 fun UserProfile.shouldHideUsername(currentUserId: Int? = null): Boolean =
-    id != currentUserId && (deleted == true || suspended == true)
+    id != currentUserId && (deleted == true || isDeletedPlaceholderUsername(username))
+
+private fun isDeletedPlaceholderUsername(username: String?): Boolean =
+    username?.startsWith("#deleted") == true
 
 fun UserProfile.visibleUsername(currentUserId: Int? = null): String? =
     if (shouldHideUsername(currentUserId)) {
@@ -71,18 +74,23 @@ object ProfileCache {
 
         val incomingUsername = username?.trim()?.takeIf { it.isNotEmpty() }
             ?: existing?.username?.trim()?.takeIf { it.isNotEmpty() }
-        val incomingDisplayName = displayName?.trim()?.takeIf { it.isNotEmpty() }
-            ?: existing?.displayName?.takeIf { it.isNotBlank() }
-            ?: incomingUsername
+        val isDeleted = existing?.deleted == true || isDeletedPlaceholderUsername(incomingUsername)
+        val incomingDisplayName = if (isDeleted) {
+            null
+        } else {
+            displayName?.trim()?.takeIf { it.isNotEmpty() }
+                ?: existing?.displayName?.takeIf { it.isNotBlank() }
+                ?: incomingUsername
+        }
 
-        if (incomingUsername.isNullOrEmpty() && incomingDisplayName.isNullOrBlank()) return
+        if (!isDeleted && incomingUsername.isNullOrEmpty() && incomingDisplayName.isNullOrBlank()) return
 
         put(
             UserProfile(
                 id = id,
                 username = incomingUsername.orEmpty(),
                 displayName = incomingDisplayName,
-                profilePicture = profilePicture?.takeIf { it.isNotBlank() }
+                profilePicture = if (isDeleted) null else profilePicture?.takeIf { it.isNotBlank() }
                     ?: existing?.profilePicture,
                 bio = existing?.bio,
                 online = existing?.online ?: false,
@@ -92,7 +100,7 @@ object ProfileCache {
                 verificationStatus = verificationStatus ?: existing?.verificationStatus,
                 suspended = existing?.suspended,
                 suspensionReason = existing?.suspensionReason,
-                deleted = existing?.deleted,
+                deleted = isDeleted,
                 isClientPreviewOnly = true,
             ),
         )
@@ -152,16 +160,20 @@ object ProfileCache {
         val incomingUsername = user.username.trim()
         if (incomingUsername.isEmpty()) return
 
-        val incomingDisplayName =
+        val isDeleted = user.deleted == true || isDeletedPlaceholderUsername(incomingUsername)
+        val incomingDisplayName = if (isDeleted) {
+            null
+        } else {
             user.displayName?.trim()?.takeIf { it.isNotEmpty() } ?: incomingUsername
+        }
 
         put(
             UserProfile(
                 id = user.id,
                 username = incomingUsername,
-                displayName = existing?.displayName?.takeIf { it.isNotBlank() }
+                displayName = if (isDeleted) null else existing?.displayName?.takeIf { it.isNotBlank() }
                     ?: incomingDisplayName,
-                profilePicture = user.profile_picture?.takeIf { it.isNotBlank() }
+                profilePicture = if (isDeleted) null else user.profile_picture?.takeIf { it.isNotBlank() }
                     ?: existing?.profilePicture,
                 bio = existing?.bio,
                 online = user.online,
@@ -169,9 +181,9 @@ object ProfileCache {
                 createdAt = user.created_at.takeIf { it.isNotBlank() } ?: existing?.createdAt,
                 verified = user.verified ?: existing?.verified,
                 verificationStatus = user.verificationStatus ?: existing?.verificationStatus,
-                suspended = existing?.suspended,
-                suspensionReason = existing?.suspensionReason,
-                deleted = existing?.deleted,
+                suspended = user.suspended ?: existing?.suspended,
+                suspensionReason = user.suspensionReason ?: existing?.suspensionReason,
+                deleted = isDeleted,
                 isClientPreviewOnly = true,
             ),
         )
@@ -185,8 +197,10 @@ object ProfileCache {
 
         val uname = message.username.trim().ifBlank { existing?.username?.trim().orEmpty() }
         if (uname.isBlank()) return
-        val display = existing?.displayName?.takeIf { it.isNotBlank() } ?: uname
-        val pic = message.profile_picture?.takeIf { it.isNotBlank() } ?: existing?.profilePicture
+        val isDeleted = isDeletedPlaceholderUsername(uname) || existing?.deleted == true
+        val display = if (isDeleted) null else existing?.displayName?.takeIf { it.isNotBlank() } ?: uname
+        val pic = if (isDeleted) null else message.profile_picture?.takeIf { it.isNotBlank() }
+            ?: existing?.profilePicture
 
         put(
             UserProfile(
@@ -202,7 +216,7 @@ object ProfileCache {
                 verificationStatus = message.verificationStatus ?: existing?.verificationStatus,
                 suspended = existing?.suspended,
                 suspensionReason = existing?.suspensionReason,
-                deleted = existing?.deleted,
+                deleted = isDeleted,
                 isClientPreviewOnly = true,
             ),
         )

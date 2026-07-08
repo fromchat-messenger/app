@@ -65,7 +65,10 @@ import ru.fromchat.ui.chat.utils.TypingUser
 import ru.fromchat.ui.components.ConnectingEllipsis
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.profile.StatusBadge
+import ru.fromchat.ui.profile.peerIsDeleted
 import ru.fromchat.ui.profile.resolveVerificationStatus
+import ru.fromchat.api.local.db.store.ProfileCache
+import ru.fromchat.api.ApiClient
 import com.pr0gramm3r101.utils.scaleOnPress
 import kotlin.math.PI
 import kotlin.math.tan
@@ -85,11 +88,19 @@ fun ChatTopBarInner(
     sharedAvatarKey: Any?,
     subtitleKey: String,
     currentTypingUsers: List<TypingUser>,
+    typingShowsUsernames: Boolean = true,
     statusConnecting: String,
     statusUpdating: String,
     chatGroupLabel: String,
     modifier: Modifier = Modifier,
 ) {
+    val isDeletedPeer = profileUserId?.let { userId ->
+        peerIsDeleted(
+            userId = userId,
+            currentUserId = ApiClient.user?.id,
+            username = titleAvatar?.displayName ?: title,
+        )
+    } == true
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
@@ -118,6 +129,8 @@ fun ChatTopBarInner(
                                 animatedVisibilityScope = animatedVisibilityScope,
                             )
                             .size(40.dp),
+                        isDeletedUser = isDeletedPeer,
+                        userId = profileUserId,
                     )
                 }
 
@@ -130,6 +143,8 @@ fun ChatTopBarInner(
                         profilePictureUrl = avatar.profilePictureUrl,
                         displayName = avatar.displayName,
                         modifier = Modifier.size(40.dp),
+                        isDeletedUser = isDeletedPeer,
+                        userId = profileUserId,
                     )
 
                     Spacer(modifier = Modifier.width(6.dp))
@@ -244,6 +259,7 @@ fun ChatTopBarInner(
                     key == "typing" -> {
                         TypingIndicator(
                             typingUsers = currentTypingUsers.map { it.username },
+                            showUsernames = typingShowsUsernames,
                             modifier = Modifier.padding(top = 2.dp),
                         )
                     }

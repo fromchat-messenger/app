@@ -142,6 +142,7 @@ import ru.fromchat.notif_call_ongoing_title
 import ru.fromchat.notif_screenshare_text
 import ru.fromchat.notif_screenshare_title
 import ru.fromchat.ui.chat.Avatar
+import ru.fromchat.ui.profile.avatarLabelForInitials
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
@@ -731,7 +732,8 @@ private fun SoloCallParticipantVideos(
     val lcRef = localCamRefs.firstOrNull()
     val self = ApiClient.user
     val selfPic = self?.id?.let { ProfileCache.get(it)?.profilePicture } ?: self?.profile_picture
-    val selfName = self?.displayName?.takeIf { !it.isNullOrBlank() } ?: self?.username.orEmpty()
+    val selfAvatarLabel = self?.displayName?.trim().orEmpty()
+    val peerAvatarLabel = ProfileCache.get(session.peerUserId)?.avatarLabelForInitials(self?.id).orEmpty()
     val peerPic = ProfileCache.get(session.peerUserId)?.profilePicture
     Box(
         Modifier
@@ -753,7 +755,7 @@ private fun SoloCallParticipantVideos(
             }
             lcRef != null && !localCamOn -> {
                 RemoteVideoOffPlaceholder(
-                    displayName = selfName,
+                    displayName = selfAvatarLabel,
                     profilePictureUrl = selfPic,
                     audioLevel = localLevel,
                     modifier = Modifier.fillMaxSize(),
@@ -761,7 +763,7 @@ private fun SoloCallParticipantVideos(
             }
             else -> {
                 RemoteVideoOffPlaceholder(
-                    displayName = session.peerDisplayName,
+                    displayName = peerAvatarLabel,
                     profilePictureUrl = peerPic,
                     audioLevel = 0f,
                     modifier = Modifier.fillMaxSize(),
@@ -884,7 +886,8 @@ private fun DuoCallParticipantVideos(
     val selfId = self?.id
     val selfPic = selfId?.let { ProfileCache.get(it)?.profilePicture }
         ?: self?.profile_picture
-    val selfName = self?.displayName?.takeIf { !it.isNullOrBlank() } ?: self?.username.orEmpty()
+    val selfAvatarLabel = self?.displayName?.trim().orEmpty()
+    val peerAvatarLabel = ProfileCache.get(session.peerUserId)?.avatarLabelForInitials(selfId).orEmpty()
     val youLabel = stringResource(Res.string.message_sender_you)
     val controlsReserve = if (showInCallControls) 168.dp else 0.dp
     val screenShareMainBottomPad = controlsReserve
@@ -893,7 +896,7 @@ private fun DuoCallParticipantVideos(
         VideoSlot.RemoteScreen, VideoSlot.RemoteCam ->
             CallOwnerUi(
                 name = session.peerDisplayName,
-                avatarName = session.peerDisplayName,
+                avatarName = peerAvatarLabel,
                 pictureUrl = peerPic,
                 level = remoteLevel,
                 isSelf = false,
@@ -901,7 +904,7 @@ private fun DuoCallParticipantVideos(
         VideoSlot.LocalCam, VideoSlot.LocalScreen ->
             CallOwnerUi(
                 name = youLabel,
-                avatarName = selfName,
+                avatarName = selfAvatarLabel,
                 pictureUrl = selfPic,
                 level = localLevel,
                 isSelf = true,
@@ -950,7 +953,11 @@ private fun DuoCallParticipantVideos(
                         }
                         slot != VideoSlot.None && mainRef != null && !isScreen(slot) && !camEnabled(slot) -> {
                             RemoteVideoOffPlaceholder(
-                                displayName = session.peerDisplayName,
+                                displayName = if (slot == VideoSlot.RemoteCam) {
+                                    peerAvatarLabel
+                                } else {
+                                    selfAvatarLabel
+                                },
                                 profilePictureUrl = if (slot == VideoSlot.RemoteCam) peerPic else selfPic,
                                 audioLevel = if (slot == VideoSlot.RemoteCam) remoteLevel else localLevel,
                                 modifier = baseModifier,
@@ -958,7 +965,7 @@ private fun DuoCallParticipantVideos(
                         }
                         else -> {
                             RemoteVideoOffPlaceholder(
-                                displayName = session.peerDisplayName,
+                                displayName = peerAvatarLabel,
                                 profilePictureUrl = peerPic,
                                 audioLevel = remoteLevel,
                                 modifier = Modifier.fillMaxSize(),
