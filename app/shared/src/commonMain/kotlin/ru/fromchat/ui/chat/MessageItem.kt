@@ -32,8 +32,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -62,6 +62,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Logger
 import ru.fromchat.Res
@@ -117,7 +118,7 @@ private fun Modifier.enterLayoutHeight(
     if (!active) return this
     return layout { measurable, constraints ->
         val placeable = measurable.measure(constraints)
-        val layoutScale = scale.coerceIn(0f, 1f)
+        val layoutScale = scale.coerceAtLeast(0f)
         val h = (placeable.height * layoutScale).roundToInt().coerceAtLeast(
             if (layoutScale > 0f) minHeightPx else 0,
         )
@@ -241,6 +242,12 @@ fun MessageItem(
         Animatable(if (startsAsNew) 0f else 1f)
     }
     val timestampForceAlpha = remember(enterIdentity) { Animatable(1f) }
+    val isPendingOutbound = message.id < 0 && message.files.isNullOrEmpty()
+    val sendFailed = isPendingOutbound && !message.uploadError.isNullOrBlank()
+    val showSendingIndicator =
+        isAuthor &&
+            isPendingOutbound &&
+            !sendFailed
     val isNewEnterRole = enterAnimationRole == EnterAnimationRole.NewMessage
     LaunchedEffect(enterIdentity, enterAnimationRole, showTimestamp) {
         Logger.d(
@@ -271,7 +278,7 @@ fun MessageItem(
         enterScale.animateTo(
             1f,
             spring(
-                dampingRatio = Spring.DampingRatioNoBouncy,
+                dampingRatio = 0.76f,
                 stiffness = Spring.StiffnessMediumLow,
             ),
         )
@@ -281,11 +288,11 @@ fun MessageItem(
             "spring_end identity=${enterIdentity.take(12)} role=${enterAnimationRole.name}",
         )
     }
-    LaunchedEffect(enterIdentity, enterAnimationRole) {
+    LaunchedEffect(enterIdentity, enterAnimationRole, showSendingIndicator, sendFailed) {
         when (enterAnimationRole) {
             EnterAnimationRole.PreviousLast -> {
-                // Fade in parallel with the new bubble spring (same frame as enqueue).
-                if (timestampForceAlpha.value > 0.01f) {
+                // Still-sending rows keep the timer visible; only fade delivered timestamps.
+                if (!showSendingIndicator && !sendFailed && timestampForceAlpha.value > 0.01f) {
                     timestampForceAlpha.animateTo(0f, tween(80))
                 }
             }
@@ -309,27 +316,48 @@ fun MessageItem(
     val showAvatar = showAvatarSlot && group.isLastInGroup
     val showUsernameInBubble = showUsername && !isAuthor && group.isFirstInGroup
 
-    val isPendingOutbound = message.id < 0 && message.files.isNullOrEmpty()
-    val sendFailed = isPendingOutbound && !message.uploadError.isNullOrBlank()
-    val showScheduleIcon =
-        runEnterAnimation &&
-            isAuthor &&
-            isPendingOutbound &&
-            !sendFailed
+    val sendingMetaAlpha = remember(enterIdentity) {
+        Animatable(if (showSendingIndicator) 1f else 0f)
+    }
+    val deliveredTimeAlpha = remember(enterIdentity) {
+        Animatable(if (showSendingIndicator) 0f else 1f)
+    }
+    var wasSendingIndicator by remember(enterIdentity) { mutableStateOf(showSendingIndicator) }
+    LaunchedEffect(showSendingIndicator, sendFailed, group.isLastInGroup) {
+        when {
+            showSendingIndicator -> {
+                sendingMetaAlpha.snapTo(1f)
+                deliveredTimeAlpha.snapTo(0f)
+                wasSendingIndicator = true
+            }
+            wasSendingIndicator && !sendFailed -> {
+                wasSendingIndicator = false
+                if (group.isLastInGroup) {
+                    launch { sendingMetaAlpha.animateTo(0f, tween(220)) }
+                    deliveredTimeAlpha.animateTo(1f, tween(220))
+                } else {
+                    sendingMetaAlpha.snapTo(0f)
+                    deliveredTimeAlpha.snapTo(0f)
+                }
+            }
+        }
+    }
     // Group membership drives timestamp space; PreviousLast fades alpha while
     // showTimestamp is still held true by ChatScreen until this role arrives.
     val timestampVisible = when {
+        showSendingIndicator || sendFailed -> true
         enterAnimationRole == EnterAnimationRole.PreviousLast -> false
-        showScheduleIcon || sendFailed -> true
         else -> showTimestamp
     }
-    val timestampAlpha =
-        if (enterAnimationRole == EnterAnimationRole.PreviousLast) {
-            timestampForceAlpha.value
-        } else {
-            1f
-        }
-    val timestampTakesSpace = timestampVisible
+    val timestampAlpha = when {
+        showSendingIndicator || sendFailed -> 1f
+        enterAnimationRole == EnterAnimationRole.PreviousLast -> timestampForceAlpha.value
+        else -> 1f
+    }
+    val timestampTakesSpace =
+        timestampVisible ||
+            sendingMetaAlpha.value > 0.01f ||
+            (group.isLastInGroup && deliveredTimeAlpha.value > 0.01f && !showSendingIndicator)
     val metaColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
     val enterTransformOrigin =
         if (isAuthor) TransformOrigin(1f, 1f) else TransformOrigin(0f, 1f)
@@ -853,8 +881,8 @@ fun MessageItem(
                                 .graphicsLayer { alpha = timestampAlpha }
                                 .padding(
                                     top = 2.dp,
-                                    start = if (isAuthor) 0.dp else 4.dp,
-                                    end = if (isAuthor) 4.dp else 0.dp,
+                                    start = if (isAuthor) 0.dp else 8.dp,
+                                    end = if (isAuthor) 8.dp else 0.dp,
                                 ),
                             horizontalArrangement = Arrangement.End,
                             verticalAlignment = Alignment.CenterVertically,
@@ -866,22 +894,15 @@ fun MessageItem(
                                 exit = fadeOut(tween(180)) +
                                     shrinkVertically(shrinkTowards = Alignment.Top),
                             ) {
-                                // Fixed-height meta row so schedule ↔ time never shifts layout.
+                                // Fixed-height meta row so timer ↔ time never shifts layout.
                                 Box(
                                     modifier = Modifier.height(16.dp),
                                     contentAlignment = Alignment.CenterEnd,
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        if (showScheduleIcon) {
-                                            Icon(
-                                                imageVector = Icons.Rounded.Schedule,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(14.dp),
-                                                tint = metaColor,
-                                            )
-                                        } else if (sendFailed) {
+                                    if (sendFailed) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
                                             Icon(
                                                 imageVector = Icons.Rounded.ErrorOutline,
                                                 contentDescription = sendFailedLabel,
@@ -899,22 +920,39 @@ fun MessageItem(
                                                 fontSize = 12.sp,
                                                 color = metaColor,
                                             )
-                                        } else {
+                                        }
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Timer,
+                                            contentDescription = null,
+                                            modifier = Modifier
+                                                .size(14.dp)
+                                                .graphicsLayer {
+                                                    alpha = sendingMetaAlpha.value
+                                                },
+                                            tint = metaColor,
+                                        )
+                                        Row(
+                                            modifier = Modifier.graphicsLayer {
+                                                alpha = deliveredTimeAlpha.value
+                                            },
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
                                             Text(
                                                 text = formattedTime,
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontSize = 12.sp,
                                                 color = metaColor,
                                             )
-                                        }
-                                        if (message.is_edited && !showScheduleIcon) {
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = editedSuffix,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontSize = 12.sp,
-                                                color = metaColor,
-                                            )
+                                            if (message.is_edited) {
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = editedSuffix,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontSize = 12.sp,
+                                                    color = metaColor,
+                                                )
+                                            }
                                         }
                                     }
                                 }

@@ -1006,15 +1006,22 @@ fun ChatScreen(
                                         else -> false
                                     }
 
+                                    val isPendingOwnTextSend =
+                                        message.id < 0 &&
+                                            message.files.isNullOrEmpty() &&
+                                            message.user_id == currentUserId
                                     MessageItem(
                                         message = message,
                                         isAuthor = message.user_id == currentUserId,
                                         group = item.group,
                                         showTimestamp = showTimestamp,
-                                        onBubbleTap = {
-                                            if (item.group.isLastInGroup &&
-                                                messageKey !in revealedTimestampKeys
-                                            ) {
+                                        onBubbleTap = if (isPendingOwnTextSend) {
+                                            null
+                                        } else {
+                                            {
+                                                if (item.group.isLastInGroup &&
+                                                    messageKey !in revealedTimestampKeys
+                                                ) {
                                                 // Default-visible last bubble: tap hides.
                                                 hiddenDefaultTimestampKeys =
                                                     if (messageKey in hiddenDefaultTimestampKeys) {
@@ -1031,6 +1038,7 @@ fun ChatScreen(
                                                     }
                                                 hiddenDefaultTimestampKeys =
                                                     hiddenDefaultTimestampKeys - messageKey
+                                            }
                                             }
                                         },
                                         enterAnimationRole = enterRole,
