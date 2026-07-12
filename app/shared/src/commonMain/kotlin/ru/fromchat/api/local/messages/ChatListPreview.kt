@@ -1,5 +1,6 @@
 package ru.fromchat.api.local.messages
 
+import ru.fromchat.api.local.cache.DecryptedImageCache
 import ru.fromchat.api.local.db.parseDmMessageContent
 import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.api.schema.messages.dm.DmEnvelope
@@ -36,6 +37,7 @@ fun messageHasImageAttachment(message: Message): Boolean {
         if (isImageFilename(file.name)) return true
     }
     if (message.pendingFileUri != null) {
+        if (DecryptedImageCache.isDecryptedImageCacheUri(message.pendingFileUri)) return true
         val pendingName = message.pendingFilename?.trim()?.takeIf { it.isNotEmpty() }
             ?: message.pendingFileUri.substringAfterLast('/').substringBefore('?')
         if (isImageFilename(pendingName)) return true

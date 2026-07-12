@@ -16,6 +16,7 @@ import ru.fromchat.api.schema.messages.dm.DmFile
 import ru.fromchat.api.local.AttachmentMediaLog
 import ru.fromchat.api.local.cache.DecryptedImageCache
 import ru.fromchat.api.local.download.readLocalImageDimensions
+import ru.fromchat.ui.chat.isImageFilename
 
 private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -118,6 +119,7 @@ fun resolveLocalPreviewUri(message: Message): String? {
     message.pendingFileUri?.takeIf { uri ->
         DecryptedImageCache.isDecryptedImageCacheUri(uri) && localPreviewFileExists(uri)
     }?.let { return it }
+    if (!messageQualifiesForImageCacheHydration(message)) return null
     val cid = message.client_message_id?.trim()?.takeIf { it.isNotEmpty() }
     if (cid != null) {
         DecryptedImageCache.getCached(message.id, fileIndex = 0, cid)
@@ -130,6 +132,35 @@ fun resolveLocalPreviewUri(message: Message): String? {
             ?.let { return it }
     }
     return null
+}
+
+/** True when disk lookup may attach a decrypted image preview to [message]. */
+internal fun messageQualifiesForImageCacheHydration(message: Message): Boolean {
+    if (message.files.orEmpty().any { isImageFilename(it.name) }) return true
+    if (message.dmEnvelope?.files.orEmpty().any { isImageFilename(it.name) }) return true
+    if (message.pendingFileAspectRatio != null) return true
+    message.pendingFilename?.trim()?.takeIf { it.isNotEmpty() }?.let { name ->
+        if (isImageFilename(name)) return true
+    }
+    message.pendingFileUri?.trim()?.takeIf { it.isNotEmpty() }?.let { uri ->
+        if (DecryptedImageCache.isDecryptedImageCacheUri(uri)) return true
+        val name = uri.substringAfterLast('/').substringBefore('?')
+        if (isImageFilename(name)) return true
+    }
+    val parsed = parseDmMessageContent(message.content)
+    if (!parsed.fileThumbnails.isNullOrEmpty() && !parsed.files.isNullOrEmpty()) return true
+    return false
+}
+
+/** Restores pending preview URIs from DB without attaching orphaned image cache files to text rows. */
+internal fun resolveStoredPendingFileUri(
+    message: Message,
+    parsed: ParsedDmMessageContent,
+): String? {
+    parsed.pendingFileUri?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+    if (!messageQualifiesForImageCacheHydration(message)) return null
+    parsed.localPreviewUri?.takeIf { localPreviewFileExists(it) }?.let { return it }
+    return resolveLocalPreviewUri(message)
 }
 
 /** Sync disk lookup for cold-start chat open (no suspend alias copy). */

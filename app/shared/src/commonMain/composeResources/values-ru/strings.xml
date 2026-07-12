@@ -58,6 +58,7 @@
     <string name="coming_soon">Скоро…</string>
     <string name="contacts_empty_title">Скоро</string>
     <string name="contacts_empty_body">Список контактов появится здесь, когда функция будет готова.</string>
+    <string name="chat_scroll_to_bottom_cd">Прокрутить к новым сообщениям</string>
     <string name="public_chat">Общий чат</string>
     <string name="chat_last_mesaage">Вы: последнее сообщение</string>
     <string name="chat_preview_attachment">Вложение</string>

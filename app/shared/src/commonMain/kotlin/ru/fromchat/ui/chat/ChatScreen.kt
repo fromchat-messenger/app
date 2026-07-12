@@ -23,15 +23,20 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -73,6 +78,8 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -119,6 +126,7 @@ import ru.fromchat.back
 import ru.fromchat.action_delete_chat
 import ru.fromchat.ui.profile.peerIsDeleted
 import ru.fromchat.cd_call
+import ru.fromchat.chat_scroll_to_bottom_cd
 import ru.fromchat.chat_group_label
 import ru.fromchat.status_connecting
 import ru.fromchat.status_updating
@@ -174,6 +182,16 @@ fun ChatScreen(
     val panelId = panelState.id
     val listState = rememberSaveable(panelId, saver = LazyListState.Saver) {
         LazyListState(0, 0)
+    }
+    var isNearBottom by rememberSaveable(panelId) { mutableStateOf(true) }
+    LaunchedEffect(listState, panelState.messages.size) {
+        snapshotFlow {
+            val minVisibleIndex = listState.layoutInfo.visibleItemsInfo.minOfOrNull { it.index }
+                ?: Int.MAX_VALUE
+            minVisibleIndex <= 2
+        }
+            .distinctUntilChanged()
+            .collect { nearBottom -> isNearBottom = nearBottom }
     }
     val density = LocalDensity.current
     val fallbackMessageHeightPx = remember(density) { with(density) { 80.dp.roundToPx() } }
@@ -428,6 +446,7 @@ fun ChatScreen(
     val statusUpdating = stringResource(Res.string.status_updating)
     val presenceRecently = stringResource(Res.string.presence_recently)
     val chatGroupLabel = stringResource(Res.string.chat_group_label)
+    val scrollToBottomCd = stringResource(Res.string.chat_scroll_to_bottom_cd)
     val cdCall = stringResource(Res.string.cd_call)
     LaunchedEffect(currentTypingUsers) {
         Logger.d("ChatScreen", "currentTypingUsers updated (from panelState): ${currentTypingUsers.map { it.username }}")
@@ -482,9 +501,13 @@ fun ChatScreen(
         }
     }
 
-    // Scroll to specific message when requested (e.g., from notification click)
-    LaunchedEffect(scrollToMessageId, panelState.messages) {
-        scrollToMessageId?.let(scrollToChatMessage)
+    // Scroll to specific message once when requested (e.g., notification / deep link).
+    LaunchedEffect(scrollToMessageId) {
+        val messageId = scrollToMessageId ?: return@LaunchedEffect
+        snapshotFlow { lazyIndexForMessageId(listItems, messageId) }
+            .filterNotNull()
+            .first()
+        scrollToChatMessage(messageId)
     }
 
     // UI state
@@ -693,6 +716,8 @@ fun ChatScreen(
                     panel.updateMessageByClientMessageId(progress.clientMessageId) {
                         it.copy(uploadError = null)
                     }
+                is OutboundSendProgress.Success ->
+                    panel.handleMessageConfirmed(progress.clientMessageId, progress.message)
                 is OutboundSendProgress.Failed ->
                     panel.updateMessageByClientMessageId(progress.clientMessageId) {
                         it.copy(uploadError = progress.error)
@@ -1269,6 +1294,34 @@ fun ChatScreen(
                         }
 
                         item { Spacer(modifier.height(floatingHeaderClearance)) }
+                        }
+
+                        val showScrollToBottomFab = panel.usesPublicGroupSubtitle &&
+                            !isNearBottom &&
+                            panelState.messages.isNotEmpty() &&
+                            !contextMenuState.isOpen
+                        AnimatedVisibility(
+                            visible = showScrollToBottomFab,
+                            enter = fadeIn(tween(150)) +
+                                expandVertically(expandFrom = Alignment.Bottom),
+                            exit = fadeOut(tween(120)) +
+                                shrinkVertically(shrinkTowards = Alignment.Bottom),
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 16.dp, bottom = 16.dp),
+                        ) {
+                            SmallFloatingActionButton(
+                                onClick = {
+                                    scope.launch { listState.animateScrollToItem(0) }
+                                },
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowDown,
+                                    contentDescription = scrollToBottomCd,
+                                )
+                            }
                         }
 
                         ChatTopBar(

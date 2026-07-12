@@ -135,6 +135,7 @@ internal fun imageAspectRatioForMessage(
     fileIndex: Int = 0,
     @Suppress("UNUSED_PARAMETER") confirmed: Boolean = true,
     @Suppress("UNUSED_PARAMETER") hasLocalPreview: Boolean = false,
+    thumbnailBytes: ByteArray? = null,
 ): Float? {
     val localRatio = pendingFileAspectRatio?.takeIf { fileIndex == 0 && it > 0f }
     val pair = fileAspectRatioPairs?.getOrNull(fileIndex)
@@ -148,14 +149,42 @@ internal fun imageAspectRatioForMessage(
     val serverDim = fileDimensions?.getOrNull(fileIndex)
     val serverRatio = fileAspectRatios?.getOrNull(fileIndex)?.takeIf { it > 0f }
 
-    pairRatio?.let { return it }
-    serverDim?.let { (w, h) ->
-        if (w > 0 && h > 0 && !isPlaceholderAttachmentDimensions(w, h)) {
-            return aspectRatioFromDimensionPair(w, h)
+    val metadataAspect = pairRatio
+        ?: serverDim?.let { (w, h) ->
+            if (w > 0 && h > 0 && !isPlaceholderAttachmentDimensions(w, h)) {
+                aspectRatioFromDimensionPair(w, h)
+            } else {
+                null
+            }
+        }
+        ?: serverRatio?.takeIf { !isPlaceholderAttachmentAspectRatio(it) }
+        ?: localRatio
+
+    val thumbDims = thumbnailBytes?.let { ru.fromchat.api.local.download.readImageDimensionsFromBytes(it) }
+    if (thumbDims != null) {
+        val (tw, th) = thumbDims
+        if (tw > 0 && th > 0 && !isPlaceholderAttachmentDimensions(tw, th)) {
+            return preferDecodedAspectRatio(metadataAspect, tw, th)
         }
     }
-    serverRatio?.takeIf { !isPlaceholderAttachmentAspectRatio(it) }?.let { return it }
-    return localRatio
+    return metadataAspect
+}
+
+/**
+ * Prefer decoded / thumbnail pixels when metadata ignored EXIF (common on huge JPEGs):
+ * metadata and decoded aspects are reciprocals (~90° apart).
+ */
+internal fun preferDecodedAspectRatio(
+    metadataAspect: Float?,
+    decodedWidth: Int,
+    decodedHeight: Int,
+): Float {
+    if (decodedWidth <= 0 || decodedHeight <= 0) {
+        return metadataAspect?.takeIf { it.isFinite() && it > 0f } ?: 1f
+    }
+    // Always trust decoded pixels for layout; metadata can disagree on EXIF orientation,
+    // especially for very large images or when dimensions were cached incorrectly.
+    return decodedWidth.toFloat() / decodedHeight.toFloat()
 }
 
 internal fun coalesceDecodeTarget(vararg sizes: ChatPreviewDecodeSize?): ChatPreviewDecodeSize {

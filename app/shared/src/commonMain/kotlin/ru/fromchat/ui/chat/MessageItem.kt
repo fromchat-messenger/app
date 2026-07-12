@@ -478,6 +478,8 @@ fun MessageItem(
                     horizontalAlignment = if (isAuthor) Alignment.End else Alignment.Start
                 ) {
                     val pendingIsImage = when {
+                        message.pendingFileUri != null &&
+                            DecryptedImageCache.isDecryptedImageCacheUri(message.pendingFileUri) -> true
                         message.pendingFilename?.isNotBlank() == true ->
                             isImageFilename(message.pendingFilename)
                         message.pendingFileUri != null -> isImageFilename(
@@ -487,7 +489,8 @@ fun MessageItem(
                     }
                     val pendingHasOutboundFile = message.pendingFileUri != null &&
                         message.files.isNullOrEmpty() &&
-                        !pendingIsImage
+                        !pendingIsImage &&
+                        !DecryptedImageCache.isDecryptedImageCacheUri(message.pendingFileUri)
                     val uploadFailed = !message.uploadError.isNullOrBlank()
                     val canCancelUpload = message.isQueuedOutbound() && isAuthor &&
                         !uploadFailed &&
@@ -725,6 +728,13 @@ fun MessageItem(
                                                 (primaryFile != null && !primaryIsImage)
                                             if (showPrimaryImageSlot) {
                                                 val imageKey = imageAttachmentKey(message, 0)
+                                                val primaryThumbBytes = remember(
+                                                    message.id,
+                                                    message.fileThumbnails?.firstOrNull(),
+                                                ) {
+                                                    message.fileThumbnails?.firstOrNull()
+                                                        ?.let { decodeAttachmentThumbnailBase64(it) }
+                                                }
                                                 val layoutAspect = imageAspectRatioForMessage(
                                                     fileAspectRatios = message.fileAspectRatios,
                                                     fileDimensions = message.fileDimensions,
@@ -733,6 +743,7 @@ fun MessageItem(
                                                     fileIndex = 0,
                                                     confirmed = message.id > 0,
                                                     hasLocalPreview = !message.pendingFileUri.isNullOrBlank(),
+                                                    thumbnailBytes = primaryThumbBytes,
                                                 )
                                                 LaunchedEffect(
                                                     message.id,
@@ -896,6 +907,9 @@ fun MessageItem(
                                                                 .isDecryptedImageCacheUri(
                                                                     message.pendingFileUri,
                                                                 ),
+                                                        thumbnailBytes = message.fileThumbnails
+                                                            ?.getOrNull(index)
+                                                            ?.let { decodeAttachmentThumbnailBase64(it) },
                                                     ),
                                                     fileSizeBytes =
                                                         message.fileSizes?.getOrNull(index),
@@ -1121,6 +1135,7 @@ private fun MessageReplyQuote(
     ) {
         Row(
             modifier = Modifier
+                .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
                 .background(quoteBg)
                 .height(IntrinsicSize.Min),

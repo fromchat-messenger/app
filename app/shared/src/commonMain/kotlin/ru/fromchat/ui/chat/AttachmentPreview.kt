@@ -105,6 +105,7 @@ import ru.fromchat.ui.chat.utils.attachmentTileLayout
 import ru.fromchat.ui.chat.utils.coalesceDecodeTarget
 import ru.fromchat.ui.chat.utils.decodeSizeChangedMeaningfully
 import ru.fromchat.ui.chat.utils.peekDecodedAttachmentBitmap
+import ru.fromchat.ui.chat.utils.preferDecodedAspectRatio
 import ru.fromchat.ui.components.Text
 import com.pr0gramm3r101.utils.scaleOnPress
 import ru.fromchat.ui.chat.MessageGroupInfo
@@ -202,6 +203,9 @@ fun AttachmentPreview(
             var isFullyLoaded by remember(messageId, fileIndex, file?.path, pendingFileUri) {
                 mutableStateOf(false)
             }
+            var effectiveAspect by remember(messageId, fileIndex, file?.path, pendingFileUri, fileAspectRatio) {
+                mutableStateOf(fileAspectRatio)
+            }
             Box(
                 modifier = modifier
                     .then(
@@ -219,7 +223,7 @@ fun AttachmentPreview(
                     )
                     // Explicit px size from dp max + aspect — do not wrap to thumb intrinsics
                     // (IntrinsicSize.Max bubbles otherwise shrink to ~80px ≈ 3× too small).
-                    .attachmentTileLayout(aspectRatio = fileAspectRatio)
+                    .attachmentTileLayout(aspectRatio = effectiveAspect)
                     .clip(attachmentImageCornerShape(isAuthor, messageGroup))
                     .then(
                         if (onImageBounds != null && showImageTile) {
@@ -273,6 +277,12 @@ fun AttachmentPreview(
                             onCancelUpload = onCancelUpload,
                             onFullyLoaded = { if (it) isFullyLoaded = true },
                             messageGroup = messageGroup,
+                            onResolvedAspectRatio = { width, height ->
+                                val resolved = preferDecodedAspectRatio(fileAspectRatio, width, height)
+                                if (resolved != effectiveAspect) {
+                                    effectiveAspect = resolved
+                                }
+                            },
                         )
                     }
                 }
@@ -307,6 +317,7 @@ private fun ChatImageTileContent(
         hasSameAuthorAbove = false,
         hasSameAuthorBelow = false,
     ),
+    onResolvedAspectRatio: ((width: Int, height: Int) -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val clipShape = attachmentImageCornerShape(isAuthor, messageGroup)
@@ -669,6 +680,11 @@ private fun ChatImageTileContent(
 
     LaunchedEffect(placeholderBitmap) {
         if (placeholderBitmap != null) decryptFinished = true
+    }
+
+    LaunchedEffect(fullBitmap, placeholderBitmap) {
+        val bitmap = fullBitmap ?: placeholderBitmap ?: return@LaunchedEffect
+        onResolvedAspectRatio?.invoke(bitmap.width, bitmap.height)
     }
 
     LaunchedEffect(treatAsOutbound, messageId, fileIndex, cacheClientId) {

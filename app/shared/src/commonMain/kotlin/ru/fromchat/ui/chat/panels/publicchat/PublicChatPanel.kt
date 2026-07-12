@@ -203,7 +203,10 @@ class PublicChatPanel(
                     else -> {
                         // Never replace the in-memory list with the DB snapshot alone — that
                         // dropped paginated / ahead-of-network rows when reopening (e.g. profile).
-                        val merged = mergeDatabaseMessagesWithPanelState(shown, cached)
+                        val merged = mergeDatabaseMessagesWithPanelState(
+                            panelMessagesForDbMerge(),
+                            cached,
+                        )
                         if (merged != shown) {
                             updateState { it.copy(messages = sortMessagesForChatDisplay(merged)) }
                         }
@@ -272,16 +275,26 @@ class PublicChatPanel(
             }
         }
         val ahead = shown.filter { it.id > 0 && it.id !in networkIds }
-        if (ahead.isEmpty()) return merged
+        val inFlight = shown.filter { msg ->
+            msg.id < 0 && (
+                !msg.client_message_id.isNullOrBlank() ||
+                    msg.pendingFileUri != null ||
+                    !msg.uploadJobId.isNullOrBlank()
+                )
+        }
+        if (ahead.isEmpty() && inFlight.isEmpty()) return merged
+        val combined = merged + ahead + inFlight
         return ru.fromchat.api.local.messages.sortMessagesForChatDisplay(
-            ru.fromchat.ui.chat.utils.dedupeMessagesByClientId(merged + ahead),
+            ru.fromchat.ui.chat.utils.dedupeMessagesByClientId(combined),
         )
     }
+
+    private fun snapshotUiMessagesForNetworkMerge(): List<Message> = panelMessagesForDbMerge()
 
     override suspend fun sendMessage(content: String, replyToId: Int?, clientMessageId: String?) {
         val cid = clientMessageId?.trim().orEmpty()
         if (cid.isEmpty()) return
-        val optimistic = _state.messages.find { it.client_message_id == cid } ?: return
+        val optimistic = pendingOptimisticMessage(cid) ?: return
         OutgoingMessageCoordinator.enqueuePublicMessage(
             content = content,
             replyToId = replyToId,
@@ -334,8 +347,15 @@ class PublicChatPanel(
         if (response != null && response.messages.isNotEmpty()) {
             val networkMessages = response.messages.map { it.resolvePublicAttachmentLayout() }
             ProfileCache.mergePreviewFromPublicMessages(networkMessages)
+            val optimisticSnapshot = snapshotPendingOptimisticMessages()
+            val pendingStr = debugPendingKeys().takeIf { it.isNotBlank() } ?: "(none)"
+            val optIds = optimisticSnapshot.mapNotNull { it.client_message_id }.ifEmpty { listOf<String>() }
+            val loadMsg = "loadMessages: pendingKeys=$pendingStr optimisticSnapshot=$optIds stateCount=${_state.messages.size}"
+            Logger.d("PublicChatPanel", loadMsg)
+            var mergedForCache: List<Message>? = null
             withContext(Dispatchers.Main) {
-                val shown = _state.messages
+                val shown = snapshotUiMessagesForNetworkMerge()
+                Logger.d("PublicChatPanel", "loadMessages: snapshotUiMessagesForNetworkMerge size=${shown.size}")
                 if (shown.isNotEmpty() && !publicHistoryDiffersForUi(shown, networkMessages)) {
                     Logger.d("PublicChatPanel", "Network history matches UI; skip clear/re-add")
                     val withSenders = mergePublicSenderFieldsFromNetwork(shown, networkMessages)
@@ -344,6 +364,7 @@ class PublicChatPanel(
                     }
                     if (_state.hasMoreMessages) setHasMoreMessages(false)
                     if (_state.isLoading) setLoading(false)
+                    mergedForCache = mergeNetworkHistoryWithShown(shown, networkMessages)
                 } else {
                     batchStateUpdates {
                         val merged = preserveReplyToFromExisting(
@@ -354,14 +375,22 @@ class PublicChatPanel(
                         addMessages(
                             ProfileCache.enrichPublicMessagesForDisplay(merged),
                         )
+                        Logger.d("PublicChatPanel", "loadMessages: after addMessages mergedSize=${merged.size} restoring optimistic count=${optimisticSnapshot.size}")
+                        restorePendingOptimisticMessages(optimisticSnapshot)
                         setHasMoreMessages(false) // TODO: Implement has_more from API
                         setLoading(false)
+                        mergedForCache = mergeNetworkHistoryWithShown(
+                            panelMessagesForDbMerge(),
+                            networkMessages,
+                        )
                     }
                 }
             }
             withContext(Dispatchers.Default) {
-                val mergedForCache = mergeNetworkHistoryWithShown(_state.messages, networkMessages)
-                MessageCacheStore.replacePublicMessages(mergedForCache)
+                val toPersist = mergedForCache
+                    ?: mergeNetworkHistoryWithShown(panelMessagesForDbMerge(), networkMessages)
+                Logger.d("PublicChatPanel", "loadMessages: persisting to cache messages=${toPersist.size}")
+                MessageCacheStore.replacePublicMessages(toPersist)
             }
         } else if (responseResult.isFailure) {
             val cause = responseResult.exceptionOrNull()

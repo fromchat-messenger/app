@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.scale
 import androidx.exifinterface.media.ExifInterface
+import java.io.ByteArrayInputStream
 
 actual object PlatformDecodedBitmapCache {
     private val cache: LruCache<String, ImageBitmap> = object : LruCache<String, ImageBitmap>(maxCacheBytes()) {
@@ -85,23 +86,34 @@ private fun decodeSampledFromBytes(bytes: ByteArray, reqWidthPx: Int, reqHeightP
 
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
 
+    val orientation = runCatching {
+        ExifInterface(ByteArrayInputStream(bytes)).getAttributeInt(
+            ExifInterface.TAG_ORIENTATION,
+            ExifInterface.ORIENTATION_NORMAL,
+        )
+    }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+    val (orientedW, orientedH) = orientedDimensions(bounds.outWidth, bounds.outHeight, orientation)
+
     return scaleBitmapToFitWithin(
-        BitmapFactory.decodeByteArray(
-            bytes,
-            0,
-            bytes.size,
-            BitmapFactory.Options().apply {
-                inSampleSize = calculateInSampleSize(
-                    bounds.outWidth,
-                    bounds.outHeight,
-                    reqWidthPx,
-                    reqHeightPx
-                )
-                inPreferredConfig = Bitmap.Config.ARGB_8888
-            }
-        ) ?: return null,
+        applyExifOrientation(
+            BitmapFactory.decodeByteArray(
+                bytes,
+                0,
+                bytes.size,
+                BitmapFactory.Options().apply {
+                    inSampleSize = calculateInSampleSize(
+                        orientedW,
+                        orientedH,
+                        reqWidthPx,
+                        reqHeightPx,
+                    )
+                    inPreferredConfig = Bitmap.Config.ARGB_8888
+                },
+            ) ?: return null,
+            orientation,
+        ),
         reqWidthPx,
-        reqHeightPx
+        reqHeightPx,
     )
 }
 

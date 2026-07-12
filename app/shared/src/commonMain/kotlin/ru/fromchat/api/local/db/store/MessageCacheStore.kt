@@ -26,8 +26,8 @@ import ru.fromchat.api.local.db.encodeOptimisticOutboundMessage
 import ru.fromchat.api.local.db.encodePersistedDmMessage
 import ru.fromchat.api.local.db.encodePersistedPublicMessage
 import ru.fromchat.api.local.db.parseDmMessageContent
+import ru.fromchat.api.local.db.resolveStoredPendingFileUri
 import ru.fromchat.api.local.db.hydrateAttachmentPreviewFromDiskSync
-import ru.fromchat.api.local.db.resolveLocalPreviewUri
 import ru.fromchat.api.local.messages.sortMessagesForChatDisplay
 import ru.fromchat.api.local.send.DmAttachmentOutboxPayload
 import ru.fromchat.api.local.send.PublicAttachmentOutboxPayload
@@ -45,6 +45,8 @@ import ru.fromchat.api.crypto.decryptEnvelope
 import ru.fromchat.api.local.cache.DecryptedFileCache
 import ru.fromchat.api.local.cache.DecryptedImageCache
 import ru.fromchat.api.local.download.DownloadedFileRegistry
+import ru.fromchat.api.local.download.readImageDimensionsFromBytes
+import com.pr0gramm3r101.utils.crypto.Base64
 import ru.fromchat.ui.chat.utils.attachPublicReplyReferences
 import ru.fromchat.ui.chat.isImageFilename
 import ru.fromchat.ui.chat.utils.dedupeMessagesByClientId
@@ -166,21 +168,20 @@ object MessageCacheStore {
     }
 
     suspend fun replacePublicMessages(messages: List<Message>) {
+        val convId = conversationIdForPublic()
         val resolved = messages.map { it.resolvePublicAttachmentLayout() }
         ProfileCache.mergePreviewFromPublicMessages(resolved)
-        conversationIdForPublic().let {
-            replaceMessages(
-                it,
-                sortMessagesForChatDisplay(
-                    dedupeMessagesByClientId(
-                        resolved + loadPendingMessages(it).filter { p ->
-                            val cid = p.client_message_id
-                            cid == null || resolved.none { it.client_message_id == cid }
-                        }
-                    )
-                )
-            )
+        val pending = loadPendingMessages(convId)
+        val stillPending = filterStillPendingForReplace(convId, pending, resolved)
+        val before = resolved + stillPending
+        val merged = dedupeMessagesByClientId(
+            dropSupersededOptimisticMessages(before, ApiClient.user?.id),
+        ).let { sortMessagesForChatDisplay(it) }
+        val iid = instanceId()
+        withContext(Dispatchers.Default) {
+            purgeSupersededPendingRows(iid, convId, before, merged)
         }
+        replaceMessages(convId, merged)
     }
 
     suspend fun clearPublicMessages() {
@@ -305,6 +306,62 @@ object MessageCacheStore {
             var resolved = confirmed.resolvePublicAttachmentLayout()
             resolved = hydrateAttachmentPreviewFromDisk(resolved)
             ProfileCache.mergePreviewFromPublicMessage(resolved)
+            // If we have a pending optimistic row with a local aspect, prefer it when server
+            // aspect appears to be a rotated reciprocal (common when EXIF/metadata were swapped).
+            try {
+                val convId = conversationIdForPublic()
+                val pending = loadPendingMessages(convId)
+                val local = pending.firstOrNull { it.client_message_id == clientMessageId }
+                if (local != null && !local.files.isNullOrEmpty()) {
+                    val localAspect = local.pendingFileAspectRatio
+                        ?: local.fileDimensions?.firstOrNull()?.let { (w, h) ->
+                            if (h > 0) w.toFloat() / h.toFloat() else null
+                        }
+                    val serverAspect = resolved.fileAspectRatios?.firstOrNull()
+                        ?: resolved.fileDimensions?.firstOrNull()?.let { (w, h) ->
+                            if (h > 0) w.toFloat() / h.toFloat() else null
+                        }
+                    if (localAspect != null && serverAspect != null) {
+                        val product = localAspect * serverAspect
+                        if (product in 0.92f..1.08f && kotlin.math.abs(localAspect - serverAspect) > 0.15f) {
+                            // Swap to local aspect to preserve correct orientation
+                            resolved = resolved.copy(
+                                fileAspectRatios = listOf(localAspect),
+                                fileDimensions = local.fileDimensions ?: resolved.fileDimensions,
+                            )
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                // Best-effort only; fall back to server-resolved layout on any failure.
+            }
+            // If no local optimistic row, prefer decoded server thumbnail dims when available
+            try {
+                val convId = conversationIdForPublic()
+                val pending = loadPendingMessages(convId)
+                val local = pending.firstOrNull { it.client_message_id == clientMessageId }
+                if (local == null) {
+                    val thumbB64 = resolved.fileThumbnails?.firstOrNull()?.takeIf { it.isNotBlank() }
+                    if (!thumbB64.isNullOrBlank()) {
+                        val bytes = runCatching { Base64.decode(thumbB64) }.getOrNull()
+                        val thumbDims = bytes?.let { readImageDimensionsFromBytes(it) }
+                        val decodedAspect = thumbDims?.let { (w, h) -> if (h > 0) w.toFloat() / h.toFloat() else null }
+                        val serverAspect = resolved.fileAspectRatios?.firstOrNull()
+                            ?: resolved.fileDimensions?.firstOrNull()?.let { (w, h) -> if (h > 0) w.toFloat() / h.toFloat() else null }
+                        if (decodedAspect != null && serverAspect != null) {
+                            val product = decodedAspect * serverAspect
+                            if (product in 0.92f..1.08f && kotlin.math.abs(decodedAspect - serverAspect) > 0.15f) {
+                                resolved = resolved.copy(
+                                    fileAspectRatios = listOf(decodedAspect),
+                                    fileDimensions = thumbDims?.let { listOf(it.first to it.second) } ?: resolved.fileDimensions,
+                                )
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                // Best-effort only
+            }
             confirmMessage(conversationIdForPublic(), clientMessageId, resolved)
         }
     }
@@ -1220,9 +1277,7 @@ object MessageCacheStore {
             isContentCorrupted = parsed.isContentCorrupted,
         )
         val hydrated = base.copy(
-            pendingFileUri = parsed.pendingFileUri
-                ?: parsed.localPreviewUri
-                ?: resolveLocalPreviewUri(base),
+            pendingFileUri = resolveStoredPendingFileUri(base, parsed),
             pendingFilename = parsed.pendingFilename ?: base.pendingFilename,
             uploadJobId = parsed.uploadJobId ?: base.uploadJobId,
             fileSizes = parsed.fileSizes ?: base.fileSizes,

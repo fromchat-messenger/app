@@ -9,6 +9,8 @@ import kotlinx.coroutines.launch
 
 sealed class OutboundSendProgress {
     data class Pending(val clientMessageId: String) : OutboundSendProgress()
+    data class Success(val clientMessageId: String, val message: ru.fromchat.api.schema.messages.Message) :
+        OutboundSendProgress()
     data class Failed(val clientMessageId: String, val error: String) : OutboundSendProgress()
 }
 

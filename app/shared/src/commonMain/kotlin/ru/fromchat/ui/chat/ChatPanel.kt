@@ -93,7 +93,10 @@ abstract class ChatPanel(
         addMessageMutex.withLock {
             batchStateUpdates {
                 updateState { current ->
-                    val merged = mergeDatabaseMessagesWithPanelState(current.messages, messages)
+                    val merged = mergeDatabaseMessagesWithPanelState(
+                        panelMessagesForDbMerge(),
+                        messages,
+                    )
                     val withReplies = attachPublicReplyReferences(merged)
                     if (current.messages == withReplies) current
                     else current.copy(messages = withReplies)
@@ -345,14 +348,39 @@ abstract class ChatPanel(
         updateState { it.copy(messages = emptyList()) }
     }
 
-    /** In-flight sends only (active [pendingMessages]), not stale cache optimistics. */
+    /** In-flight sends ([pendingMessages]), including rows cleared from [_state] by a DB refresh. */
     protected fun snapshotPendingOptimisticMessages(): List<Message> {
         if (pendingMessages.isEmpty()) return emptyList()
         val pendingClientIds = pendingMessages.keys
-        return _state.messages.filter { msg ->
+        val fromState = _state.messages.filter { msg ->
             val cid = msg.client_message_id?.trim().orEmpty()
             cid.isNotEmpty() && cid in pendingClientIds
         }
+        val coveredClientIds = fromState.mapNotNull { it.client_message_id?.trim()?.takeIf { it.isNotEmpty() } }.toSet()
+        val fromMap = pendingMessages.values.map { it.second }.filter { msg ->
+            val cid = msg.client_message_id?.trim().orEmpty()
+            cid.isEmpty() || cid !in coveredClientIds
+        }
+        if (fromMap.isEmpty()) return fromState
+        return ru.fromchat.ui.chat.utils.dedupeMessagesByClientId(fromState + fromMap)
+    }
+
+    protected fun pendingOptimisticMessage(clientMessageId: String): Message? {
+        val cid = clientMessageId.trim()
+        if (cid.isEmpty()) return null
+        return _state.messages.find { it.client_message_id == cid }
+            ?: pendingMessages[cid]?.second
+    }
+
+    /** Returns comma-separated client ids of in-flight pending messages (for debug). */
+    protected fun debugPendingKeys(): String =
+        pendingMessages.keys.joinToString(",")
+
+    /** Panel snapshot for DB observe merges — keeps in-flight sends when SQL omits them. */
+    protected fun panelMessagesForDbMerge(): List<Message> {
+        val pending = snapshotPendingOptimisticMessages()
+        if (pending.isEmpty()) return _state.messages
+        return ru.fromchat.ui.chat.utils.dedupeMessagesByClientId(_state.messages + pending)
     }
 
     protected suspend fun restorePendingOptimisticMessages(messages: List<Message>) {

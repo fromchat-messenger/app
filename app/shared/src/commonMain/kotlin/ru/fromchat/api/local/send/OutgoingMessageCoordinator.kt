@@ -30,6 +30,7 @@ import ru.fromchat.api.local.db.buildDmOutboundPlaintext
 import ru.fromchat.api.local.cache.clearUploadArtifacts
 import ru.fromchat.api.local.cache.clearUploadSecretsOnly
 import ru.fromchat.api.local.AttachmentMediaLog
+import ru.fromchat.Logger
 
 /**
  * Single entry point for enqueueing outbound messages (DB row + outbox + worker).
@@ -66,15 +67,21 @@ object OutgoingMessageCoordinator {
         }
         var ok = true
         sendResult.onSuccess { confirmed ->
+            val resolved = confirmed.copy(client_message_id = row.clientMessageId)
+            Logger.d("OutgoingMessageCoordinator", "handlePublicOutboxSend: success clientId=${row.clientMessageId.take(12)} realId=${resolved.id}")
             withContext(Dispatchers.Default) {
                 MessageCacheStore.confirmPublicMessage(
                     row.clientMessageId,
-                    confirmed.copy(client_message_id = row.clientMessageId),
+                    resolved,
                 )
                 MessageDatabaseProvider.database.messageDatabaseQueries
                     .deleteOutboxItem(instanceId, row.clientMessageId)
             }
+            OutboundSendNotifier.emit(
+                OutboundSendProgress.Success(row.clientMessageId, resolved),
+            )
         }.onFailure { error ->
+            Logger.d("OutgoingMessageCoordinator", "handlePublicOutboxSend: failure clientId=${row.clientMessageId.take(12)} err=${error.message ?: error::class.simpleName}")
             when {
                 error.isOutboundPermanentFailure() -> {
                     val errorKey = outboundFailureErrorKey(error)
@@ -152,6 +159,7 @@ object OutgoingMessageCoordinator {
         val conversationId = conversationIdForGroup(GENERAL_PUBLIC_GROUP_ID)
         withContext(Dispatchers.Default) {
             MessageRepository.upsertPublicMessage(optimisticMessage)
+            Logger.d("OutgoingMessageCoordinator", "enqueuePublicMessage: clientId=${clientMessageId.take(12)} contentLen=${content.length}")
             val payload = json.encodeToString(PublicOutboxPayload(content, replyToId))
             MessageDatabaseProvider.database.messageDatabaseQueries.upsertOutbox(
                 instanceId = instanceId,

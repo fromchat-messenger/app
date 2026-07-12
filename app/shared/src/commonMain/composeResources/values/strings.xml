@@ -66,6 +66,7 @@
     <string name="coming_soon">Coming soon…</string>
     <string name="contacts_empty_title">Coming soon</string>
     <string name="contacts_empty_body">Your contacts will appear here when this feature is ready.</string>
+    <string name="chat_scroll_to_bottom_cd">Scroll to latest messages</string>
     <string name="public_chat">Main chat</string>
     <string name="chat_last_mesaage">You: last message</string>
     <string name="chat_preview_attachment">Attachment</string>
