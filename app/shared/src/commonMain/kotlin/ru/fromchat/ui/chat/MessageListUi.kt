@@ -1,5 +1,6 @@
 package ru.fromchat.ui.chat
 
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -247,6 +248,19 @@ fun buildChatListItems(
     }
 
     return chronological.asReversed()
+}
+
+/** Whether a reversed chat list is showing the latest messages (index 0 = bottom spacer). */
+fun LazyListState.isChatNearBottom(threshold: Int = 2): Boolean {
+    if (layoutInfo.totalItemsCount == 0) return true
+    return firstVisibleItemIndex <= threshold
+}
+
+/** Scrolls a reversed chat list to the visual bottom (newest messages). */
+suspend fun LazyListState.scrollChatToBottom() {
+    if (layoutInfo.totalItemsCount == 0) return
+    // Fallback: direct snap to bottom spacer; animation is handled by button enter/exit.
+    scrollToItem(0)
 }
 
 /** LazyColumn index for a message (index 0 = bottom spacer). */

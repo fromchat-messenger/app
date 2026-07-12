@@ -3,6 +3,7 @@ package ru.fromchat.ui.chat
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -20,15 +22,19 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -36,10 +42,11 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -50,10 +57,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.animation.core.Animatable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -61,6 +71,11 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 import kotlinx.datetime.LocalDate
 import ru.fromchat.api.local.messages.formatChatDateSeparator
 import ru.fromchat.chat_date_today
@@ -68,6 +83,7 @@ import ru.fromchat.chat_date_yesterday
 import ru.fromchat.utils.rememberRegistrationDateFormatStrings
 import com.pr0gramm3r101.utils.resetFocus
 import com.pr0gramm3r101.utils.supportClipboardManagerImpl
+import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
@@ -183,15 +199,49 @@ fun ChatScreen(
     val listState = rememberSaveable(panelId, saver = LazyListState.Saver) {
         LazyListState(0, 0)
     }
-    var isNearBottom by rememberSaveable(panelId) { mutableStateOf(true) }
-    LaunchedEffect(listState, panelState.messages.size) {
+    val fakeScrollOffset = remember(panelId) { Animatable(0f) }
+    LaunchedEffect(panelId) {
+        // #region agent log
+        agentDebugLog(
+            hypothesisId = "H4",
+            location = "ChatScreen.kt:188",
+            message = "chat_screen_opened",
+            data = mapOf(
+                "panelId" to panelId,
+                "listStateHash" to listState.hashCode(),
+            ),
+        )
+        // #endregion
+    }
+    val isNearBottom by remember(panelId) {
+        derivedStateOf { listState.isChatNearBottom() }
+    }
+    LaunchedEffect(listState, panelId) {
         snapshotFlow {
-            val minVisibleIndex = listState.layoutInfo.visibleItemsInfo.minOfOrNull { it.index }
-                ?: Int.MAX_VALUE
-            minVisibleIndex <= 2
+            val info = listState.layoutInfo
+            Triple(
+                info.totalItemsCount,
+                listState.firstVisibleItemIndex,
+                listState.firstVisibleItemScrollOffset,
+            )
         }
             .distinctUntilChanged()
-            .collect { nearBottom -> isNearBottom = nearBottom }
+            .collect { (totalItems, firstIndex, firstOffset) ->
+                // #region agent log
+                agentDebugLog(
+                    hypothesisId = "H1",
+                    location = "ChatScreen.kt:196",
+                    message = "scroll_state_changed",
+                    data = mapOf(
+                        "panelId" to panelId,
+                        "totalItems" to totalItems,
+                        "firstVisibleItemIndex" to firstIndex,
+                        "firstVisibleItemScrollOffset" to firstOffset,
+                        "isNearBottom" to listState.isChatNearBottom(),
+                    ),
+                )
+                // #endregion
+            }
     }
     val density = LocalDensity.current
     val fallbackMessageHeightPx = remember(density) { with(density) { 80.dp.roundToPx() } }
@@ -671,8 +721,7 @@ fun ChatScreen(
         previousMessageFingerprint = fingerprint
 
         val lastIsOurs = lastMessage?.user_id == currentUserId
-        val minVisibleIndex = listState.layoutInfo.visibleItemsInfo.minOfOrNull { it.index } ?: Int.MAX_VALUE
-        val isNearBottom = minVisibleIndex <= 2
+        val isNearBottom = listState.isChatNearBottom()
         if (lastIsOurs || isNearBottom) {
             if (listState.layoutInfo.visibleItemsInfo.isNotEmpty()) {
                 delay(100.milliseconds)
@@ -1062,6 +1111,9 @@ fun ChatScreen(
                             state = listState,
                             modifier = Modifier
                                 .fillMaxSize()
+                                .graphicsLayer {
+                                    translationY = fakeScrollOffset.value
+                                }
                                 .background(MaterialTheme.colorScheme.background)
                                 .hazeSource(hazeState),
                             userScrollEnabled = !contextMenuState.isOpen,
@@ -1296,32 +1348,94 @@ fun ChatScreen(
                         item { Spacer(modifier.height(floatingHeaderClearance)) }
                         }
 
-                        val showScrollToBottomFab = panel.usesPublicGroupSubtitle &&
-                            !isNearBottom &&
+                        val showScrollToBottomFab = !isNearBottom &&
                             panelState.messages.isNotEmpty() &&
                             !contextMenuState.isOpen
+                        LaunchedEffect(showScrollToBottomFab) {
+                            // #region agent log
+                            agentDebugLog(
+                                hypothesisId = "H2",
+                                location = "ChatScreen.kt:1338",
+                                message = "show_scroll_button_changed",
+                                data = mapOf(
+                                    "panelId" to panelId,
+                                    "showScrollToBottomFab" to showScrollToBottomFab,
+                                    "isNearBottom" to isNearBottom,
+                                    "messageCount" to panelState.messages.size,
+                                    "contextMenuOpen" to contextMenuState.isOpen,
+                                    "usesPublicGroupSubtitle" to panel.usesPublicGroupSubtitle,
+                                ),
+                            )
+                            // #endregion
+                        }
                         AnimatedVisibility(
                             visible = showScrollToBottomFab,
-                            enter = fadeIn(tween(150)) +
-                                expandVertically(expandFrom = Alignment.Bottom),
-                            exit = fadeOut(tween(120)) +
-                                shrinkVertically(shrinkTowards = Alignment.Bottom),
+                            enter = fadeIn(
+                                animationSpec = tween(
+                                    durationMillis = 260,
+                                    easing = FastOutSlowInEasing,
+                                ),
+                            ) + scaleIn(
+                                initialScale = 0.7f,
+                                animationSpec = tween(
+                                    durationMillis = 260,
+                                    easing = FastOutSlowInEasing,
+                                ),
+                            ),
+                            exit = fadeOut(
+                                animationSpec = tween(
+                                    durationMillis = 200,
+                                    easing = FastOutSlowInEasing,
+                                ),
+                            ) + scaleOut(
+                                targetScale = 0.7f,
+                                animationSpec = tween(
+                                    durationMillis = 200,
+                                    easing = FastOutSlowInEasing,
+                                ),
+                            ),
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
-                                .padding(end = 16.dp, bottom = 16.dp),
+                                .zIndex(2f)
+                                .padding(
+                                    end = 13.dp,
+                                    bottom = innerPadding.calculateBottomPadding() + 12.dp,
+                                ),
                         ) {
-                            SmallFloatingActionButton(
+                            ChatScrollToBottomButton(
                                 onClick = {
-                                    scope.launch { listState.animateScrollToItem(0) }
+                                    scope.launch {
+                                        // #region agent log
+                                        agentDebugLog(
+                                            hypothesisId = "H5",
+                                            location = "ChatScreen.kt:1402",
+                                            message = "scroll_button_jump_to_bottom",
+                                            data = mapOf(
+                                                "panelId" to panelId,
+                                                "fromIndex" to listState.firstVisibleItemIndex,
+                                                "fromOffset" to listState.firstVisibleItemScrollOffset,
+                                            ),
+                                        )
+                                        // #endregion
+
+                                        // Snap list to bottom first so content is correct.
+                                        listState.scrollChatToBottom()
+
+                                        // Fake a short smooth scroll by translating the whole chat
+                                        // surface from a small offset back to rest.
+                                        fakeScrollOffset.snapTo(64f)
+                                        fakeScrollOffset.animateTo(
+                                            targetValue = 0f,
+                                            animationSpec = tween(
+                                                durationMillis = 260,
+                                                easing = FastOutSlowInEasing,
+                                            ),
+                                        )
+                                    }
                                 },
-                                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.KeyboardArrowDown,
-                                    contentDescription = scrollToBottomCd,
-                                )
-                            }
+                                contentDescription = scrollToBottomCd,
+                                hazeState = hazeState,
+                            )
                         }
 
                         ChatTopBar(
@@ -1502,6 +1616,115 @@ private fun ChatDateSeparator(
                     )
                     .padding(horizontal = 12.dp, vertical = 4.dp),
             )
+        }
+    }
+}
+
+private val ChatScrollToBottomButtonSize = 44.dp
+private val ChatScrollToBottomIconSize = 24.dp
+
+@Composable
+private fun ChatScrollToBottomButton(
+    onClick: () -> Unit,
+    contentDescription: String,
+    hazeState: HazeState,
+    modifier: Modifier = Modifier,
+) {
+    val hazeStyle = rememberChatSurfaceContainerHazeStyle()
+    Box(
+        modifier = modifier
+            .size(ChatScrollToBottomButtonSize)
+            .clip(CircleShape)
+            .clickable {
+                // #region agent log
+                agentDebugLog(
+                    hypothesisId = "H3",
+                    location = "ChatScreen.kt:1519",
+                    message = "scroll_button_clicked",
+                    data = mapOf(
+                        "contentDescription" to contentDescription,
+                    ),
+                )
+                // #endregion
+                onClick()
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.91f))
+                .hazeEffect(state = hazeState, style = hazeStyle),
+        )
+        Icon(
+            imageVector = Icons.Rounded.KeyboardArrowDown,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(ChatScrollToBottomIconSize),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun agentDebugLog(
+    hypothesisId: String,
+    location: String,
+    message: String,
+    data: Map<String, Any?> = emptyMap(),
+    runId: String = "initial",
+) {
+    val timestamp = kotlin.time.Clock.System.now().toEpochMilliseconds()
+    fun escape(value: String): String {
+        return value
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+    }
+
+    val dataJson = buildString {
+        append("{")
+        data.entries.joinToString(",") { (key, rawValue) ->
+            val value = rawValue?.toString() ?: "null"
+            "\"${escape(key)}\":\"${escape(value)}\""
+        }.let { append(it) }
+        append("}")
+    }
+
+    val json = buildString {
+        append("{")
+        append("\"sessionId\":\"a042f7\",")
+        append("\"id\":\"log_")
+        append(timestamp)
+        append("_")
+        append(escape(hypothesisId))
+        append("\",")
+        append("\"timestamp\":")
+        append(timestamp)
+        append(",")
+        append("\"location\":\"")
+        append(escape(location))
+        append("\",")
+        append("\"message\":\"")
+        append(escape(message))
+        append("\",")
+        append("\"runId\":\"")
+        append(escape(runId))
+        append("\",")
+        append("\"hypothesisId\":\"")
+        append(escape(hypothesisId))
+        append("\",")
+        append("\"data\":")
+        append(dataJson)
+        append("}")
+    }
+
+    Logger.d("AgentDebug", json)
+
+    kotlinx.coroutines.GlobalScope.launch {
+        runCatching {
+            ApiClient.http.post("http://192.168.1.6:7629/ingest/edf4b1c4-ae73-4d46-9110-6235fc587a70") {
+                contentType(ContentType.Application.Json)
+                header("X-Debug-Session-Id", "a042f7")
+                setBody(json)
+            }
         }
     }
 }
