@@ -274,7 +274,12 @@ class PublicChatPanel(
                 mergeMessageUiFields(net, local)
             }
         }
-        val ahead = shown.filter { it.id > 0 && it.id !in networkIds }
+        val minNetworkId = fromNetwork.minOfOrNull { it.id } ?: Int.MAX_VALUE
+        val maxNetworkId = fromNetwork.maxOfOrNull { it.id } ?: Int.MIN_VALUE
+        // Keep only messages strictly newer/older than the network page — not in-window gaps
+        // (those are server-side deletes that must not be resurrected from cache).
+        val ahead = shown.filter { it.id > 0 && it.id !in networkIds && it.id > maxNetworkId }
+        val older = shown.filter { it.id > 0 && it.id !in networkIds && it.id < minNetworkId }
         val inFlight = shown.filter { msg ->
             msg.id < 0 && (
                 !msg.client_message_id.isNullOrBlank() ||
@@ -282,8 +287,8 @@ class PublicChatPanel(
                     !msg.uploadJobId.isNullOrBlank()
                 )
         }
-        if (ahead.isEmpty() && inFlight.isEmpty()) return merged
-        val combined = merged + ahead + inFlight
+        if (ahead.isEmpty() && older.isEmpty() && inFlight.isEmpty()) return merged
+        val combined = merged + ahead + older + inFlight
         return ru.fromchat.api.local.messages.sortMessagesForChatDisplay(
             ru.fromchat.ui.chat.utils.dedupeMessagesByClientId(combined),
         )
@@ -493,8 +498,7 @@ class PublicChatPanel(
                 removeMessage(deletedData.message_id)
                 clearReplyReferencesTo(deletedData.message_id)
                 withContext(Dispatchers.Default) {
-                    MessageRepository.markPublicMessageDeleted(deletedData.message_id)
-                    MessageCacheStore.replacePublicMessages(_state.messages)
+                    MessageRepository.deletePublicMessageById(deletedData.message_id)
                 }
             }
             "reactionUpdate" -> {
@@ -572,6 +576,9 @@ class PublicChatPanel(
             return
         }
         beginMessageDissolve(message)
+        withContext(Dispatchers.Default) {
+            MessageRepository.deletePublicMessageById(messageId)
+        }
         ApiClient.deleteMessage(messageId)
     }
 

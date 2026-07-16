@@ -26,7 +26,11 @@ import kotlin.concurrent.Volatile
  * to the UI (for suspended or deleted users), except for the current user.
  */
 fun UserProfile.shouldHideUsername(currentUserId: Int? = null): Boolean =
-    id != currentUserId && (deleted == true || isDeletedPlaceholderUsername(username))
+    id != currentUserId && (
+        deleted == true ||
+            isDeletedPlaceholderUsername(username) ||
+            (suspended == true && currentUserId != 1)
+        )
 
 private fun isDeletedPlaceholderUsername(username: String?): Boolean =
     username?.startsWith("#deleted") == true

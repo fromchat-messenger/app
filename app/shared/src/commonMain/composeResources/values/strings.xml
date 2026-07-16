@@ -198,8 +198,28 @@
     <string name="profile_headline_member_since">Joined</string>
     <string name="profile_headline_bio">About</string>
     <string name="profile_headline_verification">Verified account</string>
-    <string name="profile_verified_support">This account is verified</string>
-    <string name="profile_verify_prompt_support">Tap to verify (admins only)</string>
+    <string name="profile_verified_support">This account is an official FromChat representative.</string>
+
+    <!-- Admin actions (owner / user id 1) -->
+    <string name="profile_admin_actions_category">Admin actions</string>
+    <string name="profile_admin_verify">Verify</string>
+    <string name="profile_admin_unverify">Remove verification</string>
+    <string name="profile_admin_suspend">Suspend account</string>
+    <string name="profile_admin_unsuspend">Unsuspend account</string>
+    <string name="profile_admin_delete">Delete account</string>
+    <string name="profile_admin_verify_confirm_title">Verify account?</string>
+    <string name="profile_admin_verify_confirm_body">Mark this account as an official FromChat representative?</string>
+    <string name="profile_admin_unverify_confirm_title">Remove verification?</string>
+    <string name="profile_admin_unverify_confirm_body">Remove official verification from this account?</string>
+    <string name="profile_admin_suspend_confirm_title">Suspend account</string>
+    <string name="profile_admin_suspend_confirm_body">Enter the reason for suspending this account:</string>
+    <string name="profile_admin_suspend_reason_label">Reason</string>
+    <string name="profile_admin_suspend_confirm">Suspend</string>
+    <string name="profile_admin_unsuspend_confirm_title">Unsuspend account?</string>
+    <string name="profile_admin_unsuspend_confirm_body">Restore this account’s ability to send messages?</string>
+    <string name="profile_admin_delete_confirm_title">Delete account</string>
+    <string name="profile_admin_delete_confirm_body">This will permanently delete user data but preserve messages and conversations. If the user is online, they will be immediately logged out. This action cannot be undone.</string>
+    <string name="profile_admin_delete_confirm">Delete</string>
 
     <!-- Verify (admin) -->
     <string name="verify">Verify</string>

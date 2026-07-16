@@ -71,11 +71,6 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import io.ktor.client.request.header
-import io.ktor.client.request.post
-import io.ktor.client.request.setBody
-import io.ktor.http.ContentType
-import io.ktor.http.contentType
 import kotlinx.datetime.LocalDate
 import ru.fromchat.api.local.messages.formatChatDateSeparator
 import ru.fromchat.chat_date_today
@@ -200,48 +195,8 @@ fun ChatScreen(
         LazyListState(0, 0)
     }
     val fakeScrollOffset = remember(panelId) { Animatable(0f) }
-    LaunchedEffect(panelId) {
-        // #region agent log
-        agentDebugLog(
-            hypothesisId = "H4",
-            location = "ChatScreen.kt:188",
-            message = "chat_screen_opened",
-            data = mapOf(
-                "panelId" to panelId,
-                "listStateHash" to listState.hashCode(),
-            ),
-        )
-        // #endregion
-    }
     val isNearBottom by remember(panelId) {
         derivedStateOf { listState.isChatNearBottom() }
-    }
-    LaunchedEffect(listState, panelId) {
-        snapshotFlow {
-            val info = listState.layoutInfo
-            Triple(
-                info.totalItemsCount,
-                listState.firstVisibleItemIndex,
-                listState.firstVisibleItemScrollOffset,
-            )
-        }
-            .distinctUntilChanged()
-            .collect { (totalItems, firstIndex, firstOffset) ->
-                // #region agent log
-                agentDebugLog(
-                    hypothesisId = "H1",
-                    location = "ChatScreen.kt:196",
-                    message = "scroll_state_changed",
-                    data = mapOf(
-                        "panelId" to panelId,
-                        "totalItems" to totalItems,
-                        "firstVisibleItemIndex" to firstIndex,
-                        "firstVisibleItemScrollOffset" to firstOffset,
-                        "isNearBottom" to listState.isChatNearBottom(),
-                    ),
-                )
-                // #endregion
-            }
     }
     val density = LocalDensity.current
     val fallbackMessageHeightPx = remember(density) { with(density) { 80.dp.roundToPx() } }
@@ -485,6 +440,7 @@ fun ChatScreen(
                     userId = userId,
                     currentUserId = currentUserId,
                     deleted = profile.deleted,
+                    suspended = profile.suspended,
                     username = profile.username,
                 )
             }
@@ -1361,23 +1317,6 @@ fun ChatScreen(
                         val showScrollToBottomFab = !isNearBottom &&
                             panelState.messages.isNotEmpty() &&
                             !contextMenuState.isOpen
-                        LaunchedEffect(showScrollToBottomFab) {
-                            // #region agent log
-                            agentDebugLog(
-                                hypothesisId = "H2",
-                                location = "ChatScreen.kt:1338",
-                                message = "show_scroll_button_changed",
-                                data = mapOf(
-                                    "panelId" to panelId,
-                                    "showScrollToBottomFab" to showScrollToBottomFab,
-                                    "isNearBottom" to isNearBottom,
-                                    "messageCount" to panelState.messages.size,
-                                    "contextMenuOpen" to contextMenuState.isOpen,
-                                    "usesPublicGroupSubtitle" to panel.usesPublicGroupSubtitle,
-                                ),
-                            )
-                            // #endregion
-                        }
                         AnimatedVisibility(
                             visible = showScrollToBottomFab,
                             enter = fadeIn(
@@ -1415,19 +1354,6 @@ fun ChatScreen(
                             ChatScrollToBottomButton(
                                 onClick = {
                                     scope.launch {
-                                        // #region agent log
-                                        agentDebugLog(
-                                            hypothesisId = "H5",
-                                            location = "ChatScreen.kt:1402",
-                                            message = "scroll_button_jump_to_bottom",
-                                            data = mapOf(
-                                                "panelId" to panelId,
-                                                "fromIndex" to listState.firstVisibleItemIndex,
-                                                "fromOffset" to listState.firstVisibleItemScrollOffset,
-                                            ),
-                                        )
-                                        // #endregion
-
                                         // Snap list to bottom first so content is correct.
                                         listState.scrollChatToBottom()
 
@@ -1648,16 +1574,6 @@ private fun ChatScrollToBottomButton(
             .size(ChatScrollToBottomButtonSize)
             .clip(CircleShape)
             .clickable {
-                // #region agent log
-                agentDebugLog(
-                    hypothesisId = "H3",
-                    location = "ChatScreen.kt:1519",
-                    message = "scroll_button_clicked",
-                    data = mapOf(
-                        "contentDescription" to contentDescription,
-                    ),
-                )
-                // #endregion
                 onClick()
             },
         contentAlignment = Alignment.Center,
@@ -1674,70 +1590,6 @@ private fun ChatScrollToBottomButton(
             modifier = Modifier.size(ChatScrollToBottomIconSize),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-    }
-}
-
-private fun agentDebugLog(
-    hypothesisId: String,
-    location: String,
-    message: String,
-    data: Map<String, Any?> = emptyMap(),
-    runId: String = "initial",
-) {
-    val timestamp = kotlin.time.Clock.System.now().toEpochMilliseconds()
-    fun escape(value: String): String {
-        return value
-            .replace("\\", "\\\\")
-            .replace("\"", "\\\"")
-    }
-
-    val dataJson = buildString {
-        append("{")
-        data.entries.joinToString(",") { (key, rawValue) ->
-            val value = rawValue?.toString() ?: "null"
-            "\"${escape(key)}\":\"${escape(value)}\""
-        }.let { append(it) }
-        append("}")
-    }
-
-    val json = buildString {
-        append("{")
-        append("\"sessionId\":\"a042f7\",")
-        append("\"id\":\"log_")
-        append(timestamp)
-        append("_")
-        append(escape(hypothesisId))
-        append("\",")
-        append("\"timestamp\":")
-        append(timestamp)
-        append(",")
-        append("\"location\":\"")
-        append(escape(location))
-        append("\",")
-        append("\"message\":\"")
-        append(escape(message))
-        append("\",")
-        append("\"runId\":\"")
-        append(escape(runId))
-        append("\",")
-        append("\"hypothesisId\":\"")
-        append(escape(hypothesisId))
-        append("\",")
-        append("\"data\":")
-        append(dataJson)
-        append("}")
-    }
-
-    Logger.d("AgentDebug", json)
-
-    kotlinx.coroutines.GlobalScope.launch {
-        runCatching {
-            ApiClient.http.post("http://192.168.1.6:7629/ingest/edf4b1c4-ae73-4d46-9110-6235fc587a70") {
-                contentType(ContentType.Application.Json)
-                header("X-Debug-Session-Id", "a042f7")
-                setBody(json)
-            }
-        }
     }
 }
 

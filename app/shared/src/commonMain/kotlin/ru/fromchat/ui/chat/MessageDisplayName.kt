@@ -10,8 +10,8 @@ import ru.fromchat.api.local.db.store.visibleDisplayName
 import ru.fromchat.ui.profile.avatarLabelForInitials
 import ru.fromchat.message_sender_you
 import ru.fromchat.ui.profile.deletedUserDisplayNameForUi
-import ru.fromchat.ui.profile.isDeletedAccount
 import ru.fromchat.ui.profile.isDeletedAccountUsername
+import ru.fromchat.ui.profile.isRedactedPeerAccount
 import ru.fromchat.ui.profile.peerIsDeleted
 
 /**
@@ -23,7 +23,7 @@ fun messageDisplayUsername(message: Message, currentUserId: Int?): String {
         return stringResource(Res.string.message_sender_you)
     }
     ProfileCache.get(message.user_id)?.let { profile ->
-        if (profile.isDeletedAccount(currentUserId) || isDeletedAccountUsername(profile.username)) {
+        if (profile.isRedactedPeerAccount(currentUserId)) {
             return deletedUserDisplayNameForUi()
         }
     }
@@ -42,7 +42,10 @@ fun messageSenderProfilePicture(
     message: Message,
     currentUserId: Int? = ApiClient.user?.id,
 ): String? {
-    if (ProfileCache.get(message.user_id)?.isDeletedAccount(currentUserId) == true) {
+    if (ProfileCache.get(message.user_id)?.isRedactedPeerAccount(currentUserId) == true) {
+        return null
+    }
+    if (isDeletedAccountUsername(message.username)) {
         return null
     }
     if (currentUserId != null && message.user_id == currentUserId) {

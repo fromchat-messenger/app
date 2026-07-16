@@ -459,6 +459,7 @@ internal fun SearchConversationsList(
                             userId = user.id,
                             currentUserId = ApiClient.user?.id,
                             deleted = user.deleted ?: cached?.deleted,
+                            suspended = user.suspended ?: cached?.suspended,
                             username = user.username,
                         )
                         val avatarUrl = if (isPeerDeleted) null else cached?.profilePicture ?: user.profile_picture
@@ -926,6 +927,7 @@ internal fun DmConversationRowContent(
         userId = conversation.otherUserId,
         currentUserId = currentUserId,
         deleted = cached?.deleted,
+        suspended = cached?.suspended,
         username = cached?.username ?: conversation.displayName.takeIf { it.isNotBlank() },
     )
     val avatarUrl = if (isPeerDeleted) null else cached?.profilePicture

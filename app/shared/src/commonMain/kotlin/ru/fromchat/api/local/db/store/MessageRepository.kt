@@ -73,6 +73,9 @@ object MessageRepository {
     suspend fun markPublicMessageDeleted(messageId: Int) =
         markMessageDeleted(conversationIdForGroup(GENERAL_PUBLIC_GROUP_ID), messageId)
 
+    suspend fun deletePublicMessageById(messageId: Int) =
+        MessageCacheStore.deletePublicMessageById(messageId)
+
     suspend fun loadDmMessages(otherUserId: Int): List<Message> =
         MessageCacheStore.loadDmMessages(otherUserId)
 

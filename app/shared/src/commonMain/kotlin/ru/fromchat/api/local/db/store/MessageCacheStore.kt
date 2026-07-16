@@ -297,6 +297,10 @@ object MessageCacheStore {
         syncDmConversationPreviewFromCache(otherUserId)
     }
 
+    suspend fun deletePublicMessageById(messageId: Int) {
+        deleteMessageById(conversationIdForPublic(), messageId)
+    }
+
     suspend fun deleteMessageByClientMessageId(conversationId: String, clientMessageId: String) {
         deleteByClientMessageId(conversationId, clientMessageId)
     }

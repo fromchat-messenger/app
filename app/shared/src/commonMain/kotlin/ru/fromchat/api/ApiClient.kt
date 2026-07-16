@@ -108,6 +108,7 @@ import ru.fromchat.api.schema.user.devices.DevicesListResponse
 import ru.fromchat.api.schema.user.keys.BackupBlobRequest
 import ru.fromchat.api.schema.user.keys.BackupBlobResponse
 import ru.fromchat.api.schema.user.keys.PublicKeyResponse
+import ru.fromchat.api.schema.user.profile.SuspendUserRequest
 import ru.fromchat.api.schema.user.profile.UpdateProfileRequest
 import ru.fromchat.api.schema.user.profile.UpdateProfileResponse
 import ru.fromchat.api.schema.user.profile.UserProfile
@@ -635,6 +636,34 @@ object ApiClient {
                     contentType(ContentType.Application.Json)
                 }
                 .body<VerifyResponse>()
+        }.getOrNull()
+
+    suspend fun suspendUser(userId: Int, reason: String): SimpleStatusResponse? =
+        runCatching {
+            http
+                .post("${ServerConfig.apiBaseUrl}/user/$userId/suspend") {
+                    contentType(ContentType.Application.Json)
+                    setBody(SuspendUserRequest(reason = reason))
+                }
+                .body<SimpleStatusResponse>()
+        }.getOrNull()
+
+    suspend fun unsuspendUser(userId: Int): SimpleStatusResponse? =
+        runCatching {
+            http
+                .post("${ServerConfig.apiBaseUrl}/user/$userId/unsuspend") {
+                    contentType(ContentType.Application.Json)
+                }
+                .body<SimpleStatusResponse>()
+        }.getOrNull()
+
+    suspend fun adminDeleteUser(userId: Int): SimpleStatusResponse? =
+        runCatching {
+            http
+                .post("${ServerConfig.apiBaseUrl}/user/$userId/delete") {
+                    contentType(ContentType.Application.Json)
+                }
+                .body<SimpleStatusResponse>()
         }.getOrNull()
 
     suspend fun getDmConversations(): List<DmConversation> =
@@ -1589,9 +1618,7 @@ object ApiClient {
 
     suspend fun deleteMessage(messageId: Int) {
         if (_suspensionState.value.isSuspended) return
-        runCatching {
-            http.delete("${ServerConfig.apiBaseUrl}/delete_message/$messageId")
-        }
+        // WS-only (like Web): HTTP-first would hard-delete before WS and skip messageDeleted broadcast.
         WebSocketManager.send(
             WebSocketMessage(
                 type = "deleteMessage",

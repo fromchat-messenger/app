@@ -69,7 +69,10 @@ import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.AlternateEmail
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
@@ -79,11 +82,14 @@ import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -137,6 +143,8 @@ import ru.fromchat.api.local.db.store.UserStatusStore
 import ru.fromchat.api.local.db.store.visibleDisplayName
 import ru.fromchat.api.local.db.store.visibleUsername
 import ru.fromchat.api.schema.user.profile.UserProfile
+import ru.fromchat.api.schema.user.profile.VerificationStatus
+import ru.fromchat.cancel
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.feature_not_implemented
 import ru.fromchat.presence_online
@@ -146,6 +154,25 @@ import ru.fromchat.profile_action_chat
 import ru.fromchat.profile_action_link
 import ru.fromchat.profile_action_search
 import ru.fromchat.profile_action_settings
+import ru.fromchat.profile_admin_actions_category
+import ru.fromchat.profile_admin_delete
+import ru.fromchat.profile_admin_delete_confirm
+import ru.fromchat.profile_admin_delete_confirm_body
+import ru.fromchat.profile_admin_delete_confirm_title
+import ru.fromchat.profile_admin_suspend
+import ru.fromchat.profile_admin_suspend_confirm
+import ru.fromchat.profile_admin_suspend_confirm_body
+import ru.fromchat.profile_admin_suspend_confirm_title
+import ru.fromchat.profile_admin_suspend_reason_label
+import ru.fromchat.profile_admin_unsuspend
+import ru.fromchat.profile_admin_unsuspend_confirm_body
+import ru.fromchat.profile_admin_unsuspend_confirm_title
+import ru.fromchat.profile_admin_unverify
+import ru.fromchat.profile_admin_unverify_confirm_body
+import ru.fromchat.profile_admin_unverify_confirm_title
+import ru.fromchat.profile_admin_verify
+import ru.fromchat.profile_admin_verify_confirm_body
+import ru.fromchat.profile_admin_verify_confirm_title
 import ru.fromchat.profile_headline_bio
 import ru.fromchat.profile_headline_member_since
 import ru.fromchat.profile_headline_username
@@ -153,7 +180,6 @@ import ru.fromchat.profile_headline_verification
 import ru.fromchat.profile_load_failed
 import ru.fromchat.profile_not_found
 import ru.fromchat.profile_verified_support
-import ru.fromchat.profile_verify_prompt_support
 import ru.fromchat.ui.profile.deletedUserDisplayNameForUi
 import ru.fromchat.ui.profile.avatarLabelForInitials
 import ru.fromchat.ui.profile.displayNameForUi
@@ -501,7 +527,12 @@ fun ProfileScreen(
     val headlineBio = stringResource(Res.string.profile_headline_bio)
     val headlineVerification = stringResource(Res.string.profile_headline_verification)
     val verifiedSupport = stringResource(Res.string.profile_verified_support)
-    val verifyPromptSupport = stringResource(Res.string.profile_verify_prompt_support)
+    val adminActionsCategory = stringResource(Res.string.profile_admin_actions_category)
+    val adminVerifyLabel = stringResource(Res.string.profile_admin_verify)
+    val adminUnverifyLabel = stringResource(Res.string.profile_admin_unverify)
+    val adminSuspendLabel = stringResource(Res.string.profile_admin_suspend)
+    val adminUnsuspendLabel = stringResource(Res.string.profile_admin_unsuspend)
+    val adminDeleteLabel = stringResource(Res.string.profile_admin_delete)
 
     val profile = liveProfile
         ?: state.profile
@@ -531,6 +562,7 @@ fun ProfileScreen(
         userId = resolvedUserId,
         currentUserId = viewerUserId,
         deleted = resolvedProfile?.deleted,
+        suspended = resolvedProfile?.suspended,
         username = resolvedProfile?.username,
     )
     val displayName = when {
@@ -655,9 +687,11 @@ fun ProfileScreen(
     val showDetailsUsername = usernameForLinks != null
     val showDetailsMemberSince = !resolvedProfile?.createdAt.isNullOrBlank()
     val showDetailsBio = !resolvedProfile?.bio.isNullOrBlank()
-    val showDetailsVerify = !isDeletedProfile && (
-        resolvedProfile?.verified == true || ApiClient.user?.id == 1
-        )
+    val showDetailsVerify = !isDeletedProfile && resolvedProfile?.verified == true
+    val showAdminActions = !isOwnProfile &&
+        !isDeletedProfile &&
+        resolvedProfile != null &&
+        ApiClient.user?.id == 1
     val showDetailsSection = resolvedProfile != null && !isDeletedProfile && (
         showDetailsUsername || showDetailsMemberSince || showDetailsBio || showDetailsVerify
         )
@@ -779,13 +813,19 @@ fun ProfileScreen(
                                 showDetailsMemberSince = showDetailsMemberSince,
                                 showDetailsBio = showDetailsBio,
                                 showDetailsVerify = showDetailsVerify,
+                                showAdminActions = showAdminActions,
                                 headlineUsername = headlineUsername,
                                 headlineMemberSince = headlineMemberSince,
                                 headlineBio = headlineBio,
                                 headlineVerification = headlineVerification,
                                 usernameForLinks = usernameForLinks,
                                 verifiedSupport = verifiedSupport,
-                                verifyPromptSupport = verifyPromptSupport,
+                                adminActionsCategory = adminActionsCategory,
+                                adminVerifyLabel = adminVerifyLabel,
+                                adminUnverifyLabel = adminUnverifyLabel,
+                                adminSuspendLabel = adminSuspendLabel,
+                                adminUnsuspendLabel = adminUnsuspendLabel,
+                                adminDeleteLabel = adminDeleteLabel,
                                 registrationDateStrings = registrationDateStrings,
                                 listItemIconTint = listItemIconTint,
                                 labelCopy = labelCopy,
@@ -796,6 +836,7 @@ fun ProfileScreen(
                                 navController = navController,
                                 scope = scope,
                                 openContextMenuHaptic = openContextMenuHaptic,
+                                onBack = onBack,
                                 onProfileUpdated = { updated ->
                                     state = state.copy(profile = updated)
                                     ProfileCache.put(updated)
@@ -1261,13 +1302,19 @@ private fun ProfileLoadedBody(
     showDetailsMemberSince: Boolean,
     showDetailsBio: Boolean,
     showDetailsVerify: Boolean,
+    showAdminActions: Boolean,
     headlineUsername: String,
     headlineMemberSince: String,
     headlineBio: String,
     headlineVerification: String,
     usernameForLinks: String?,
     verifiedSupport: String,
-    verifyPromptSupport: String,
+    adminActionsCategory: String,
+    adminVerifyLabel: String,
+    adminUnverifyLabel: String,
+    adminSuspendLabel: String,
+    adminUnsuspendLabel: String,
+    adminDeleteLabel: String,
     registrationDateStrings: RegistrationDateFormatStrings,
     listItemIconTint: Color,
     labelCopy: String,
@@ -1278,9 +1325,17 @@ private fun ProfileLoadedBody(
     navController: NavController,
     scope: CoroutineScope,
     openContextMenuHaptic: () -> Unit,
+    onBack: () -> Unit,
     onProfileUpdated: (UserProfile) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var showVerifyConfirm by remember { mutableStateOf(false) }
+    var showUnverifyConfirm by remember { mutableStateOf(false) }
+    var showSuspendConfirm by remember { mutableStateOf(false) }
+    var showUnsuspendConfirm by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var suspendReason by remember { mutableStateOf("") }
+    var adminActionInProgress by remember { mutableStateOf(false) }
     Column(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -1485,52 +1540,324 @@ private fun ProfileLoadedBody(
                     val position = listItemPositionInGroup(detailIndex, detailCount)
                     detailIndex++
                     ListItem(
-                            headline = headlineVerification,
-                            supportingText = if (resolvedProfile.verified == true) {
-                                verifiedSupport
-                            } else {
-                                verifyPromptSupport
-                            },
-                            divider = true,
-                            position = position,
-                            groupItemCount = detailCount,
-                            leadingContent = {
-                                Icon(
-                                    imageVector = Icons.Filled.Verified,
-                                    contentDescription = null,
-                                    tint = listItemIconTint,
-                                )
-                            },
-                            onClick = if (ApiClient.user?.id == 1) {
-                                {
-                                    scope.launch {
-                                        val result = withContext(Dispatchers.Default) {
-                                            runCatching {
-                                                ApiClient.verifyUser(resolvedProfile.id)
-                                            }.getOrNull()
-                                        }
-                                        result?.let { response ->
-                                            onProfileUpdated(
-                                                resolvedProfile.copy(
-                                                    verified = response.verified,
-                                                    verificationStatus = response.verificationStatus
-                                                        ?: response.verified.let { verified ->
-                                                            if (verified) {
-                                                                ru.fromchat.api.schema.user.profile.VerificationStatus.Verified
-                                                            } else {
-                                                                ru.fromchat.api.schema.user.profile.VerificationStatus.None
-                                                            }
-                                                        },
-                                                ),
-                                            )
-                                        }
-                                    }
-                                }
-                            } else null,
-                        )
+                        headline = headlineVerification,
+                        supportingText = verifiedSupport,
+                        divider = true,
+                        position = position,
+                        groupItemCount = detailCount,
+                        leadingContent = {
+                            Icon(
+                                imageVector = Icons.Filled.Verified,
+                                contentDescription = null,
+                                tint = listItemIconTint,
+                            )
+                        },
+                    )
                 }
             }
         }
+
+        if (showAdminActions) {
+            val isVerified = resolvedProfile.verified == true
+            val isSuspended = resolvedProfile.suspended == true
+            Category(
+                title = adminActionsCategory,
+                margin = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = if (showDetailsSection) 8.dp else 28.dp,
+                    bottom = 20.dp,
+                ),
+                roundedCorners = false,
+            ) {
+                ListItem(
+                    headline = if (isVerified) adminUnverifyLabel else adminVerifyLabel,
+                    divider = true,
+                    position = ListItemPosition.START,
+                    groupItemCount = 3,
+                    enabled = !adminActionInProgress,
+                    leadingContent = {
+                        Icon(
+                            imageVector = Icons.Filled.Verified,
+                            contentDescription = null,
+                            tint = listItemIconTint,
+                        )
+                    },
+                    onClick = {
+                        if (isVerified) showUnverifyConfirm = true else showVerifyConfirm = true
+                    },
+                )
+                ListItem(
+                    headline = if (isSuspended) adminUnsuspendLabel else adminSuspendLabel,
+                    divider = true,
+                    position = ListItemPosition.MIDDLE,
+                    groupItemCount = 3,
+                    enabled = !adminActionInProgress,
+                    leadingContent = {
+                        Icon(
+                            imageVector = if (isSuspended) {
+                                Icons.Filled.CheckCircle
+                            } else {
+                                Icons.Filled.Block
+                            },
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    },
+                    onClick = {
+                        if (isSuspended) {
+                            showUnsuspendConfirm = true
+                        } else {
+                            suspendReason = ""
+                            showSuspendConfirm = true
+                        }
+                    },
+                )
+                ListItem(
+                    headline = adminDeleteLabel,
+                    divider = true,
+                    position = ListItemPosition.END,
+                    groupItemCount = 3,
+                    enabled = !adminActionInProgress,
+                    leadingContent = {
+                        Icon(
+                            imageVector = Icons.Filled.DeleteForever,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    },
+                    onClick = { showDeleteConfirm = true },
+                )
+            }
+        }
+    }
+
+    if (showVerifyConfirm) {
+        AlertDialog(
+            onDismissRequest = { if (!adminActionInProgress) showVerifyConfirm = false },
+            title = { Text(stringResource(Res.string.profile_admin_verify_confirm_title)) },
+            text = { Text(stringResource(Res.string.profile_admin_verify_confirm_body)) },
+            confirmButton = {
+                TextButton(
+                    enabled = !adminActionInProgress,
+                    onClick = {
+                        adminActionInProgress = true
+                        scope.launch {
+                            val result = withContext(Dispatchers.Default) {
+                                runCatching { ApiClient.verifyUser(resolvedProfile.id) }.getOrNull()
+                            }
+                            adminActionInProgress = false
+                            showVerifyConfirm = false
+                            result?.let { response ->
+                                onProfileUpdated(
+                                    resolvedProfile.copy(
+                                        verified = response.verified,
+                                        verificationStatus = response.verificationStatus
+                                            ?: if (response.verified) {
+                                                VerificationStatus.Verified
+                                            } else {
+                                                VerificationStatus.None
+                                            },
+                                    ),
+                                )
+                            }
+                        }
+                    },
+                ) {
+                    Text(stringResource(Res.string.profile_admin_verify))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !adminActionInProgress,
+                    onClick = { showVerifyConfirm = false },
+                ) {
+                    Text(stringResource(Res.string.cancel))
+                }
+            },
+        )
+    }
+
+    if (showUnverifyConfirm) {
+        AlertDialog(
+            onDismissRequest = { if (!adminActionInProgress) showUnverifyConfirm = false },
+            title = { Text(stringResource(Res.string.profile_admin_unverify_confirm_title)) },
+            text = { Text(stringResource(Res.string.profile_admin_unverify_confirm_body)) },
+            confirmButton = {
+                TextButton(
+                    enabled = !adminActionInProgress,
+                    onClick = {
+                        adminActionInProgress = true
+                        scope.launch {
+                            val result = withContext(Dispatchers.Default) {
+                                runCatching { ApiClient.verifyUser(resolvedProfile.id) }.getOrNull()
+                            }
+                            adminActionInProgress = false
+                            showUnverifyConfirm = false
+                            result?.let { response ->
+                                onProfileUpdated(
+                                    resolvedProfile.copy(
+                                        verified = response.verified,
+                                        verificationStatus = response.verificationStatus
+                                            ?: if (response.verified) {
+                                                VerificationStatus.Verified
+                                            } else {
+                                                VerificationStatus.None
+                                            },
+                                    ),
+                                )
+                            }
+                        }
+                    },
+                ) {
+                    Text(stringResource(Res.string.profile_admin_unverify))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !adminActionInProgress,
+                    onClick = { showUnverifyConfirm = false },
+                ) {
+                    Text(stringResource(Res.string.cancel))
+                }
+            },
+        )
+    }
+
+    if (showSuspendConfirm) {
+        AlertDialog(
+            onDismissRequest = { if (!adminActionInProgress) showSuspendConfirm = false },
+            title = { Text(stringResource(Res.string.profile_admin_suspend_confirm_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(stringResource(Res.string.profile_admin_suspend_confirm_body))
+                    OutlinedTextField(
+                        value = suspendReason,
+                        onValueChange = { suspendReason = it },
+                        label = { Text(stringResource(Res.string.profile_admin_suspend_reason_label)) },
+                        enabled = !adminActionInProgress,
+                        singleLine = false,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !adminActionInProgress && suspendReason.trim().isNotEmpty(),
+                    onClick = {
+                        val reason = suspendReason.trim()
+                        adminActionInProgress = true
+                        scope.launch {
+                            val result = withContext(Dispatchers.Default) {
+                                runCatching {
+                                    ApiClient.suspendUser(resolvedProfile.id, reason)
+                                }.getOrNull()
+                            }
+                            adminActionInProgress = false
+                            showSuspendConfirm = false
+                            if (result != null) {
+                                onProfileUpdated(
+                                    resolvedProfile.copy(
+                                        suspended = true,
+                                        suspensionReason = reason,
+                                    ),
+                                )
+                            }
+                        }
+                    },
+                ) {
+                    Text(stringResource(Res.string.profile_admin_suspend_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !adminActionInProgress,
+                    onClick = { showSuspendConfirm = false },
+                ) {
+                    Text(stringResource(Res.string.cancel))
+                }
+            },
+        )
+    }
+
+    if (showUnsuspendConfirm) {
+        AlertDialog(
+            onDismissRequest = { if (!adminActionInProgress) showUnsuspendConfirm = false },
+            title = { Text(stringResource(Res.string.profile_admin_unsuspend_confirm_title)) },
+            text = { Text(stringResource(Res.string.profile_admin_unsuspend_confirm_body)) },
+            confirmButton = {
+                TextButton(
+                    enabled = !adminActionInProgress,
+                    onClick = {
+                        adminActionInProgress = true
+                        scope.launch {
+                            val result = withContext(Dispatchers.Default) {
+                                runCatching { ApiClient.unsuspendUser(resolvedProfile.id) }.getOrNull()
+                            }
+                            adminActionInProgress = false
+                            showUnsuspendConfirm = false
+                            if (result != null) {
+                                onProfileUpdated(
+                                    resolvedProfile.copy(
+                                        suspended = false,
+                                        suspensionReason = null,
+                                    ),
+                                )
+                            }
+                        }
+                    },
+                ) {
+                    Text(stringResource(Res.string.profile_admin_unsuspend))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !adminActionInProgress,
+                    onClick = { showUnsuspendConfirm = false },
+                ) {
+                    Text(stringResource(Res.string.cancel))
+                }
+            },
+        )
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { if (!adminActionInProgress) showDeleteConfirm = false },
+            title = { Text(stringResource(Res.string.profile_admin_delete_confirm_title)) },
+            text = { Text(stringResource(Res.string.profile_admin_delete_confirm_body)) },
+            confirmButton = {
+                TextButton(
+                    enabled = !adminActionInProgress,
+                    onClick = {
+                        adminActionInProgress = true
+                        scope.launch {
+                            val result = withContext(Dispatchers.Default) {
+                                runCatching { ApiClient.adminDeleteUser(resolvedProfile.id) }.getOrNull()
+                            }
+                            adminActionInProgress = false
+                            showDeleteConfirm = false
+                            if (result != null) {
+                                onProfileUpdated(
+                                    resolvedProfile.copy(deleted = true),
+                                )
+                                onBack()
+                            }
+                        }
+                    },
+                ) {
+                    Text(stringResource(Res.string.profile_admin_delete_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !adminActionInProgress,
+                    onClick = { showDeleteConfirm = false },
+                ) {
+                    Text(stringResource(Res.string.cancel))
+                }
+            },
+        )
     }
 }
 

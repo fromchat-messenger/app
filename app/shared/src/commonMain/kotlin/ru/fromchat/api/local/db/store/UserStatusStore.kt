@@ -34,12 +34,11 @@ object UserStatusStore {
         }
     }
 
-    fun removeTyping(userId: Int, username: String) {
-        val trimmed = username.trim().takeIf { it.isNotBlank() } ?: return
+    fun removeTyping(userId: Int, username: String = "") {
         _status.update { current ->
             val existing = current[userId] ?: return@update current
-            val typing = existing.typingUsernames.filterNot { it.equals(trimmed, ignoreCase = true) }
-            current + (userId to existing.copy(typingUsernames = typing))
+            // Clear by userId: after suspend/delete the stop event may use #deleted{id}.
+            current + (userId to existing.copy(typingUsernames = emptyList()))
         }
     }
 }

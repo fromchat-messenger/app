@@ -30,7 +30,7 @@ import ru.fromchat.api.schema.messages.dm.DmEnvelope
 import ru.fromchat.api.schema.websocket.WebSocketMessage
 import ru.fromchat.api.schema.websocket.types.DmDeletedData
 import ru.fromchat.ui.profile.displayNameText
-import ru.fromchat.ui.profile.isDeletedAccount
+import ru.fromchat.ui.profile.isRedactedPeerAccount
 import ru.fromchat.Logger
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.api.crypto.CorruptedDmMessagePlaceholder
@@ -120,7 +120,7 @@ class DmPanel(
             try {
                 val profile = ApiClient.getProfileById(otherUserId)
                 if (
-                    !profile.isDeletedAccount(ApiClient.user?.id) &&
+                    !profile.isRedactedPeerAccount(ApiClient.user?.id) &&
                     profile.username.isBlank() &&
                     profile.displayName.isNullOrBlank()
                 ) {
