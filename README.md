@@ -1,6 +1,6 @@
 Читать на других языках: [English](./README.en.md)
 
-# Наш телеграм канал: [Telegram канал](https://telegram.me/exchat) [FromChat канал (скоро)](https://fromchat.ru/)
+# Наш телеграм канал: [Telegram канал](https://telegram.me/exchatclient) [FromChat канал (скоро)](https://fromchat.ru/)
 
 # FromChat
 
