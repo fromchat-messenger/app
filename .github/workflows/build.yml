@@ -41,7 +41,7 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Create mock signing keys
+      - name: Create mock signing keys and Firebase config
         run: |
           mkdir -p app/android/keys
           cat > app/android/keys/keystore.properties << EOF
@@ -58,6 +58,50 @@ jobs:
             -keyalg RSA -keysize 2048 -validity 10000 \
             -alias key0 -storepass mockpassword -keypass mockpassword \
             -dname "CN=Mock Release, O=FromChat, C=RU"
+          
+          # Create dummy google-services.json to satisfy the Google Services gradle plugin
+          cat > app/android/google-services.json << EOF
+          {
+            "project_info": {
+              "project_number": "1234567890",
+              "project_id": "mock-project",
+              "storage_bucket": "mock-project.appspot.com"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:1234567890:android:mockappid",
+                  "android_client_info": {
+                    "package_name": "ru.fromchat"
+                  }
+                },
+                "oauth_client": [],
+                "api_key": [{ "current_key": "mockkey" }],
+                "services": {
+                  "appinvite_service": {
+                    "other_platform_oauth_client": []
+                  }
+                }
+              },
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:1234567890:android:mockappidbeta",
+                  "android_client_info": {
+                    "package_name": "ru.fromchat.beta"
+                  }
+                },
+                "oauth_client": [],
+                "api_key": [{ "current_key": "mockkey" }],
+                "services": {
+                  "appinvite_service": {
+                    "other_platform_oauth_client": []
+                  }
+                }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          EOF
 
       - name: Build Debug and Release APKs
         run: ./gradlew :app:android:assembleDebug :app:android:assembleRelease
