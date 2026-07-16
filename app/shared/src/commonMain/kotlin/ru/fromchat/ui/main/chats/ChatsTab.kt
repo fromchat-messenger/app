@@ -37,6 +37,8 @@ import androidx.compose.material.icons.rounded.Block
 import com.pr0gramm3r101.components.ListItem
 import com.pr0gramm3r101.components.ListItemPosition
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -368,6 +370,8 @@ private fun ChatsNormalTopBar(
     searchCollapseProgress: Float,
     searchContentDescription: String,
     onSearchClick: () -> Unit,
+    onCreateChatClick: () -> Unit,
+    onJoinChatClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     TopAppBar(
@@ -432,6 +436,12 @@ private fun ChatsNormalTopBar(
             }
         },
         actions = {
+            IconButton(onClick = onCreateChatClick) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Создать чат/канал",
+                )
+            }
             IconButton(
                 onClick = onSearchClick,
                 modifier = Modifier.graphicsLayer {
@@ -581,10 +591,40 @@ fun ChatsTab(
     val suspensionState by ApiClient.suspensionState.collectAsState()
     var showSuspendedSupportSheet by remember { mutableStateOf(false) }
 
+    var myChatGroups by remember { mutableStateOf<List<ru.fromchat.api.ChatGroup>>(emptyList()) }
+
+    fun refreshGroupChats() {
+        scope.launch {
+            runCatching {
+                myChatGroups = ApiClient.getMyChatGroups()
+            }
+        }
+    }
+
+    val combinedConversations = remember(dmConversations, myChatGroups) {
+        val groupConversations = myChatGroups.map { group ->
+            ru.fromchat.api.local.db.store.CachedConversation(
+                id = "group-${group.id}",
+                otherUserId = -group.id,
+                displayName = if (!group.username.isNullOrBlank()) "${group.name} (@${group.username})" else group.name,
+                lastMessagePreview = if (group.type == "channel") "Канал" else "Группа",
+                unreadCount = 0
+            )
+        }
+        dmConversations + groupConversations
+    }
+
     LaunchedEffect(previewStrings.imageOnly, previewStrings.attachmentOnly, activeInstanceId) {
         MessageCacheStore.listPreviewStrings = previewStrings
         if (activeInstanceId.isNotBlank()) {
             runCatching { ChatListSync.syncFromNetwork() }
+            refreshGroupChats()
+        }
+    }
+
+    LaunchedEffect(isVisible) {
+        if (isVisible) {
+            refreshGroupChats()
         }
     }
 
@@ -934,7 +974,7 @@ fun ChatsTab(
                     ChatConversationsList(
                         listState = tabListState,
                         listFilter = ChatListFilter.Active,
-                        conversations = dmConversations,
+                        conversations = combinedConversations,
                         publicChatTitle = publicChatTitle,
                         publicChatPreviewState = publicChatPreviewState,
                         defaultLastMessage = "",
@@ -974,7 +1014,17 @@ fun ChatsTab(
 
                                 selectionMode -> selectedOtherUserIds += userId
 
-                                userId != 0 -> navController.navigate(DmNav.chatRoute(userId))
+                                userId != 0 -> {
+                                    if (userId < 0) {
+                                        val groupId = -userId
+                                        val group = myChatGroups.find { it.id == groupId }
+                                        if (group != null) {
+                                            navController.navigate("chats/group/${group.id}/${group.name}/${group.type}/${group.creator_id}")
+                                        }
+                                    } else {
+                                        navController.navigate(DmNav.chatRoute(userId))
+                                    }
+                                }
                             }
                         },
                         onAvatarContextMenuPressStart = { lazyIndex, target, userId, rowOffset, rowSize, position, groupCount ->
@@ -1060,6 +1110,8 @@ fun ChatsTab(
                         searchCollapseProgress = topBarSearchReveal,
                         searchContentDescription = searchBarHint,
                         onSearchClick = onOpenSearch,
+                        onCreateChatClick = { navController.navigate("chats/create") },
+                        onJoinChatClick = { navController.navigate("search/conversations") },
                         modifier = Modifier.graphicsLayer { alpha = 1f - selectionProgress },
                     )
                     if (selectionMode || selectionProgress > 0f) {
@@ -1083,6 +1135,7 @@ fun ChatsTab(
                 }
             }
         }
+
 
         chatContextMenuOverlay.onStateChange = { contextMenuState = it }
         chatContextMenuOverlay.onDismiss = {

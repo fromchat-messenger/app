@@ -1769,4 +1769,130 @@ object ApiClient {
             ),
         )
     }
+
+    suspend fun getChatGroup(chatId: Int): ChatGroup =
+        http.get("${ServerConfig.apiBaseUrl}/chats/$chatId") {
+            contentType(ContentType.Application.Json)
+        }.body()
+
+    suspend fun createChatGroup(name: String, description: String?, type: String, isPublic: Boolean, username: String? = null): ChatGroup =
+        http.post("${ServerConfig.apiBaseUrl}/chats/create") {
+            contentType(ContentType.Application.Json)
+            setBody(CreateChatGroupRequest(name, description, type, isPublic, username))
+        }.body()
+
+    suspend fun joinChatGroupByLink(inviteCode: String): ChatGroup =
+        http.post("${ServerConfig.apiBaseUrl}/chats/join/by-link/$inviteCode") {
+            contentType(ContentType.Application.Json)
+        }.body()
+
+    suspend fun joinChatGroup(chatId: Int): ChatGroup =
+        http.post("${ServerConfig.apiBaseUrl}/chats/join/$chatId") {
+            contentType(ContentType.Application.Json)
+        }.body()
+
+    suspend fun leaveChatGroup(chatId: Int) {
+        http.post("${ServerConfig.apiBaseUrl}/chats/leave/$chatId") {
+            contentType(ContentType.Application.Json)
+        }
+    }
+
+    suspend fun searchChatGroups(query: String): List<ChatGroup> =
+        http.get("${ServerConfig.apiBaseUrl}/chats/search") {
+            contentType(ContentType.Application.Json)
+            parameter("query", query)
+        }.body()
+
+    suspend fun getMyChatGroups(): List<ChatGroup> =
+        http.get("${ServerConfig.apiBaseUrl}/chats/my-chats") {
+            contentType(ContentType.Application.Json)
+        }.body()
+
+    suspend fun getChatGroupMembers(chatId: Int): List<ChatGroupMember> =
+        http.get("${ServerConfig.apiBaseUrl}/chats/$chatId/members").body()
+
+    suspend fun updateChatGroupSettings(chatId: Int, request: UpdateChatGroupRequest): ChatGroup =
+        http.patch("${ServerConfig.apiBaseUrl}/chats/$chatId/settings") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.body()
+
+    suspend fun updateChatGroupMemberRole(chatId: Int, userId: Int, role: String): ChatGroupMember =
+        http.patch("${ServerConfig.apiBaseUrl}/chats/$chatId/members/$userId/role") {
+            contentType(ContentType.Application.Json)
+            setBody(UpdateChatGroupMemberRoleRequest(role))
+        }.body()
+
+    suspend fun removeChatGroupMember(chatId: Int, userId: Int) {
+        http.delete("${ServerConfig.apiBaseUrl}/chats/$chatId/members/$userId")
+    }
+
+    suspend fun getChatGroupMessages(chatId: Int, limit: Int = 50, beforeId: Int? = null): MessagesResponse =
+        http.get("${ServerConfig.apiBaseUrl}/chats/$chatId/messages") {
+            contentType(ContentType.Application.Json)
+            parameter("limit", limit)
+            beforeId?.let { parameter("before_id", it) }
+        }.body()
+
+    suspend fun sendChatGroupMessage(chatId: Int, content: String, replyToId: Int? = null, clientMessageId: String? = null): ru.fromchat.api.schema.messages.Message {
+        val request = SendMessageRequest(
+            content = content,
+            reply_to_id = replyToId,
+            client_message_id = clientMessageId,
+            chat_group_id = chatId
+        )
+        val response: ru.fromchat.api.schema.messages.publicchat.SendMessageResponse =
+            http.post("${ServerConfig.apiBaseUrl}/send_message") {
+                contentType(ContentType.Application.Json)
+                setBody(request)
+            }.body()
+        return response.message
+    }
 }
+
+@kotlinx.serialization.Serializable
+data class ChatGroup(
+    val id: Int,
+    val name: String,
+    val description: String?,
+    val type: String, // 'chat' | 'channel'
+    val is_public: Boolean,
+    val username: String? = null,
+    val invite_code: String,
+    val creator_id: Int,
+    val created_at: String,
+    val member_count: Int,
+    val is_member: Boolean = false,
+    val my_role: String? = null,  // 'owner' | 'admin' | 'member' | null
+)
+
+@kotlinx.serialization.Serializable
+data class CreateChatGroupRequest(
+    val name: String,
+    val description: String? = null,
+    val type: String,
+    val is_public: Boolean = true,
+    val username: String? = null
+)
+
+@kotlinx.serialization.Serializable
+data class ChatGroupMember(
+    val user_id: Int,
+    val username: String,
+    val display_name: String,
+    val role: String,
+    val joined_at: String,
+)
+
+@kotlinx.serialization.Serializable
+data class UpdateChatGroupRequest(
+    val name: String? = null,
+    val description: String? = null,
+    val is_public: Boolean? = null,
+    val username: String? = null,
+)
+
+@kotlinx.serialization.Serializable
+data class UpdateChatGroupMemberRoleRequest(
+    val role: String,
+)

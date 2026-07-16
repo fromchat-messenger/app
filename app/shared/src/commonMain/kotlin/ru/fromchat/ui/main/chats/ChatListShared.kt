@@ -397,9 +397,10 @@ internal fun SearchConversationsList(
     statusMap: Map<Int, UserStatus>,
     modifier: Modifier = Modifier,
     remoteUsers: List<User> = emptyList(),
+    remoteGroups: List<ru.fromchat.api.ChatGroup> = emptyList(),
     onOpenConversation: (Int) -> Unit,
 ) {
-    val totalCount = conversations.size + remoteUsers.size
+    val totalCount = conversations.size + remoteUsers.size + remoteGroups.size
 
     LazyColumn(
         state = listState,
@@ -415,7 +416,7 @@ internal fun SearchConversationsList(
                 var resultIndex = 0
                 val dmCount = conversations.size
                 val remoteCount = remoteUsers.size
-                val groupCount = dmCount + remoteCount
+                val groupCount = dmCount + remoteCount + remoteGroups.size
 
                 conversations.forEach { conversation ->
                     val lazyIndex = SearchListIndices.resultRow(resultIndex)
@@ -507,6 +508,45 @@ internal fun SearchConversationsList(
                                         onLongPress = {},
                                         isDeletedUser = isPeerDeleted,
                                         userId = user.id,
+                                    )
+                                },
+                            )
+                        }
+                    }
+                    if (resultIndex < groupCount) {
+                        item { ChatListItemSpacer() }
+                    }
+                }
+
+                remoteGroups.forEach { group ->
+                    val position = listItemPositionInGroup(resultIndex, groupCount)
+                    resultIndex++
+                    item {
+                        ChatRowScaleContainer(
+                            listItemPosition = position,
+                            groupItemCount = groupCount,
+                            pressScale = 1f,
+                        ) {
+                            ListItem(
+                                headline = group.name,
+                                headlineSlot = { ChatListHeadlineWithBadge(group.name, -group.id) },
+                                supportingText = if (!group.username.isNullOrBlank()) "@${group.username}" else (if (group.type == "channel") "Канал" else "Группа"),
+                                containerColor = Color.Transparent,
+                                position = position,
+                                groupItemCount = groupCount,
+                                divider = false,
+                                onClick = { onOpenConversation(-group.id) },
+                                leadingContent = {
+                                    ChatRowAvatar(
+                                        profilePictureUrl = null,
+                                        displayNameForInitials = group.name,
+                                        enabled = false,
+                                        onPressStart = {},
+                                        onPressEnd = {},
+                                        onLongPress = {},
+                                        showOnlineIndicator = false,
+                                        isDeletedUser = false,
+                                        userId = -group.id,
                                     )
                                 },
                             )

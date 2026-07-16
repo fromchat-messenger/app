@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -309,13 +310,14 @@ fun ChatTopBar(
     onCallClick: () -> Unit,
     callContentDescription: String,
     titleChrome: @Composable () -> Unit,
+    extraActions: @Composable (RowScope.() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val bottomCornerRadius = ChatFloatingHeaderBottomArcRadius
     // [BottomInsetTopBarShape] draws the arc in the strip from y = (content height) .. (content + r);
     // stack measured bar height + that depth so the scallop is never overlapped by TopAppBar children.
     val arcExtentPx = with(LocalDensity.current) { bottomCornerRadius.roundToPx() }
-
+ 
     SubcomposeLayout(modifier = modifier.fillMaxWidth()) { constraints ->
         val heightUnbounded = constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity)
         val topBarPlaceable = subcompose("topBar") {
@@ -347,6 +349,7 @@ fun ChatTopBar(
                             )
                         }
                     }
+                    extraActions?.invoke(this)
                 },
             )
         }.first().measure(heightUnbounded)

@@ -177,7 +177,11 @@ abstract class ChatPanel(
             if (!messageExists) {
                 Logger.d("ChatPanel", "Adding message: id=${message.id}, content=${message.content.take(50)}")
                 updateState { currentState ->
-                    val newMessages = sortMessagesForChatDisplay(currentState.messages + message)
+                    val merged = dropSupersededOptimisticMessages(
+                        currentState.messages + message,
+                        currentUserId,
+                    )
+                    val newMessages = sortMessagesForChatDisplay(dedupeMessagesByClientId(merged))
                     Logger.d("ChatPanel", "Messages count after add: ${newMessages.size}")
                     currentState.copy(messages = newMessages)
                 }

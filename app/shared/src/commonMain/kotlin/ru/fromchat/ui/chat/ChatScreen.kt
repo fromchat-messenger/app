@@ -8,6 +8,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -175,7 +176,10 @@ fun ChatScreen(
     onTitleAvatarChange: ((AvatarInfo?) -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
-    sharedAvatarKey: Any? = null
+    sharedAvatarKey: Any? = null,
+    isReadOnly: Boolean = false,
+    customBottomBar: @Composable (() -> Unit)? = null,
+    extraActions: @Composable (RowScope.() -> Unit)? = null
 ) {
     var panelState by remember(panel) { mutableStateOf(panel.getState()) }
     
@@ -562,8 +566,8 @@ fun ChatScreen(
 
     // UI state
     var inputText by rememberSaveable { mutableStateOf("") }
-    var replyTo by rememberSaveable { mutableStateOf<Message?>(null) }
-    var editingMessage by rememberSaveable { mutableStateOf<Message?>(null) }
+    var replyTo by remember(panel) { mutableStateOf<Message?>(null) }
+    var editingMessage by remember(panel) { mutableStateOf<Message?>(null) }
     var contextMenuState by remember {
         mutableStateOf(
             ContextMenuState(
@@ -879,6 +883,21 @@ fun ChatScreen(
                             ) {
                                 Text(deleteChatLabel)
                             }
+                        }
+                    } else if (customBottomBar != null) {
+                        customBottomBar()
+                    } else if (isReadOnly) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Только администраторы могут писать сообщения",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     } else {
                     ChatInput(
@@ -1450,6 +1469,7 @@ fun ChatScreen(
                                 }
                             },
                             callContentDescription = cdCall,
+                            extraActions = extraActions,
                             titleChrome = {
                                 ChatTopBarInner(
                                     title = panelState.title,

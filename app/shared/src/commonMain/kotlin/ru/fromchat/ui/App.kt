@@ -83,6 +83,8 @@ import ru.fromchat.ui.calls.CallOverlay
 import ru.fromchat.ui.chat.panels.dm.DmChatRoute
 import ru.fromchat.ui.chat.panels.dm.DmNav
 import ru.fromchat.ui.chat.panels.dm.DmProfileRoute
+import ru.fromchat.ui.chat.panels.groupchat.GroupChatScreen
+import ru.fromchat.ui.chat.panels.groupchat.GroupManagementScreen
 import ru.fromchat.ui.chat.panels.publicchat.PublicChatChatRoute
 import ru.fromchat.ui.chat.panels.publicchat.PublicChatNav
 import ru.fromchat.ui.chat.panels.publicchat.PublicChatProfileRoute
@@ -100,6 +102,7 @@ import ru.fromchat.ui.main.settings.account.AccountScreen
 import ru.fromchat.ui.main.settings.account.changepassword.ChangePasswordScreen
 import ru.fromchat.ui.main.settings.account.delete.DeleteAccountScreen
 import ru.fromchat.ui.main.settings.server.ServerConfigScreen
+import ru.fromchat.ui.main.chats.creategroup.CreateGroupScreen
 import ru.fromchat.ui.profile.EditProfileFocusField
 import ru.fromchat.ui.profile.EditProfileScreen
 import ru.fromchat.ui.profile.ProfileRoutes
@@ -482,6 +485,37 @@ fun App(
                                 )
                             }
 
+                            composable("chats/group/{chatId}/{chatName}/{chatType}/{creatorId}") { backStackEntry ->
+                                val chatId = backStackEntry.arguments?.getString("chatId")?.toIntOrNull() ?: 0
+                                val chatName = backStackEntry.arguments?.getString("chatName") ?: ""
+                                val chatType = backStackEntry.arguments?.getString("chatType") ?: ""
+                                val creatorId = backStackEntry.arguments?.getString("creatorId")?.toIntOrNull() ?: 0
+                                GroupChatScreen(
+                                    chatId = chatId,
+                                    chatName = chatName,
+                                    chatType = chatType,
+                                    creatorId = creatorId,
+                                    sharedTransitionScope = this@SharedTransitionLayout,
+                                    animatedVisibilityScope = this,
+                                )
+                            }
+
+                            composable("chats/group/{chatId}/manage") { backStackEntry ->
+                                val chatId = backStackEntry.arguments?.getString("chatId")?.toIntOrNull() ?: return@composable
+                                GroupManagementScreen(chatId)
+                            }
+
+                            composable("chats/create") {
+                                CreateGroupScreen(
+                                    onBack = { navController.navigateUp() },
+                                    onCreated = { groupId, groupName, groupType, creatorId ->
+                                        navController.navigate("chats/group/$groupId/$groupName/$groupType/$creatorId") {
+                                            popUpTo("chats/create") { inclusive = true }
+                                        }
+                                    },
+                                )
+                            }
+
                             composable(
                                 route = "search/conversations",
                                 enterTransition = { searchScreenEnterTransition() },
@@ -500,7 +534,11 @@ fun App(
                                     },
                                     onOpenConversation = { userId: Int ->
                                         if (userId != 0) {
-                                            navController.navigate(DmNav.chatRoute(userId))
+                                            if (userId < 0) {
+                                                navController.navigate("chats/group/${-userId}/loading/loading/0")
+                                            } else {
+                                                navController.navigate(DmNav.chatRoute(userId))
+                                            }
                                         }
                                     }
                                 )
