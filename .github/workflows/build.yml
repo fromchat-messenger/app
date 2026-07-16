@@ -1,0 +1,75 @@
+name: Build EXChat App
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'app/**'
+      - 'utils/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - '.github/workflows/build.yml'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'app/**'
+      - 'utils/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - '.github/workflows/build.yml'
+
+jobs:
+  build:
+    name: Build Android App
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Create mock signing keys
+        run: |
+          mkdir -p app/android/keys
+          cat > app/android/keys/keystore.properties << EOF
+          releaseStorePassword=mockpassword
+          releaseKeyPassword=mockpassword
+          debugStorePassword=mockpassword
+          debugKeyPassword=mockpassword
+          EOF
+          keytool -genkeypair -v -keystore app/android/keys/debug.jks \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -alias debug -storepass mockpassword -keypass mockpassword \
+            -dname "CN=Mock Debug, O=FromChat, C=RU"
+          keytool -genkeypair -v -keystore app/android/keys/release.jks \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -alias key0 -storepass mockpassword -keypass mockpassword \
+            -dname "CN=Mock Release, O=FromChat, C=RU"
+
+      - name: Build Debug and Release APKs
+        run: ./gradlew :app:android:assembleDebug :app:android:assembleRelease
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: exchat-debug-apk
+          path: app/android/build/outputs/apk/debug/*.apk
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: exchat-release-apk
+          path: app/android/build/outputs/apk/release/*.apk
