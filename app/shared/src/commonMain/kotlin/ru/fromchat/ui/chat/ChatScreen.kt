@@ -750,9 +750,19 @@ fun ChatScreen(
             return@LaunchedEffect
         }
         val liveAuthor = liveMessage.user_id == currentUserId
-        val liveFp = messageContextMenuFingerprint(liveMessage, liveAuthor, isReadOnly)
+        val liveFp = messageContextMenuFingerprint(
+            liveMessage,
+            liveAuthor,
+            liveAuthor || currentUserId == 1,
+            isReadOnly,
+        )
         val menuAuthor = menuMessage.user_id == currentUserId
-        val menuFp = messageContextMenuFingerprint(menuMessage, menuAuthor, isReadOnly)
+        val menuFp = messageContextMenuFingerprint(
+            menuMessage,
+            menuAuthor,
+            menuAuthor || currentUserId == 1,
+            isReadOnly,
+        )
         if (menuFp != liveFp || liveMessage.id != menuMessage.id) {
             contextMenuState = contextMenuState.copy(message = liveMessage)
         }
@@ -1482,6 +1492,8 @@ fun ChatScreen(
                     MessageContextMenu(
                         state = contextMenuState,
                         isAuthor = contextMenuState.message?.user_id == currentUserId,
+                        canDelete = contextMenuState.message?.user_id == currentUserId ||
+                            currentUserId == 1,
                         isReadOnly = isReadOnly,
                         screenWidthPx = screenWidthPx,
                         screenHeightPx = screenHeightPx,

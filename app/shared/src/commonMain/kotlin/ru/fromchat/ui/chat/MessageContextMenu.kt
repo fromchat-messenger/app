@@ -75,6 +75,7 @@ data class ContextMenuState(
 internal fun messageContextMenuFingerprint(
     message: Message,
     isAuthor: Boolean,
+    canDelete: Boolean,
     isReadOnly: Boolean,
 ): String {
     val isQueued = message.isQueuedOutbound() && isAuthor
@@ -88,7 +89,7 @@ internal fun messageContextMenuFingerprint(
         if (!isQueued && !isReadOnly) {
             append("|reply=1")
             append("|edit=").append(isAuthor && !corrupted)
-            append("|del=").append(isAuthor)
+            append("|del=").append(canDelete)
         }
     }
 }
@@ -97,6 +98,7 @@ internal fun messageContextMenuFingerprint(
 fun MessageContextMenu(
     state: ContextMenuState,
     isAuthor: Boolean,
+    canDelete: Boolean = isAuthor,
     onDismiss: () -> Unit,
     onReply: (Message) -> Unit,
     onEdit: (Message) -> Unit,
@@ -161,6 +163,7 @@ fun MessageContextMenu(
                 ContextMenuContent(
                     message = state.message,
                     isAuthor = isAuthor,
+                    canDelete = canDelete,
                     onReply = {},
                     onEdit = {},
                     onDelete = {},
@@ -242,6 +245,7 @@ fun MessageContextMenu(
                 ContextMenuContent(
                     message = state.message,
                     isAuthor = isAuthor,
+                    canDelete = canDelete,
                     onReply = {
                         onReply(it)
                         onDismiss()
@@ -287,6 +291,7 @@ fun MessageContextMenu(
 private fun ContextMenuContent(
     message: Message,
     isAuthor: Boolean,
+    canDelete: Boolean,
     onReply: (Message) -> Unit,
     onEdit: (Message) -> Unit,
     onDelete: (Message) -> Unit,
@@ -402,7 +407,7 @@ private fun ContextMenuContent(
                         onClick = { onEdit(message) }
                     )
                 }
-                if (isAuthor) {
+                if (canDelete) {
                     ContextMenuItem(
                         icon = Icons.Rounded.Delete,
                         text = labelDelete,
