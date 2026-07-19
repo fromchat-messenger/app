@@ -52,7 +52,7 @@
     <string name="auth_step_confirm_title">Подтвердите пароль</string>
     <string name="auth_step_confirm_body">Введите тот же пароль ещё раз.</string>
     <string name="auth_step_yandex_title">Войдите через Яндекс ID</string>
-    <string name="auth_step_yandex_body">Так мы боремся с вредоносными ботами и соблюдаем требования российских законов. Номер телефона нам недоступен — мы видим только имя, фамилию и пол. Эти данные мы не сохраняем — они нужны только для защиты и чтобы заранее заполнить поля на следующем шаге (не бойтесь, вы сможете подправить данные перед отправкой).</string>
+    <string name="auth_step_yandex_body">Так мы боремся с вредоносными ботами и соблюдаем требования российских законов. От Яндекса мы получаем только email — и мы его не сохраняем: вход нужен лишь для защиты.</string>
     <string name="auth_step_yandex_cta">Продолжить через Яндекс ID</string>
     <string name="auth_yandex_webview_title">Яндекс ID</string>
     <string name="auth_yandex_client_mismatch">Сервер вернул неожиданный идентификатор приложения Яндекса. Обновите приложение или обратитесь в поддержку.</string>

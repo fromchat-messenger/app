@@ -59,7 +59,7 @@
     <string name="auth_step_confirm_title">Confirm your password</string>
     <string name="auth_step_confirm_body">Enter the same password again.</string>
     <string name="auth_step_yandex_title">Sign in with Yandex ID</string>
-    <string name="auth_step_yandex_body">This helps us fight malicious bots and meet Russian legal requirements. We can’t access your phone number — we only see your first name, last name, and gender. We don’t store that data; it’s only used for protection and to pre-fill the next step (don’t worry — you can edit everything before submitting).</string>
+    <string name="auth_step_yandex_body">This helps us fight malicious bots and meet Russian legal requirements. From Yandex we only get your email — and we don’t store it; sign-in is only used for security reasons.</string>
     <string name="auth_step_yandex_cta">Continue with Yandex ID</string>
     <string name="auth_yandex_webview_title">Yandex ID</string>
     <string name="auth_yandex_client_mismatch">This server returned an unexpected Yandex app id. Update the app or contact support.</string>
