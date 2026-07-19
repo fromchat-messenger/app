@@ -228,6 +228,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        Logger.i("MainActivity", "onCreate savedInstanceStateNull=${savedInstanceState == null}")
         super.onCreate(savedInstanceState)
         installSplashScreen()
         enableEdgeToEdge()
@@ -264,13 +265,25 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
+        Logger.i("MainActivity", "onPause")
         super.onPause()
         prevIsPublicChatVisible = isPublicChatVisible
         isPublicChatVisible = false
     }
 
     override fun onResume() {
+        Logger.i("MainActivity", "onResume")
         super.onResume()
         isPublicChatVisible = prevIsPublicChatVisible ?: false
+    }
+
+    override fun onDestroy() {
+        Logger.i("MainActivity", "onDestroy isFinishing=$isFinishing")
+        super.onDestroy()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        Logger.i("MainActivity", "onSaveInstanceState")
+        super.onSaveInstanceState(outState)
     }
 }

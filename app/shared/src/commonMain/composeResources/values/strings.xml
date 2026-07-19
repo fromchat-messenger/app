@@ -58,6 +58,12 @@
     <string name="auth_step_password_body">We will sign you in or create a new account.</string>
     <string name="auth_step_confirm_title">Confirm your password</string>
     <string name="auth_step_confirm_body">Enter the same password again.</string>
+    <string name="auth_step_yandex_title">Sign in with Yandex ID</string>
+    <string name="auth_step_yandex_body">This helps us fight malicious bots and meet Russian legal requirements. We can’t access your phone number — we only see your first name, last name, and gender. We don’t store that data; it’s only used for protection and to pre-fill the next step (don’t worry — you can edit everything before submitting).</string>
+    <string name="auth_step_yandex_cta">Continue with Yandex ID</string>
+    <string name="auth_yandex_webview_title">Yandex ID</string>
+    <string name="auth_yandex_client_mismatch">This server returned an unexpected Yandex app id. Update the app or contact support.</string>
+    <string name="auth_yandex_failed">Yandex sign-in was cancelled or failed.</string>
     <!-- Main Screen -->
     <string name="chats">Chats</string>
     <string name="contacts">Contacts</string>
@@ -446,6 +452,14 @@
     <string name="settings_account_logout_confirm_body">You will need to sign in again.</string>
     <string name="settings_account_delete">Delete account</string>
     <string name="settings_account_delete_d">Permanently delete your account and data</string>
+    <string name="settings_account_change_yandex">Change Yandex ID</string>
+    <string name="settings_account_change_yandex_d">Link a different Yandex account</string>
+    <string name="settings_yandex_step_confirm_title">Change Yandex ID?</string>
+    <string name="settings_yandex_step_confirm_body">This does not delete your FromChat account. Your previous Yandex ID will be freed, and the new one you sign in with will be linked instead.</string>
+    <string name="settings_yandex_step_confirm_cta">Continue</string>
+    <string name="settings_yandex_step_done_title">Yandex ID updated</string>
+    <string name="settings_yandex_step_done_body">Your account is now linked to the Yandex ID you just signed in with.</string>
+    <string name="settings_done">Done</string>
     <string name="settings_account_delete_confirm_title">Delete account?</string>
     <string name="settings_account_delete_confirm_body">This cannot be undone.</string>
     <string name="settings_account_deleted">Account deleted</string>

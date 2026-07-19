@@ -12,6 +12,10 @@ object SettingsRoutes {
     const val SecurityPasswordFlow = "settings/security/password"
     const val Account = "settings/account"
     const val AccountDeleteFlow = "settings/account/delete"
+    /** Confirm → OAuth WebView → Done (Done pops confirm+OAuth). */
+    const val AccountYandexFlow = "settings/account/yandex"
+    const val AccountYandexOAuth = "settings/account/yandex/oauth"
+    const val AccountYandexDone = "settings/account/yandex/done"
     const val ServerConfig = "serverConfig"
     const val About = "about"
     const val Logs = "settings/logs"

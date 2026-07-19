@@ -79,6 +79,8 @@ import ru.fromchat.legal.DocumentScreen
 import ru.fromchat.legal.DocumentType
 import ru.fromchat.notifications.NotificationLaunchCoordinator
 import ru.fromchat.ui.auth.AuthScreen
+import ru.fromchat.ui.auth.yandex.YandexOAuthNav
+import ru.fromchat.ui.auth.yandex.YandexOAuthScreen
 import ru.fromchat.ui.calls.CallOverlay
 import ru.fromchat.ui.chat.panels.dm.DmChatRoute
 import ru.fromchat.ui.chat.panels.dm.DmNav
@@ -98,6 +100,9 @@ import ru.fromchat.ui.main.settings.NotificationsScreen
 import ru.fromchat.ui.main.settings.SettingsRoutes
 import ru.fromchat.ui.main.settings.account.AccountScreen
 import ru.fromchat.ui.main.settings.account.changepassword.ChangePasswordScreen
+import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexConfirmScreen
+import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexDoneScreen
+import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexOAuthScreen
 import ru.fromchat.ui.main.settings.account.delete.DeleteAccountScreen
 import ru.fromchat.ui.main.settings.server.ServerConfigScreen
 import ru.fromchat.ui.profile.EditProfileFocusField
@@ -457,6 +462,10 @@ fun App(
                                 )
                             }
 
+                            composable(YandexOAuthNav.ROUTE) {
+                                YandexOAuthScreen()
+                            }
+
                             composable("chat") {
                                 MainScreen(
                                     sharedTransitionScope = this@SharedTransitionLayout,
@@ -670,6 +679,26 @@ fun App(
                                 )
                             }
 
+                            settingsComposable(SettingsRoutes.AccountYandexFlow) {
+                                ChangeYandexConfirmScreen(
+                                    onBack = { navController.navigateUp() },
+                                )
+                            }
+
+                            settingsComposable(SettingsRoutes.AccountYandexOAuth) {
+                                ChangeYandexOAuthScreen(
+                                    onBack = { navController.navigateUp() },
+                                )
+                            }
+
+                            settingsComposable(SettingsRoutes.AccountYandexDone) {
+                                ChangeYandexDoneScreen(
+                                    onDone = {
+                                        navController.popBackStack(SettingsRoutes.Account, inclusive = false)
+                                    },
+                                )
+                            }
+
                             settingsComposable(SettingsRoutes.Account) {
                                 AccountScreen(
                                     onBack = { navController.navigateUp() },
@@ -679,6 +708,7 @@ fun App(
                                         }
                                     },
                                     onChangePassword = { navController.navigate(SettingsRoutes.SecurityPasswordFlow) },
+                                    onChangeYandexId = { navController.navigate(SettingsRoutes.AccountYandexFlow) },
                                     onDeleteAccount = { navController.navigate(SettingsRoutes.AccountDeleteFlow) },
                                 )
                             }

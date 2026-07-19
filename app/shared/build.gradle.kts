@@ -94,6 +94,7 @@ kotlin {
             implementation(libs.sqldelight.driver.android)
             implementation(libs.livekit.android)
             implementation(libs.livekit.android.compose.components)
+            implementation(libs.androidx.webkit)
         }
 
         iosMain.dependencies {

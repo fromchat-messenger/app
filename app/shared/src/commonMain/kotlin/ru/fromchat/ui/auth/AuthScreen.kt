@@ -5,6 +5,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,14 +28,15 @@ import ru.fromchat.api.local.db.clearAccountCacheOnLogout
 import ru.fromchat.api.instance.ServerProbeResult
 import ru.fromchat.api.instance.probeServer
 import ru.fromchat.api.schema.core.ErrorResponse
-import ru.fromchat.api.schema.user.auth.LoginRequest
 import ru.fromchat.api.schema.user.auth.LoginResponse
-import ru.fromchat.api.schema.user.auth.RegisterRequest
+import ru.fromchat.api.schema.user.auth.RegisterConfirmRequest
+import ru.fromchat.api.schema.user.auth.YandexOAuthParams
 import ru.fromchat.change_server
 import ru.fromchat.config.Settings
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.auth.register.confirmPasswordStepPage
 import ru.fromchat.ui.auth.register.profileStepPage
+import ru.fromchat.ui.auth.yandex.yandexIdStepPage
 import ru.fromchat.ui.components.ExpressiveStepFlowScaffold
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.TextCta
@@ -47,12 +49,16 @@ private enum class AuthFlowStep {
     Username,
     Password,
     ConfirmPassword,
+    YandexId,
     Profile,
 }
 
 internal sealed interface PasswordStepResult {
     data object LoginSuccess : PasswordStepResult
-    data object AdvanceToRegister : PasswordStepResult
+    data class NeedsRegister(
+        val yandexRequired: Boolean,
+        val yandex: YandexOAuthParams?,
+    ) : PasswordStepResult
     data class WrongPassword(val message: String) : PasswordStepResult
     data class RateLimited(val message: String) : PasswordStepResult
     data class Error(val message: String, val cause: Throwable? = null) : PasswordStepResult
@@ -71,29 +77,6 @@ internal suspend fun probeCurrentServer() = runCatching {
         probeServer(Settings.readServerConfig()) is ServerProbeResult.Supported
     }
 }.getOrDefault(false)
-
-internal suspend fun authBranch(
-    username: String,
-    password: String,
-    wrongPasswordMessage: String,
-    rateLimitMessage: String,
-    unexpectedError: String,
-) = login(
-    username.trim(),
-    password,
-    wrongPasswordMessage,
-    rateLimitMessage,
-    unexpectedError,
-).let { result ->
-    if (
-        result is PasswordStepResult.WrongPassword &&
-        !runCatching { ApiClient.checkUsername(username.trim()).exists }.getOrDefault(true)
-    ) {
-        PasswordStepResult.AdvanceToRegister
-    } else {
-        result
-    }
-}
 
 private suspend fun fullLogin(
     username: String,
@@ -123,20 +106,25 @@ private suspend fun fullLogin(
     runCatching { ApiClient.refreshServerInstanceFingerprint() }
 }
 
-private suspend fun login(
+internal suspend fun authPasswordStep(
     username: String,
     password: String,
     wrongPasswordMessage: String,
     rateLimitMessage: String,
     unexpectedError: String,
 ) = try {
-    fullLogin(username, password.trim()) {
-        ApiClient.loginRequest(
-            LoginRequest(username, deriveAuthSecret(username, password.trim())),
+    val derived = deriveAuthSecret(username.trim(), password.trim())
+    when (val outcome = ApiClient.authPasswordStep(username.trim(), derived)) {
+        is ApiClient.AuthPasswordStepOutcome.LoggedIn -> {
+            fullLogin(username.trim(), password.trim()) { outcome.response }
+            PasswordStepResult.LoginSuccess
+        }
+
+        is ApiClient.AuthPasswordStepOutcome.NeedsRegister -> PasswordStepResult.NeedsRegister(
+            yandexRequired = outcome.yandexRequired,
+            yandex = outcome.yandex,
         )
     }
-
-    PasswordStepResult.LoginSuccess
 } catch (e: ClientRequestException) {
     when (e.response.status.value) {
         401 -> PasswordStepResult.WrongPassword(
@@ -158,27 +146,23 @@ internal suspend fun register(
     displayName: String,
     password: String,
     bio: String,
+    registrationProof: String?,
     unexpectedError: String,
 ) = try {
-    if (runCatching { ApiClient.checkUsername(username.trim()).exists }.getOrDefault(false)) {
-        RegisterResult.UsernameTaken
-    } else {
-        fullLogin(username.trim(), password.trim()) {
-            val derived = deriveAuthSecret(username.trim(), password.trim())
-
-            ApiClient.registerRequest(
-                RegisterRequest(
-                    username = username.trim(),
-                    display_name = displayName.trim(),
-                    password = derived,
-                    confirm_password = derived,
-                    bio = bio.trim().takeIf { it.isNotEmpty() },
-                ),
-            )
-        }
-
-        RegisterResult.Success
+    fullLogin(username.trim(), password.trim()) {
+        val derived = deriveAuthSecret(username.trim(), password.trim())
+        ApiClient.authRegisterConfirm(
+            RegisterConfirmRequest(
+                username = username.trim(),
+                display_name = displayName.trim(),
+                password = derived,
+                confirm_password = derived,
+                bio = bio.trim().takeIf { it.isNotEmpty() },
+                registration_proof = registrationProof,
+            ),
+        )
     }
+    RegisterResult.Success
 } catch (e: ClientRequestException) {
     if (e.response.status.value == 400 && isUsernameTakenError(e)) {
         RegisterResult.UsernameTaken
@@ -225,11 +209,26 @@ fun AuthScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val flowState = rememberExpressiveStepFlow(AuthFlowStep.entries.size)
 
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var confirmPassword by remember { mutableStateOf("") }
-    var displayName by remember { mutableStateOf("") }
-    var bio by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf(AuthRegisterDraft.username) }
+    var password by remember { mutableStateOf(AuthRegisterDraft.password) }
+    var confirmPassword by remember { mutableStateOf(AuthRegisterDraft.confirmPassword) }
+    var displayName by remember { mutableStateOf(AuthRegisterDraft.displayName) }
+    var bio by remember { mutableStateOf(AuthRegisterDraft.bio) }
+    var yandexRequired by remember { mutableStateOf(AuthRegisterDraft.yandexRequired) }
+    var yandexParams by remember { mutableStateOf(AuthRegisterDraft.yandexParams) }
+    var registrationProof by remember { mutableStateOf(AuthRegisterDraft.registrationProof) }
+
+    fun persistDraft() {
+        AuthRegisterDraft.username = username
+        AuthRegisterDraft.password = password
+        AuthRegisterDraft.confirmPassword = confirmPassword
+        AuthRegisterDraft.displayName = displayName
+        AuthRegisterDraft.bio = bio
+        AuthRegisterDraft.yandexRequired = yandexRequired
+        AuthRegisterDraft.yandexParams = yandexParams
+        AuthRegisterDraft.registrationProof = registrationProof
+        AuthRegisterDraft.page = flowState.pagerState.currentPage
+    }
 
     fun snackbar(text: String, cause: Throwable? = null) {
         scope.showLoggedSnackbar(
@@ -240,44 +239,86 @@ fun AuthScreen(
         )
     }
 
+    val wrappedAuthSuccess: () -> Unit = {
+        AuthRegisterDraft.clear()
+        onAuthSuccess()
+    }
+
+    val wrappedBackToWelcome: () -> Unit = {
+        AuthRegisterDraft.clear()
+        onBackToWelcome()
+    }
+
     val resetToUsername: () -> Unit = {
         username = ""
         password = ""
         confirmPassword = ""
         displayName = ""
         bio = ""
+        yandexRequired = false
+        yandexParams = null
+        registrationProof = null
+        AuthRegisterDraft.clear()
         flowState.resetPredictiveState()
         scope.launch {
             flowState.pagerState.animateScrollToPage(AuthFlowStep.Username.ordinal)
         }
     }
 
-    LaunchedEffect(Unit) {
-        username = ""
-        password = ""
-        confirmPassword = ""
-        displayName = ""
-        bio = ""
+    DisposableEffect(Unit) {
+        onDispose { persistDraft() }
+    }
+
+    LaunchedEffect(username, password, confirmPassword, displayName, bio, yandexRequired, yandexParams, registrationProof) {
+        persistDraft()
     }
 
     LaunchedEffect(flowState.pagerState) {
+        val restored = AuthRegisterDraft.page
+        if (restored in 1 until AuthFlowStep.entries.size &&
+            flowState.pagerState.currentPage != restored
+        ) {
+            flowState.pagerState.scrollToPage(restored)
+        }
         var settledPage = flowState.pagerState.currentPage
         snapshotFlow { flowState.pagerState.currentPage }
             .collect { page ->
+                AuthRegisterDraft.page = page
+                if (page == AuthFlowStep.YandexId.ordinal && !yandexRequired) {
+                    val target = if (page > settledPage) {
+                        AuthFlowStep.Profile.ordinal
+                    } else {
+                        AuthFlowStep.ConfirmPassword.ordinal
+                    }
+                    settledPage = target
+                    flowState.pagerState.scrollToPage(target)
+                    return@collect
+                }
                 if (page < settledPage) {
                     when (page) {
                         AuthFlowStep.Username.ordinal -> {
                             password = ""
                             confirmPassword = ""
+                            yandexRequired = false
+                            yandexParams = null
+                            registrationProof = null
                         }
 
                         AuthFlowStep.Password.ordinal -> {
                             password = ""
                             confirmPassword = ""
+                            yandexRequired = false
+                            yandexParams = null
+                            registrationProof = null
                         }
 
                         AuthFlowStep.ConfirmPassword.ordinal -> {
-                            confirmPassword = ""
+                            // Keep confirm password when returning from Yandex ID / OAuth.
+                            registrationProof = null
+                        }
+
+                        AuthFlowStep.YandexId.ordinal -> {
+                            registrationProof = null
                         }
                     }
                 }
@@ -285,6 +326,7 @@ fun AuthScreen(
             }
     }
 
+    val yandexStep = yandexParams
     ExpressiveStepFlowScaffold(
         flowState = flowState,
         pages = listOf(
@@ -300,8 +342,11 @@ fun AuthScreen(
                 username = username,
                 password = password,
                 onPasswordChange = { password = it },
-                onLoginSuccess = onAuthSuccess,
-                onRegister = {
+                onLoginSuccess = wrappedAuthSuccess,
+                onNeedsRegister = { required, params ->
+                    yandexRequired = required
+                    yandexParams = params
+                    registrationProof = null
                     flowState.pagerState.animateScrollToPage(AuthFlowStep.ConfirmPassword.ordinal)
                 },
                 onSnackbar = ::snackbar,
@@ -311,10 +356,34 @@ fun AuthScreen(
                 onConfirmPasswordChange = { confirmPassword = it },
                 password = password,
                 onContinue = {
-                    flowState.pagerState.animateScrollToPage(AuthFlowStep.Profile.ordinal)
+                    if (yandexRequired && yandexParams != null) {
+                        flowState.pagerState.animateScrollToPage(AuthFlowStep.YandexId.ordinal)
+                    } else {
+                        flowState.pagerState.animateScrollToPage(AuthFlowStep.Profile.ordinal)
+                    }
                 },
                 onSnackbar = ::snackbar,
             ),
+            if (yandexStep != null) {
+                yandexIdStepPage(
+                    yandex = yandexStep,
+                    onProof = { proof ->
+                        registrationProof = proof
+                        flowState.pagerState.animateScrollToPage(AuthFlowStep.Profile.ordinal)
+                    },
+                    onSnackbar = ::snackbar,
+                )
+            } else {
+                confirmPasswordStepPage(
+                    confirmPassword = confirmPassword,
+                    onConfirmPasswordChange = { confirmPassword = it },
+                    password = password,
+                    onContinue = {
+                        flowState.pagerState.animateScrollToPage(AuthFlowStep.Profile.ordinal)
+                    },
+                    onSnackbar = ::snackbar,
+                )
+            },
             profileStepPage(
                 username = username,
                 displayName = displayName,
@@ -322,12 +391,13 @@ fun AuthScreen(
                 bio = bio,
                 onBioChange = { bio = it },
                 password = password,
-                onRegisterSuccess = onAuthSuccess,
+                registrationProof = registrationProof,
+                onRegisterSuccess = wrappedAuthSuccess,
                 onUsernameTaken = resetToUsername,
                 onSnackbar = ::snackbar,
             ),
         ),
         snackbarHostState = snackbarHostState,
-        onBackAtFirstPage = onBackToWelcome,
+        onBackAtFirstPage = wrappedBackToWelcome,
     )
 }

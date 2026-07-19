@@ -51,6 +51,12 @@
     <string name="auth_step_password_body">Мы войдём в аккаунт или создадим новый.</string>
     <string name="auth_step_confirm_title">Подтвердите пароль</string>
     <string name="auth_step_confirm_body">Введите тот же пароль ещё раз.</string>
+    <string name="auth_step_yandex_title">Войдите через Яндекс ID</string>
+    <string name="auth_step_yandex_body">Так мы боремся с вредоносными ботами и соблюдаем требования российских законов. Номер телефона нам недоступен — мы видим только имя, фамилию и пол. Эти данные мы не сохраняем — они нужны только для защиты и чтобы заранее заполнить поля на следующем шаге (не бойтесь, вы сможете подправить данные перед отправкой).</string>
+    <string name="auth_step_yandex_cta">Продолжить через Яндекс ID</string>
+    <string name="auth_yandex_webview_title">Яндекс ID</string>
+    <string name="auth_yandex_client_mismatch">Сервер вернул неожиданный идентификатор приложения Яндекса. Обновите приложение или обратитесь в поддержку.</string>
+    <string name="auth_yandex_failed">Вход через Яндекс ID отменён или не удался.</string>
     <string name="chats">Чаты</string>
     <string name="contacts">Контакты</string>
     <string name="profile">Профиль</string>
@@ -418,6 +424,14 @@
     <string name="settings_account_logout_confirm_body">Придётся войти снова.</string>
     <string name="settings_account_delete">Удалить аккаунт</string>
     <string name="settings_account_delete_d">Безвозвратно удалить аккаунт и данные</string>
+    <string name="settings_account_change_yandex">Сменить Яндекс ID</string>
+    <string name="settings_account_change_yandex_d">Привязать другой аккаунт Яндекса</string>
+    <string name="settings_yandex_step_confirm_title">Сменить Яндекс ID?</string>
+    <string name="settings_yandex_step_confirm_body">Это не удаляет ваш аккаунт FromChat. Предыдущий Яндекс ID будет освобождён, а вместо него привяжется тот, с которым вы войдёте.</string>
+    <string name="settings_yandex_step_confirm_cta">Продолжить</string>
+    <string name="settings_yandex_step_done_title">Яндекс ID обновлён</string>
+    <string name="settings_yandex_step_done_body">Аккаунт теперь привязан к Яндекс ID, с которым вы только что вошли.</string>
+    <string name="settings_done">Готово</string>
     <string name="settings_account_delete_confirm_title">Удалить аккаунт?</string>
     <string name="settings_account_delete_confirm_body">Это нельзя отменить.</string>
     <string name="settings_account_deleted">Аккаунт удалён</string>

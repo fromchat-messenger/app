@@ -46,6 +46,7 @@ livekitAndroid = "2.25.2"
 livekitAndroidComposeComponents = "2.3.0"
 markdownRendererM3 = "0.41.0"
 bouncycastle = "1.79"
+webkit = "1.14.0"
 
 [libraries]
 androidx-core-splashscreen = { module = "androidx.core:core-splashscreen", version.ref = "coreSplashscreen" }
@@ -110,6 +111,7 @@ krypto = { module = "com.soywiz.korlibs.krypto:krypto", version.ref = "krypto" }
 cryptography-core = { module = "dev.whyoleg.cryptography:cryptography-core", version.ref = "cryptography-kotlin" }
 cryptography-provider-optimal = { module = "dev.whyoleg.cryptography:cryptography-provider-optimal", version.ref = "cryptography-kotlin" }
 androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "androidxWork" }
+androidx-webkit = { module = "androidx.webkit:webkit", version.ref = "webkit" }
 sqldelight-runtime = { module = "app.cash.sqldelight:runtime", version.ref = "sqldelight" }
 sqldelight-coroutines-extensions = { module = "app.cash.sqldelight:coroutines-extensions", version.ref = "sqldelight" }
 sqldelight-driver-android = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }

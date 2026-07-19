@@ -25,6 +25,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,11 +38,15 @@ import com.pr0gramm3r101.components.Category
 import com.pr0gramm3r101.components.ListItem
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import org.jetbrains.compose.resources.vectorResource
 import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
 import ru.fromchat.back
 import ru.fromchat.cancel
+import ru.fromchat.ic_yandex
 import ru.fromchat.logout
+import ru.fromchat.settings_account_change_yandex
+import ru.fromchat.settings_account_change_yandex_d
 import ru.fromchat.settings_account_delete
 import ru.fromchat.settings_account_delete_d
 import ru.fromchat.settings_account_logout_confirm_body
@@ -57,11 +62,18 @@ fun AccountScreen(
     onBack: () -> Unit,
     onLogout: () -> Unit,
     onChangePassword: () -> Unit,
+    onChangeYandexId: () -> Unit,
     onDeleteAccount: () -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val scope = rememberCoroutineScope()
     var showLogoutConfirm by remember { mutableStateOf(false) }
+    var yandexAvailable by remember { mutableStateOf(false) }
+    val yandexIcon = vectorResource(Res.drawable.ic_yandex)
+
+    LaunchedEffect(Unit) {
+        yandexAvailable = runCatching { ApiClient.getAccountYandex() }.isSuccess
+    }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -102,6 +114,24 @@ fun AccountScreen(
                         )
                     }
                 )
+
+                if (yandexAvailable) {
+                    ListItem(
+                        headline = stringResource(Res.string.settings_account_change_yandex),
+                        supportingText = stringResource(Res.string.settings_account_change_yandex_d),
+                        onClick = onChangeYandexId,
+                        leadingContent = { Icon(yandexIcon, null) },
+                        divider = true,
+                        trailingContent = {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    )
+                }
 
                 ListItem(
                     headline = stringResource(Res.string.settings_account_delete),

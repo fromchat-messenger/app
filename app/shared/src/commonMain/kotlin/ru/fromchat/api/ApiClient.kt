@@ -44,7 +44,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.jsonPrimitive
 import ru.fromchat.api.ApiClient.logout
 import ru.fromchat.api.ApiClient.persistSessionToStorage
 import ru.fromchat.api.crypto.IdentityKeyManager
@@ -99,11 +104,21 @@ import ru.fromchat.api.schema.user.FcmTokenRequest
 import ru.fromchat.api.schema.user.User
 import ru.fromchat.api.schema.user.UsersSearchResponse
 import ru.fromchat.api.schema.user.VerifyPasswordRequest
+import ru.fromchat.api.schema.user.auth.AuthPasswordStepRequest
+import ru.fromchat.api.schema.user.auth.AuthUsernameStepRequest
+import ru.fromchat.api.schema.user.auth.AuthUsernameStepResponse
+import ru.fromchat.api.schema.user.auth.AccountYandexResponse
+import ru.fromchat.api.schema.user.auth.ChangeYandexRequest
+import ru.fromchat.api.schema.user.auth.ChangeYandexResponse
 import ru.fromchat.api.schema.user.auth.CheckAuthResponse
 import ru.fromchat.api.schema.user.auth.CheckUsernameResponse
 import ru.fromchat.api.schema.user.auth.LoginRequest
 import ru.fromchat.api.schema.user.auth.LoginResponse
+import ru.fromchat.api.schema.user.auth.RegisterConfirmRequest
 import ru.fromchat.api.schema.user.auth.RegisterRequest
+import ru.fromchat.api.schema.user.auth.YandexExchangeRequest
+import ru.fromchat.api.schema.user.auth.YandexExchangeResponse
+import ru.fromchat.api.schema.user.auth.YandexOAuthParams
 import ru.fromchat.api.schema.user.devices.DeviceSessionInfo
 import ru.fromchat.api.schema.user.devices.DevicesListResponse
 import ru.fromchat.api.schema.user.keys.BackupBlobRequest
@@ -480,6 +495,60 @@ object ApiClient {
     suspend fun registerRequest(request: RegisterRequest): LoginResponse =
         http
             .post("${ServerConfig.apiBaseUrl}/register") {
+                contentType(ContentType.Application.Json)
+                setBody(request)
+            }
+            .body()
+
+    suspend fun authUsernameStep(username: String): AuthUsernameStepResponse =
+        httpProbe
+            .post("${ServerConfig.apiBaseUrl}/auth/steps/username") {
+                contentType(ContentType.Application.Json)
+                setBody(AuthUsernameStepRequest(username = username.trim()))
+            }
+            .body()
+
+    sealed interface AuthPasswordStepOutcome {
+        data class LoggedIn(val response: LoginResponse) : AuthPasswordStepOutcome
+        data class NeedsRegister(
+            val yandexRequired: Boolean,
+            val yandex: YandexOAuthParams?,
+        ) : AuthPasswordStepOutcome
+    }
+
+    suspend fun authPasswordStep(username: String, passwordDerived: String): AuthPasswordStepOutcome {
+        val raw = httpProbe
+            .post("${ServerConfig.apiBaseUrl}/auth/steps/password") {
+                contentType(ContentType.Application.Json)
+                setBody(
+                    AuthPasswordStepRequest(
+                        username = username.trim(),
+                        password = passwordDerived,
+                    ),
+                )
+            }
+            .body<JsonObject>()
+        val status = raw["status"]?.jsonPrimitive?.contentOrNull
+        return when (status) {
+            "needs_register" -> AuthPasswordStepOutcome.NeedsRegister(
+                yandexRequired = raw["yandex_required"]?.jsonPrimitive?.booleanOrNull == true,
+                yandex = raw["yandex"]?.let { json.decodeFromJsonElement(YandexOAuthParams.serializer(), it) },
+            )
+            else -> AuthPasswordStepOutcome.LoggedIn(json.decodeFromJsonElement(LoginResponse.serializer(), raw))
+        }
+    }
+
+    suspend fun authYandexExchange(code: String, codeVerifier: String): YandexExchangeResponse =
+        httpProbe
+            .post("${ServerConfig.apiBaseUrl}/auth/yandex/exchange") {
+                contentType(ContentType.Application.Json)
+                setBody(YandexExchangeRequest(code = code, code_verifier = codeVerifier))
+            }
+            .body()
+
+    suspend fun authRegisterConfirm(request: RegisterConfirmRequest): LoginResponse =
+        httpProbe
+            .post("${ServerConfig.apiBaseUrl}/auth/steps/register/confirm") {
                 contentType(ContentType.Application.Json)
                 setBody(request)
             }
@@ -1477,6 +1546,19 @@ object ApiClient {
             )
         }
     }
+
+    suspend fun getAccountYandex(): AccountYandexResponse =
+        http
+            .get("${ServerConfig.apiBaseUrl}/account/yandex")
+            .body()
+
+    suspend fun changeAccountYandex(registrationProof: String): ChangeYandexResponse =
+        http
+            .post("${ServerConfig.apiBaseUrl}/account/yandex") {
+                contentType(ContentType.Application.Json)
+                setBody(ChangeYandexRequest(registration_proof = registrationProof))
+            }
+            .body()
 
     suspend fun verifyPasswordDerived(passwordDerived: String) {
         http.post("${ServerConfig.apiBaseUrl}/verify-password") {

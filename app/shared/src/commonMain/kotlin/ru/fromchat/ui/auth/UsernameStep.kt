@@ -17,12 +17,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import io.ktor.client.call.body
+import io.ktor.client.plugins.ClientRequestException
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
+import ru.fromchat.api.ApiClient
+import ru.fromchat.api.schema.core.ErrorResponse
 import ru.fromchat.auth_server_connect_failed
 import ru.fromchat.auth_step_username_body
 import ru.fromchat.auth_step_username_title
+import ru.fromchat.error_unexpected
 import ru.fromchat.fill_all_fields
 import ru.fromchat.settings_next
 import ru.fromchat.ui.components.ActionButton
@@ -55,6 +60,7 @@ internal fun usernameStepPage(
     val fillAll = stringResource(Res.string.fill_all_fields)
     val usernameLenError = stringResource(Res.string.username_length_error)
     val serverFail = stringResource(Res.string.auth_server_connect_failed)
+    val unexpected = stringResource(Res.string.error_unexpected)
     val nextLabel = stringResource(Res.string.settings_next)
 
     return ExpressiveStepPage(
@@ -109,7 +115,21 @@ internal fun usernameStepPage(
                             if (!probeCurrentServer()) {
                                 onSnackbar(serverFail, null)
                             } else {
-                                onContinue()
+                                try {
+                                    ApiClient.authUsernameStep(trimmed)
+                                    onContinue()
+                                } catch (e: ClientRequestException) {
+                                    val detail = if (e.response.status.value == 400) {
+                                        runCatching { e.response.body<ErrorResponse>().detail }
+                                            .getOrNull()
+                                            ?.ifBlank { null }
+                                    } else {
+                                        null
+                                    }
+                                    onSnackbar(detail ?: unexpected, e)
+                                } catch (e: Exception) {
+                                    onSnackbar(unexpected, e)
+                                }
                             }
                         } finally {
                             busy = false
