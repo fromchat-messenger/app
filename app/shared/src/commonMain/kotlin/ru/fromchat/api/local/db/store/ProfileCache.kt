@@ -454,30 +454,33 @@ object ProfileCache {
         val uid = message.user_id
         if (uid <= 0) return
         val existing = get(uid)
+        val incomingDisplay = message.displayName?.trim()?.takeIf { it.isNotEmpty() }
+        val incomingPic = message.profile_picture?.takeIf { it.isNotBlank() }
         if (existing != null && !existing.isClientPreviewOnly) {
             val patched = existing.copy(
                 verified = message.verified ?: existing.verified,
                 verificationStatus = message.verificationStatus ?: existing.verificationStatus,
+                displayName = existing.displayName?.takeIf { it.isNotBlank() } ?: incomingDisplay,
+                profilePicture = existing.profilePicture?.takeIf { it.isNotBlank() } ?: incomingPic,
+                username = existing.username.trim().ifBlank { message.username.trim() },
             )
             if (patched != existing) put(patched)
             return
         }
 
         val uname = message.username.trim().ifBlank { existing?.username?.trim().orEmpty() }
-        val incomingDisplay = message.displayName?.trim()?.takeIf { it.isNotEmpty() }
-            ?: existing?.displayName?.takeIf { it.isNotBlank() }
-        if (uname.isBlank() && incomingDisplay.isNullOrBlank()) return
-        if (uname.isBlank() || incomingDisplay.isNullOrBlank()) {
+        val displayName = incomingDisplay ?: existing?.displayName?.takeIf { it.isNotBlank() }
+        if (uname.isBlank() && displayName.isNullOrBlank()) return
+        if (uname.isBlank() || displayName.isNullOrBlank()) {
             Logger.d(
                 "ProfileCache",
                 "mergePreviewFromPublicMessage missingIdentity id=$uid " +
-                    "hasUsername=${uname.isNotBlank()} hasDisplayName=${!incomingDisplay.isNullOrBlank()}",
+                    "hasUsername=${uname.isNotBlank()} hasDisplayName=${!displayName.isNullOrBlank()}",
             )
         }
         val isDeleted = isDeletedPlaceholderUsername(uname) || existing?.deleted == true
-        val display = if (isDeleted) null else incomingDisplay
-        val pic = if (isDeleted) null else message.profile_picture?.takeIf { it.isNotBlank() }
-            ?: existing?.profilePicture
+        val display = if (isDeleted) null else displayName
+        val pic = if (isDeleted) null else incomingPic ?: existing?.profilePicture
 
         put(
             UserProfile(

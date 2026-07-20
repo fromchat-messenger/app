@@ -84,6 +84,7 @@ class PublicChatPanel(
             ProfileCache.enrichPublicMessageForDisplay(
                 mergeMessageUiFields(fresh, message).copy(
                     username = fresh.username,
+                    displayName = fresh.displayName,
                     profile_picture = fresh.profile_picture,
                     verified = fresh.verified,
                     verificationStatus = fresh.verificationStatus,
@@ -179,6 +180,8 @@ class PublicChatPanel(
     }
 
     suspend fun hydrateFromLocalCache() {
+        // Sender display names live in ProfileCache (message rows only store userId).
+        runCatching { ProfileCache.hydrateFromDisk() }
         hydrateMessagesFromLocalCache()
         runCatching { PublicChatProfileCache.hydrateFromDisk() }
         PublicChatProfileCache.profile?.let { applyPublicChatProfile(it) }

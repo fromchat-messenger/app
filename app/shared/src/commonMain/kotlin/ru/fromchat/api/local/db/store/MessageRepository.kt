@@ -1,6 +1,7 @@
 package ru.fromchat.api.local.db.store
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.messages.ChatListPreviewState
 import ru.fromchat.api.local.messages.ChatListPreviewStrings
@@ -21,7 +22,9 @@ object MessageRepository {
         MessageCacheStore.observeMessages(activeInstance(), conversationId)
 
     fun observePublicMessages(): Flow<List<Message>> =
-        observeMessages(conversationIdForGroup(GENERAL_PUBLIC_GROUP_ID))
+        observeMessages(conversationIdForGroup(GENERAL_PUBLIC_GROUP_ID)).map { rows ->
+            ProfileCache.enrichPublicMessagesForDisplay(rows)
+        }
 
     fun observeDmMessages(otherUserId: Int): Flow<List<Message>> =
         observeMessages(conversationIdForDm(otherUserId))

@@ -129,7 +129,17 @@ internal fun mergeMessageUiFields(db: Message, panel: Message?): Message {
         ?: db.pendingFileAspectRatio?.takeIf { it > 0f }
         ?: panel.fileDimensions?.firstOrNull()?.let { (w, h) -> aspectRatioFromDimensionPair(w, h) }
         ?: db.fileDimensions?.firstOrNull()?.let { (w, h) -> aspectRatioFromDimensionPair(w, h) }
+    // DB rows only store userId; sender identity is reconstructed from ProfileCache and can
+    // briefly be blank. Keep non-blank panel fields (e.g. from a network payload) so text
+    // avatars / names are not wiped on every SQLDelight emission.
     val merged = db.copy(
+        username = db.username.trim().ifBlank { panel.username.trim() },
+        displayName = db.displayName?.trim()?.takeIf { it.isNotEmpty() }
+            ?: panel.displayName?.trim()?.takeIf { it.isNotEmpty() },
+        profile_picture = db.profile_picture?.takeIf { it.isNotBlank() }
+            ?: panel.profile_picture?.takeIf { it.isNotBlank() },
+        verified = db.verified ?: panel.verified,
+        verificationStatus = db.verificationStatus ?: panel.verificationStatus,
         pendingFileUri = when {
             confirmed -> localPreview
             else -> panel.pendingFileUri ?: db.pendingFileUri
