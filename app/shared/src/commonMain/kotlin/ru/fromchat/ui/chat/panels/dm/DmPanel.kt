@@ -159,6 +159,13 @@ class DmPanel(
         scope.launch(Dispatchers.Default) {
             val cached = ProfileCache.get(otherUserId)
             val displayName = cached?.displayNameText(ApiClient.user?.id).orEmpty()
+            Logger.d(
+                "DmPanel",
+                "applyCachedPeerProfile otherUserId=$otherUserId " +
+                    "deleted=${cached?.deleted} suspended=${cached?.suspended} " +
+                    "revision=${ProfileCache.revision.value} " +
+                    "titleBlank=${displayName.isBlank()}",
+            )
             cached?.let { UserStatusStore.update(it.id, it.online, it.lastSeen) }
             withContext(Dispatchers.Main) {
                 if (displayName.isNotBlank()) {
@@ -236,17 +243,17 @@ class DmPanel(
             // Read cache first. Do not setLoading(true) before this: that forced a 1-frame spinner
             // when the chat screen re-entered composition (e.g. pop back from profile).
             val cached = runCatching { MessageCacheStore.loadDmMessages(otherUserId) }.getOrDefault(emptyList())
-            if (cached.isNotEmpty()) {
+            val hadCachedMessages = cached.isNotEmpty()
+            if (hadCachedMessages) {
                 batchStateUpdates {
                     clearMessages()
                     addMessages(cached)
                     setLoading(false)
                 }
-                messagesLoaded = true
-                return
+            } else {
+                setLoading(true)
             }
 
-            setLoading(true)
             try {
                 OutgoingMessageCoordinator.pruneStaleAttachmentOutboxForInstance(
                     CacheContext.requireActiveInstanceId(),
@@ -289,7 +296,7 @@ class DmPanel(
 
                     // Persist the most recent DM messages for offline use.
                     val mergedForCache = _state.messages
-                    MessageCacheStore.replaceDmMessages(otherUserId, mergedForCache)
+                    MessageCacheStore.replaceDmMessages(otherUserId, mergedForCache, replaceAll = true)
                     messagesLoaded = true
                 } else {
                     val error = historyResult.exceptionOrNull()
@@ -298,6 +305,8 @@ class DmPanel(
                         MessageCacheStore.clearDmMessages(otherUserId)
                         clearMessages()
                         setHasMoreMessages(false)
+                        messagesLoaded = true
+                    } else if (hadCachedMessages) {
                         messagesLoaded = true
                     }
                 }
@@ -510,8 +519,6 @@ class DmPanel(
                 MessageCacheStore.confirmDmMessage(otherUserId, cid, mergedForPersistence)
                 OutgoingMessageCoordinator.clearAttachmentOutboxAfterAck(cid)
             }
-            val snapshot = _state.messages
-            MessageCacheStore.replaceDmMessages(otherUserId, snapshot)
         }
     }
 
@@ -533,31 +540,46 @@ class DmPanel(
             }
             val outcome = decryptDmEnvelopeForUi(envelope)
             val dec = parseDmMessageContent(outcome.plaintext)
+            val editedForCache = (previous ?: createMessage(envelope, outcome.plaintext, outcome.isCorrupted)).copy(
+                content = dec.text,
+                is_edited = true,
+                fileThumbnails = dec.fileThumbnails ?: previous?.fileThumbnails,
+                fileAspectRatios = dec.fileAspectRatios ?: previous?.fileAspectRatios,
+                fileSizes = dec.fileSizes ?: previous?.fileSizes,
+                fileDimensions = dec.fileDimensions ?: previous?.fileDimensions,
+                isContentCorrupted = outcome.isCorrupted,
+                dmEnvelope = envelope,
+                reply_to = previous?.reply_to,
+            )
             updateMessage(envelope.id) {
-                it.copy(
-                    content = dec.text,
-                    is_edited = true,
-                    fileThumbnails = dec.fileThumbnails ?: it.fileThumbnails,
-                    fileAspectRatios = dec.fileAspectRatios ?: it.fileAspectRatios,
-                    fileSizes = dec.fileSizes ?: it.fileSizes,
-                    fileDimensions = dec.fileDimensions ?: it.fileDimensions,
-                    isContentCorrupted = outcome.isCorrupted,
-                    dmEnvelope = envelope,
-                    reply_to = it.reply_to,
-                )
+                editedForCache.copy(reply_to = it.reply_to)
             }
 
-            // Persist edit to cache
-            MessageCacheStore.replaceDmMessages(otherUserId, _state.messages)
+            MessageCacheStore.upsertDmMessage(otherUserId, editedForCache)
         }
     }
 
     private fun createMessage(envelope: DmEnvelope, plaintext: String, isContentCorrupted: Boolean): Message {
         val dec = parseDmMessageContent(plaintext)
-        val username = if (envelope.senderId == currentUserId) {
-            "You"
+        val senderUsername = if (envelope.senderId == currentUserId) {
+            ApiClient.user?.username.orEmpty()
         } else {
-            otherDisplayName
+            envelope.senderUsername?.trim()?.takeIf { it.isNotEmpty() }
+                ?: ProfileCache.get(envelope.senderId)?.username?.trim().orEmpty()
+        }
+        val senderDisplayName = if (envelope.senderId == currentUserId) {
+            ApiClient.user?.displayName?.trim()?.takeIf { it.isNotEmpty() }
+        } else {
+            envelope.senderDisplayName?.trim()?.takeIf { it.isNotEmpty() }
+                ?: otherDisplayName.takeIf { it.isNotBlank() }
+                ?: ProfileCache.get(envelope.senderId)?.displayName?.trim()?.takeIf { it.isNotEmpty() }
+        }
+        if (envelope.senderId != currentUserId) {
+            ProfileCache.mergePreview(
+                id = envelope.senderId,
+                username = senderUsername.takeIf { it.isNotEmpty() },
+                displayName = senderDisplayName,
+            )
         }
         return Message(
             id = envelope.id,
@@ -569,7 +591,8 @@ class DmPanel(
                 else -> ActiveDmChatTracker.isActive(otherUserId)
             },
             is_edited = false,
-            username = username,
+            username = senderUsername,
+            displayName = senderDisplayName,
             profile_picture = null,
             verified = null,
             reply_to = null,
@@ -621,12 +644,27 @@ class DmPanel(
     private fun processDeletedEnvelope(element: JsonElement) {
         val data = runCatching {
             json.decodeFromJsonElement(DmDeletedData.serializer(), element)
-        }.getOrNull() ?: return
+        }.getOrNull() ?: run {
+            Logger.w("DmPanel", "processDeletedEnvelope decode failed")
+            return
+        }
         val involvesPeer =
             data.senderId == otherUserId ||
                 data.recipientId == otherUserId ||
                 data.senderId == currentUserId
-        if (!involvesPeer) return
+        if (!involvesPeer) {
+            Logger.d(
+                "DmPanel",
+                "processDeletedEnvelope skip messageId=${data.id} " +
+                    "senderId=${data.senderId} recipientId=${data.recipientId} peer=$otherUserId",
+            )
+            return
+        }
+        Logger.i(
+            "DmPanel",
+            "processDeletedEnvelope messageId=${data.id} peer=$otherUserId " +
+                "uiBefore=${_state.messages.size} inUi=${_state.messages.any { it.id == data.id }}",
+        )
         scope.launch(Dispatchers.Default) {
             val clientId = _state.messages.find { it.id == data.id }?.client_message_id
             DownloadedFileRegistry.invalidateForMessage(data.id)
@@ -639,6 +677,10 @@ class DmPanel(
             }
             deleteMessageImmediately(data.id)
             MessageRepository.deleteDmMessageById(otherUserId, data.id)
+            Logger.d(
+                "DmPanel",
+                "processDeletedEnvelope done messageId=${data.id} uiAfter=${_state.messages.size}",
+            )
         }
     }
 

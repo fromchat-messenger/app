@@ -10,9 +10,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -422,6 +425,8 @@ fun DevicesScreen(onBack: () -> Unit) {
     }
 
     Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        contentWindowInsets = WindowInsets.navigationBars,
         snackbarHost = { FromChatSnackbarHost(hostState = snackbarHostState) },
         topBar = {
             TopAppBar(
@@ -479,10 +484,15 @@ fun DevicesScreen(onBack: () -> Unit) {
 
         LazyColumn(
             modifier = Modifier
-                .hazeSource(hazeState)
-                .padding()
-                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
-            contentPadding = innerPadding
+                .fillMaxSize()
+                .consumeWindowInsets(innerPadding)
+                .hazeSource(hazeState),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = innerPadding.calculateTopPadding() + 8.dp,
+                bottom = innerPadding.calculateBottomPadding() + 24.dp,
+            ),
         ) {
             item {
                 Column(Modifier.fillMaxWidth()) {
@@ -569,9 +579,8 @@ fun DevicesScreen(onBack: () -> Unit) {
                 }
             }
 
-            item {
-                // Initial load only — background poll must not add/remove list height (overscroll jump).
-                if (refreshing && devices.isEmpty()) {
+            if (refreshing && devices.isEmpty()) {
+                item {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()

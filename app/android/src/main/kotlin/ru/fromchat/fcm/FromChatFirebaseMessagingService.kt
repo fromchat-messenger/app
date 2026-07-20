@@ -27,7 +27,11 @@ class FromChatFirebaseMessagingService : FirebaseMessagingService() {
                 val fallbackMessageId = pushData["message_id"]?.toIntOrNull()
                     ?: pushData["dm_id"]?.toIntOrNull()
                 val senderId = pushData["sender_id"]?.toIntOrNull()
-                val sender = pushData["sender_username"] ?: remoteMessage.data["senderUsername"]
+                val sender = pushData["sender_display_name"]
+                    ?.takeIf { it.isNotBlank() }
+                    ?: pushData["sender_username"]
+                    ?: remoteMessage.data["senderUsername"]
+                    ?: remoteMessage.data["senderDisplayName"]
                 val title = remoteMessage.notification?.title ?: pushData["title"] ?: "FromChat"
                 val body = remoteMessage.notification?.body ?: pushData["body"] ?: "New message"
                 val messageType = pushData["type"] ?: "public_message"

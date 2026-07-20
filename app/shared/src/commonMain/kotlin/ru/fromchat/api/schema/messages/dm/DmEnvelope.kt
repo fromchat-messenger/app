@@ -9,6 +9,7 @@ data class DmEnvelope(
     val senderId: Int,
     val recipientId: Int,
     @SerialName("sender_username") val senderUsername: String? = null,
+    @SerialName("sender_display_name") val senderDisplayName: String? = null,
     @SerialName("iv_b64") val ivB64: String,
     @SerialName("ciphertext_b64") val ciphertextB64: String,
     @SerialName("wrapped_mek_b64") val wrappedMekB64: String? = null,

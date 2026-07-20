@@ -72,13 +72,28 @@ internal fun mergeDatabaseMessagesWithPanelState(
     val mergedClientIds = mergedDb.mapNotNull { it.client_message_id?.trim()?.takeIf { id -> id.isNotEmpty() } }.toSet()
     val mergedIds = mergedDb.map { it.id }.toSet()
     // Keep in-flight panel optimistics even when the DB Flow emission already stripped them.
+    // Confirmed (id > 0) rows missing from DB are deletes — do not resurrect them from panel state.
+    val droppedConfirmed = panelMessages.filter { panel ->
+        panel.id > 0 && panel.id !in mergedIds
+    }
+    if (droppedConfirmed.isNotEmpty()) {
+        ru.fromchat.Logger.d(
+            "MessageCache",
+            "mergeDbPanel dropConfirmedDeletes count=${droppedConfirmed.size} " +
+                "ids=${droppedConfirmed.map { it.id }.take(12)} " +
+                "panelSize=${panelMessages.size} dbSize=${dbMessages.size}",
+        )
+    }
     val extraPanel = panelMessages.filter { panel ->
         val cid = panel.client_message_id?.trim()?.takeIf { it.isNotEmpty() }
-        when {
-            panel.id < 0 && cid != null && cid !in mergedClientIds -> true
-            panel.id > 0 && panel.id !in mergedIds && (cid.isNullOrEmpty() || cid !in mergedClientIds) -> true
-            else -> false
-        }
+        panel.id < 0 && cid != null && cid !in mergedClientIds
+    }
+    if (extraPanel.isNotEmpty()) {
+        ru.fromchat.Logger.d(
+            "MessageCache",
+            "mergeDbPanel keepOptimistic count=${extraPanel.size} " +
+                "ids=${extraPanel.map { it.id }}",
+        )
     }
 
     return dedupeMessagesByClientId(

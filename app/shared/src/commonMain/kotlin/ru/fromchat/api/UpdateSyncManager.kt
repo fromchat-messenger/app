@@ -58,13 +58,24 @@ object UpdateSyncManager {
 
     /**
      * Apply a live or replayed updates envelope, then advance cursor and ack the server.
+     *
+     * Ack is fire-and-forget: [WebSocketManager.request] must not be awaited from the WS
+     * receive loop (it would deadlock — the ack response cannot be read while this call blocks).
      */
     suspend fun onUpdatesEnvelope(jsonTree: JsonElement) {
         applyMutex.withLock {
-            val seq = UpdatesBatchApplier.applyEnvelope(jsonTree) ?: return@withLock
+            Logger.d("UpdateSync", "onUpdatesEnvelope begin")
+            val seq = UpdatesBatchApplier.applyEnvelope(jsonTree) ?: run {
+                Logger.w("UpdateSync", "onUpdatesEnvelope apply returned null")
+                return@withLock
+            }
+            Logger.d(
+                "UpdateSync",
+                "onUpdatesEnvelope applied seq=$seq lastSeq=${_lastSeq.value}",
+            )
             if (seq > _lastSeq.value) {
                 persistLastSeq(seq)
-                sendAck(seq)
+                sendAckFireAndForget(seq)
             }
         }
     }
@@ -90,6 +101,10 @@ object UpdateSyncManager {
     /**
      * Catch up from [lastSeq]: chunked getUpdates, or tooLong → history rebuild.
      * Does not advance the cursor until apply/rebuild succeeds.
+     *
+     * Loops until [GetUpdatesResponse.hasMore] is false. On repeated getUpdates failures
+     * (e.g. prior ack-deadlock timeouts), falls back to a full history rebuild so the UI
+     * is not left with first+last holes filled only by slow incremental envelopes.
      */
     suspend fun runGapDetectionIfNeeded() {
         if (gapDetectionInProgress) {
@@ -108,16 +123,38 @@ object UpdateSyncManager {
 
         try {
             var rounds = 0
+            var consecutiveFailures = 0
             while (rounds < 100) {
                 rounds++
                 val startSeq = _lastSeq.value
                 Logger.i("UpdateSyncManager", "Gap detection from lastSeq=$startSeq (round=$rounds)")
 
-                val response = requestGetUpdates(token, startSeq) ?: break
+                val response = requestGetUpdates(token, startSeq)
+                if (response == null) {
+                    consecutiveFailures++
+                    Logger.w(
+                        "UpdateSyncManager",
+                        "getUpdates returned null (timeout/disconnect) " +
+                            "failures=$consecutiveFailures lastSeq=$startSeq",
+                    )
+                    if (consecutiveFailures >= 2) {
+                        Logger.w(
+                            "UpdateSyncManager",
+                            "Gap catch-up stalled — rebuilding from history",
+                        )
+                        rebuildStateFromHistory()
+                        break
+                    }
+                    continue
+                }
+                consecutiveFailures = 0
+
+                val gapHint = (response.lastSeq - startSeq).coerceAtLeast(response.missedCount)
                 Logger.i(
                     "UpdateSyncManager",
                     "Gap detection result: status=${response.status}, lastSeq=${response.lastSeq}, " +
-                        "missed=${response.missedCount}, hasMore=${response.hasMore}",
+                        "missed=${response.missedCount}, hasMore=${response.hasMore}, " +
+                        "gapHint=$gapHint clientSeq=$startSeq",
                 )
                 updateMissedCount(response.missedCount)
 
@@ -126,18 +163,43 @@ object UpdateSyncManager {
                         val ok = rebuildStateFromHistory()
                         if (ok) {
                             persistLastSeq(response.lastSeq)
-                            sendAck(response.lastSeq)
+                            sendAckFireAndForget(response.lastSeq)
                         } else {
                             Logger.w("UpdateSyncManager", "History rebuild failed; leaving lastSeq=$startSeq")
                         }
                         break
                     }
                     "ok" -> {
+                        // Envelopes for this chunk are applied on the receive path before this
+                        // response is delivered; advance cursor here only when there was nothing to apply.
                         if (response.lastSeq > _lastSeq.value && response.missedCount == 0) {
                             persistLastSeq(response.lastSeq)
-                            sendAck(response.lastSeq)
+                            sendAckFireAndForget(response.lastSeq)
                         }
-                        if (!response.hasMore) break
+                        if (!response.hasMore) {
+                            Logger.i(
+                                "UpdateSyncManager",
+                                "Gap catch-up complete after $rounds round(s) lastSeq=${_lastSeq.value}",
+                            )
+                            break
+                        }
+                        if (_lastSeq.value <= startSeq && response.missedCount > 0) {
+                            // Chunk was announced but cursor did not advance — avoid tight spin.
+                            Logger.w(
+                                "UpdateSyncManager",
+                                "Gap chunk did not advance cursor " +
+                                    "(start=$startSeq now=${_lastSeq.value} missed=${response.missedCount})",
+                            )
+                            consecutiveFailures++
+                            if (consecutiveFailures >= 2) {
+                                val ok = rebuildStateFromHistory()
+                                if (ok) {
+                                    persistLastSeq(response.lastSeq)
+                                    sendAckFireAndForget(response.lastSeq)
+                                }
+                                break
+                            }
+                        }
                     }
                     else -> {
                         Logger.w("UpdateSyncManager", "Unknown getUpdates status=${response.status}")
@@ -165,7 +227,7 @@ object UpdateSyncManager {
                 GetUpdatesRequest(lastSeq = lastSeq),
             ),
         )
-        val response = WebSocketManager.request(requestMessage)
+        val response = WebSocketManager.request(requestMessage, timeoutMs = 30_000)
         val data = response?.data ?: return null
         return runCatching {
             ApiClient.json.decodeFromJsonElement(GetUpdatesResponse.serializer(), data)
@@ -174,11 +236,15 @@ object UpdateSyncManager {
         }.getOrNull()
     }
 
-    private suspend fun sendAck(seq: Int) {
+    /**
+     * Send ack without waiting for a response. Must not use [WebSocketManager.request] from
+     * the receive/apply path — that deadlocks the incoming frame loop for ~10s per envelope.
+     */
+    private suspend fun sendAckFireAndForget(seq: Int) {
         val token = ApiClient.token ?: return
         if (seq <= 0) return
         runCatching {
-            WebSocketManager.request(
+            WebSocketManager.send(
                 WebSocketMessage(
                     type = "ackUpdates",
                     credentials = WebSocketCredentials(scheme = "Bearer", credentials = token),
@@ -188,6 +254,7 @@ object UpdateSyncManager {
                     ),
                 ),
             )
+            Logger.d("UpdateSync", "ackUpdates sent (fire-and-forget) seq=$seq")
         }.onFailure {
             Logger.w("UpdateSyncManager", "ackUpdates failed for seq=$seq: ${it.message}", it)
         }
@@ -236,18 +303,26 @@ object UpdateSyncManager {
         val ordered = collected.values.sortedBy {
             parseMessageTimestampMillis(it.timestamp) ?: 0L
         }
-        MessageRepository.replacePublicMessages(ordered)
+        MessageCacheStore.clearPublicMessages()
+        Logger.i(
+            "UpdateSync",
+            "rebuildPublicHistory messages=${ordered.size} — replaceAll=true",
+        )
+        MessageRepository.replacePublicMessages(ordered, replaceAll = true)
     }
 
     private suspend fun rebuildDmHistories() {
         val conversations = MessageRepository.loadCachedDmConversations()
+        Logger.i("UpdateSync", "rebuildDmHistories conversations=${conversations.size}")
         for (conversation in conversations) {
             val otherId = conversation.otherUserId
             MessageCacheStore.clearDmMessages(otherId)
             var beforeId: Int? = null
+            var pageCount = 0
             repeat(MAX_HISTORY_PAGES) {
                 val page = ApiClient.getDmHistory(otherId, limit = HISTORY_PAGE_SIZE, beforeId = beforeId)
                 if (page.messages.isEmpty()) return@repeat
+                pageCount++
                 for (envelope in page.messages) {
                     val element = ApiClient.json.encodeToJsonElement(DmEnvelope.serializer(), envelope)
                     DmInboundMessageProcessor.processNew(element)
@@ -256,6 +331,7 @@ object UpdateSyncManager {
                 if (page.messages.size < HISTORY_PAGE_SIZE) return@repeat
                 beforeId = oldest.id
             }
+            Logger.d("UpdateSync", "rebuildDmHistories otherUserId=$otherId pages=$pageCount")
         }
     }
 }

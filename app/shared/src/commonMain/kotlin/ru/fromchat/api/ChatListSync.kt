@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.FlowPreview
+import ru.fromchat.Logger
 import ru.fromchat.api.local.WebSocketManager
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.db.store.ConnectionStateStore
@@ -86,12 +87,54 @@ object ChatListSync {
 
     private suspend fun refreshPublicChatPreviewFromLatest() {
         runCatching {
-            val response = ApiClient.getMessages(limit = 1)
-            val latest = response.messages.maxByOrNull { message ->
+            val cached = MessageRepository.loadPublicMessages()
+            val maxCachedId = cached.asSequence().map { it.id }.filter { it > 0 }.maxOrNull() ?: 0
+            val latestResponse = ApiClient.getMessages(limit = 1)
+            val latest = latestResponse.messages.maxByOrNull { message ->
                 parseMessageTimestampMillis(message.timestamp) ?: Long.MIN_VALUE
             } ?: return@runCatching
-            // Upsert only — does not wipe older cached messages.
-            MessageRepository.upsertPublicMessage(latest)
+
+            val cachedIds = cached.asSequence().map { it.id }.filter { it > 0 }.toHashSet()
+            val holeBelowLatest =
+                latest.id > 0 &&
+                    maxCachedId > 0 &&
+                    latest.id > maxCachedId + 1
+            val latestMissingWithPriorCache =
+                latest.id > 0 &&
+                    latest.id !in cachedIds &&
+                    maxCachedId > 0 &&
+                    latest.id > maxCachedId
+
+            if (holeBelowLatest || latestMissingWithPriorCache) {
+                // Preview-only upsert would leave first+last holes; pull a page and merge.
+                Logger.i(
+                    "ChatListSync",
+                    "Public preview gap: latestId=${latest.id} maxCachedId=$maxCachedId " +
+                        "cachedCount=${cached.size} — fetching page to fill",
+                )
+                val page = ApiClient.getMessages(limit = 50)
+                val networkMessages = page.messages
+                if (networkMessages.isEmpty()) {
+                    MessageRepository.upsertPublicMessage(latest)
+                    return@runCatching
+                }
+                ProfileCache.mergePreviewFromPublicMessages(networkMessages)
+                val networkIds = networkMessages.map { it.id }.toSet()
+                val minNetworkId = networkMessages.minOf { it.id }
+                val maxNetworkId = networkMessages.maxOf { it.id }
+                val older = cached.filter { it.id > 0 && it.id !in networkIds && it.id < minNetworkId }
+                val ahead = cached.filter { it.id > 0 && it.id !in networkIds && it.id > maxNetworkId }
+                val merged = (networkMessages + older + ahead).distinctBy { it.id }
+                Logger.i(
+                    "ChatListSync",
+                    "Public gap fill: network=${networkMessages.size} older=${older.size} " +
+                        "ahead=${ahead.size} merged=${merged.size} — replaceAll=true",
+                )
+                MessageRepository.replacePublicMessages(merged, replaceAll = true)
+            } else {
+                // Upsert only — does not wipe older cached messages.
+                MessageRepository.upsertPublicMessage(latest)
+            }
         }
     }
 

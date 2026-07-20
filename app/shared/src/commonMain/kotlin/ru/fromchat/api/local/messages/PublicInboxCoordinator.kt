@@ -3,6 +3,7 @@ package ru.fromchat.api.local.messages
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
+import ru.fromchat.Logger
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.db.store.MessageRepository
 import ru.fromchat.api.local.db.store.ProfileCache
@@ -15,7 +16,15 @@ import ru.fromchat.api.schema.websocket.types.MessageDeletedData
  */
 object PublicInboxCoordinator {
     suspend fun processNew(element: JsonElement) = withContext(Dispatchers.Default) {
-        val message = decodeMessage(element) ?: return@withContext
+        val message = decodeMessage(element) ?: run {
+            Logger.w("PublicInbox", "processNew decode failed")
+            return@withContext
+        }
+        Logger.d(
+            "PublicInbox",
+            "processNew id=${message.id} userId=${message.user_id} " +
+                "clientId=${message.client_message_id}",
+        )
         ProfileCache.mergePreviewFromPublicMessage(message)
         val clientId = message.client_message_id?.trim().orEmpty()
         val currentUserId = ApiClient.user?.id
@@ -49,7 +58,11 @@ object PublicInboxCoordinator {
     }
 
     suspend fun processEdited(element: JsonElement) = withContext(Dispatchers.Default) {
-        val edited = decodeMessage(element) ?: return@withContext
+        val edited = decodeMessage(element) ?: run {
+            Logger.w("PublicInbox", "processEdited decode failed")
+            return@withContext
+        }
+        Logger.d("PublicInbox", "processEdited id=${edited.id} userId=${edited.user_id}")
         ProfileCache.mergePreviewFromPublicMessage(edited)
         val existing = MessageRepository.loadPublicMessages()
         val merged = existing.map { current ->
@@ -62,14 +75,23 @@ object PublicInboxCoordinator {
         if (merged.none { it.id == edited.id }) {
             MessageRepository.upsertPublicMessage(edited)
         } else {
-            MessageRepository.replacePublicMessages(merged)
+            MessageRepository.upsertPublicMessage(
+                merged.first { it.id == edited.id },
+            )
         }
     }
 
     suspend fun processDeleted(element: JsonElement) = withContext(Dispatchers.Default) {
         val deleted = runCatching {
             ApiClient.json.decodeFromJsonElement(MessageDeletedData.serializer(), element)
-        }.getOrNull() ?: return@withContext
+        }.getOrNull() ?: run {
+            Logger.w("PublicInbox", "processDeleted decode failed element=${element.toString().take(120)}")
+            return@withContext
+        }
+        Logger.i(
+            "PublicInbox",
+            "processDeleted messageId=${deleted.message_id} — hard-deleting from cache",
+        )
         MessageRepository.deletePublicMessageById(deleted.message_id)
     }
 

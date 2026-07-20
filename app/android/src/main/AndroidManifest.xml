@@ -21,7 +21,7 @@
         android:networkSecurityConfig="@xml/network_security_config">
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
-            android:resource="@drawable/logo" />
+            android:resource="@drawable/ic_stat_fromchat" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

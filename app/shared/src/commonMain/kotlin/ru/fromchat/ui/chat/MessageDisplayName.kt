@@ -15,7 +15,8 @@ import ru.fromchat.ui.profile.isRedactedPeerAccount
 import ru.fromchat.ui.profile.peerIsDeleted
 
 /**
- * Resolves [Message.username] for display: localized «Вы», deleted user label, or server-provided name.
+ * Resolves the sender label shown in message bubbles: localized «Вы», deleted user label,
+ * cached/server display name, or login username only as a last resort.
  */
 @Composable
 fun messageDisplayUsername(message: Message, currentUserId: Int?): String {
@@ -30,12 +31,14 @@ fun messageDisplayUsername(message: Message, currentUserId: Int?): String {
     if (isDeletedAccountUsername(message.username)) {
         return deletedUserDisplayNameForUi()
     }
-    val cachedUsername = ProfileCache.get(message.user_id)?.visibleDisplayName(currentUserId)
-    if (cachedUsername != null) return cachedUsername
+    ProfileCache.get(message.user_id)?.visibleDisplayName(currentUserId)
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return it }
+    message.displayName?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
     if (message.username.equals("deleted", ignoreCase = true)) {
         return deletedUserDisplayNameForUi()
     }
-    return message.username
+    return message.username.trim()
 }
 
 fun messageSenderProfilePicture(
@@ -75,5 +78,5 @@ fun messageSenderAvatarLabel(
     if (currentUserId != null && message.user_id == currentUserId) {
         return ApiClient.user?.displayName?.trim()?.takeIf { it.isNotBlank() }.orEmpty()
     }
-    return message.username.trim()
+    return message.displayName?.trim()?.takeIf { it.isNotEmpty() }.orEmpty()
 }

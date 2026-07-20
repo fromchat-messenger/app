@@ -127,6 +127,7 @@ import ru.fromchat.api.ApiClient
 import ru.fromchat.api.calls.CallStore
 import ru.fromchat.api.calls.LiveKitConnectSession
 import ru.fromchat.api.local.db.store.ProfileCache
+import ru.fromchat.notifications.NotificationSmallIcon
 import ru.fromchat.call_status_connecting
 import ru.fromchat.call_status_reconnecting
 import ru.fromchat.call_status_reconnecting_with_detail
@@ -1293,15 +1294,10 @@ private fun CallInlineControlBar(
             )
             nm.createNotificationChannel(ch)
         }
-        val smallIcon = try {
-            context.packageManager.getApplicationInfo(context.packageName, 0).icon
-        } catch (_: Exception) {
-            R.drawable.stat_sys_upload
-        }
         return NotificationCompat.Builder(context, SCREEN_SHARE_CHANNEL_ID)
             .setContentTitle(updatedTitle)
             .setContentText(updatedText)
-            .setSmallIcon(smallIcon)
+            .setSmallIcon(NotificationSmallIcon.resId(context))
             .setOngoing(true)
             .build()
     }

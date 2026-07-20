@@ -56,8 +56,13 @@ object MessageRepository {
     fun observeActiveDmConversations(): Flow<List<CachedConversation>> =
         MessageCacheStore.observeActiveDmConversations(activeInstance())
 
-    suspend fun replacePublicMessages(messages: List<Message>) =
-        MessageCacheStore.replacePublicMessages(messages)
+    suspend fun replacePublicMessages(messages: List<Message>, replaceAll: Boolean = false) {
+        ru.fromchat.Logger.d(
+            "MessageRepo",
+            "replacePublicMessages count=${messages.size} replaceAll=$replaceAll",
+        )
+        MessageCacheStore.replacePublicMessages(messages, replaceAll = replaceAll)
+    }
 
     suspend fun upsertPublicMessage(message: Message) = MessageCacheStore.upsertPublicMessage(message)
 
@@ -67,20 +72,32 @@ object MessageRepository {
     suspend fun deletePublicMessageByClientMessageId(clientMessageId: String) =
         MessageCacheStore.deletePublicMessageByClientMessageId(clientMessageId)
 
-    suspend fun markMessageDeleted(conversationId: String, messageId: Int) =
+    suspend fun deletePublicMessageById(messageId: Int) {
+        ru.fromchat.Logger.d("MessageRepo", "deletePublicMessageById messageId=$messageId")
+        MessageCacheStore.deletePublicMessageById(messageId)
+    }
+
+    suspend fun markMessageDeleted(conversationId: String, messageId: Int) {
+        ru.fromchat.Logger.d(
+            "MessageRepo",
+            "markMessageDeleted convId=$conversationId messageId=$messageId",
+        )
         MessageCacheStore.markMessageDeleted(conversationId, messageId)
+    }
 
     suspend fun markPublicMessageDeleted(messageId: Int) =
         markMessageDeleted(conversationIdForGroup(GENERAL_PUBLIC_GROUP_ID), messageId)
 
-    suspend fun deletePublicMessageById(messageId: Int) =
-        MessageCacheStore.deletePublicMessageById(messageId)
-
     suspend fun loadDmMessages(otherUserId: Int): List<Message> =
         MessageCacheStore.loadDmMessages(otherUserId)
 
-    suspend fun replaceDmMessages(otherUserId: Int, messages: List<Message>) =
-        MessageCacheStore.replaceDmMessages(otherUserId, messages)
+    suspend fun replaceDmMessages(otherUserId: Int, messages: List<Message>, replaceAll: Boolean = false) {
+        ru.fromchat.Logger.d(
+            "MessageRepo",
+            "replaceDmMessages otherUserId=$otherUserId count=${messages.size} replaceAll=$replaceAll",
+        )
+        MessageCacheStore.replaceDmMessages(otherUserId, messages, replaceAll = replaceAll)
+    }
 
     suspend fun upsertDmMessage(otherUserId: Int, message: Message) =
         MessageCacheStore.upsertDmMessage(otherUserId, message)
@@ -91,8 +108,13 @@ object MessageRepository {
     suspend fun deleteDmMessageByClientMessageId(otherUserId: Int, clientMessageId: String) =
         MessageCacheStore.deleteDmMessageByClientMessageId(otherUserId, clientMessageId)
 
-    suspend fun deleteDmMessageById(otherUserId: Int, messageId: Int) =
+    suspend fun deleteDmMessageById(otherUserId: Int, messageId: Int) {
+        ru.fromchat.Logger.d(
+            "MessageRepo",
+            "deleteDmMessageById otherUserId=$otherUserId messageId=$messageId",
+        )
         MessageCacheStore.deleteDmMessageById(otherUserId, messageId)
+    }
 
     suspend fun replaceDmConversations(
         conversations: List<DmConversation>,

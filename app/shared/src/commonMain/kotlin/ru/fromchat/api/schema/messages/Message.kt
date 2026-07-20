@@ -17,6 +17,7 @@ data class Message(
     val is_read: Boolean,
     val is_edited: Boolean,
     val username: String,
+    @SerialName("display_name") val displayName: String? = null,
     val profile_picture: String? = null,
     val verified: Boolean? = null,
     @SerialName("verification_status") val verificationStatus: VerificationStatus? = null,

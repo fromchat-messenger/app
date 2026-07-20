@@ -45,6 +45,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -130,9 +131,13 @@ internal fun ChatListHeadlineWithBadge(
     title: String,
     userId: Int,
 ) {
+    val profileCacheRevision by ProfileCache.revision.collectAsState()
+    val verificationStatus = remember(userId, profileCacheRevision) {
+        resolveVerificationStatus(userId)
+    }
     DisplayName(
         displayName = title,
-        verificationStatus = resolveVerificationStatus(userId),
+        verificationStatus = verificationStatus,
         textStyle = MaterialTheme.typography.bodyLarge,
     )
 }
@@ -928,7 +933,7 @@ internal fun DmConversationRowContent(
         currentUserId = currentUserId,
         deleted = cached?.deleted,
         suspended = cached?.suspended,
-        username = cached?.username ?: conversation.displayName.takeIf { it.isNotBlank() },
+        username = cached?.username,
     )
     val avatarUrl = if (isPeerDeleted) null else cached?.profilePicture
     val peerTitle = when {

@@ -51,13 +51,26 @@ object ProfileUpdateSync {
                 val data = message.data ?: return
                 val updates = runCatching {
                     ApiClient.json.decodeFromJsonElement(WebSocketUpdatesData.serializer(), data)
-                }.getOrNull() ?: return
+                }.getOrNull() ?: run {
+                    Logger.w("ProfileUpdateSync", "updates batch decode failed")
+                    return
+                }
+                val profileUpdates = updates.updates.count { it.type == "profileUpdate" }
+                if (profileUpdates > 0) {
+                    Logger.d(
+                        "ProfileUpdateSync",
+                        "updates batch seq=${updates.seq} profileUpdateCount=$profileUpdates",
+                    )
+                }
                 updates.updates.forEach { update ->
                     handleWebSocketMessage(WebSocketMessage(type = update.type, data = update.data))
                 }
             }
             "profileUpdate" -> {
-                val payload = message.data ?: return
+                val payload = message.data ?: run {
+                    Logger.w("ProfileUpdateSync", "profileUpdate missing data")
+                    return
+                }
                 onProfileUpdatePayload(payload)
             }
         }
@@ -73,9 +86,18 @@ object ProfileUpdateSync {
         Logger.d(
             "ProfileUpdateSync",
             "profileUpdate id=${profile.id} username='${profile.username}' " +
-                "bio='${profile.bio?.take(48)}'",
+                "deleted=${profile.deleted} suspended=${profile.suspended} " +
+                "bio='${profile.bio?.take(48)}' revisionBefore=${ProfileCache.revision.value}",
         )
+        val hadCached = ProfileCache.get(profile.id)
         ProfileCache.applyServerProfile(profile, force = true)
+        val after = ProfileCache.get(profile.id)
+        Logger.d(
+            "ProfileUpdateSync",
+            "profileUpdate applied id=${profile.id} " +
+                "wasDeleted=${hadCached?.deleted} nowDeleted=${after?.deleted} " +
+                "revisionAfter=${ProfileCache.revision.value}",
+        )
         UserStatusStore.update(profile.id, profile.online, profile.lastSeen)
 
         if (ApiClient.user?.id == profile.id) {
@@ -83,6 +105,19 @@ object ProfileUpdateSync {
         }
 
         runCatching { MessageRepository.patchDmConversationPeerProfile(profile.id) }
+            .onFailure {
+                Logger.w(
+                    "ProfileUpdateSync",
+                    "patchDmConversationPeerProfile failed id=${profile.id}: ${it.message}",
+                    it,
+                )
+            }
+            .onSuccess {
+                Logger.d(
+                    "ProfileUpdateSync",
+                    "patchDmConversationPeerProfile done id=${profile.id}",
+                )
+            }
     }
 
     private fun parseProfileUpdate(data: JsonElement): UserProfile? {

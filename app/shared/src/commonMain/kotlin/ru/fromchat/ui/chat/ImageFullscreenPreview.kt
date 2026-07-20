@@ -18,12 +18,13 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Reply
@@ -710,26 +711,27 @@ fun ImageFullscreenPreview(
         }
 
         // Top bar: back, display name + date/time, 3-dot menu
-        Box(
+        AnimatedVisibility(
+            visible = effectiveMenusVisible,
+            enter = androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.fadeOut(),
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.safeDrawing),
+                .fillMaxWidth(),
         ) {
-            AnimatedVisibility(
-                visible = effectiveMenusVisible,
-                enter = androidx.compose.animation.fadeIn(),
-                exit = androidx.compose.animation.fadeOut(),
-                modifier = Modifier.fillMaxWidth(),
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = MENU_BG_ALPHA))
+                    .statusBarsPadding(),
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color.Black.copy(alpha = MENU_BG_ALPHA))
                         .padding(horizontal = 8.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
                 IconButton(onClick = { dismissRequested = true }) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
@@ -820,31 +822,30 @@ fun ImageFullscreenPreview(
         }
 
         // Bottom: message text
-        Box(
+        AnimatedVisibility(
+            visible = effectiveMenusVisible && message.content.isNotBlank(),
+            enter = androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.fadeOut(),
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.safeDrawing),
+                .fillMaxWidth(),
         ) {
-            AnimatedVisibility(
-                visible = effectiveMenusVisible && message.content.isNotBlank(),
-                enter = androidx.compose.animation.fadeIn(),
-                exit = androidx.compose.animation.fadeOut(),
-                modifier = Modifier.fillMaxWidth(),
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = MENU_BG_ALPHA))
+                    .navigationBarsPadding(),
             ) {
-                if (message.content.isNotBlank()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color.Black.copy(alpha = MENU_BG_ALPHA))
-                            .padding(16.dp),
-                    ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                ) {
                     Text(
                         text = message.content,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White
+                        color = Color.White,
                     )
-                }
                 }
             }
         }

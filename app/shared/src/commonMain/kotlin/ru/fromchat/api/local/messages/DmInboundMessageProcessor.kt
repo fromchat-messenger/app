@@ -8,7 +8,6 @@ import ru.fromchat.api.crypto.decryptEnvelope
 import ru.fromchat.api.local.db.parseDmMessageContent
 import ru.fromchat.api.local.db.store.MessageRepository
 import ru.fromchat.api.local.db.store.ProfileCache
-import ru.fromchat.api.local.db.store.visibleDisplayName
 import ru.fromchat.api.local.messages.ActiveDmChatTracker
 import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.api.schema.messages.dm.DmEnvelope
@@ -65,16 +64,31 @@ object DmInboundMessageProcessor {
   suspend fun processDeleted(element: JsonElement) {
     val data = runCatching {
       ApiClient.json.decodeFromJsonElement(DmDeletedData.serializer(), element)
-    }.getOrNull() ?: return
+    }.getOrNull() ?: run {
+      ru.fromchat.Logger.w("DmInbox", "processDeleted decode failed")
+      return
+    }
 
     val currentUserId = ApiClient.user?.id ?: return
-    if (data.senderId != currentUserId && data.recipientId != currentUserId) return
+    if (data.senderId != currentUserId && data.recipientId != currentUserId) {
+      ru.fromchat.Logger.d(
+        "DmInbox",
+        "processDeleted skipNotParticipant messageId=${data.id} " +
+          "senderId=${data.senderId} recipientId=${data.recipientId} self=$currentUserId",
+      )
+      return
+    }
 
     val otherUserId = when (currentUserId) {
       data.senderId -> data.recipientId
       else -> data.senderId
     } ?: return
 
+    ru.fromchat.Logger.i(
+      "DmInbox",
+      "processDeleted messageId=${data.id} otherUserId=$otherUserId " +
+        "senderId=${data.senderId} recipientId=${data.recipientId}",
+    )
     withContext(Dispatchers.Default) {
       MessageRepository.deleteDmMessageById(otherUserId, data.id)
     }
@@ -132,18 +146,30 @@ object DmInboundMessageProcessor {
     otherUserId: Int,
   ): Message {
     val dec = parseDmMessageContent(plaintext)
+    val senderUsername = envelope.senderUsername?.trim()?.takeIf { it.isNotEmpty() }
+    val senderDisplayName = envelope.senderDisplayName?.trim()?.takeIf { it.isNotEmpty() }
     if (envelope.senderId != currentUserId) {
-      envelope.senderUsername?.trim()?.takeIf { it.isNotEmpty() }?.let { senderName ->
-        ProfileCache.mergePreview(id = envelope.senderId, username = senderName)
+      if (senderUsername != null || senderDisplayName != null) {
+        ProfileCache.mergePreview(
+          id = envelope.senderId,
+          username = senderUsername,
+          displayName = senderDisplayName,
+        )
       }
     }
     val senderProfile = ProfileCache.get(envelope.senderId)
     val username = if (envelope.senderId == currentUserId) {
-      "You"
+      ApiClient.user?.username.orEmpty()
     } else {
-      senderProfile?.visibleDisplayName(currentUserId)?.takeIf { it.isNotBlank() }
-        ?: envelope.senderUsername?.takeIf { it.isNotBlank() }
+      senderUsername
+        ?: senderProfile?.username?.trim()?.takeIf { it.isNotEmpty() }
         ?: ""
+    }
+    val displayName = if (envelope.senderId == currentUserId) {
+      ApiClient.user?.displayName?.trim()?.takeIf { it.isNotEmpty() }
+    } else {
+      senderDisplayName
+        ?: senderProfile?.displayName?.trim()?.takeIf { it.isNotEmpty() }
     }
     return Message(
       id = envelope.id,
@@ -153,6 +179,7 @@ object DmInboundMessageProcessor {
       is_read = envelope.senderId == currentUserId,
       is_edited = false,
       username = username,
+      displayName = displayName,
       profile_picture = null,
       verified = null,
       reply_to = null,

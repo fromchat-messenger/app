@@ -305,10 +305,11 @@ object NotificationHelper {
 
                 val senderName = when {
                     envelopeId == dmMessageId && !dmSenderName.isNullOrBlank() -> dmSenderName
-                    !envelope.senderUsername.isNullOrBlank() -> envelope.senderUsername
+                    !envelope.senderDisplayName.isNullOrBlank() -> envelope.senderDisplayName
                     else -> ProfileCache.get(envelope.senderId)
                         ?.visibleDisplayName(currentUserId)
                         ?.takeIf { it.isNotBlank() }
+                        ?: envelope.senderUsername
                 }.orEmpty()
                 val dmConversationUserId = envelope.senderId
                 val notificationBody = buildChatListPreviewFromEnvelope(
@@ -403,7 +404,7 @@ object NotificationHelper {
                 notify(
                     SUMMARY_NOTIFICATION_ID,
                     NotificationCompat.Builder(context, CHANNEL_ID)
-                        .setSmallIcon(R.drawable.logo)
+                        .setSmallIcon(NotificationSmallIcon.resId(context))
                         .setContentTitle(title)
                         .setContentText(body)
                         .setStyle(
@@ -506,7 +507,7 @@ object NotificationHelper {
                     notify(
                         SUMMARY_NOTIFICATION_ID,
                         NotificationCompat.Builder(context, CHANNEL_ID)
-                            .setSmallIcon(R.drawable.logo)
+                            .setSmallIcon(NotificationSmallIcon.resId(context))
                             .setStyle(
                                 NotificationCompat.MessagingStyle(
                                     Person.Builder().setName("FromChat").build()

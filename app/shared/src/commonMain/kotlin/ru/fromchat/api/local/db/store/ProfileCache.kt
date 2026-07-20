@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import ru.fromchat.Logger
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.api.schema.messages.dm.DmConversationUser
@@ -71,19 +72,41 @@ object ProfileCache {
     /** Skip force=false network refetch when a full profile was fetched within this window. */
     const val FULL_PROFILE_TTL_MS: Long = 5 * 60 * 1000L
 
-    private fun bumpRevision() {
-        _revision.value++
+    private fun bumpRevision(reason: String) {
+        val next = _revision.value + 1
+        _revision.value = next
+        Logger.d("ProfileCache", "revision=$next reason=$reason size=${profiles.size}")
     }
+
+    private fun profileSummary(profile: UserProfile): String =
+        "id=${profile.id} user='${profile.username}' deleted=${profile.deleted} " +
+            "suspended=${profile.suspended} preview=${profile.isClientPreviewOnly} " +
+            "verified=${profile.verified} vStatus=${profile.verificationStatus}"
 
     fun get(userId: Int): UserProfile? = profiles[userId]
 
     /** True when a full non-preview profile was fetched recently enough to skip refetch. */
     @OptIn(ExperimentalTime::class)
     fun hasFreshFullProfile(userId: Int, maxAgeMs: Long = FULL_PROFILE_TTL_MS): Boolean {
-        val profile = get(userId) ?: return false
-        if (profile.isClientPreviewOnly) return false
-        val fetchedAt = fullProfileFetchedAtMs[userId] ?: return false
-        return (Clock.System.now().toEpochMilliseconds() - fetchedAt) <= maxAgeMs
+        val profile = get(userId) ?: run {
+            Logger.d("ProfileCache", "hasFreshFullProfile id=$userId miss")
+            return false
+        }
+        if (profile.isClientPreviewOnly) {
+            Logger.d("ProfileCache", "hasFreshFullProfile id=$userId stale=previewOnly")
+            return false
+        }
+        val fetchedAt = fullProfileFetchedAtMs[userId] ?: run {
+            Logger.d("ProfileCache", "hasFreshFullProfile id=$userId stale=noFetchTs")
+            return false
+        }
+        val ageMs = Clock.System.now().toEpochMilliseconds() - fetchedAt
+        val fresh = ageMs <= maxAgeMs
+        Logger.d(
+            "ProfileCache",
+            "hasFreshFullProfile id=$userId fresh=$fresh ageMs=$ageMs maxAgeMs=$maxAgeMs",
+        )
+        return fresh
     }
 
     /** Emits whenever this user's cached profile changes (including bio). */
@@ -110,7 +133,13 @@ object ProfileCache {
     ) {
         if (id <= 0) return
         val existing = get(id)
-        if (existing != null && !existing.isClientPreviewOnly) return
+        if (existing != null && !existing.isClientPreviewOnly) {
+            Logger.d(
+                "ProfileCache",
+                "mergePreview skipFullExists id=$id deleted=${existing.deleted}",
+            )
+            return
+        }
 
         val incomingUsername = username?.trim()?.takeIf { it.isNotEmpty() }
             ?: existing?.username?.trim()?.takeIf { it.isNotEmpty() }
@@ -120,11 +149,27 @@ object ProfileCache {
         } else {
             displayName?.trim()?.takeIf { it.isNotEmpty() }
                 ?: existing?.displayName?.takeIf { it.isNotBlank() }
-                ?: incomingUsername
         }
 
-        if (!isDeleted && incomingUsername.isNullOrEmpty() && incomingDisplayName.isNullOrBlank()) return
+        if (!isDeleted && incomingUsername.isNullOrEmpty() && incomingDisplayName.isNullOrBlank()) {
+            Logger.d("ProfileCache", "mergePreview skipEmptyIdentity id=$id")
+            return
+        }
 
+        if (incomingUsername.isNullOrEmpty() || incomingDisplayName.isNullOrBlank()) {
+            Logger.d(
+                "ProfileCache",
+                "mergePreview missingIdentity id=$id " +
+                    "hasUsername=${!incomingUsername.isNullOrEmpty()} " +
+                    "hasDisplayName=${!incomingDisplayName.isNullOrBlank()}",
+            )
+        }
+
+        Logger.d(
+            "ProfileCache",
+            "mergePreview id=$id deleted=$isDeleted hadExisting=${existing != null} " +
+                "user='${incomingUsername.orEmpty()}' display='${incomingDisplayName.orEmpty()}'",
+        )
         put(
             UserProfile(
                 id = id,
@@ -159,29 +204,49 @@ object ProfileCache {
             val hasIdentity =
                 profile.username.trim().isNotEmpty() || !profile.displayName.isNullOrBlank()
             if (!hasIdentity) {
+                Logger.d("ProfileCache", "put removeEmptyPreview id=${profile.id}")
                 remove(profile.id)
                 return
             }
         }
         val cur = profiles
         val existing = cur[profile.id]
+        val deletedChanged = existing?.deleted != profile.deleted
+        val suspendedChanged = existing?.suspended != profile.suspended
+        val verificationChanged = existing?.verified != profile.verified ||
+            existing?.verificationStatus != profile.verificationStatus
         if (
             existing != null &&
             !existing.isClientPreviewOnly &&
             existing.bio != profile.bio
         ) {
-            ru.fromchat.Logger.d(
+            Logger.d(
                 "ProfileCache",
                 "put overwrite id=${profile.id} bio '${existing.bio?.take(48)}' -> " +
                     "'${profile.bio?.take(48)}' preview=${profile.isClientPreviewOnly}",
             )
         }
+        if (deletedChanged || suspendedChanged || verificationChanged || existing == null) {
+            Logger.d(
+                "ProfileCache",
+                "put ${profileSummary(profile)} hadExisting=${existing != null} " +
+                    "deletedChanged=$deletedChanged suspendedChanged=$suspendedChanged " +
+                    "verificationChanged=$verificationChanged",
+            )
+        }
         profiles = cur + (profile.id to profile)
-        bumpRevision()
+        bumpRevision("put:${profile.id}")
         val instanceId = loadedInstanceId
         if (instanceId.isNotEmpty()) {
             ioScope.launch {
                 runCatching { ProfileCacheStore.put(instanceId, profile) }
+                    .onFailure {
+                        Logger.w(
+                            "ProfileCache",
+                            "persist put failed id=${profile.id}: ${it.message}",
+                            it,
+                        )
+                    }
             }
         }
     }
@@ -199,27 +264,56 @@ object ProfileCache {
         if (!force) {
             val existing = get(profile.id)
             if (existing != null && !existing.isClientPreviewOnly) {
+                val lifecycleMismatch =
+                    existing.deleted != normalized.deleted ||
+                        existing.suspended != normalized.suspended ||
+                        isDeletedPlaceholderUsername(existing.username) !=
+                        isDeletedPlaceholderUsername(normalized.username)
+                if (lifecycleMismatch) {
+                    Logger.w(
+                        "ProfileCache",
+                        "applyServerProfile force=false lifecycleMismatch " +
+                            "cachedDeleted=${existing.deleted} incomingDeleted=${normalized.deleted} " +
+                            "cachedSuspended=${existing.suspended} " +
+                            "incomingSuspended=${normalized.suspended} " +
+                            "cachedUser='${existing.username}' incomingUser='${normalized.username}' " +
+                            "— applying full server profile",
+                    )
+                    put(normalized)
+                    fullProfileFetchedAtMs = fullProfileFetchedAtMs + (profile.id to nowMs)
+                    return
+                }
                 val patched = existing.copy(
                     verified = normalized.verified ?: existing.verified,
                     verificationStatus = normalized.verificationStatus
                         ?: existing.verificationStatus,
                 )
+                val verificationChanged = patched.verified != existing.verified ||
+                    patched.verificationStatus != existing.verificationStatus
                 if (patched != existing) put(patched)
                 if (existing.bio != normalized.bio) {
-                    ru.fromchat.Logger.d(
+                    Logger.d(
                         "ProfileCache",
                         "applyServerProfile skipped stale HTTP id=${profile.id} " +
-                            "cachedBio='${existing.bio?.take(48)}' httpBio='${normalized.bio?.take(48)}'",
+                            "cachedBio='${existing.bio?.take(48)}' httpBio='${normalized.bio?.take(48)}' " +
+                            "deleted=${existing.deleted}",
+                    )
+                } else {
+                    Logger.d(
+                        "ProfileCache",
+                        "applyServerProfile keepCached force=false id=${profile.id} " +
+                            "deleted=${existing.deleted} verificationChanged=$verificationChanged",
                     )
                 }
-                // Refresh TTL so force=false callers stop refetching.
-                fullProfileFetchedAtMs = fullProfileFetchedAtMs + (profile.id to nowMs)
+                if (!verificationChanged) {
+                    fullProfileFetchedAtMs = fullProfileFetchedAtMs + (profile.id to nowMs)
+                }
                 return
             }
         }
-        ru.fromchat.Logger.d(
+        Logger.d(
             "ProfileCache",
-            "applyServerProfile applied force=$force id=${profile.id} " +
+            "applyServerProfile applied force=$force ${profileSummary(normalized)} " +
                 "bio='${normalized.bio?.take(48)}'",
         )
         put(normalized)
@@ -228,9 +322,13 @@ object ProfileCache {
 
     fun remove(userId: Int) {
         val cur = profiles
-        if (userId !in cur) return
+        if (userId !in cur) {
+            Logger.d("ProfileCache", "remove miss id=$userId")
+            return
+        }
+        Logger.d("ProfileCache", "remove id=$userId wasDeleted=${cur[userId]?.deleted}")
         profiles = cur - userId
-        bumpRevision()
+        bumpRevision("remove:$userId")
         val instanceId = loadedInstanceId
         if (instanceId.isNotEmpty()) {
             ioScope.launch {
@@ -251,20 +349,40 @@ object ProfileCache {
         if (user.id <= 0) return
 
         val incomingUsername = user.username.trim()
-        if (incomingUsername.isEmpty()) return
+        if (incomingUsername.isEmpty()) {
+            Logger.d("ProfileCache", "mergeFromDmUser skipEmptyUsername id=${user.id}")
+            return
+        }
 
         val isDeleted = user.deleted == true || isDeletedPlaceholderUsername(incomingUsername)
         val incomingDisplayName = if (isDeleted) {
             null
         } else {
-            user.displayName?.trim()?.takeIf { it.isNotEmpty() } ?: incomingUsername
+            user.displayName?.trim()?.takeIf { it.isNotEmpty() }
+        }
+
+        if (!isDeleted && incomingDisplayName.isNullOrBlank()) {
+            Logger.d(
+                "ProfileCache",
+                "mergeFromDmUser missingDisplayName id=${user.id} user='$incomingUsername'",
+            )
         }
 
         val existing = get(user.id)
+        Logger.d(
+            "ProfileCache",
+            "mergeFromDmUser id=${user.id} deleted=$isDeleted " +
+                "incomingDeleted=${user.deleted} hadFull=${existing != null && existing.isClientPreviewOnly != true} " +
+                "user='$incomingUsername' display='${incomingDisplayName.orEmpty()}'",
+        )
         if (existing != null && !existing.isClientPreviewOnly) {
             val patched = existing.copy(
                 username = incomingUsername,
-                displayName = if (isDeleted) null else incomingDisplayName ?: existing.displayName,
+                displayName = if (isDeleted) {
+                    null
+                } else {
+                    incomingDisplayName ?: existing.displayName
+                },
                 profilePicture = if (isDeleted) {
                     null
                 } else {
@@ -278,7 +396,14 @@ object ProfileCache {
                 suspensionReason = user.suspensionReason ?: existing.suspensionReason,
                 deleted = isDeleted,
             )
-            if (patched != existing) put(patched)
+            if (patched != existing) {
+                Logger.d(
+                    "ProfileCache",
+                    "mergeFromDmUser patchFull id=${user.id} " +
+                        "deleted ${existing.deleted}→${patched.deleted}",
+                )
+                put(patched)
+            }
             return
         }
 
@@ -286,8 +411,11 @@ object ProfileCache {
             UserProfile(
                 id = user.id,
                 username = incomingUsername,
-                displayName = if (isDeleted) null else existing?.displayName?.takeIf { it.isNotBlank() }
-                    ?: incomingDisplayName,
+                displayName = if (isDeleted) {
+                    null
+                } else {
+                    incomingDisplayName ?: existing?.displayName?.takeIf { it.isNotBlank() }
+                },
                 profilePicture = if (isDeleted) null else user.profile_picture?.takeIf { it.isNotBlank() }
                     ?: existing?.profilePicture,
                 bio = existing?.bio,
@@ -336,9 +464,18 @@ object ProfileCache {
         }
 
         val uname = message.username.trim().ifBlank { existing?.username?.trim().orEmpty() }
-        if (uname.isBlank()) return
+        val incomingDisplay = message.displayName?.trim()?.takeIf { it.isNotEmpty() }
+            ?: existing?.displayName?.takeIf { it.isNotBlank() }
+        if (uname.isBlank() && incomingDisplay.isNullOrBlank()) return
+        if (uname.isBlank() || incomingDisplay.isNullOrBlank()) {
+            Logger.d(
+                "ProfileCache",
+                "mergePreviewFromPublicMessage missingIdentity id=$uid " +
+                    "hasUsername=${uname.isNotBlank()} hasDisplayName=${!incomingDisplay.isNullOrBlank()}",
+            )
+        }
         val isDeleted = isDeletedPlaceholderUsername(uname) || existing?.deleted == true
-        val display = if (isDeleted) null else existing?.displayName?.takeIf { it.isNotBlank() } ?: uname
+        val display = if (isDeleted) null else incomingDisplay
         val pic = if (isDeleted) null else message.profile_picture?.takeIf { it.isNotBlank() }
             ?: existing?.profilePicture
 
@@ -379,6 +516,8 @@ object ProfileCache {
             val user = ApiClient.user
             return message.copy(
                 username = message.username.trim().ifBlank { user?.username.orEmpty() },
+                displayName = message.displayName?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: user?.displayName?.trim()?.takeIf { it.isNotEmpty() },
                 profile_picture = message.profile_picture?.takeIf { it.isNotBlank() }
                     ?: user?.profile_picture,
                 reply_to = enrichedReply,
@@ -389,6 +528,8 @@ object ProfileCache {
             username = message.username.trim().ifBlank {
                 profile?.visibleUsername(self).orEmpty()
             },
+            displayName = message.displayName?.trim()?.takeIf { it.isNotEmpty() }
+                ?: profile?.displayName?.trim()?.takeIf { it.isNotEmpty() },
             profile_picture = message.profile_picture?.takeIf { it.isNotBlank() }
                 ?: profile?.profilePicture,
             verified = message.verified ?: profile?.verified,
@@ -413,7 +554,7 @@ object ProfileCache {
                 }
                 fullProfileFetchedAtMs = emptyMap()
                 pruneUnusableClientPreviewsLocked()
-                bumpRevision()
+                bumpRevision("onActiveInstanceChanged:$instanceId")
             }
         }
     }
@@ -427,6 +568,7 @@ object ProfileCache {
             } else {
                 emptyMap()
             }
+            val before = profiles.size
             if (profiles.isEmpty()) {
                 profiles = diskProfiles
             } else {
@@ -442,8 +584,14 @@ object ProfileCache {
                 }
                 profiles = merged
             }
+            val deletedCount = profiles.values.count { it.deleted == true }
+            Logger.d(
+                "ProfileCache",
+                "hydrateFromDisk instanceId=$instanceId before=$before " +
+                    "disk=${diskProfiles.size} after=${profiles.size} deletedCount=$deletedCount",
+            )
             pruneUnusableClientPreviewsLocked()
-            bumpRevision()
+            bumpRevision("hydrateFromDisk")
         }
     }
 
@@ -455,6 +603,7 @@ object ProfileCache {
                 p.displayName.isNullOrBlank()
         }.keys
         if (toRemove.isEmpty()) return
+        Logger.d("ProfileCache", "pruneUnusablePreviews ids=$toRemove")
         var cur = profiles
         for (id in toRemove) {
             cur = cur - id
@@ -464,10 +613,11 @@ object ProfileCache {
 
     suspend fun clear() {
         persistMutex.withLock {
+            Logger.d("ProfileCache", "clear sizeWas=${profiles.size}")
             profiles = emptyMap()
             fullProfileFetchedAtMs = emptyMap()
             loadedInstanceId = ""
-            bumpRevision()
+            bumpRevision("clear")
         }
     }
 }

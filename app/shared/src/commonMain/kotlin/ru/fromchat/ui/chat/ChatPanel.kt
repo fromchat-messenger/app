@@ -94,11 +94,26 @@ abstract class ChatPanel(
         addMessageMutex.withLock {
             batchStateUpdates {
                 updateState { current ->
+                    val panelSnap = panelMessagesForDbMerge()
                     val merged = mergeDatabaseMessagesWithPanelState(
-                        panelMessagesForDbMerge(),
+                        panelSnap,
                         messages,
                     )
                     val withReplies = attachPublicReplyReferences(merged)
+                    if (current.messages.size != withReplies.size ||
+                        current.messages.map { it.id }.toSet() != withReplies.map { it.id }.toSet()
+                    ) {
+                        val panelIds = panelSnap.map { it.id }.toSet()
+                        val mergedIds = withReplies.map { it.id }.toSet()
+                        val dbIds = messages.map { it.id }.toSet()
+                        Logger.d(
+                            "ChatPanel",
+                            "syncMessagesFromDatabase panel=${panelSnap.size} db=${messages.size} " +
+                                "merged=${withReplies.size} " +
+                                "panelOnlyIds=${(panelIds - mergedIds).take(8)} " +
+                                "dbOnlyIds=${(dbIds - mergedIds).take(8)}",
+                        )
+                    }
                     if (current.messages == withReplies) current
                     else current.copy(messages = withReplies)
                 }
@@ -692,7 +707,8 @@ abstract class ChatPanel(
             timestamp = nowMessageTimestampIso(),
             is_read = false,
             is_edited = false,
-            username = "You",
+            username = ApiClient.user?.username.orEmpty(),
+            displayName = ApiClient.user?.displayName,
             client_message_id = tempId,
             reply_to = resolvedReply,
             replyToId = resolvedReply?.id ?: replyToId?.takeIf { it > 0 },

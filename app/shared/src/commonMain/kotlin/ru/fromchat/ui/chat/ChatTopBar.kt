@@ -33,6 +33,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -105,7 +106,7 @@ fun ChatTopBarInner(
         peerIsDeleted(
             userId = userId,
             currentUserId = ApiClient.user?.id,
-            username = titleAvatar?.displayName ?: title,
+            username = ProfileCache.get(userId)?.username,
         )
     } == true
     Row(
@@ -203,7 +204,10 @@ fun ChatTopBarInner(
                     overflow = TextOverflow.Ellipsis,
                 )
                 profileUserId?.let { userId ->
-                    val status = resolveVerificationStatus(userId)
+                    val profileCacheRevision by ProfileCache.revision.collectAsState()
+                    val status = remember(userId, profileCacheRevision) {
+                        resolveVerificationStatus(userId)
+                    }
                     if (status != null) {
                         Spacer(modifier = Modifier.width(4.dp))
                         StatusBadge(

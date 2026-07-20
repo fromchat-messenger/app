@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import ru.fromchat.Logger
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.messages.ChatListPreviewPendingIndicator
 import ru.fromchat.api.local.messages.ChatListPreviewState
@@ -167,8 +168,12 @@ object MessageCacheStore {
             }
     }
 
-    suspend fun replacePublicMessages(messages: List<Message>) {
+    suspend fun replacePublicMessages(messages: List<Message>, replaceAll: Boolean = false) {
         val convId = conversationIdForPublic()
+        Logger.d(
+            "MessageCache",
+            "replacePublicMessages count=${messages.size} replaceAll=$replaceAll convId=$convId",
+        )
         val resolved = messages.map { it.resolvePublicAttachmentLayout() }
         ProfileCache.mergePreviewFromPublicMessages(resolved)
         val pending = loadPendingMessages(convId)
@@ -181,10 +186,11 @@ object MessageCacheStore {
         withContext(Dispatchers.Default) {
             purgeSupersededPendingRows(iid, convId, before, merged)
         }
-        replaceMessages(convId, merged)
+        replaceMessages(convId, merged, replaceAll = replaceAll)
     }
 
     suspend fun clearPublicMessages() {
+        Logger.d("MessageCache", "clearPublicMessages")
         clearConversationMessages(conversationIdForPublic())
     }
 
@@ -192,11 +198,17 @@ object MessageCacheStore {
         loadMessages(conversationIdForDm(otherUserId))
 
     suspend fun clearDmMessages(otherUserId: Int) {
+        Logger.d("MessageCache", "clearDmMessages otherUserId=$otherUserId")
         clearConversationMessages(conversationIdForDm(otherUserId))
     }
 
-    suspend fun replaceDmMessages(otherUserId: Int, messages: List<Message>) {
+    suspend fun replaceDmMessages(otherUserId: Int, messages: List<Message>, replaceAll: Boolean = false) {
         val convId = conversationIdForDm(otherUserId)
+        Logger.d(
+            "MessageCache",
+            "replaceDmMessages otherUserId=$otherUserId count=${messages.size} " +
+                "replaceAll=$replaceAll convId=$convId",
+        )
         val pending = loadPendingMessages(convId)
         val stillPending = filterStillPendingForReplace(convId, pending, messages)
         val before = messages + stillPending
@@ -208,7 +220,7 @@ object MessageCacheStore {
         withContext(Dispatchers.Default) {
             purgeSupersededPendingRows(iid, convId, before, hydrated)
         }
-        replaceMessages(convId, hydrated)
+        replaceMessages(convId, hydrated, replaceAll = replaceAll)
         pruneEmptyConversations()
     }
 
@@ -246,6 +258,11 @@ object MessageCacheStore {
 
     suspend fun upsertPublicMessage(message: Message) {
         val resolved = message.resolvePublicAttachmentLayout()
+        Logger.d(
+            "MessageCache",
+            "upsertPublicMessage id=${resolved.id} userId=${resolved.user_id} " +
+                "clientId=${resolved.client_message_id}",
+        )
         ProfileCache.mergePreviewFromPublicMessage(resolved)
         upsertSingle(conversationIdForPublic(), resolved)
     }
@@ -279,25 +296,37 @@ object MessageCacheStore {
     }
 
     suspend fun upsertDmMessage(otherUserId: Int, message: Message) {
+        Logger.d(
+            "MessageCache",
+            "upsertDmMessage otherUserId=$otherUserId id=${message.id} " +
+                "userId=${message.user_id} clientId=${message.client_message_id}",
+        )
         ensureDmConversationRow(otherUserId)
         upsertSingle(conversationIdForDm(otherUserId), message)
         syncDmConversationPreviewFromCache(otherUserId)
     }
 
     suspend fun deletePublicMessageByClientMessageId(clientMessageId: String) {
+        Logger.d("MessageCache", "deletePublicByClientId clientId=$clientMessageId")
         deleteByClientMessageId(conversationIdForPublic(), clientMessageId)
     }
 
     suspend fun deleteDmMessageByClientMessageId(otherUserId: Int, clientMessageId: String) {
+        Logger.d(
+            "MessageCache",
+            "deleteDmByClientId otherUserId=$otherUserId clientId=$clientMessageId",
+        )
         deleteByClientMessageId(conversationIdForDm(otherUserId), clientMessageId)
     }
 
     suspend fun deleteDmMessageById(otherUserId: Int, messageId: Int) {
+        Logger.d("MessageCache", "deleteDmById otherUserId=$otherUserId messageId=$messageId")
         deleteMessageById(conversationIdForDm(otherUserId), messageId)
         syncDmConversationPreviewFromCache(otherUserId)
     }
 
     suspend fun deletePublicMessageById(messageId: Int) {
+        Logger.d("MessageCache", "deletePublicById messageId=$messageId")
         deleteMessageById(conversationIdForPublic(), messageId)
     }
 
@@ -440,6 +469,10 @@ object MessageCacheStore {
 
     suspend fun markMessageDeleted(conversationId: String, messageId: Int) {
         val iid = instanceId()
+        Logger.d(
+            "MessageCache",
+            "markMessageDeleted (soft) convId=$conversationId messageId=$messageId",
+        )
         withContext(Dispatchers.Default) {
             db.messageDatabaseQueries.markMessageDeleted(
                 instanceId = iid,
@@ -611,10 +644,43 @@ object MessageCacheStore {
         withContext(Dispatchers.Default) {
             val existing = db.messageDatabaseQueries
                 .selectConversationById(iid, convId)
-                .executeAsOneOrNull() ?: return@withContext
-            val label = resolveDmConversationDisplayLabel(otherUserId, null)
-            if (label.isEmpty()) return@withContext
-            if (label == existing.displayName) return@withContext
+                .executeAsOneOrNull() ?: run {
+                Logger.d(
+                    "MessageCache",
+                    "patchDmPeerProfile noConversation otherUserId=$otherUserId",
+                )
+                return@withContext
+            }
+            val profile = ProfileCache.get(otherUserId)
+            val isDeleted = profile?.deleted == true ||
+                profile?.username?.startsWith("#deleted") == true
+            val label = if (isDeleted) {
+                ""
+            } else {
+                resolveDmConversationDisplayLabel(otherUserId, null)
+            }
+            if (!isDeleted && label.isEmpty()) {
+                Logger.d(
+                    "MessageCache",
+                    "patchDmPeerProfile skipEmptyLabel otherUserId=$otherUserId " +
+                        "deleted=${profile?.deleted}",
+                )
+                return@withContext
+            }
+            if (label == existing.displayName) {
+                Logger.d(
+                    "MessageCache",
+                    "patchDmPeerProfile unchanged otherUserId=$otherUserId " +
+                        "deleted=$isDeleted labelEmpty=${label.isEmpty()}",
+                )
+                return@withContext
+            }
+            Logger.d(
+                "MessageCache",
+                "patchDmPeerProfile otherUserId=$otherUserId deleted=$isDeleted " +
+                    "oldLabelEmpty=${existing.displayName.isNullOrBlank()} " +
+                    "newLabelEmpty=${label.isEmpty()}",
+            )
             db.messageDatabaseQueries.upsertConversation(
                 instanceId = iid,
                 id = existing.id,
@@ -947,6 +1013,7 @@ object MessageCacheStore {
 
     private suspend fun clearConversationMessages(conversationId: String) {
         val iid = instanceId()
+        Logger.d("MessageCache", "clearConversationMessages convId=$conversationId")
         withContext(Dispatchers.Default) {
             db.messageDatabaseQueries.deleteMessagesForConversation(iid, conversationId)
         }
@@ -954,6 +1021,10 @@ object MessageCacheStore {
 
     private suspend fun deleteByClientMessageId(conversationId: String, clientMessageId: String) {
         val iid = instanceId()
+        Logger.d(
+            "MessageCache",
+            "deleteByClientMessageId convId=$conversationId clientId=$clientMessageId",
+        )
         withContext(Dispatchers.Default) {
             db.messageDatabaseQueries.deleteMessageByClientMessageId(iid, conversationId, clientMessageId)
         }
@@ -961,6 +1032,12 @@ object MessageCacheStore {
 
     private suspend fun deleteMessageById(conversationId: String, messageId: Int) {
         val iid = instanceId()
+        val beforeCount = withContext(Dispatchers.Default) {
+            db.messageDatabaseQueries
+                .selectMessagesByConversation(iid, conversationId)
+                .executeAsList()
+                .size
+        }
         withContext(Dispatchers.Default) {
             db.messageDatabaseQueries.deleteMessageById(
                 instanceId = iid,
@@ -968,6 +1045,17 @@ object MessageCacheStore {
                 id = messageId.toLong(),
             )
         }
+        val afterCount = withContext(Dispatchers.Default) {
+            db.messageDatabaseQueries
+                .selectMessagesByConversation(iid, conversationId)
+                .executeAsList()
+                .size
+        }
+        Logger.d(
+            "MessageCache",
+            "deleteMessageById convId=$conversationId messageId=$messageId " +
+                "rowsBefore=$beforeCount rowsAfter=$afterCount removed=${beforeCount - afterCount}",
+        )
     }
 
     private suspend fun upsertSingle(conversationId: String, msg: Message) {
@@ -1249,9 +1337,11 @@ object MessageCacheStore {
         val profile = ProfileCache.get(uid)
         val usernameResolved = when {
             self != null && uid == self.id -> self.username
-            else -> profile?.username?.takeIf { it.isNotBlank() }
-                ?: profile?.displayName?.takeIf { it.isNotBlank() }
-                ?: ""
+            else -> profile?.username?.takeIf { it.isNotBlank() }.orEmpty()
+        }
+        val displayNameResolved = when {
+            self != null && uid == self.id -> self.displayName?.trim()?.takeIf { it.isNotEmpty() }
+            else -> profile?.displayName?.trim()?.takeIf { it.isNotEmpty() }
         }
         val pictureResolved = when {
             self != null && uid == self.id -> self.profile_picture
@@ -1266,6 +1356,7 @@ object MessageCacheStore {
             is_read = isRead != 0L,
             is_edited = isEdited != 0L,
             username = usernameResolved,
+            displayName = displayNameResolved,
             profile_picture = pictureResolved,
             verified = profile?.verified,
             verificationStatus = profile?.verificationStatus,
@@ -1326,6 +1417,7 @@ object MessageCacheStore {
     }
 
     suspend fun clearAll() {
+        Logger.d("MessageCache", "clearAll")
         withContext(Dispatchers.Default) {
             db.messageDatabaseQueries.purgeAllCache()
         }
@@ -1334,44 +1426,86 @@ object MessageCacheStore {
     private fun validatedOrEmpty(conversationId: String, messages: List<Message>): List<Message> {
         val self = ApiClient.user?.id
         if (!CacheValidator.isConversationCacheCoherent(conversationId, messages, self)) {
+            Logger.w(
+                "MessageCache",
+                "validatedOrEmpty incoherent→empty convId=$conversationId count=${messages.size}",
+            )
             return emptyList()
         }
         return CacheValidator.filterMessages(conversationId, messages, self)
     }
 
-    private suspend fun replaceMessages(conversationId: String, messages: List<Message>) {
+    private suspend fun replaceMessages(
+        conversationId: String,
+        messages: List<Message>,
+        replaceAll: Boolean = false,
+    ) {
         val self = ApiClient.user?.id
         if (!CacheValidator.isConversationCacheCoherent(conversationId, messages, self)) {
+            Logger.w(
+                "MessageCache",
+                "replaceMessages incoherent→clear convId=$conversationId " +
+                    "count=${messages.size} replaceAll=$replaceAll",
+            )
             clearConversationMessages(conversationId)
             return
         }
         val validated = CacheValidator.filterMessages(conversationId, messages, self)
         val iid = instanceId()
+        val beforeCount = withContext(Dispatchers.Default) {
+            db.messageDatabaseQueries
+                .selectMessagesByConversation(iid, conversationId)
+                .executeAsList()
+                .size
+        }
+        Logger.d(
+            "MessageCache",
+            "replaceMessages convId=$conversationId replaceAll=$replaceAll " +
+                "incoming=${messages.size} validated=${validated.size} rowsBefore=$beforeCount",
+        )
         withContext(Dispatchers.Default) {
             val existingReplyToIds = db.messageDatabaseQueries
                 .selectMessagesByConversation(iid, conversationId)
                 .executeAsList()
                 .associate { it.id.toInt() to it.replyToId }
-            db.messageDatabaseQueries.transaction {
-                db.messageDatabaseQueries.deleteMessagesForConversation(iid, conversationId)
+            if (replaceAll) {
+                db.messageDatabaseQueries.transaction {
+                    db.messageDatabaseQueries.deleteMessagesForConversation(iid, conversationId)
+                    validated.forEach { msg: Message ->
+                        db.messageDatabaseQueries.upsertMessage(
+                            instanceId = iid,
+                            id = msg.id.toLong(),
+                            conversationId = conversationId,
+                            userId = msg.user_id.toLong(),
+                            content = storedMessageContent(msg),
+                            timestamp = msg.timestamp,
+                            isRead = if (msg.is_read) 1L else 0L,
+                            isEdited = if (msg.is_edited) 1L else 0L,
+                            replyToId = resolveReplyToIdForPersistence(msg, existingReplyToIds[msg.id]),
+                            clientMessageId = msg.client_message_id,
+                            deletedFlag = 0L,
+                            sendStatus = if (msg.id < 0) "pending" else "sent",
+                        )
+                    }
+                }
+            } else {
+                // Merge into existing rows — partial UI snapshots must not wipe full history.
                 validated.forEach { msg: Message ->
-                    db.messageDatabaseQueries.upsertMessage(
-                        instanceId = iid,
-                        id = msg.id.toLong(),
-                        conversationId = conversationId,
-                        userId = msg.user_id.toLong(),
-                        content = storedMessageContent(msg),
-                        timestamp = msg.timestamp,
-                        isRead = if (msg.is_read) 1L else 0L,
-                        isEdited = if (msg.is_edited) 1L else 0L,
-                        replyToId = resolveReplyToIdForPersistence(msg, existingReplyToIds[msg.id]),
-                        clientMessageId = msg.client_message_id,
-                        deletedFlag = 0L,
-                        sendStatus = if (msg.id < 0) "pending" else "sent"
-                    )
+                    upsertSingle(conversationId, msg)
                 }
             }
         }
+        val afterCount = withContext(Dispatchers.Default) {
+            db.messageDatabaseQueries
+                .selectMessagesByConversation(iid, conversationId)
+                .executeAsList()
+                .size
+        }
+        Logger.d(
+            "MessageCache",
+            "replaceMessages done convId=$conversationId replaceAll=$replaceAll " +
+                "rowsAfter=$afterCount",
+        )
         dmOtherUserIdFromConversationId(conversationId)?.let {
             syncDmConversationPreviewFromCache(it)
             pruneEmptyConversations()

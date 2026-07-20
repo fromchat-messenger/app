@@ -1,6 +1,5 @@
 package ru.fromchat.ui.calls
 
-import android.R
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -16,6 +15,7 @@ import androidx.core.app.Person
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import ru.fromchat.api.calls.CallStore
+import ru.fromchat.notifications.NotificationSmallIcon
 
 /**
  * Foreground call session: keeps camera / mic eligible in background.
@@ -60,12 +60,6 @@ class CallForegroundService : Service() {
 
         ensureActiveCallChannel(nm, channelLabel)
 
-        val smallIcon = try {
-            packageManager.getApplicationInfo(packageName, 0).icon
-        } catch (_: Exception) {
-            R.drawable.sym_call_outgoing
-        }
-
         val hangUpPi = PendingIntent.getService(
             this,
             RC_HANG_UP,
@@ -93,7 +87,7 @@ class CallForegroundService : Service() {
             .build()
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(smallIcon)
+            .setSmallIcon(NotificationSmallIcon.resId(this))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_CALL)

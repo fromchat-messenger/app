@@ -18,8 +18,16 @@ object UpdatesBatchApplier {
     suspend fun applyEnvelope(data: kotlinx.serialization.json.JsonElement): Int? = mutex.withLock {
         val envelope = runCatching {
             ApiClient.json.decodeFromJsonElement(WebSocketUpdatesData.serializer(), data)
-        }.getOrNull() ?: return@withLock null
+        }.getOrNull() ?: run {
+            Logger.w("UpdateSync", "applyEnvelope decode failed: ${data.toString().take(160)}")
+            return@withLock null
+        }
 
+        val types = envelope.updates.map { it.type }
+        Logger.d(
+            "UpdateSync",
+            "applyEnvelope seq=${envelope.seq} count=${envelope.updates.size} types=$types",
+        )
         for (update in envelope.updates) {
             applyOne(WebSocketMessage(type = update.type, data = update.data))
         }
@@ -34,8 +42,14 @@ object UpdatesBatchApplier {
             }
             "newMessage" -> message.data?.let { PublicInboxCoordinator.processNew(it) }
             "messageEdited" -> message.data?.let { PublicInboxCoordinator.processEdited(it) }
-            "messageDeleted" -> message.data?.let { PublicInboxCoordinator.processDeleted(it) }
-            "dmNew", "dmDeleted", "dmEdited" -> DmInboxCoordinator.handleMessage(message)
+            "messageDeleted" -> {
+                Logger.d("UpdateSync", "applyOne messageDeleted")
+                message.data?.let { PublicInboxCoordinator.processDeleted(it) }
+            }
+            "dmNew", "dmDeleted", "dmEdited" -> {
+                Logger.d("UpdateSync", "applyOne ${message.type}")
+                DmInboxCoordinator.handleMessage(message)
+            }
             else -> Unit
         }
     }

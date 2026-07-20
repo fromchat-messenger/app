@@ -35,6 +35,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -229,11 +230,14 @@ fun MessageItem(
     val sendFailedLabel = stringResource(Res.string.message_send_failed)
     val replyPhotoLabel = stringResource(Res.string.message_reply_photo)
     val displayUsername = messageDisplayUsername(message, currentUserId)
+    val profileCacheRevision by ProfileCache.revision.collectAsState()
     val senderProfile = ProfileCache.get(message.user_id)
     val avatarPictureUrl = senderProfile?.profilePicture?.takeIf { it.isNotBlank() }
         ?: message.profile_picture
     val avatarDisplayName = messageSenderAvatarLabel(message, currentUserId)
-    val senderVerificationStatus = resolveVerificationStatus(message.user_id, message)
+    val senderVerificationStatus = remember(message.user_id, message, profileCacheRevision) {
+        resolveVerificationStatus(message.user_id, message)
+    }
     val isDeletedSender = messageSenderIsDeleted(message, currentUserId)
     val replyRef = message.reply_to
 
