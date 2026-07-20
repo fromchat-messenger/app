@@ -112,10 +112,8 @@ import ru.fromchat.api.schema.user.auth.ChangeYandexRequest
 import ru.fromchat.api.schema.user.auth.ChangeYandexResponse
 import ru.fromchat.api.schema.user.auth.CheckAuthResponse
 import ru.fromchat.api.schema.user.auth.CheckUsernameResponse
-import ru.fromchat.api.schema.user.auth.LoginRequest
 import ru.fromchat.api.schema.user.auth.LoginResponse
 import ru.fromchat.api.schema.user.auth.RegisterConfirmRequest
-import ru.fromchat.api.schema.user.auth.RegisterRequest
 import ru.fromchat.api.schema.user.auth.YandexExchangeRequest
 import ru.fromchat.api.schema.user.auth.YandexExchangeResponse
 import ru.fromchat.api.schema.user.auth.YandexOAuthParams
@@ -273,7 +271,7 @@ object ApiClient {
                 }
                 if (response.status.value == 401) {
                     val path = response.call.request.url.encodedPath
-                    val isCredentialCheck = path.endsWith("/login") || path.endsWith("/register")
+                    val isCredentialCheck = path.endsWith("/auth/steps/password") || path.endsWith("/auth/steps/register/confirm")
                     if (!isCredentialCheck && !logoutInProgress) {
                         MainScope().launch {
                             runCatching { WebSocketManager.disconnect() }
@@ -483,22 +481,6 @@ object ApiClient {
         }
     }
 
-
-    suspend fun loginRequest(request: LoginRequest): LoginResponse =
-        http
-            .post("${ServerConfig.apiBaseUrl}/login") {
-                contentType(ContentType.Application.Json)
-                setBody(request)
-            }
-            .body()
-
-    suspend fun registerRequest(request: RegisterRequest): LoginResponse =
-        http
-            .post("${ServerConfig.apiBaseUrl}/register") {
-                contentType(ContentType.Application.Json)
-                setBody(request)
-            }
-            .body()
 
     suspend fun authUsernameStep(username: String): AuthUsernameStepResponse =
         httpProbe
