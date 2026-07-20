@@ -1,6 +1,12 @@
 <resources>
     <string name="app_name" translatable="false">FromChat</string>
+    <string name="public_chat">Main chat</string>
     <string name="chat_preview_attachment">Attachment</string>
     <string name="chat_preview_image_emoji">📷</string>
     <string name="chat_preview_image">%1$s 1 photo</string>
+    <string name="notification_reply">Reply</string>
+    <string name="notification_reply_hint">Reply to chat…</string>
+    <string name="notification_direct_message">Direct message</string>
+    <string name="notification_direct_message_from">Direct message from %1$s</string>
+    <string name="notification_direct_messages_title">Direct Messages</string>
 </resources>

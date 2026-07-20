@@ -30,10 +30,8 @@ class FromChatFirebaseMessagingService : FirebaseMessagingService() {
                 val sender = pushData["sender_display_name"]
                     ?.takeIf { it.isNotBlank() }
                     ?: pushData["sender_username"]
-                    ?: remoteMessage.data["senderUsername"]
-                    ?: remoteMessage.data["senderDisplayName"]
-                val title = remoteMessage.notification?.title ?: pushData["title"] ?: "FromChat"
-                val body = remoteMessage.notification?.body ?: pushData["body"] ?: "New message"
+                    ?: pushData["senderUsername"]
+                    ?: pushData["senderDisplayName"]
                 val messageType = pushData["type"] ?: "public_message"
                 val isDirectMessage = messageType.equals("dm", ignoreCase = true)
                 if (ApiClient.token.isNullOrBlank()) {
@@ -49,17 +47,6 @@ class FromChatFirebaseMessagingService : FirebaseMessagingService() {
                     Logger.d("FromChatFCM", "Skipping push for own message senderId=$senderId")
                     return@launch
                 }
-                if (!isDirectMessage && (title.isNotBlank() || body.isNotBlank())) {
-                    NotificationHelper.showFallbackPushNotification(
-                        context = applicationContext,
-                        title = title,
-                        body = body,
-                        sender = sender,
-                        messageId = fallbackMessageId,
-                        isDirectMessage = false,
-                        senderId = senderId,
-                    )
-                }
                 if (isDirectMessage) {
                     NotificationHelper.fetchAndNotify(
                         applicationContext,
@@ -68,7 +55,9 @@ class FromChatFirebaseMessagingService : FirebaseMessagingService() {
                         dmSenderName = sender,
                     )
                 } else {
-                    NotificationHelper.fetchAndNotify(applicationContext)
+                    // Public: one debounced /messages/new → MessagingStyle. Never post a
+                    // per-message fallback (that duplicated FCM tray entries with different labels).
+                    NotificationHelper.schedulePublicFetchAndNotify(applicationContext)
                 }
             } catch (e: Exception) {
                 Logger.e("FromChatFCM", "onMessageReceived error: ${e.message}", e)

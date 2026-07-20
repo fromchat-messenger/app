@@ -19,15 +19,20 @@ import io.ktor.client.call.body
 import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.request.get
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import ru.fromchat.MainActivity
 import ru.fromchat.Logger
 import ru.fromchat.R
 import ru.fromchat.api.ApiClient
+import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.db.store.ProfileCache
+import ru.fromchat.api.local.db.store.PublicChatProfileCache
 import ru.fromchat.api.local.db.store.visibleDisplayName
 import ru.fromchat.api.local.messages.ChatListPreviewStrings
 import ru.fromchat.api.local.messages.buildChatListPreview
@@ -53,12 +58,19 @@ object NotificationHelper {
     private const val CHAT_TYPE_PUBLIC = "public"
     private const val CHAT_TYPE_DM = "dm"
     private const val CHANNEL_ID = "fromchat_messages"
-    private const val SUMMARY_NOTIFICATION_ID = 1000000 // Use a high unique ID for summary
+    private const val GROUP_PUBLIC = "ru.fromchat.notifications.public"
+    private const val GROUP_DM_PREFIX = "ru.fromchat.notifications.dm."
+    private const val SUMMARY_NOTIFICATION_ID = 1000000
     private const val PREF_SHOWN_KEY = "shown_message_ids"
     private const val PREF_SHOWN_DM_KEY = "shown_dm_message_ids"
     private const val PREF_LAST_DM_MESSAGE_ID = "last_dm_message_id"
     private const val PREF_LAST_NOTIFICATION_TIME = "last_notification_time"
+    private const val PUBLIC_FETCH_DEBOUNCE_MS = 450L
     const val KEY_TEXT_REPLY = "key_text_reply"
+
+    private val helperScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val publicFetchMutex = Mutex()
+    private var publicFetchJob: Job? = null
 
     private fun listPreviewStrings(context: Context): ChatListPreviewStrings {
         val emoji = context.getString(R.string.chat_preview_image_emoji)
@@ -71,6 +83,24 @@ object NotificationHelper {
 
     private fun notificationBodyForMessage(message: Message, strings: ChatListPreviewStrings): String =
         buildChatListPreview(message, strings)?.takeIf { it.isNotBlank() } ?: message.content
+
+    private fun publicConversationTitle(context: Context): String =
+        PublicChatProfileCache.profile?.title?.takeIf { it.isNotBlank() }
+            ?: runCatching {
+                PublicChatProfileCache.hydrateFromDiskImmediate(
+                    CacheContext.activeInstanceId.value.trim()
+                )?.title?.takeIf { it.isNotBlank() }
+            }.getOrNull()
+            ?: context.getString(R.string.public_chat)
+
+    private fun senderDisplayLabel(message: Message, currentUserId: Int): String {
+        ProfileCache.get(message.user_id)
+            ?.visibleDisplayName(currentUserId)
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return it }
+        message.displayName?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+        return message.username.trim().ifBlank { "FromChat" }
+    }
 
     fun summaryNotificationId(): Int = SUMMARY_NOTIFICATION_ID
 
@@ -123,7 +153,6 @@ object NotificationHelper {
         },
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
     )
-    
 
     fun createChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -138,6 +167,17 @@ object NotificationHelper {
                     description = "FromChat message notifications"
                 }
             )
+        }
+    }
+
+    /** Coalesce rapid public FCM wakes into one /messages/new → MessagingStyle refresh. */
+    fun schedulePublicFetchAndNotify(context: Context) {
+        publicFetchJob?.cancel()
+        publicFetchJob = helperScope.launch {
+            delay(PUBLIC_FETCH_DEBOUNCE_MS)
+            publicFetchMutex.withLock {
+                fetchAndNotify(context.applicationContext, includeDmMessages = false)
+            }
         }
     }
 
@@ -168,10 +208,7 @@ object NotificationHelper {
             Logger.i("NotificationHelper", "fetchAndNotify: fetched ${messages.size} public messages (excluding self)")
             if (messages.isNotEmpty()) {
                 settings.putLong(PREF_LAST_NOTIFICATION_TIME, System.currentTimeMillis())
-                CoroutineScope(Dispatchers.Main).launch {
-                    createChannel(context)
-                    displayNotifications(context, messages)
-                }
+                displayNotifications(context, messages)
             } else {
                 Logger.d("NotificationHelper", "fetchAndNotify: no public messages returned")
             }
@@ -194,13 +231,15 @@ object NotificationHelper {
                         "fetchAndNotify retry: fetched ${retryMessages.size} public messages"
                     )
                     if (retryMessages.isNotEmpty()) {
-                        CoroutineScope(Dispatchers.Main).launch {
-                            createChannel(context)
-                            displayNotifications(context, retryMessages)
-                        }
+                        displayNotifications(context, retryMessages)
                     }
                     if (includeDmMessages) {
-                        fetchAndNotifyDirectMessages(context, settings.getInt("current_user_id", -1), dmMessageId, dmSenderName)
+                        fetchAndNotifyDirectMessages(
+                            context,
+                            settings.getInt("current_user_id", -1),
+                            dmMessageId,
+                            dmSenderName
+                        )
                     }
                     return
                 } catch (_: Exception) {
@@ -321,9 +360,9 @@ object NotificationHelper {
                 showFallbackPushNotification(
                     context = context,
                     title = if (senderName.isNotBlank()) {
-                        "Direct message from $senderName"
+                        context.getString(R.string.notification_direct_message_from, senderName)
                     } else {
-                        "Direct message"
+                        context.getString(R.string.notification_direct_message)
                     },
                     body = notificationBody,
                     sender = senderName,
@@ -331,7 +370,7 @@ object NotificationHelper {
                     allowWhenPublicChatVisible = true,
                     isDirectMessage = true,
                     targetDmUserId = dmConversationUserId,
-                    conversationTitle = "Direct Messages"
+                    conversationTitle = context.getString(R.string.notification_direct_messages_title)
                 )
                 shownDm.add(shownDmKey)
             }
@@ -352,10 +391,10 @@ object NotificationHelper {
         allowWhenPublicChatVisible: Boolean = false,
         isDirectMessage: Boolean = false,
         targetDmUserId: Int? = null,
-        conversationTitle: String = "Public Chat",
+        conversationTitle: String = context.getString(R.string.public_chat),
         senderId: Int? = null,
     ) {
-        CoroutineScope(Dispatchers.Main).launch {
+        helperScope.launch(Dispatchers.Main) {
             createChannel(context)
 
             val currentUserId = settings.getInt("current_user_id", -1)
@@ -401,22 +440,37 @@ object NotificationHelper {
                 }
 
                 val senderName = sender?.ifBlank { "FromChat" } ?: "FromChat"
+                val groupKey = if (isDirectMessage && targetDmUserId != null) {
+                    GROUP_DM_PREFIX + targetDmUserId
+                } else {
+                    GROUP_PUBLIC
+                }
+                val notificationId = if (isDirectMessage && targetDmUserId != null) {
+                    SUMMARY_NOTIFICATION_ID + targetDmUserId
+                } else {
+                    SUMMARY_NOTIFICATION_ID
+                }
+                cancelStaleSystemTrayDuplicates(context)
                 notify(
-                    SUMMARY_NOTIFICATION_ID,
+                    notificationId,
                     NotificationCompat.Builder(context, CHANNEL_ID)
                         .setSmallIcon(NotificationSmallIcon.resId(context))
                         .setContentTitle(title)
                         .setContentText(body)
+                        .setGroup(groupKey)
                         .setStyle(
                             NotificationCompat.MessagingStyle(
                                 Person.Builder().setName("FromChat").build()
-                            ).setConversationTitle(conversationTitle).addMessage(
-                                NotificationCompat.MessagingStyle.Message(
-                                    body,
-                                    System.currentTimeMillis(),
-                                    Person.Builder().setName(senderName).build()
-                                )
                             )
+                                .setConversationTitle(conversationTitle)
+                                .setGroupConversation(true)
+                                .addMessage(
+                                    NotificationCompat.MessagingStyle.Message(
+                                        body,
+                                        System.currentTimeMillis(),
+                                        Person.Builder().setName(senderName).build()
+                                    )
+                                )
                         )
                         .setPriority(NotificationCompat.PRIORITY_HIGH)
                         .setCategory(Notification.CATEGORY_MESSAGE)
@@ -424,7 +478,7 @@ object NotificationHelper {
                         .addAction(
                             NotificationCompat.Action.Builder(
                                 android.R.drawable.ic_menu_send,
-                                "Reply",
+                                context.getString(R.string.notification_reply),
                                 createReplyIntent(
                                     context = context,
                                     isDirectMessage = isDirectMessage,
@@ -434,7 +488,7 @@ object NotificationHelper {
                             )
                                 .addRemoteInput(
                                     RemoteInput.Builder(KEY_TEXT_REPLY)
-                                        .setLabel("Reply to chat...")
+                                        .setLabel(context.getString(R.string.notification_reply_hint))
                                         .build()
                                 )
                                 .setAllowGeneratedReplies(true)
@@ -458,117 +512,146 @@ object NotificationHelper {
             }
         }
     }
-    @OptIn(DelicateCoroutinesApi::class)
+
     private fun displayNotifications(context: Context, messages: List<Message>) {
         Logger.i("NotificationHelper", "displayNotifications: ${messages.size} messages")
 
-        // Don't show notifications if user is currently viewing the public chat
         if (isPublicChatVisible) {
             Logger.d("NotificationHelper", "Skipping notifications: user is viewing public chat")
             return
         }
 
-        GlobalScope.launch {
+        helperScope.launch(Dispatchers.Main.immediate) {
             val shown = settings.getStringSet(PREF_SHOWN_KEY, emptySet()).toMutableSet()
             var newMessageCount = 0
             val previewStrings = listPreviewStrings(context)
+            val conversationTitle = publicConversationTitle(context)
+            val avatar = PublicChatNotificationAvatar.create(conversationTitle)
 
             with(NotificationManagerCompat.from(context)) {
                 if (
                     ContextCompat.checkSelfPermission(
                         context,
                         Manifest.permission.POST_NOTIFICATIONS
-                    ) == PackageManager.PERMISSION_GRANTED
+                    ) != PackageManager.PERMISSION_GRANTED
                 ) {
-                    // Find new messages that are not from the current user
-                    val currentUserId = settings.getInt("current_user_id", -1)
+                    Logger.w(
+                        "NotificationHelper",
+                        "displayNotifications: POST_NOTIFICATIONS permission missing, skipping"
+                    )
+                    return@launch
+                }
 
-                    if (currentUserId == -1) return@launch
+                val currentUserId = settings.getInt("current_user_id", -1)
+                if (currentUserId == -1) return@launch
 
-                    val newMessages = messages.filter { msg ->
-                        !shown.contains(msg.id.toString()) && // Not already shown
-                        msg.user_id != currentUserId // Not from current user
+                val newMessages = messages
+                    .filter { msg ->
+                        !shown.contains(msg.id.toString()) && msg.user_id != currentUserId
                     }
-                    if (newMessages.isEmpty()) {
-                        Logger.d(
-                            "NotificationHelper",
-                            "displayNotifications: no new messages after filters for user=$currentUserId"
-                        )
-                        return@launch
-                    }
-                    newMessages.apply { forEach { shown.add(it.id.toString()) } }
-
-                    newMessageCount = newMessages.size
+                    .sortedBy { it.id }
+                if (newMessages.isEmpty()) {
                     Logger.d(
                         "NotificationHelper",
-                        "displayNotifications: user=$currentUserId totalMessages=${messages.size} newMessages=${newMessageCount}"
+                        "displayNotifications: no new messages after filters for user=$currentUserId"
                     )
+                    return@launch
+                }
+                newMessages.forEach { shown.add(it.id.toString()) }
 
-                    notify(
-                        SUMMARY_NOTIFICATION_ID,
-                        NotificationCompat.Builder(context, CHANNEL_ID)
-                            .setSmallIcon(NotificationSmallIcon.resId(context))
-                            .setStyle(
-                                NotificationCompat.MessagingStyle(
-                                    Person.Builder().setName("FromChat").build()
-                                ).setConversationTitle("Public Chat").let { style ->
-                                    for (msg in newMessages.takeLast(10)) {
-                                        val timestamp = try {
-                                            Instant.parse(msg.timestamp).toEpochMilliseconds()
-                                        } catch (_: Exception) {
-                                            System.currentTimeMillis()
-                                        }
+                newMessageCount = newMessages.size
+                Logger.d(
+                    "NotificationHelper",
+                    "displayNotifications: user=$currentUserId totalMessages=${messages.size} " +
+                        "newMessages=$newMessageCount conversationTitle=$conversationTitle"
+                )
 
-                                        style.addMessage(
-                                            NotificationCompat.MessagingStyle.Message(
-                                                notificationBodyForMessage(msg, previewStrings),
-                                                timestamp,
-                                                Person.Builder()
-                                                    .setName(msg.username)
-                                                    .build()
-                                            )
-                                        )
-                                    }
+                createChannel(context)
+                cancelStaleSystemTrayDuplicates(context)
 
-                                    style
-                                }
-                            )
-                            .setPriority(NotificationCompat.PRIORITY_HIGH)
-                            .setCategory(Notification.CATEGORY_MESSAGE)
-                            .setAutoCancel(true)
+                val messagingStyle = NotificationCompat.MessagingStyle(
+                    Person.Builder().setName("FromChat").build()
+                )
+                    .setConversationTitle(conversationTitle)
+                    .setGroupConversation(true)
+
+                for (msg in newMessages.takeLast(10)) {
+                    val timestamp = try {
+                        Instant.parse(msg.timestamp).toEpochMilliseconds()
+                    } catch (_: Exception) {
+                        System.currentTimeMillis()
+                    }
+                    messagingStyle.addMessage(
+                        NotificationCompat.MessagingStyle.Message(
+                            notificationBodyForMessage(msg, previewStrings),
+                            timestamp,
+                            Person.Builder()
+                                .setName(senderDisplayLabel(msg, currentUserId))
+                                .setKey(msg.user_id.toString())
+                                .build()
+                        )
+                    )
+                }
+
+                notify(
+                    SUMMARY_NOTIFICATION_ID,
+                    NotificationCompat.Builder(context, CHANNEL_ID)
+                        .setSmallIcon(NotificationSmallIcon.resId(context))
+                        .setLargeIcon(avatar)
+                        .setContentTitle(conversationTitle)
+                        .setStyle(messagingStyle)
+                        .setGroup(GROUP_PUBLIC)
+                        .setPriority(NotificationCompat.PRIORITY_HIGH)
+                        .setCategory(Notification.CATEGORY_MESSAGE)
+                        .setAutoCancel(true)
                         .addAction(
                             NotificationCompat.Action.Builder(
                                 android.R.drawable.ic_menu_send,
-                                "Reply",
+                                context.getString(R.string.notification_reply),
                                 createReplyIntent(
                                     context = context,
                                     isDirectMessage = false,
                                     parentMessageId = newMessages.last().id
                                 )
                             )
-                                    .addRemoteInput(
-                                        RemoteInput.Builder(KEY_TEXT_REPLY)
-                                            .setLabel("Reply to chat...")
-                                            .build()
-                                    )
-                                    .setAllowGeneratedReplies(true)
-                                    .build()
-                            )
-                            .setContentIntent(createMessageIntent(context, newMessages.last().id))
-                            .build()
-                    )
-                } else {
-                    Logger.w(
-                        "NotificationHelper",
-                        "displayNotifications: POST_NOTIFICATIONS permission missing, skipping"
-                    )
-                }
+                                .addRemoteInput(
+                                    RemoteInput.Builder(KEY_TEXT_REPLY)
+                                        .setLabel(context.getString(R.string.notification_reply_hint))
+                                        .build()
+                                )
+                                .setAllowGeneratedReplies(true)
+                                .build()
+                        )
+                        .setContentIntent(createMessageIntent(context, newMessages.last().id))
+                        .setShortcutId(GROUP_PUBLIC)
+                        .build()
+                )
             }
 
             settings.putStringSet(PREF_SHOWN_KEY, shown)
-            Logger.i("NotificationHelper", "displayNotifications: shown $newMessageCount new messages, total shown=${shown.size}")
+            Logger.i(
+                "NotificationHelper",
+                "displayNotifications: shown $newMessageCount new messages, total shown=${shown.size}"
+            )
+        }
+    }
+
+    /** Clears FCM auto-posted tray entries (notification payload) that duplicate our MessagingStyle. */
+    private fun cancelStaleSystemTrayDuplicates(context: Context) {
+        runCatching {
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            // Legacy FCM auto notifications used id 0 / fcm_fallback_notification_channel.
+            manager.cancel(0)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                manager.activeNotifications
+                    .filter { status ->
+                        status.notification.channelId == "fcm_fallback_notification_channel" ||
+                            status.id == 0
+                    }
+                    .forEach { status ->
+                        manager.cancel(status.tag, status.id)
+                    }
+            }
         }
     }
 }
-
-

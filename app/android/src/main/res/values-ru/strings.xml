@@ -1,5 +1,11 @@
 <resources>
+    <string name="public_chat">Общий чат</string>
     <string name="chat_preview_attachment">Вложение</string>
     <string name="chat_preview_image_emoji">📷</string>
     <string name="chat_preview_image">%1$s 1 фото</string>
+    <string name="notification_reply">Ответить</string>
+    <string name="notification_reply_hint">Ответ в чат…</string>
+    <string name="notification_direct_message">Личное сообщение</string>
+    <string name="notification_direct_message_from">Личное сообщение от %1$s</string>
+    <string name="notification_direct_messages_title">Личные сообщения</string>
 </resources>
