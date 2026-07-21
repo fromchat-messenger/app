@@ -938,13 +938,13 @@ internal fun DmConversationRowContent(
     val avatarUrl = if (isPeerDeleted) null else cached?.profilePicture
     val peerTitle = when {
         isPeerDeleted -> deletedUserDisplayNameForUi()
-        !cached?.displayName.isNullOrBlank() -> cached.displayName!!.trim()
+        !cached?.displayName.isNullOrBlank() -> cached.displayName.trim()
         conversation.displayName.isNotBlank() -> conversation.displayName
         else -> cached?.visibleUsername(currentUserId).orEmpty()
     }
     val avatarInitialsLabel = when {
         isPeerDeleted -> deletedUserDisplayNameForUi()
-        !cached?.displayName.isNullOrBlank() -> cached.displayName!!.trim()
+        !cached?.displayName.isNullOrBlank() -> cached.displayName.trim()
         conversation.displayName.isNotBlank() -> conversation.displayName
         else -> ""
     }

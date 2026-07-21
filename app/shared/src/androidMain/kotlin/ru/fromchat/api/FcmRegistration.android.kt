@@ -1,6 +1,7 @@
 package ru.fromchat.api
 
 import com.google.android.gms.tasks.Task
+import com.google.firebase.installations.FirebaseInstallations
 import com.google.firebase.messaging.FirebaseMessaging
 import com.pr0gramm3r101.utils.settings.settings
 import kotlinx.coroutines.Dispatchers
@@ -13,17 +14,25 @@ import kotlin.coroutines.resumeWithException
 private const val PENDING_FCM_TOKEN_KEY = "pending_fcm_token"
 private const val CURRENT_FCM_TOKEN_KEY = "current_fcm_token"
 
-private suspend fun fetchCurrentFcmToken(): String? = suspendCancellableCoroutine { cont ->
-    FirebaseMessaging.getInstance().token
-        .addOnCompleteListener { task: Task<String> ->
-            if (task.isSuccessful) {
-                cont.resume(task.result)
-            } else {
-                cont.resumeWithException(
-                    task.exception ?: IllegalStateException("Failed to fetch FCM token")
-                )
-            }
+private suspend fun <T> Task<T>.awaitResult(): T = suspendCancellableCoroutine { cont ->
+    addOnCompleteListener { task ->
+        if (task.isSuccessful) {
+            cont.resume(task.result)
+        } else {
+            cont.resumeWithException(
+                task.exception ?: IllegalStateException("Firebase task failed"),
+            )
         }
+    }
+}
+
+/** Registers with FCM and returns the Firebase Installation ID used for targeting. */
+private suspend fun fetchCurrentFcmToken(): String? = runCatching {
+    FirebaseMessaging.getInstance().register().awaitResult()
+    FirebaseInstallations.getInstance().id.awaitResult()
+}.getOrElse { e ->
+    Logger.e("FcmReg", "Failed to fetch FCM installation id: ${e.message}", e)
+    null
 }
 
 private suspend fun postFcmToken(token: String): Boolean {

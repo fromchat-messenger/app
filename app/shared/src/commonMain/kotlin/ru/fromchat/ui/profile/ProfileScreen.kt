@@ -105,10 +105,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.platform.ClipboardManager
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.pr0gramm3r101.components.Category
 import com.pr0gramm3r101.components.ContextMenuPressable
@@ -267,7 +264,6 @@ fun ProfileScreen(
     onOpenSettings: () -> Unit = {},
     showBackButton: Boolean = false,
 ) {
-    val clipboardManager: ClipboardManager = LocalClipboardManager.current
     val clipboard = supportClipboardManagerImpl
     val navController = LocalNavController.current
     val scope = rememberCoroutineScope()
@@ -377,7 +373,7 @@ fun ProfileScreen(
                 ApiClient.applyOwnProfile(refreshed)
                 state = latestUi.copy(profile = refreshed, error = null)
             } catch (_: Exception) {
-                ownUserId?.let { ProfileCache.get(it) }?.let { cached ->
+                ownUserId.let { ProfileCache.get(it) }?.let { cached ->
                     state = latestUi.copy(profile = cached)
                 }
             }
@@ -609,7 +605,7 @@ fun ProfileScreen(
                 ProfileAction(
                     label = labelLink,
                     icon = Icons.Filled.Link,
-                    onClick = { clipboardManager.setText(AnnotatedString(profileLink.orEmpty())) },
+                    onClick = { scope.launch { clipboard.setText(profileLink.orEmpty()) } },
                 ),
                 ProfileAction(
                     label = labelSettings,
@@ -654,7 +650,7 @@ fun ProfileScreen(
                     ProfileAction(
                         label = labelLink,
                         icon = Icons.Filled.Link,
-                        onClick = { clipboardManager.setText(AnnotatedString(profileLink.orEmpty())) },
+                        onClick = { scope.launch { clipboard.setText(profileLink.orEmpty()) } },
                     )
                 )
                 if (ServerConfig.callsEnabled) {
@@ -831,7 +827,6 @@ fun ProfileScreen(
                                 labelCopy = labelCopy,
                                 labelEdit = labelEdit,
                                 detailsBringIntoView = detailsBringIntoView,
-                                clipboardManager = clipboardManager,
                                 clipboard = clipboard,
                                 navController = navController,
                                 scope = scope,
@@ -880,7 +875,6 @@ fun PublicChatProfileScreen(
     initialDisplayName: String? = null,
     showBackButton: Boolean = false,
 ) {
-    val clipboardManager = LocalClipboardManager.current
     val clipboard = supportClipboardManagerImpl
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -962,7 +956,7 @@ fun PublicChatProfileScreen(
             ProfileAction(
                 label = labelLink,
                 icon = Icons.Filled.Link,
-                onClick = { clipboardManager.setText(AnnotatedString(profileLink.orEmpty())) },
+                onClick = { scope.launch { clipboard.setText(profileLink.orEmpty()) } },
             ),
             ProfileAction(
                 label = labelSearch,
@@ -1003,15 +997,15 @@ fun PublicChatProfileScreen(
                 when {
                     useSharedAvatar && displayName.isNotBlank() -> {
                         item {
-                            with(sharedTransitionScope!!) {
+                            with(sharedTransitionScope) {
                                 Avatar(
                                     profilePictureUrl = null,
                                     displayName = displayName,
                                     modifier = Modifier
                                         .padding(top = profileAvatarTop)
                                         .sharedElement(
-                                            rememberSharedContentState(key = sharedAvatarKey!!),
-                                            animatedVisibilityScope = animatedVisibilityScope!!,
+                                            rememberSharedContentState(key = sharedAvatarKey),
+                                            animatedVisibilityScope = animatedVisibilityScope,
                                         )
                                         .size(104.dp),
                                 )
@@ -1320,7 +1314,6 @@ private fun ProfileLoadedBody(
     labelCopy: String,
     labelEdit: String,
     detailsBringIntoView: BringIntoViewRequester,
-    clipboardManager: ClipboardManager,
     clipboard: SupportClipboardManager,
     navController: NavController,
     scope: CoroutineScope,
@@ -1349,7 +1342,7 @@ private fun ProfileLoadedBody(
                 onContextMenuOpen = openContextMenuHaptic,
                 contextMenu = {
                     item(Icons.Rounded.ContentCopy, labelCopy) {
-                        clipboardManager.setText(AnnotatedString(displayName))
+                        scope.launch { clipboard.setText(displayName) }
                     }
                     if (isOwnProfile) {
                         item(Icons.Rounded.Edit, labelEdit) {
@@ -1453,9 +1446,9 @@ private fun ProfileLoadedBody(
                         },
                         contextMenu = {
                             item(Icons.Rounded.ContentCopy, labelCopy) {
-                                clipboardManager.setText(
-                                    AnnotatedString(usernameForLinks.orEmpty()),
-                                )
+                                scope.launch {
+                                    clipboard.setText(usernameForLinks.orEmpty())
+                                }
                             }
                             if (isOwnProfile) {
                                 item(Icons.Rounded.Edit, labelEdit) {
@@ -1491,7 +1484,7 @@ private fun ProfileLoadedBody(
                         },
                         contextMenu = {
                             item(Icons.Rounded.ContentCopy, labelCopy) {
-                                clipboardManager.setText(AnnotatedString(memberSinceText))
+                                scope.launch { clipboard.setText(memberSinceText) }
                             }
                         },
                     )

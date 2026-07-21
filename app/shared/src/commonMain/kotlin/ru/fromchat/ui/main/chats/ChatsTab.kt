@@ -90,15 +90,14 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.pr0gramm3r101.utils.supportClipboardManagerImpl
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -529,7 +528,7 @@ fun ChatsTab(
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     val navController = LocalNavController.current
-    val clipboardManager = LocalClipboardManager.current
+    val clipboard = supportClipboardManagerImpl
     val haptic = rememberHapticFeedback()
     val scope = rememberCoroutineScope()
     val connectionStatus by ConnectionStateStore.status.collectAsState()
@@ -1092,7 +1091,9 @@ fun ChatsTab(
         chatContextMenuOverlay.onLink = {
             when (contextMenuState.target) {
                 ChatContextMenuTarget.Public -> {
-                    publicChatLink?.let { clipboardManager.setText(AnnotatedString(it)) }
+                    publicChatLink?.let { link ->
+                        scope.launch { clipboard.setText(link) }
+                    }
                 }
                 ChatContextMenuTarget.Dm -> {
                     val link = contextMenuState.otherUserId?.let { userId ->
@@ -1100,7 +1101,7 @@ fun ChatsTab(
                         val username = cached?.visibleUsername(ApiClient.user?.id) ?: cached?.username
                         username?.let { "https://fromchat.ru/@$it" } ?: "https://fromchat.ru/?u=$userId"
                     }
-                    link?.let { clipboardManager.setText(AnnotatedString(it)) }
+                    link?.let { scope.launch { clipboard.setText(it) } }
                 }
             }
         }

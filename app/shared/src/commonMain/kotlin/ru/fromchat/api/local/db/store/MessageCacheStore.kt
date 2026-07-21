@@ -386,7 +386,7 @@ object MessageCacheStore {
                             if (product in 0.92f..1.08f && kotlin.math.abs(decodedAspect - serverAspect) > 0.15f) {
                                 resolved = resolved.copy(
                                     fileAspectRatios = listOf(decodedAspect),
-                                    fileDimensions = thumbDims?.let { listOf(it.first to it.second) } ?: resolved.fileDimensions,
+                                    fileDimensions = listOf(thumbDims.first to thumbDims.second),
                                 )
                             }
                         }

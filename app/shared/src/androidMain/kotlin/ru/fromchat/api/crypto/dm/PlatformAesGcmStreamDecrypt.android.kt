@@ -40,7 +40,7 @@ internal actual suspend fun platformAesGcmStreamDecryptMekFile(
         outputFile.delete()
     }
 
-    val cipher = GCMBlockCipher.newInstance(AESEngine())
+    val cipher = GCMBlockCipher.newInstance(AESEngine.newInstance())
     cipher.init(false, AEADParameters(KeyParameter(key), 128, iv))
 
     val inBuf = ByteArray(FILE_DECRYPT_BUFFER_BYTES)

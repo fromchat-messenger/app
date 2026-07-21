@@ -166,9 +166,4 @@ dependencies {
 
     implementation(project(":app:shared"))
     implementation(project(":utils:shared"))
-
-    testImplementation("junit:junit:4.13.2")
-    testImplementation(libs.androidx.compose.material3)
-    testImplementation("androidx.graphics:graphics-shapes:1.0.1")
-    testImplementation("org.robolectric:robolectric:4.14.1")
 }

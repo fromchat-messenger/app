@@ -136,7 +136,7 @@ fun ChatFileAttachmentTile(
                 }
             }
         }
-        downloadPaused && canDownload -> file?.let { downloadFile ->
+        downloadPaused && file != null && canDownload -> {
             {
                 AttachmentDownloadNotifier.beginDownload(
                     messageId = messageId,
@@ -148,7 +148,7 @@ fun ChatFileAttachmentTile(
                     val ok = downloadAttachmentToCache(
                         messageId = messageId,
                         fileIndex = fileIndex,
-                        file = downloadFile,
+                        file = file,
                         dmEnvelope = dmEnvelope,
                         currentUserId = currentUserId,
                         clientMessageId = clientMessageId,
@@ -166,7 +166,7 @@ fun ChatFileAttachmentTile(
                 }
             }
         }
-        canDownload && !isDownloading && !downloadPaused -> file?.let { downloadFile ->
+        file != null && canDownload && !isDownloading && !downloadPaused -> {
             {
                 AttachmentDownloadNotifier.beginDownload(
                     messageId = messageId,
@@ -178,7 +178,7 @@ fun ChatFileAttachmentTile(
                     val ok = downloadAttachmentToCache(
                         messageId = messageId,
                         fileIndex = fileIndex,
-                        file = downloadFile,
+                        file = file,
                         dmEnvelope = dmEnvelope,
                         currentUserId = currentUserId,
                         clientMessageId = clientMessageId,

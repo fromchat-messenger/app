@@ -1189,7 +1189,7 @@ fun ChatScreen(
                                             .getOrNull(panelState.messages.lastIndex - 1)
                                         previous != null &&
                                             messageListKey(previous) == listKey &&
-                                            classifyEnterMode(previous, newest!!) ==
+                                            classifyEnterMode(previous, newest) ==
                                                 EnterMode.ExtendGroup
                                     }
                                     val showTimestamp = when {

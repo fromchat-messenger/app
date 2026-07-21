@@ -17,7 +17,7 @@ actual fun Clipboard.toSupport(): SupportClipboardManager {
 
         override suspend fun getText(): String? {
             val entry = clipboard.getClipEntry() ?: return null
-            return entry.clipData?.getItemAt(0)?.text?.toString()
+            return entry.clipData.getItemAt(0)?.text?.toString()
         }
 
         override fun setTextListener(listener: (String) -> Unit) {

@@ -9,8 +9,8 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import ru.fromchat.Logger
 import ru.fromchat.api.ApiClient
-import ru.fromchat.notifications.NotificationHelper
 import ru.fromchat.api.uploadPendingFcmTokenIfAvailable
+import ru.fromchat.notifications.NotificationHelper
 
 @OptIn(DelicateCoroutinesApi::class)
 class FromChatFirebaseMessagingService : FirebaseMessagingService() {
@@ -65,18 +65,16 @@ class FromChatFirebaseMessagingService : FirebaseMessagingService() {
         }
     }
 
-    override fun onNewToken(token: String) {
-        Logger.i("FromChatFCM", "onNewToken received (...${token.takeLast(8)})")
+    override fun onRegistered(installationId: String) {
+        Logger.i("FromChatFCM", "onRegistered received (...${installationId.takeLast(8)})")
         GlobalScope.launch(Dispatchers.IO) {
             try {
-                settings.putString("pending_fcm_token", token)
+                settings.putString("pending_fcm_token", installationId)
                 uploadPendingFcmTokenIfAvailable()
-                Logger.i("FromChatFCM", "FCM token queued or uploaded for this app instance")
+                Logger.i("FromChatFCM", "FCM installation id queued or uploaded for this app instance")
             } catch (e: Exception) {
-                Logger.e("FromChatFCM", "onNewToken upload error: ${e.message}", e)
+                Logger.e("FromChatFCM", "onRegistered upload error: ${e.message}", e)
             }
-
-            super.onNewToken(token)
         }
     }
 }

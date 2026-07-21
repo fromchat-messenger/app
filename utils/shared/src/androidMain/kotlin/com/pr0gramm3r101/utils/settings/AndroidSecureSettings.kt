@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package com.pr0gramm3r101.utils.settings
 
 import androidx.core.content.edit
@@ -7,6 +9,12 @@ import com.pr0gramm3r101.utils.UtilsLibrary.context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/**
+ * Secure prefs via EncryptedSharedPreferences.
+ *
+ * These APIs are deprecated in favor of DataStore + Tink (`datastore-tink`, DataStore 1.3+).
+ * Kept until that stack is stable enough to migrate auth/identity keys without risk.
+ */
 class AndroidSecureSettings : Settings {
     private val masterKey by lazy {
         MasterKey.Builder(context)
@@ -80,4 +88,3 @@ class AndroidSecureSettings : Settings {
         encryptedPrefs.contains(key)
     }
 }
-
