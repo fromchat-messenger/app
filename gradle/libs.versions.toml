@@ -7,7 +7,7 @@ androidx-exifinterface = "1.4.2"
 coilCompose = "3.5.0"
 compose-multiplatform = "1.11.1"
 #noinspection NewerVersionAvailable
-constraintlayout = "0.6.1-shaded"
+constraintlayout = "0.8.0-shaded"
 coreSplashscreen = "1.2.0"
 firebaseMessaging = "25.1.1"
 googleServices = "4.5.0"
