@@ -1,5 +1,12 @@
 @file:Suppress("TaskMissingDescription")
 
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.TaskAction
+
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.compose.multiplatform)
@@ -7,6 +14,54 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform.library)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.sqldelight)
+}
+
+abstract class GenerateAppBuildInfoTask : DefaultTask() {
+    @get:Input
+    abstract val versionName: Property<String>
+
+    @get:Input
+    abstract val versionCode: Property<Int>
+
+    @get:Input
+    abstract val debugBuild: Property<Boolean>
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val outRoot = outputDirectory.get().asFile
+        check(outRoot.invariantSeparatorsPath.contains("/generated/")) {
+            "AppBuildInfo must be written under a generated/ directory, got: $outRoot"
+        }
+        outRoot.deleteRecursively()
+        outRoot.resolve("ru/fromchat").apply { mkdirs() }.resolve("AppBuildInfo.kt").writeText(
+            """
+            |package ru.fromchat
+            |
+            |/** Injected by Gradle into generated sources (not under src/). */
+            |object AppBuildInfo {
+            |    const val version = "${versionName.get()}"
+            |    const val versionCode = ${versionCode.get()}
+            |    const val isDebug = ${debugBuild.get()}
+            |}
+            |
+            """.trimMargin()
+        )
+    }
+}
+
+val generateAppBuildInfo = tasks.register<GenerateAppBuildInfoTask>("generateAppBuildInfo") {
+    versionName.set(rootProject.extra["versionName"] as String)
+    versionCode.set(rootProject.extra["versionCode"] as Int)
+    debugBuild.set(
+        gradle.startParameter.taskNames.let { names ->
+            !names.any { it.contains("Release", ignoreCase = true) } ||
+                names.any { it.contains("Debug", ignoreCase = true) }
+        },
+    )
+    outputDirectory.set(layout.buildDirectory.dir("generated/sources/appBuildInfo/kotlin"))
 }
 
 kotlin {
@@ -36,6 +91,10 @@ kotlin {
             languageSettings {
                 optIn("kotlin.RequiresOptIn")
             }
+        }
+
+        commonMain {
+            kotlin.srcDir(generateAppBuildInfo.map { it.outputDirectory })
         }
 
         commonMain.dependencies {
@@ -124,6 +183,7 @@ compose.resources {
 
 tasks.matching { it.name == "compileAndroidMain" || it.name == "compileKotlinIosArm64" }.configureEach {
     dependsOn("generateResourceAccessorsForCommonMain")
+    dependsOn(generateAppBuildInfo)
 }
 
 tasks.register("generateResourceAccessors") {

@@ -37,6 +37,7 @@ import com.pr0gramm3r101.components.ListItem
 import com.pr0gramm3r101.ui.Website
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
+import ru.fromchat.AppBuildInfo
 import ru.fromchat.Res
 import ru.fromchat.about
 import ru.fromchat.about_link_max
@@ -111,7 +112,10 @@ fun AboutScreen() {
                 BrandTitle(Modifier.padding(bottom = 4.dp))
 
                 Text(
-                    text = stringResource(Res.string.about_version),
+                    text = stringResource(
+                        Res.string.about_version,
+                        AppBuildInfo.version + if (AppBuildInfo.isDebug) "-beta" else "",
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 16.dp)

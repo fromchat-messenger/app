@@ -5,7 +5,7 @@
     <string name="settings">Настройки</string>
     <string name="home">Главная</string>
     <string name="about">О приложении</string>
-    <string name="about_version">Версия 1.0</string>
+    <string name="about_version">Версия %1$s</string>
     <string name="about_link_telegram">Telegram</string>
     <string name="about_link_max">MAX</string>
     <string name="about_link_website">Сайт</string>

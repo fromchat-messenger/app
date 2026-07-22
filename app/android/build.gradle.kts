@@ -62,8 +62,8 @@ extensions.configure<ApplicationExtension> {
         applicationId = "ru.fromchat"
         minSdk = 24
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = rootProject.extra["versionCode"] as Int
+        versionName = rootProject.extra["versionName"] as String
 
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
