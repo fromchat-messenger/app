@@ -1,43 +1,48 @@
-package ru.fromchat.ui.auth.yandex
+package ru.fromchat.ui.auth.vk
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import ru.fromchat.auth.yandex.YANDEX_OAUTH_REDIRECT_URI
-import ru.fromchat.auth.yandex.YANDEX_OAUTH_THEME_COOKIE_HOSTS
-import ru.fromchat.auth.yandex.extractOAuthCode
-import ru.fromchat.auth.yandex.isYandexAuthNavigation
+import ru.fromchat.auth.vk.VK_OAUTH_REDIRECT_URI
+import ru.fromchat.auth.vk.VK_OAUTH_THEME_COOKIE_HOSTS
+import ru.fromchat.auth.vk.VkOAuthRedirect
+import ru.fromchat.auth.vk.extractVkOAuthRedirect
+import ru.fromchat.auth.vk.isVkAuthNavigation
 import ru.fromchat.ui.auth.oauth.OAuthWebView
 
 /**
- * Yandex-specific wrapper around [OAuthWebView].
+ * VK-specific wrapper around [OAuthWebView].
+ *
+ * @param redirectUri Trusted HTTPS redirect from the server (must match VK ID cabinet).
  */
 @Composable
-internal fun YandexOAuthWebView(
+internal fun VkOAuthWebView(
     authorizeUrl: String,
+    redirectUri: String,
     languageTag: String,
     darkTheme: Boolean,
     fallbackColor: Color,
     clearCookies: Boolean = false,
     onPageBackgroundColor: (Color) -> Unit = {},
     onHistoryBackAvailabilityChanged: (Boolean) -> Unit = {},
-    onCode: (String) -> Unit,
+    onRedirect: (VkOAuthRedirect) -> Unit,
     onError: (String) -> Unit,
     onCancel: () -> Unit,
 ) {
+    val resolvedRedirect = redirectUri.trim().ifBlank { VK_OAUTH_REDIRECT_URI }
     OAuthWebView(
         authorizeUrl = authorizeUrl,
         languageTag = languageTag,
         darkTheme = darkTheme,
         fallbackColor = fallbackColor,
-        redirectUriPrefix = YANDEX_OAUTH_REDIRECT_URI,
-        isAuthNavigation = ::isYandexAuthNavigation,
+        redirectUriPrefix = resolvedRedirect,
+        isAuthNavigation = ::isVkAuthNavigation,
         clearCookies = clearCookies,
-        themeCookieHosts = YANDEX_OAUTH_THEME_COOKIE_HOSTS,
+        themeCookieHosts = VK_OAUTH_THEME_COOKIE_HOSTS,
         onPageBackgroundColor = onPageBackgroundColor,
         onHistoryBackAvailabilityChanged = onHistoryBackAvailabilityChanged,
         onRedirectUrl = { url ->
-            val code = extractOAuthCode(url)
-            if (code != null) onCode(code) else onError("")
+            val redirect = extractVkOAuthRedirect(url, resolvedRedirect)
+            if (redirect != null) onRedirect(redirect) else onError("")
         },
         onError = onError,
         onCancel = onCancel,

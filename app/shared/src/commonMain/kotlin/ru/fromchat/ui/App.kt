@@ -79,6 +79,8 @@ import ru.fromchat.legal.DocumentScreen
 import ru.fromchat.legal.DocumentType
 import ru.fromchat.notifications.NotificationLaunchCoordinator
 import ru.fromchat.ui.auth.AuthScreen
+import ru.fromchat.ui.auth.vk.VkOAuthNav
+import ru.fromchat.ui.auth.vk.VkOAuthScreen
 import ru.fromchat.ui.auth.yandex.YandexOAuthNav
 import ru.fromchat.ui.auth.yandex.YandexOAuthScreen
 import ru.fromchat.ui.calls.CallOverlay
@@ -103,6 +105,9 @@ import ru.fromchat.ui.main.settings.account.changepassword.ChangePasswordScreen
 import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexConfirmScreen
 import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexDoneScreen
 import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexOAuthScreen
+import ru.fromchat.ui.main.settings.account.changevk.ChangeVkConfirmScreen
+import ru.fromchat.ui.main.settings.account.changevk.ChangeVkDoneScreen
+import ru.fromchat.ui.main.settings.account.changevk.ChangeVkOAuthScreen
 import ru.fromchat.ui.main.settings.account.delete.DeleteAccountScreen
 import ru.fromchat.ui.main.settings.server.ServerConfigScreen
 import ru.fromchat.ui.profile.EditProfileFocusField
@@ -466,6 +471,10 @@ fun App(
                                 YandexOAuthScreen()
                             }
 
+                            composable(VkOAuthNav.ROUTE) {
+                                VkOAuthScreen()
+                            }
+
                             composable("chat") {
                                 MainScreen(
                                     sharedTransitionScope = this@SharedTransitionLayout,
@@ -699,6 +708,26 @@ fun App(
                                 )
                             }
 
+                            settingsComposable(SettingsRoutes.AccountVkFlow) {
+                                ChangeVkConfirmScreen(
+                                    onBack = { navController.navigateUp() },
+                                )
+                            }
+
+                            settingsComposable(SettingsRoutes.AccountVkOAuth) {
+                                ChangeVkOAuthScreen(
+                                    onBack = { navController.navigateUp() },
+                                )
+                            }
+
+                            settingsComposable(SettingsRoutes.AccountVkDone) {
+                                ChangeVkDoneScreen(
+                                    onDone = {
+                                        navController.popBackStack(SettingsRoutes.Account, inclusive = false)
+                                    },
+                                )
+                            }
+
                             settingsComposable(SettingsRoutes.Account) {
                                 AccountScreen(
                                     onBack = { navController.navigateUp() },
@@ -709,6 +738,7 @@ fun App(
                                     },
                                     onChangePassword = { navController.navigate(SettingsRoutes.SecurityPasswordFlow) },
                                     onChangeYandexId = { navController.navigate(SettingsRoutes.AccountYandexFlow) },
+                                    onChangeVkId = { navController.navigate(SettingsRoutes.AccountVkFlow) },
                                     onDeleteAccount = { navController.navigate(SettingsRoutes.AccountDeleteFlow) },
                                 )
                             }

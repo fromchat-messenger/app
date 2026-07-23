@@ -28,10 +28,19 @@ data class YandexOAuthParams(
 )
 
 @Serializable
+data class VkOAuthParams(
+    val client_id: String,
+    val redirect_uri: String,
+    val authorize_url: String,
+    val scope: String,
+)
+
+@Serializable
 data class AuthNeedsRegisterResponse(
     val status: String,
-    val yandex_required: Boolean = false,
+    val verification_required: Boolean = false,
     val yandex: YandexOAuthParams? = null,
+    val vk: VkOAuthParams? = null,
 )
 
 @Serializable
@@ -42,6 +51,19 @@ data class YandexExchangeRequest(
 
 @Serializable
 data class YandexExchangeResponse(
+    val registration_proof: String,
+)
+
+@Serializable
+data class VkExchangeRequest(
+    val code: String,
+    val code_verifier: String,
+    val device_id: String,
+    val state: String,
+)
+
+@Serializable
+data class VkExchangeResponse(
     val registration_proof: String,
 )
 
@@ -63,6 +85,23 @@ data class ChangeYandexResponse(
 )
 
 @Serializable
+data class AccountVkResponse(
+    val linked: Boolean = false,
+    val vk: VkOAuthParams? = null,
+)
+
+@Serializable
+data class ChangeVkRequest(
+    val registration_proof: String,
+)
+
+@Serializable
+data class ChangeVkResponse(
+    val status: String? = null,
+    val unchanged: Boolean = false,
+)
+
+@Serializable
 data class RegisterConfirmRequest(
     val username: String,
     val display_name: String,
@@ -70,4 +109,5 @@ data class RegisterConfirmRequest(
     val confirm_password: String,
     val bio: String? = null,
     val registration_proof: String? = null,
+    val vk_registration_proof: String? = null,
 )

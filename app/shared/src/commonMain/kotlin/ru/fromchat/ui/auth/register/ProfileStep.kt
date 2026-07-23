@@ -55,7 +55,8 @@ internal fun profileStepPage(
     bio: String,
     onBioChange: (String) -> Unit,
     password: String,
-    registrationProof: String?,
+    yandexRegistrationProof: String?,
+    vkRegistrationProof: String?,
     onRegisterSuccess: () -> Unit,
     onUsernameTaken: () -> Unit,
     onSnackbar: (String, Throwable?) -> Unit,
@@ -148,7 +149,8 @@ internal fun profileStepPage(
                                     displayName = displayName.trim(),
                                     password = password,
                                     bio = bio.trim(),
-                                    registrationProof = registrationProof,
+                                    yandexRegistrationProof = yandexRegistrationProof,
+                                    vkRegistrationProof = vkRegistrationProof,
                                     unexpectedError = unexpected,
                                 )
                             ) {

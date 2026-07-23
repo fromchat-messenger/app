@@ -43,8 +43,11 @@ import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
 import ru.fromchat.back
 import ru.fromchat.cancel
+import ru.fromchat.ic_vk
 import ru.fromchat.ic_yandex
 import ru.fromchat.logout
+import ru.fromchat.settings_account_change_vk
+import ru.fromchat.settings_account_change_vk_d
 import ru.fromchat.settings_account_change_yandex
 import ru.fromchat.settings_account_change_yandex_d
 import ru.fromchat.settings_account_delete
@@ -63,16 +66,20 @@ fun AccountScreen(
     onLogout: () -> Unit,
     onChangePassword: () -> Unit,
     onChangeYandexId: () -> Unit,
+    onChangeVkId: () -> Unit,
     onDeleteAccount: () -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val scope = rememberCoroutineScope()
     var showLogoutConfirm by remember { mutableStateOf(false) }
     var yandexAvailable by remember { mutableStateOf(false) }
+    var vkAvailable by remember { mutableStateOf(false) }
     val yandexIcon = vectorResource(Res.drawable.ic_yandex)
+    val vkIcon = vectorResource(Res.drawable.ic_vk)
 
     LaunchedEffect(Unit) {
         yandexAvailable = runCatching { ApiClient.getAccountYandex() }.isSuccess
+        vkAvailable = runCatching { ApiClient.getAccountVk() }.isSuccess
     }
 
     Scaffold(
@@ -121,6 +128,24 @@ fun AccountScreen(
                         supportingText = stringResource(Res.string.settings_account_change_yandex_d),
                         onClick = onChangeYandexId,
                         leadingContent = { Icon(yandexIcon, null) },
+                        divider = true,
+                        trailingContent = {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    )
+                }
+
+                if (vkAvailable) {
+                    ListItem(
+                        headline = stringResource(Res.string.settings_account_change_vk),
+                        supportingText = stringResource(Res.string.settings_account_change_vk_d),
+                        onClick = onChangeVkId,
+                        leadingContent = { Icon(vkIcon, null) },
                         divider = true,
                         trailingContent = {
                             Icon(

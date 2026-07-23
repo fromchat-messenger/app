@@ -30,13 +30,13 @@ import ru.fromchat.api.instance.probeServer
 import ru.fromchat.api.schema.core.ErrorResponse
 import ru.fromchat.api.schema.user.auth.LoginResponse
 import ru.fromchat.api.schema.user.auth.RegisterConfirmRequest
+import ru.fromchat.api.schema.user.auth.VkOAuthParams
 import ru.fromchat.api.schema.user.auth.YandexOAuthParams
 import ru.fromchat.change_server
 import ru.fromchat.config.Settings
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.auth.register.confirmPasswordStepPage
 import ru.fromchat.ui.auth.register.profileStepPage
-import ru.fromchat.ui.auth.yandex.yandexIdStepPage
 import ru.fromchat.ui.components.ExpressiveStepFlowScaffold
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.TextCta
@@ -49,15 +49,16 @@ private enum class AuthFlowStep {
     Username,
     Password,
     ConfirmPassword,
-    YandexId,
+    IdentityVerify,
     Profile,
 }
 
 internal sealed interface PasswordStepResult {
     data object LoginSuccess : PasswordStepResult
     data class NeedsRegister(
-        val yandexRequired: Boolean,
+        val verificationRequired: Boolean,
         val yandex: YandexOAuthParams?,
+        val vk: VkOAuthParams?,
     ) : PasswordStepResult
     data class WrongPassword(val message: String) : PasswordStepResult
     data class RateLimited(val message: String) : PasswordStepResult
@@ -121,8 +122,9 @@ internal suspend fun authPasswordStep(
         }
 
         is ApiClient.AuthPasswordStepOutcome.NeedsRegister -> PasswordStepResult.NeedsRegister(
-            yandexRequired = outcome.yandexRequired,
+            verificationRequired = outcome.verificationRequired,
             yandex = outcome.yandex,
+            vk = outcome.vk,
         )
     }
 } catch (e: ClientRequestException) {
@@ -146,7 +148,8 @@ internal suspend fun register(
     displayName: String,
     password: String,
     bio: String,
-    registrationProof: String?,
+    yandexRegistrationProof: String?,
+    vkRegistrationProof: String?,
     unexpectedError: String,
 ) = try {
     fullLogin(username.trim(), password.trim()) {
@@ -158,7 +161,8 @@ internal suspend fun register(
                 password = derived,
                 confirm_password = derived,
                 bio = bio.trim().takeIf { it.isNotEmpty() },
-                registration_proof = registrationProof,
+                registration_proof = yandexRegistrationProof,
+                vk_registration_proof = vkRegistrationProof,
             ),
         )
     }
@@ -214,9 +218,11 @@ fun AuthScreen(
     var confirmPassword by remember { mutableStateOf(AuthRegisterDraft.confirmPassword) }
     var displayName by remember { mutableStateOf(AuthRegisterDraft.displayName) }
     var bio by remember { mutableStateOf(AuthRegisterDraft.bio) }
-    var yandexRequired by remember { mutableStateOf(AuthRegisterDraft.yandexRequired) }
+    var verificationRequired by remember { mutableStateOf(AuthRegisterDraft.verificationRequired) }
     var yandexParams by remember { mutableStateOf(AuthRegisterDraft.yandexParams) }
-    var registrationProof by remember { mutableStateOf(AuthRegisterDraft.registrationProof) }
+    var vkParams by remember { mutableStateOf(AuthRegisterDraft.vkParams) }
+    var yandexRegistrationProof by remember { mutableStateOf(AuthRegisterDraft.yandexRegistrationProof) }
+    var vkRegistrationProof by remember { mutableStateOf(AuthRegisterDraft.vkRegistrationProof) }
 
     fun persistDraft() {
         AuthRegisterDraft.username = username
@@ -224,9 +230,11 @@ fun AuthScreen(
         AuthRegisterDraft.confirmPassword = confirmPassword
         AuthRegisterDraft.displayName = displayName
         AuthRegisterDraft.bio = bio
-        AuthRegisterDraft.yandexRequired = yandexRequired
+        AuthRegisterDraft.verificationRequired = verificationRequired
         AuthRegisterDraft.yandexParams = yandexParams
-        AuthRegisterDraft.registrationProof = registrationProof
+        AuthRegisterDraft.vkParams = vkParams
+        AuthRegisterDraft.yandexRegistrationProof = yandexRegistrationProof
+        AuthRegisterDraft.vkRegistrationProof = vkRegistrationProof
         AuthRegisterDraft.page = flowState.pagerState.currentPage
     }
 
@@ -255,9 +263,11 @@ fun AuthScreen(
         confirmPassword = ""
         displayName = ""
         bio = ""
-        yandexRequired = false
+        verificationRequired = false
         yandexParams = null
-        registrationProof = null
+        vkParams = null
+        yandexRegistrationProof = null
+        vkRegistrationProof = null
         AuthRegisterDraft.clear()
         flowState.resetPredictiveState()
         scope.launch {
@@ -265,11 +275,27 @@ fun AuthScreen(
         }
     }
 
+    fun clearProofs() {
+        yandexRegistrationProof = null
+        vkRegistrationProof = null
+    }
+
     DisposableEffect(Unit) {
         onDispose { persistDraft() }
     }
 
-    LaunchedEffect(username, password, confirmPassword, displayName, bio, yandexRequired, yandexParams, registrationProof) {
+    LaunchedEffect(
+        username,
+        password,
+        confirmPassword,
+        displayName,
+        bio,
+        verificationRequired,
+        yandexParams,
+        vkParams,
+        yandexRegistrationProof,
+        vkRegistrationProof,
+    ) {
         persistDraft()
     }
 
@@ -284,7 +310,7 @@ fun AuthScreen(
         snapshotFlow { flowState.pagerState.currentPage }
             .collect { page ->
                 AuthRegisterDraft.page = page
-                if (page == AuthFlowStep.YandexId.ordinal && !yandexRequired) {
+                if (page == AuthFlowStep.IdentityVerify.ordinal && !verificationRequired) {
                     val target = if (page > settledPage) {
                         AuthFlowStep.Profile.ordinal
                     } else {
@@ -296,37 +322,27 @@ fun AuthScreen(
                 }
                 if (page < settledPage) {
                     when (page) {
-                        AuthFlowStep.Username.ordinal -> {
+                        AuthFlowStep.Username.ordinal,
+                        AuthFlowStep.Password.ordinal,
+                        -> {
                             password = ""
                             confirmPassword = ""
-                            yandexRequired = false
+                            verificationRequired = false
                             yandexParams = null
-                            registrationProof = null
+                            vkParams = null
+                            clearProofs()
                         }
 
-                        AuthFlowStep.Password.ordinal -> {
-                            password = ""
-                            confirmPassword = ""
-                            yandexRequired = false
-                            yandexParams = null
-                            registrationProof = null
-                        }
-
-                        AuthFlowStep.ConfirmPassword.ordinal -> {
-                            // Keep confirm password when returning from Yandex ID / OAuth.
-                            registrationProof = null
-                        }
-
-                        AuthFlowStep.YandexId.ordinal -> {
-                            registrationProof = null
-                        }
+                        AuthFlowStep.ConfirmPassword.ordinal,
+                        AuthFlowStep.IdentityVerify.ordinal,
+                        -> clearProofs()
                     }
                 }
                 settledPage = page
             }
     }
 
-    val yandexStep = yandexParams
+    val showVerify = verificationRequired && (yandexParams != null || vkParams != null)
     ExpressiveStepFlowScaffold(
         flowState = flowState,
         pages = listOf(
@@ -343,10 +359,11 @@ fun AuthScreen(
                 password = password,
                 onPasswordChange = { password = it },
                 onLoginSuccess = wrappedAuthSuccess,
-                onNeedsRegister = { required, params ->
-                    yandexRequired = required
-                    yandexParams = params
-                    registrationProof = null
+                onNeedsRegister = { required, yandex, vk ->
+                    verificationRequired = required
+                    yandexParams = yandex
+                    vkParams = vk
+                    clearProofs()
                     flowState.pagerState.animateScrollToPage(AuthFlowStep.ConfirmPassword.ordinal)
                 },
                 onSnackbar = ::snackbar,
@@ -356,19 +373,29 @@ fun AuthScreen(
                 onConfirmPasswordChange = { confirmPassword = it },
                 password = password,
                 onContinue = {
-                    if (yandexRequired && yandexParams != null) {
-                        flowState.pagerState.animateScrollToPage(AuthFlowStep.YandexId.ordinal)
+                    if (showVerify) {
+                        flowState.pagerState.animateScrollToPage(AuthFlowStep.IdentityVerify.ordinal)
                     } else {
                         flowState.pagerState.animateScrollToPage(AuthFlowStep.Profile.ordinal)
                     }
                 },
                 onSnackbar = ::snackbar,
             ),
-            if (yandexStep != null) {
-                yandexIdStepPage(
-                    yandex = yandexStep,
-                    onProof = { proof ->
-                        registrationProof = proof
+            if (showVerify) {
+                identityVerifyStepPage(
+                    yandex = yandexParams,
+                    vk = vkParams,
+                    onProof = { provider, proof ->
+                        when (provider) {
+                            IdentityProvider.Yandex -> {
+                                yandexRegistrationProof = proof
+                                vkRegistrationProof = null
+                            }
+                            IdentityProvider.Vk -> {
+                                vkRegistrationProof = proof
+                                yandexRegistrationProof = null
+                            }
+                        }
                         flowState.pagerState.animateScrollToPage(AuthFlowStep.Profile.ordinal)
                     },
                     onSnackbar = ::snackbar,
@@ -391,7 +418,8 @@ fun AuthScreen(
                 bio = bio,
                 onBioChange = { bio = it },
                 password = password,
-                registrationProof = registrationProof,
+                yandexRegistrationProof = yandexRegistrationProof,
+                vkRegistrationProof = vkRegistrationProof,
                 onRegisterSuccess = wrappedAuthSuccess,
                 onUsernameTaken = resetToUsername,
                 onSnackbar = ::snackbar,

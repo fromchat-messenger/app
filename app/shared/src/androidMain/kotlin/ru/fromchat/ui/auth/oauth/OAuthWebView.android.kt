@@ -1,4 +1,4 @@
-package ru.fromchat.ui.auth.yandex
+package ru.fromchat.ui.auth.oauth
 
 import android.annotation.SuppressLint
 import android.app.Activity
@@ -57,12 +57,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import ru.fromchat.Logger
-import ru.fromchat.auth.yandex.YANDEX_OAUTH_REDIRECT_URI
-import ru.fromchat.auth.yandex.extractOAuthCode
 import ru.fromchat.ui.components.PredictiveBackHandler
 import kotlin.coroutines.resume
 
-private const val LOG_TAG = "YandexOAuthWV"
+private const val LOG_TAG = "OAuthWebView"
 private const val LOADING_FADE_MS = 250
 private const val LOADING_HIDE_DELAY_MS = 500L
 private const val TOP_ROW_SAMPLE_INTERVAL_MS = 50L
@@ -135,15 +133,18 @@ private const val PAGE_SCROLL_Y_JS = """
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-actual fun YandexOAuthWebView(
+actual fun OAuthWebView(
     authorizeUrl: String,
     languageTag: String,
     darkTheme: Boolean,
     fallbackColor: Color,
+    redirectUriPrefix: String,
+    isAuthNavigation: (url: String) -> Boolean,
     clearCookies: Boolean,
+    themeCookieHosts: List<String>,
     onPageBackgroundColor: (Color) -> Unit,
     onHistoryBackAvailabilityChanged: (Boolean) -> Unit,
-    onCode: (String) -> Unit,
+    onRedirectUrl: (String) -> Unit,
     onError: (String) -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -158,8 +159,10 @@ actual fun YandexOAuthWebView(
     val scheme = if (darkTheme) "dark" else "light"
     val onHistoryBackAvailabilityChangedState = rememberUpdatedState(onHistoryBackAvailabilityChanged)
     val onPageBackgroundColorState = rememberUpdatedState(onPageBackgroundColor)
-    val onCodeState = rememberUpdatedState(onCode)
+    val onRedirectUrlState = rememberUpdatedState(onRedirectUrl)
     val onErrorState = rememberUpdatedState(onError)
+    val isAuthNavigationState = rememberUpdatedState(isAuthNavigation)
+    val redirectUriPrefixState = rememberUpdatedState(redirectUriPrefix)
     val onCancelState = rememberUpdatedState(onCancel)
     val lifecycleOwner = LocalLifecycleOwner.current
     val instanceId = remember { Integer.toHexString(System.identityHashCode(Any())) }
@@ -193,7 +196,7 @@ actual fun YandexOAuthWebView(
         }
     }
 
-    ApplyYandexWebViewSystemBars(
+    ApplyOAuthWebViewSystemBars(
         chromeColor = chromeColor,
         darkTheme = darkTheme,
         restoreSurfaceColor = fallbackColor,
@@ -269,7 +272,7 @@ actual fun YandexOAuthWebView(
         onCancel = { },
     )
 
-    val client = remember(authorizeUrl, lang, darkTheme) {
+    val client = remember(authorizeUrl, lang, darkTheme, redirectUriPrefix) {
         Logger.i(
             LOG_TAG,
             "WebViewClient create id=$instanceId darkTheme=$darkTheme lang=$lang " +
@@ -278,17 +281,16 @@ actual fun YandexOAuthWebView(
         object : WebViewClient() {
             private fun handleSpecialUrl(view: WebView?, url: String?): Boolean {
                 if (url.isNullOrBlank()) return false
-                if (url.startsWith("fromchat://", ignoreCase = true)) {
+                val redirectPrefix = redirectUriPrefixState.value
+                // Intercept trusted HTTPS callback (and fromchat:// deep links) before any page paint.
+                if (url.startsWith(redirectPrefix, ignoreCase = true) ||
+                    url.startsWith("fromchat://", ignoreCase = true)
+                ) {
                     Logger.i(LOG_TAG, "intercept redirect url=${shortUrl(url)} id=$instanceId")
-                    val code = extractOAuthCode(url)
-                    if (code != null) {
-                        onCodeState.value(code)
-                    } else {
-                        onErrorState.value("")
-                    }
+                    onRedirectUrlState.value(url)
                     return true
                 }
-                if (!isYandexAuthNavigation(url)) {
+                if (!isAuthNavigationState.value(url)) {
                     Logger.d(LOG_TAG, "external nav url=${shortUrl(url)} id=$instanceId")
                     view?.context?.let { ctx ->
                         runCatching {
@@ -327,7 +329,11 @@ actual fun YandexOAuthWebView(
                         "wv=${view?.let { Integer.toHexString(System.identityHashCode(it)) }} " +
                         "canGoBack=${view?.canGoBack()} stack=${Throwable().stackTraceToString().lineSequence().take(8).joinToString(" ← ")}",
                 )
-                if (url != null && url.startsWith(YANDEX_OAUTH_REDIRECT_URI, ignoreCase = true)) {
+                if (url != null && (
+                    url.startsWith(redirectUriPrefixState.value, ignoreCase = true) ||
+                        url.startsWith("fromchat://", ignoreCase = true)
+                    )
+                ) {
                     handleSpecialUrl(view, url)
                 }
                 pageLoading = true
@@ -374,16 +380,16 @@ actual fun YandexOAuthWebView(
                         "stack=${Throwable().stackTraceToString().lineSequence().drop(1).take(10).joinToString(" ← ")}",
                 )
                 if (clearCookies) {
-                    clearYandexWebViewCookies()
+                    clearOAuthWebViewCookies()
                 }
-                seedYandexThemeCookies(darkTheme)
+                seedOAuthThemeCookies(darkTheme, themeCookieHosts)
                 WebView(activity).apply {
                     setBackgroundColor(fallbackColor.toArgb())
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     settings.javaScriptCanOpenWindowsAutomatically = true
                     settings.setSupportMultipleWindows(true)
-                    applyYandexDarkSettingsIfNeeded(this, darkTheme)
+                    applyOAuthDarkSettingsIfNeeded(this, darkTheme)
                     webViewClient = client
                     webChromeClient = object : WebChromeClient() {
                         override fun onCreateWindow(
@@ -394,14 +400,14 @@ actual fun YandexOAuthWebView(
                         ): Boolean {
                             val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
                             val temp = WebView(activity).apply {
-                                applyYandexDarkSettingsIfNeeded(this, darkTheme)
+                                applyOAuthDarkSettingsIfNeeded(this, darkTheme)
                                 webViewClient = object : WebViewClient() {
                                     override fun shouldOverrideUrlLoading(
                                         v: WebView?,
                                         request: WebResourceRequest?,
                                     ): Boolean {
                                         val url = request?.url?.toString() ?: return false
-                                        if (!isYandexAuthNavigation(url)) {
+                                        if (!isAuthNavigationState.value(url)) {
                                             runCatching {
                                                 context.startActivity(
                                                     Intent(Intent.ACTION_VIEW, Uri.parse(url)),
@@ -451,7 +457,7 @@ actual fun YandexOAuthWebView(
             update = { wv ->
                 val clientChanged = wv.webViewClient !== client
                 val darkBefore = wv.getTag(TAG_APPLIED_DARK_THEME) as? Boolean
-                applyYandexDarkSettingsIfNeeded(wv, darkTheme)
+                applyOAuthDarkSettingsIfNeeded(wv, darkTheme)
                 if (clientChanged) {
                     Logger.i(
                         LOG_TAG,
@@ -500,7 +506,7 @@ actual fun YandexOAuthWebView(
 }
 
 @Composable
-private fun ApplyYandexWebViewSystemBars(
+private fun ApplyOAuthWebViewSystemBars(
     chromeColor: Color,
     darkTheme: Boolean,
     restoreSurfaceColor: Color,
@@ -557,26 +563,19 @@ private fun Context.findActivity(): Activity? {
     return null
 }
 
-private fun clearYandexWebViewCookies() {
+private fun clearOAuthWebViewCookies() {
     val cookieManager = CookieManager.getInstance()
     cookieManager.setAcceptCookie(true)
     cookieManager.removeAllCookies(null)
     cookieManager.flush()
-    Logger.i(LOG_TAG, "cleared all WebView cookies for Yandex re-auth")
+    Logger.i(LOG_TAG, "cleared all WebView cookies for OAuth re-auth")
 }
 
-private fun seedYandexThemeCookies(darkTheme: Boolean) {
+private fun seedOAuthThemeCookies(darkTheme: Boolean, hosts: List<String>) {
+    if (hosts.isEmpty()) return
     val theme = if (darkTheme) "dark" else "light"
     val cookieManager = CookieManager.getInstance()
     cookieManager.setAcceptCookie(true)
-    val hosts = listOf(
-        "https://yandex.ru",
-        "https://yandex.com",
-        "https://passport.yandex.ru",
-        "https://passport.yandex.com",
-        "https://oauth.yandex.ru",
-        "https://oauth.yandex.com",
-    )
     for (host in hosts) {
         cookieManager.setCookie(host, "color_scheme=$theme; path=/")
         cookieManager.setCookie(host, "theme=$theme; path=/")
@@ -590,7 +589,7 @@ private fun seedYandexThemeCookies(darkTheme: Boolean) {
  * Re-applying the same force-dark value can reload the page and wipe in-progress OAuth UI.
  */
 @Suppress("DEPRECATION")
-private fun applyYandexDarkSettingsIfNeeded(webView: WebView, darkTheme: Boolean) {
+private fun applyOAuthDarkSettingsIfNeeded(webView: WebView, darkTheme: Boolean) {
     val previous = webView.getTag(TAG_APPLIED_DARK_THEME) as? Boolean
     if (previous == darkTheme) return
     Logger.w(
@@ -670,37 +669,4 @@ private suspend fun sampleTopRowColor(webView: WebView): Color? {
             cont.resume(null)
         }
     }
-}
-
-/**
- * Keep Yandex ID / OAuth / captcha flows in the WebView; open everything else externally.
- */
-internal fun isYandexAuthNavigation(url: String): Boolean {
-    if (url.startsWith("fromchat://", ignoreCase = true)) return true
-    val uri = Uri.parse(url)
-    val host = uri.host?.lowercase() ?: return false
-    val path = uri.path.orEmpty().lowercase()
-
-    if (host == "yandex.ru" || host == "www.yandex.ru" || host == "ya.ru" || host == "www.ya.ru") {
-        return path.contains("captcha") ||
-            path.startsWith("/auth") ||
-            path.startsWith("/showcaptcha") ||
-            path.startsWith("/checkcaptcha")
-    }
-
-    return host == "oauth.yandex.com" ||
-        host == "oauth.yandex.ru" ||
-        host.endsWith(".oauth.yandex.com") ||
-        host.endsWith(".oauth.yandex.ru") ||
-        host == "passport.yandex.ru" ||
-        host == "passport.yandex.com" ||
-        host.endsWith(".passport.yandex.ru") ||
-        host.endsWith(".passport.yandex.com") ||
-        host.startsWith("auth.yandex.") ||
-        host.startsWith("login.yandex.") ||
-        host.startsWith("id.yandex.") ||
-        host == "sso.passport.yandex.ru" ||
-        host == "captcha.yandex.net" ||
-        host.endsWith(".captcha.yandex.net") ||
-        (host.contains("captcha") && host.contains("yandex"))
 }

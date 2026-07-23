@@ -54,6 +54,15 @@
                     android:host="oauth"
                     android:pathPrefix="/yandex" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="fromchat"
+                    android:host="oauth"
+                    android:pathPrefix="/vk" />
+            </intent-filter>
         </activity>
         <service
             android:name=".fcm.FromChatFirebaseMessagingService"

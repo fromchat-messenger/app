@@ -62,9 +62,14 @@
     <string name="auth_step_yandex_title">Sign in with Yandex ID</string>
     <string name="auth_step_yandex_body">This helps us fight malicious bots and meet Russian legal requirements. From Yandex we only get your email — and we don’t store it; sign-in is only used for security reasons.</string>
     <string name="auth_step_yandex_cta">Continue with Yandex ID</string>
+    <string name="auth_step_verify_title">Verify your account</string>
+    <string name="auth_step_verify_body">Choose Yandex ID or VK ID. We only use this to fight bots and meet legal requirements — we don’t store your email or profile from these providers.</string>
+    <string name="auth_step_vk_cta">Continue with VK ID</string>
     <string name="auth_yandex_webview_title">Yandex ID</string>
     <string name="auth_yandex_client_mismatch">This server returned an unexpected Yandex app id. Update the app or contact support.</string>
     <string name="auth_yandex_failed">Yandex sign-in was cancelled or failed.</string>
+    <string name="auth_vk_client_mismatch">This server returned an unexpected VK app id. Update the app or contact support.</string>
+    <string name="auth_vk_failed">VK sign-in was cancelled or failed.</string>
     <!-- Main Screen -->
     <string name="chats">Chats</string>
     <string name="contacts">Contacts</string>
@@ -461,6 +466,13 @@
     <string name="settings_yandex_step_confirm_cta">Continue</string>
     <string name="settings_yandex_step_done_title">Yandex ID updated</string>
     <string name="settings_yandex_step_done_body">Your account is now linked to the Yandex ID you just signed in with.</string>
+    <string name="settings_account_change_vk">Change VK ID</string>
+    <string name="settings_account_change_vk_d">Link a different VK account</string>
+    <string name="settings_vk_step_confirm_title">Change VK ID?</string>
+    <string name="settings_vk_step_confirm_body">This does not delete your FromChat account. Your previous VK ID will be freed, and the new one you sign in with will be linked instead.</string>
+    <string name="settings_vk_step_confirm_cta">Continue</string>
+    <string name="settings_vk_step_done_title">VK ID updated</string>
+    <string name="settings_vk_step_done_body">Your account is now linked to the VK ID you just signed in with.</string>
     <string name="settings_done">Done</string>
     <string name="settings_account_delete_confirm_title">Delete account?</string>
     <string name="settings_account_delete_confirm_body">This cannot be undone.</string>

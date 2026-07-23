@@ -1,9 +1,10 @@
 package ru.fromchat.ui.auth
 
+import ru.fromchat.api.schema.user.auth.VkOAuthParams
 import ru.fromchat.api.schema.user.auth.YandexOAuthParams
 
 /**
- * Survives [AuthScreen] leaving composition when navigating to the Yandex OAuth route.
+ * Survives [AuthScreen] leaving composition when navigating to an OAuth route.
  * Cleared on welcome / successful auth / explicit reset to username.
  */
 internal object AuthRegisterDraft {
@@ -12,9 +13,11 @@ internal object AuthRegisterDraft {
     var confirmPassword: String = ""
     var displayName: String = ""
     var bio: String = ""
-    var yandexRequired: Boolean = false
+    var verificationRequired: Boolean = false
     var yandexParams: YandexOAuthParams? = null
-    var registrationProof: String? = null
+    var vkParams: VkOAuthParams? = null
+    var yandexRegistrationProof: String? = null
+    var vkRegistrationProof: String? = null
     var page: Int = 0
 
     fun clear() {
@@ -23,9 +26,11 @@ internal object AuthRegisterDraft {
         confirmPassword = ""
         displayName = ""
         bio = ""
-        yandexRequired = false
+        verificationRequired = false
         yandexParams = null
-        registrationProof = null
+        vkParams = null
+        yandexRegistrationProof = null
+        vkRegistrationProof = null
         page = 0
     }
 }

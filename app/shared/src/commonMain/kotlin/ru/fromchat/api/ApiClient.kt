@@ -107,13 +107,19 @@ import ru.fromchat.api.schema.user.VerifyPasswordRequest
 import ru.fromchat.api.schema.user.auth.AuthPasswordStepRequest
 import ru.fromchat.api.schema.user.auth.AuthUsernameStepRequest
 import ru.fromchat.api.schema.user.auth.AuthUsernameStepResponse
+import ru.fromchat.api.schema.user.auth.AccountVkResponse
 import ru.fromchat.api.schema.user.auth.AccountYandexResponse
+import ru.fromchat.api.schema.user.auth.ChangeVkRequest
+import ru.fromchat.api.schema.user.auth.ChangeVkResponse
 import ru.fromchat.api.schema.user.auth.ChangeYandexRequest
 import ru.fromchat.api.schema.user.auth.ChangeYandexResponse
 import ru.fromchat.api.schema.user.auth.CheckAuthResponse
 import ru.fromchat.api.schema.user.auth.CheckUsernameResponse
 import ru.fromchat.api.schema.user.auth.LoginResponse
 import ru.fromchat.api.schema.user.auth.RegisterConfirmRequest
+import ru.fromchat.api.schema.user.auth.VkExchangeRequest
+import ru.fromchat.api.schema.user.auth.VkExchangeResponse
+import ru.fromchat.api.schema.user.auth.VkOAuthParams
 import ru.fromchat.api.schema.user.auth.YandexExchangeRequest
 import ru.fromchat.api.schema.user.auth.YandexExchangeResponse
 import ru.fromchat.api.schema.user.auth.YandexOAuthParams
@@ -493,8 +499,9 @@ object ApiClient {
     sealed interface AuthPasswordStepOutcome {
         data class LoggedIn(val response: LoginResponse) : AuthPasswordStepOutcome
         data class NeedsRegister(
-            val yandexRequired: Boolean,
+            val verificationRequired: Boolean,
             val yandex: YandexOAuthParams?,
+            val vk: VkOAuthParams?,
         ) : AuthPasswordStepOutcome
     }
 
@@ -513,8 +520,9 @@ object ApiClient {
         val status = raw["status"]?.jsonPrimitive?.contentOrNull
         return when (status) {
             "needs_register" -> AuthPasswordStepOutcome.NeedsRegister(
-                yandexRequired = raw["yandex_required"]?.jsonPrimitive?.booleanOrNull == true,
+                verificationRequired = raw["verification_required"]?.jsonPrimitive?.booleanOrNull == true,
                 yandex = raw["yandex"]?.let { json.decodeFromJsonElement(YandexOAuthParams.serializer(), it) },
+                vk = raw["vk"]?.let { json.decodeFromJsonElement(VkOAuthParams.serializer(), it) },
             )
             else -> AuthPasswordStepOutcome.LoggedIn(json.decodeFromJsonElement(LoginResponse.serializer(), raw))
         }
@@ -525,6 +533,26 @@ object ApiClient {
             .post("${ServerConfig.apiBaseUrl}/auth/yandex/exchange") {
                 contentType(ContentType.Application.Json)
                 setBody(YandexExchangeRequest(code = code, code_verifier = codeVerifier))
+            }
+            .body()
+
+    suspend fun authVkExchange(
+        code: String,
+        codeVerifier: String,
+        deviceId: String,
+        state: String,
+    ): VkExchangeResponse =
+        httpProbe
+            .post("${ServerConfig.apiBaseUrl}/auth/vk/exchange") {
+                contentType(ContentType.Application.Json)
+                setBody(
+                    VkExchangeRequest(
+                        code = code,
+                        code_verifier = codeVerifier,
+                        device_id = deviceId,
+                        state = state,
+                    ),
+                )
             }
             .body()
 
@@ -1539,6 +1567,19 @@ object ApiClient {
             .post("${ServerConfig.apiBaseUrl}/account/yandex") {
                 contentType(ContentType.Application.Json)
                 setBody(ChangeYandexRequest(registration_proof = registrationProof))
+            }
+            .body()
+
+    suspend fun getAccountVk(): AccountVkResponse =
+        http
+            .get("${ServerConfig.apiBaseUrl}/account/vk")
+            .body()
+
+    suspend fun changeAccountVk(registrationProof: String): ChangeVkResponse =
+        http
+            .post("${ServerConfig.apiBaseUrl}/account/vk") {
+                contentType(ContentType.Application.Json)
+                setBody(ChangeVkRequest(registration_proof = registrationProof))
             }
             .body()
 
