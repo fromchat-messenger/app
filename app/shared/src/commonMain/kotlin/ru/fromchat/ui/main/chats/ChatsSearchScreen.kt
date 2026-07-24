@@ -103,6 +103,7 @@ fun ChatsSearchScreen(
     val searchBarHint = stringResource(Res.string.search_title)
     var dmConversations by remember { mutableStateOf<List<CachedConversation>>(emptyList()) }
     var remoteUsers by remember { mutableStateOf<List<User>>(emptyList()) }
+    var remoteGroups by remember { mutableStateOf<List<ru.fromchat.api.ChatGroup>>(emptyList()) }
     var isSearchInFlight by remember { mutableStateOf(false) }
     var lastCompletedSearchQuery by remember { mutableStateOf<String?>(null) }
     val statusSubscriptionScope = rememberCoroutineScope()
@@ -124,14 +125,15 @@ fun ChatsSearchScreen(
         }
     }
 
-    val searchResults = remember(filteredDmConversations, remoteUsers, searchQuery) {
+    val searchResults = remember(filteredDmConversations, remoteUsers, remoteGroups, searchQuery) {
         if (searchQuery.isBlank()) {
             emptyList()
         } else {
             val dmUserIds = filteredDmConversations.map { it.otherUserId }.toSet()
             val remoteOnly = remoteUsers.filter { it.id !in dmUserIds }
+            val groupResults = remoteGroups.map { SearchResult.GroupResult(it) }
             filteredDmConversations.map { SearchResult.Conversation(it) } +
-                remoteOnly.map { SearchResult.UserResult(it) }
+                remoteOnly.map { SearchResult.UserResult(it) } + groupResults
         }
     }
 
@@ -141,9 +143,11 @@ fun ChatsSearchScreen(
         isSearchInFlight || lastCompletedSearchQuery != searchQuery -> SearchScreenState.Loading
         else -> SearchScreenState.NotFound
     }
+
     LaunchedEffect(searchQuery) {
         if (searchQuery.length < 2) {
             remoteUsers = emptyList()
+            remoteGroups = emptyList()
             isSearchInFlight = false
             lastCompletedSearchQuery = null
             return@LaunchedEffect
@@ -156,14 +160,17 @@ fun ChatsSearchScreen(
         }
         try {
             val users = ApiClient.searchUsers(querySnapshot)
+            val groups = runCatching { ApiClient.searchChatGroups(querySnapshot) }.getOrDefault(emptyList())
             if (querySnapshot == searchText.trim().lowercase().trimStart('@')) {
                 users.forEach { ProfileCache.mergeFromUser(it) }
                 remoteUsers = users
+                remoteGroups = groups
                 lastCompletedSearchQuery = querySnapshot
             }
         } catch (_: Throwable) {
             if (querySnapshot == searchText.trim().lowercase().trimStart('@')) {
                 remoteUsers = emptyList()
+                remoteGroups = emptyList()
                 lastCompletedSearchQuery = querySnapshot
             }
         } finally {
@@ -318,6 +325,7 @@ fun ChatsSearchScreen(
                             remoteUsers = remoteUsers.filter { user ->
                                 filteredDmConversations.none { it.otherUserId == user.id }
                             },
+                            remoteGroups = remoteGroups,
                             defaultLastMessage = "",
                             statusMap = statusMap,
                             modifier = Modifier.fillMaxSize(),
@@ -355,6 +363,10 @@ private sealed interface SearchResult {
 
     data class UserResult(val user: User) : SearchResult {
         override val userId: Int = user.id
+    }
+
+    data class GroupResult(val group: ru.fromchat.api.ChatGroup) : SearchResult {
+        override val userId: Int = -group.id
     }
 }
 

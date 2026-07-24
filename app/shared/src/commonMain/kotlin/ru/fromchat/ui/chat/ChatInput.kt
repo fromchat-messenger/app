@@ -75,6 +75,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import ru.fromchat.Logger
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.api.schema.messages.Message
@@ -273,17 +274,27 @@ fun ChatInput(
         }
     }
 
+    fun safeSendTyping() {
+        runCatching { typingHandler.sendTyping() }
+            .onFailure { Logger.w("ChatInput", "Failed to send typing state: ${it.message}") }
+    }
+
+    fun safeStopTyping() {
+        runCatching { typingHandler.stopTyping() }
+            .onFailure { Logger.w("ChatInput", "Failed to stop typing state: ${it.message}") }
+    }
+
     LaunchedEffect(text) {
         if (text.isNotBlank()) {
             typingJob?.cancel()
-            typingHandler.sendTyping()
+            safeSendTyping()
             typingJob = scope.launch {
                 delay(3000)
-                typingHandler.stopTyping()
+                safeStopTyping()
             }
         } else {
             typingJob?.cancel()
-            typingHandler.stopTyping()
+            safeStopTyping()
         }
     }
 
@@ -537,7 +548,7 @@ fun ChatInput(
                                 onSend(plaintext, attachments)
                                 onTextChange("")
                                 attachments = emptyList()
-                                typingHandler.stopTyping()
+                                safeStopTyping()
                             } else {
                                 scope.launch {
                                     snackbarHostState?.showSnackbar(message = cdVoiceUnavailable)

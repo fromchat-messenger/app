@@ -23,6 +23,7 @@ data class Message(
     @SerialName("verification_status") val verificationStatus: VerificationStatus? = null,
     val reply_to: Message? = null,
     val client_message_id: String? = null,
+    val chat_group_id: Int? = null,
     val reactions: List<ReactionData>? = null,
     val files: List<DmFile>? = null,
     /** For optimistic UI: local URI when sending, null when confirmed. */
