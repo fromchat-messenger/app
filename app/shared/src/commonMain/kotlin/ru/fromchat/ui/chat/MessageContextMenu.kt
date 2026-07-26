@@ -2,9 +2,14 @@ package ru.fromchat.ui.chat
 
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -65,7 +71,6 @@ import ru.fromchat.api.local.messages.isQueuedOutbound
 import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.supportsMouseMessageInteraction
 import ru.fromchat.ui.components.Text
-import com.pr0gramm3r101.utils.scaleOnPress
 
 data class ContextMenuState(
     val isOpen: Boolean = false,
@@ -94,6 +99,31 @@ internal fun messageContextMenuFingerprint(
             append("|del=").append(canDelete)
         }
     }
+}
+
+private val contextMenuEnterSpec = spring<Float>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = Spring.StiffnessMedium,
+)
+
+private fun clampContextMenuOffset(
+    position: IntOffset,
+    popupSize: IntSize,
+    screenWidthPx: Int,
+    screenHeightPx: Int,
+    paddingPx: Int,
+    allowOutsideWindow: Boolean,
+): IntOffset {
+    if (allowOutsideWindow || popupSize == IntSize.Zero) return position
+    var x = position.x
+    var y = position.y
+    val rightEdge = screenWidthPx - paddingPx
+    val bottomEdge = screenHeightPx - paddingPx
+    if (x + popupSize.width > rightEdge) x = rightEdge - popupSize.width
+    if (y + popupSize.height > bottomEdge) y = bottomEdge - popupSize.height
+    if (x < paddingPx) x = paddingPx
+    if (y < paddingPx) y = paddingPx
+    return IntOffset(x, y)
 }
 
 @Composable
@@ -127,34 +157,38 @@ fun MessageContextMenu(
         mutableStateOf(state.isOpen && state.message != null)
     }
     val animationProgress = remember { mutableFloatStateOf(0f) }
+    var enterLaidOut by remember(state.message) { mutableStateOf(false) }
+    var frozenOrigin by remember(state.message) {
+        mutableStateOf(TransformOrigin(0f, 0f))
+    }
 
     LaunchedEffect(state.isOpen) {
         if (!state.isOpen) {
             animate(
-                initialValue = 1f,
+                initialValue = animationProgress.floatValue,
                 targetValue = 0f,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioLowBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
+                animationSpec = contextMenuEnterSpec,
             ) { value, _ ->
                 animationProgress.floatValue = value
             }
             shouldShowPopup = false
+            enterLaidOut = false
         }
     }
 
-    LaunchedEffect(state.isOpen, state.message) {
+    // Enter only after first layout so transform origin / position stay fixed mid-animation.
+    LaunchedEffect(state.isOpen, state.message, enterLaidOut) {
         if (state.isOpen && state.message != null) {
             shouldShowPopup = true
+            if (!enterLaidOut) {
+                animationProgress.floatValue = 0f
+                return@LaunchedEffect
+            }
             animationProgress.floatValue = 0f
             animate(
                 initialValue = 0f,
                 targetValue = 1f,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioLowBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
+                animationSpec = contextMenuEnterSpec,
             ) { value, _ ->
                 animationProgress.floatValue = value
             }
@@ -165,7 +199,6 @@ fun MessageContextMenu(
         val density = LocalDensity.current
         val paddingPx = with(density) { 16.dp.toPx().toInt() }
         val allowOutsideWindow = supportsMouseMessageInteraction()
-        var popupSize by remember(state.message) { mutableStateOf(IntSize.Zero) }
 
         // Clamp with popupContentSize — do not SubcomposeLayout-measure under
         // SharedTransitionLayout (writes state during LookaheadMeasuring).
@@ -182,60 +215,18 @@ fun MessageContextMenu(
                     windowSize: IntSize,
                     layoutDirection: LayoutDirection,
                     popupContentSize: IntSize,
-                ): IntOffset {
-                    if (allowOutsideWindow) return state.position
-                    var x = state.position.x
-                    var y = state.position.y
-                    val rightEdge = screenWidthPx - paddingPx
-                    val bottomEdge = screenHeightPx - paddingPx
-                    if (x + popupContentSize.width > rightEdge) {
-                        x = rightEdge - popupContentSize.width
-                    }
-                    if (y + popupContentSize.height > bottomEdge) {
-                        y = bottomEdge - popupContentSize.height
-                    }
-                    if (x < paddingPx) x = paddingPx
-                    if (y < paddingPx) y = paddingPx
-                    return IntOffset(x, y)
-                }
+                ): IntOffset = clampContextMenuOffset(
+                    position = state.position,
+                    popupSize = popupContentSize,
+                    screenWidthPx = screenWidthPx,
+                    screenHeightPx = screenHeightPx,
+                    paddingPx = paddingPx,
+                    allowOutsideWindow = allowOutsideWindow,
+                )
             }
         }
 
-        val adjustedOffset = remember(
-            popupSize,
-            state.position,
-            screenWidthPx,
-            screenHeightPx,
-            paddingPx,
-            allowOutsideWindow,
-        ) {
-            if (allowOutsideWindow || popupSize == IntSize.Zero) {
-                state.position
-            } else {
-                var x = state.position.x
-                var y = state.position.y
-                val rightEdge = screenWidthPx - paddingPx
-                val bottomEdge = screenHeightPx - paddingPx
-                if (x + popupSize.width > rightEdge) x = rightEdge - popupSize.width
-                if (y + popupSize.height > bottomEdge) y = bottomEdge - popupSize.height
-                if (x < paddingPx) x = paddingPx
-                if (y < paddingPx) y = paddingPx
-                IntOffset(x, y)
-            }
-        }
-
-        val transformOriginX = if (popupSize.width > 0) {
-            ((state.position.x - adjustedOffset.x).toFloat() / popupSize.width).coerceIn(0f, 1f)
-        } else {
-            0f
-        }
-        val transformOriginY = if (popupSize.height > 0) {
-            ((state.position.y - adjustedOffset.y).toFloat() / popupSize.height).coerceIn(0f, 1f)
-        } else {
-            0f
-        }
-
-        val scale = 0.5f + 0.5f * animationProgress.floatValue
+        val scale = 0.8f + 0.2f * animationProgress.floatValue
         val alpha = animationProgress.floatValue
 
         // [state.position] is window coordinates (see MessageItem localToWindow).
@@ -282,12 +273,29 @@ fun MessageContextMenu(
                     onRetrySend(it)
                     onDismiss()
                 },
-                modifier = modifier.onSizeChanged { popupSize = it },
+                modifier = modifier.onSizeChanged { size ->
+                    if (size.width <= 0 || size.height <= 0 || enterLaidOut) return@onSizeChanged
+                    val adjusted = clampContextMenuOffset(
+                        position = state.position,
+                        popupSize = size,
+                        screenWidthPx = screenWidthPx,
+                        screenHeightPx = screenHeightPx,
+                        paddingPx = paddingPx,
+                        allowOutsideWindow = allowOutsideWindow,
+                    )
+                    frozenOrigin = TransformOrigin(
+                        pivotFractionX = ((state.position.x - adjusted.x).toFloat() / size.width)
+                            .coerceIn(0f, 1f),
+                        pivotFractionY = ((state.position.y - adjusted.y).toFloat() / size.height)
+                            .coerceIn(0f, 1f),
+                    )
+                    enterLaidOut = true
+                },
                 animated = true,
                 scale = scale,
                 alpha = alpha,
-                transformOriginX = transformOriginX,
-                transformOriginY = transformOriginY,
+                transformOriginX = frozenOrigin.pivotFractionX,
+                transformOriginY = frozenOrigin.pivotFractionY,
                 isReadOnly = isReadOnly,
             )
         }
@@ -417,39 +425,37 @@ internal fun ChatStyleContextMenuFrame(
     content: @Composable () -> Unit,
 ) {
     val menuShape = RoundedCornerShape(16.dp)
-    val density = LocalDensity.current
     val shadowElevationPx = if (withShadow) {
-        with(density) { 12.dp.toPx() }
+        with(LocalDensity.current) { 12.dp.toPx() }
     } else {
         0f
     }
-    val baseModifier = modifier.width(IntrinsicSize.Max)
-    val containerModifier =
-        if (animated) {
-            baseModifier.graphicsLayer(
-                scaleX = scale,
-                scaleY = scale,
-                alpha = alpha,
-                transformOrigin = TransformOrigin(transformOriginX, transformOriginY),
-                shadowElevation = shadowElevationPx,
-                shape = menuShape,
-                clip = true,
-            )
-        } else {
-            baseModifier.graphicsLayer(
-                shadowElevation = shadowElevationPx,
-                shape = menuShape,
-                clip = true,
-            )
-        }
-
-    Box(modifier = containerModifier) {
+    // Draw shadow on an outer layer; clip/background stay on the inner box so hover
+    // invalidation does not rebuild the elevated layer (avoids first-hover blink).
+    Box(
+        modifier = modifier
+            .width(IntrinsicSize.Max)
+            .graphicsLayer {
+                if (animated) {
+                    scaleX = scale
+                    scaleY = scale
+                    this.alpha = alpha
+                    transformOrigin = TransformOrigin(transformOriginX, transformOriginY)
+                }
+                shadowElevation = shadowElevationPx
+                shape = menuShape
+                clip = false
+            },
+    ) {
         Box(
             modifier = Modifier
                 .matchParentSize()
-                .background(MaterialTheme.colorScheme.surfaceContainer, menuShape),
+                .clip(menuShape)
+                .background(MaterialTheme.colorScheme.surfaceContainer),
         )
-        content()
+        Box(modifier = Modifier.clip(menuShape)) {
+            content()
+        }
     }
 }
 
@@ -467,26 +473,39 @@ internal fun ChatStyleContextMenuItem(
         isError -> MaterialTheme.colorScheme.error
         else -> MaterialTheme.colorScheme.onSurface
     }
-    val iconColor = textColor
+    val interactionSource = remember { MutableInteractionSource() }
+    val hovered by interactionSource.collectIsHoveredAsState()
+    val pressed by interactionSource.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed && enabled) 0.96f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "contextMenuItemPress",
+    )
     Box(
         modifier = modifier
             .fillMaxWidth()
             .padding(4.dp)
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            }
             .clip(chatStyleMenuItemShape)
-            .then(
-                if (enabled) {
-                    Modifier.scaleOnPress(
-                        scale = 0.96f,
-                        onClick = onClick,
-                        indication = LocalIndication.current,
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                            stiffness = Spring.StiffnessMedium,
-                        ),
-                    )
+            .background(
+                if (enabled && hovered) {
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
                 } else {
-                    Modifier
+                    Color.Transparent
                 },
+            )
+            .hoverable(interactionSource = interactionSource, enabled = enabled)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                enabled = enabled,
+                onClick = onClick,
             )
             .padding(horizontal = 12.dp, vertical = 8.dp),
         contentAlignment = Alignment.CenterStart,
@@ -498,7 +517,7 @@ internal fun ChatStyleContextMenuItem(
             Icon(
                 imageVector = icon,
                 contentDescription = text,
-                tint = iconColor,
+                tint = textColor,
                 modifier = Modifier.size(20.dp),
             )
             Text(

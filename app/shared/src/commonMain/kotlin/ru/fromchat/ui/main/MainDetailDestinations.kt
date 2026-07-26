@@ -99,13 +99,11 @@ fun NavGraphBuilder.conversationDetailDestinations(
 /**
  * Standalone profile + edit-profile destinations.
  *
- * @param showBackOnProfile When false (desktop settings detail own-profile), hides the back button.
  * @param onOpenChat Opens a DM; on desktop settings host this should target the Chats detail nav.
  */
 fun NavGraphBuilder.profileDetailDestinations(
     navController: NavController,
     sharedTransitionScope: SharedTransitionScope,
-    showBackOnProfile: Boolean = true,
     onOpenChat: (Int) -> Unit = { navController.navigateToDmChat(it) },
 ) {
     composable(
@@ -144,7 +142,7 @@ fun NavGraphBuilder.profileDetailDestinations(
         ProfileScreen(
             userId = userId,
             username = profileUsername,
-            showBackButton = showBackOnProfile,
+            showBackButton = detailPaneShowBackButton(),
             onBack = { navController.navigateUp() },
             onChat = onOpenChat,
             sharedTransitionScope = sharedTransitionScope,

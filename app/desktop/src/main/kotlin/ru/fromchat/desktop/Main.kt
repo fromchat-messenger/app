@@ -1,13 +1,19 @@
 package ru.fromchat.desktop
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.graphics.toPainter
@@ -34,6 +40,7 @@ import java.awt.Image
 import java.awt.KeyboardFocusManager
 import java.awt.RenderingHints
 import java.awt.Taskbar
+import java.awt.desktop.AppReopenedListener
 import java.awt.event.ActionEvent
 import java.awt.image.BufferedImage
 import java.io.BufferedReader
@@ -50,6 +57,8 @@ import javax.imageio.ImageIO
 import javax.swing.JComponent
 import javax.swing.JRootPane
 import javax.swing.SwingUtilities
+import javax.swing.UIManager
+import javax.swing.plaf.ColorUIResource
 import javax.swing.text.DefaultEditorKit
 import kotlin.concurrent.thread
 import kotlinx.coroutines.CoroutineScope
@@ -66,9 +75,13 @@ import ru.fromchat.Res
 import ru.fromchat.action_copy
 import ru.fromchat.action_select
 import ru.fromchat.api.ApiClient
+import ru.fromchat.api.local.WebSocketManager
+import ru.fromchat.api.local.db.store.ConnectionStateStore
+import ru.fromchat.api.local.db.store.ConnectionStatus
 import ru.fromchat.api.local.workers.AttachmentTransferBootstrap
 import ru.fromchat.app_name
 import ru.fromchat.app_name_beta
+import ru.fromchat.config.Settings
 import ru.fromchat.desktop_about_app
 import ru.fromchat.desktop_cut
 import ru.fromchat.desktop_menu_edit
@@ -83,8 +96,12 @@ import ru.fromchat.desktop_select_all
 import ru.fromchat.desktop_show_app
 import ru.fromchat.desktop_tray_show
 import ru.fromchat.desktop_zoom
+import ru.fromchat.status_connected
+import ru.fromchat.status_connecting
+import ru.fromchat.status_disconnected
 import ru.fromchat.ui.App
 import ru.fromchat.ui.LocalExtraStatusBarTop
+import ru.fromchat.ui.Theme
 
 private object DesktopApplicationBootstrap {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -231,11 +248,18 @@ fun main(args: Array<String>) {
             if (AppBuildInfo.isDebug) "FromChat Beta" else "FromChat",
         )
         System.setProperty("apple.laf.useScreenMenuBar", "true")
+        // Treat TrayIcon images as NSImage templates so the menu bar tints them for light/dark.
+        // Must be set before CTrayIcon loads (Compose Tray / SystemTray).
+        System.setProperty("apple.awt.enableTemplateImages", "true")
     }
     if (!DesktopSingleInstance.acquireOrForward(args)) return
     DesktopProtocolRegistration.registerBestEffort()
+    // Close-to-tray keeps the process + tray; no SMAppService / Login Items registration.
     args.filter { DesktopDeepLinkBus.isFromChatUri(it) }
         .forEach { DesktopDeepLinkBus.handleUri(it) }
+
+    // Avoid the AWT default white "control" flash before Compose paints (CMP #1794).
+    applyDesktopWindowChromeBackground()
 
     val dockIconImage = loadAppIconBufferedImage(tray = false)
     applyDockIcon(dockIconImage)
@@ -250,6 +274,8 @@ fun main(args: Array<String>) {
             size = remember { DesktopWindowPrefs.loadSize() },
             position = remember { DesktopWindowPrefs.loadPosition() },
         )
+        // Hide until App bootstrap sets startDestination (avoids ~2s empty/white window).
+        var contentReady by remember { mutableStateOf(false) }
         var windowVisible by remember { mutableStateOf(true) }
         val trayState = rememberTrayState()
         // BufferedImage.toPainter() keeps the AWT pixels (avoids blank BitmapPainter round-trip).
@@ -265,6 +291,29 @@ fun main(args: Array<String>) {
         val aboutApp = stringResource(Res.string.desktop_about_app)
         val trayShow = stringResource(Res.string.desktop_tray_show)
         val quit = stringResource(Res.string.desktop_quit)
+        val connectionStatus by ConnectionStateStore.status.collectAsState()
+        var wsLinked by remember { mutableStateOf(WebSocketManager.isConnected) }
+        LaunchedEffect(Unit) {
+            while (true) {
+                wsLinked = WebSocketManager.isConnected
+                delay(400)
+            }
+        }
+        // Mirror ConnectionStateStore + WebSocketManager.isConnected (+ logged-out → disconnected).
+        val wsStatusLabel = when {
+            connectionStatus == ConnectionStatus.CONNECTED ||
+                connectionStatus == ConnectionStatus.UPDATING ||
+                wsLinked -> stringResource(Res.string.status_connected)
+            ApiClient.token.isNullOrEmpty() -> stringResource(Res.string.status_disconnected)
+            else -> stringResource(Res.string.status_connecting)
+        }
+        val windowChrome = remember { desktopThemeBackgroundCompose() }
+
+        LaunchedEffect(Unit) {
+            // Safety: never leave the window stuck hidden if bootstrap hangs.
+            delay(8_000)
+            contentReady = true
+        }
 
         LaunchedEffect(windowState.size, windowState.position) {
             delay(3_000)
@@ -283,18 +332,53 @@ fun main(args: Array<String>) {
             }
         }
 
-        fun openAbout() {
+        fun showMainWindow() {
             windowVisible = true
+            AppForeground.setForeground(true)
+        }
+
+        fun openAbout() {
+            showMainWindow()
             DesktopMenuCommands.emit(DesktopMenuCommand.OpenAbout)
         }
 
+        /** Hide window, keep process + tray (close-to-background). Else quit. */
+        fun requestCloseToBackgroundOrQuit() {
+            if (traySupported) {
+                windowVisible = false
+                // Desktop keeps sockets alive while the process runs (see keepWebSocketAliveInBackground).
+                AppForeground.setForeground(true)
+                if (mac) {
+                    Logger.i(MacBackgroundLifecycle.LOG_TAG, "Window closed → background (tray kept, process alive)")
+                }
+            } else {
+                exitApplication()
+            }
+        }
+
         LaunchedEffect(Unit) {
-            if (!mac || !Desktop.isDesktopSupported()) return@LaunchedEffect
+            if (!Desktop.isDesktopSupported()) return@LaunchedEffect
             val desktop = Desktop.getDesktop()
-            if (desktop.isSupported(Desktop.Action.APP_ABOUT)) {
+            if (mac && desktop.isSupported(Desktop.Action.APP_ABOUT)) {
                 desktop.setAboutHandler {
                     SwingUtilities.invokeLater { openAbout() }
                 }
+            }
+            // ⌘Q / system Quit must fully exit (not close-to-tray).
+            if (desktop.isSupported(Desktop.Action.APP_QUIT_HANDLER)) {
+                desktop.setQuitHandler { _, response ->
+                    DesktopSingleInstance.release()
+                    response.performQuit()
+                    exitApplication()
+                }
+            }
+            // Dock click while window is hidden → show again (macOS AppReopened).
+            if (mac) {
+                desktop.addAppEventListener(
+                    AppReopenedListener {
+                        SwingUtilities.invokeLater { showMainWindow() }
+                    },
+                )
             }
         }
 
@@ -303,9 +387,11 @@ fun main(args: Array<String>) {
                 icon = trayIcon,
                 state = trayState,
                 tooltip = appName,
-                onAction = { windowVisible = true },
+                onAction = { showMainWindow() },
                 menu = {
-                    Item(trayShow) { windowVisible = true }
+                    Item(wsStatusLabel, enabled = false) {}
+                    Separator()
+                    Item(trayShow) { showMainWindow() }
                     Item(aboutApp) { openAbout() }
                     Separator()
                     Item(quit) { exitApplication() }
@@ -314,17 +400,10 @@ fun main(args: Array<String>) {
         }
 
         Window(
-            onCloseRequest = {
-                if (traySupported) {
-                    windowVisible = false
-                    AppForeground.setForeground(true)
-                } else {
-                    exitApplication()
-                }
-            },
+            onCloseRequest = { requestCloseToBackgroundOrQuit() },
             title = appName,
             state = windowState,
-            visible = windowVisible || !traySupported,
+            visible = contentReady && (windowVisible || !traySupported),
             icon = windowIcon,
             onPreviewKeyEvent = { event ->
                 // macOS: MenuBar KeyShortcuts handle these. Win/Linux: no menu bar.
@@ -333,17 +412,17 @@ fun main(args: Array<String>) {
                 }
                 when {
                     !event.isShiftPressed && event.key == Key.N -> {
-                        windowVisible = true
+                        showMainWindow()
                         DesktopMenuCommands.emit(DesktopMenuCommand.NewChat)
                         true
                     }
                     !event.isShiftPressed && event.key == Key.F -> {
-                        windowVisible = true
+                        showMainWindow()
                         DesktopMenuCommands.emit(DesktopMenuCommand.SearchConversations)
                         true
                     }
                     event.isShiftPressed && event.key == Key.S -> {
-                        windowVisible = true
+                        showMainWindow()
                         DesktopMenuCommands.emit(DesktopMenuCommand.EnterChatListSelection)
                         true
                     }
@@ -352,7 +431,7 @@ fun main(args: Array<String>) {
                         true
                     }
                     event.isShiftPressed && event.key == Key.N -> {
-                        windowVisible = true
+                        showMainWindow()
                         true
                     }
                     event.key == Key.M -> {
@@ -367,8 +446,11 @@ fun main(args: Array<String>) {
                 }
             },
         ) {
-            LaunchedEffect(window, appName) {
+            LaunchedEffect(window, appName, windowChrome) {
                 window.title = appName
+                val awt = windowChrome.toAwtColor()
+                window.background = awt
+                window.contentPane.background = awt
                 enableEdgeToEdgeTitleBar(window.rootPane)
                 dockIconImage?.let { image ->
                     window.iconImages = listOf(image)
@@ -383,18 +465,18 @@ fun main(args: Array<String>) {
             if (mac) {
                 FromChatMenuBar(
                     onNewChat = {
-                        windowVisible = true
+                        showMainWindow()
                         DesktopMenuCommands.emit(DesktopMenuCommand.NewChat)
                     },
                     onSearchConversations = {
-                        windowVisible = true
+                        showMainWindow()
                         DesktopMenuCommands.emit(DesktopMenuCommand.SearchConversations)
                     },
                     onSelectChats = {
-                        windowVisible = true
+                        showMainWindow()
                         DesktopMenuCommands.emit(DesktopMenuCommand.EnterChatListSelection)
                     },
-                    onShow = { windowVisible = true },
+                    onShow = { showMainWindow() },
                     onMinimize = { windowState.isMinimized = true },
                     onZoom = {
                         windowState.placement =
@@ -411,7 +493,13 @@ fun main(args: Array<String>) {
             CompositionLocalProvider(
                 LocalExtraStatusBarTop provides if (mac) 28.dp else 0.dp,
             ) {
-                App()
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(windowChrome),
+                ) {
+                    App(onContentReady = { contentReady = true })
+                }
             }
         }
     }
@@ -522,6 +610,39 @@ private fun isWindowsOs(): Boolean =
 private fun isLinuxOs(): Boolean =
     System.getProperty("os.name").orEmpty().lowercase().contains("linux")
 
+/**
+ * JFrame uses UIManager "control" as its default background before Compose draws.
+ * Set it to the app theme background so dark theme never flashes white (CMP #1794).
+ *
+ * Colors match Material3 [darkColorScheme]/[lightColorScheme] defaults used by [ru.fromchat.ui.getColorScheme].
+ */
+private fun applyDesktopWindowChromeBackground() {
+    UIManager.put("control", ColorUIResource(desktopThemeBackgroundCompose().toAwtColor()))
+}
+
+private fun desktopThemeBackgroundCompose(): Color {
+    val dark = when (runCatching { Settings.theme }.getOrDefault(Theme.AsSystem)) {
+        Theme.Dark -> true
+        Theme.Light -> false
+        Theme.AsSystem -> isSystemAppearanceDark()
+    }
+    // M3 default scheme backgrounds (desktop module has no material3 dependency).
+    return if (dark) Color(0xFF1C1B1F) else Color(0xFFFFFBFE)
+}
+
+private fun Color.toAwtColor(): java.awt.Color =
+    java.awt.Color(red, green, blue, alpha)
+
+private fun isSystemAppearanceDark(): Boolean {
+    if (!isMacOs()) return false
+    return runCatching {
+        val process = ProcessBuilder("defaults", "read", "-g", "AppleInterfaceStyle")
+            .redirectErrorStream(true)
+            .start()
+        process.inputStream.bufferedReader().readText().trim().equals("Dark", ignoreCase = true)
+    }.getOrDefault(false)
+}
+
 private fun enableEdgeToEdgeTitleBar(rootPane: JRootPane) {
     if (!isMacOs()) return
     rootPane.putClientProperty("apple.awt.fullWindowContent", true)
@@ -553,10 +674,14 @@ private fun applyDockIcon(image: BufferedImage?) {
 
 /**
  * Loads the desktop tray or window/dock icon from packaged resources.
- * Tray prefers the flat mark (`app_icon`); dock/window prefer the gradient (`app_window_icon`).
+ * Tray prefers the flat white+alpha mark (`app_icon`, template-ready); dock/window prefer
+ * the branded AppIcon (`app_window_icon`).
  *
  * Uses [BufferedImage.toPainter] so Compose Tray/Window hand the same AWT pixels to the OS
  * (BitmapPainter → ImageBitmap round-trips can rasterize blank and fall back to Compose's default).
+ *
+ * On macOS, `apple.awt.enableTemplateImages` makes the tray mark an NSImage template so the
+ * menu bar recolors it for the current appearance (set early in [main]).
  */
 private fun loadAppIconPainter(tray: Boolean): Painter {
     val image = loadAppIconBufferedImage(tray)

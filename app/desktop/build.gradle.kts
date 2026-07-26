@@ -55,6 +55,8 @@ compose.desktop {
             macOS {
                 bundleID = "ru.fromchat.desktop"
                 iconFile.set(desktopWindowIconIcns)
+                // Tray icons as NSImage templates (menu bar light/dark tint). Also set in Main.kt.
+                jvmArgs("-Dapple.awt.enableTemplateImages=true")
                 infoPlist {
                     extraKeysRawXml = """
                         <key>CFBundleURLTypes</key>
@@ -105,6 +107,7 @@ tasks.matching { it.name == "run" }.configureEach {
         }
         jvmArgs(
             dockIconArgs + listOf(
+                "-Dapple.awt.enableTemplateImages=true",
                 "--module-path",
                 javafxJars.joinToString(File.pathSeparator) { it.absolutePath },
                 "--add-modules",

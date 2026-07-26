@@ -48,7 +48,6 @@ markdownRendererM3 = "0.43.0"
 bouncycastle = "1.85"
 webkit = "1.16.0"
 openjfx = "21.0.6"
-
 [libraries]
 androidx-core-splashscreen = { module = "androidx.core:core-splashscreen", version.ref = "coreSplashscreen" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "androidx-core-ktx" }

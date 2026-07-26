@@ -7,6 +7,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MediumTopAppBar
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -17,7 +18,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.unit.Velocity
@@ -32,24 +32,14 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.back
-import ru.fromchat.ui.LocalNavController
+import ru.fromchat.ui.main.detailPaneShowBackButton
 
 /** Idle gap after mouse-wheel / trackpad deltas before snapping the collapsing bar. */
 private const val AppBarWheelSettleDelayMs = 64L
 
-/**
- * Back is shown on compact (full-screen stack), and on large screens only when the
- * previous destination is not the list–detail shell (`chat`) — i.e. when nested
- * deeper than a settings detail opened as the right pane.
- */
+/** @see detailPaneShowBackButton */
 @Composable
-fun settingsDetailShowBackButton(): Boolean {
-    if (currentWindowAdaptiveInfo().widthSizeClass == WindowWidthSizeClass.COMPACT) {
-        return true
-    }
-    val previousRoute = LocalNavController.current.previousBackStackEntry?.destination?.route
-    return previousRoute != null && previousRoute != "chat"
-}
+fun settingsDetailShowBackButton(): Boolean = detailPaneShowBackButton()
 
 @Composable
 fun settingsDetailUseCollapsingTopBar(): Boolean =
@@ -91,20 +81,29 @@ fun SettingsDetailTopBar(
             }
         }
     }
+    // Must match settings-detail Scaffold.containerColor and AppPanel
+    // (`surfaceContainerLowest`). Scaffold defaults to `background`, which is a
+    // different token (e.g. light Neutral98 vs Neutral100) — that was the stripe.
+    val paneColor = MaterialTheme.colorScheme.surfaceContainerLowest
     if (settingsDetailUseCollapsingTopBar()) {
         MediumTopAppBar(
             title = title,
             navigationIcon = navigationIcon,
             scrollBehavior = scrollBehavior,
-            // Transparent while expanded; default scrolledContainerColor when collapsed.
+            // Unscrolled: pane. Collapsed: default scrolledContainerColor (elevation).
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = Color.Transparent,
+                containerColor = paneColor,
             ),
         )
     } else {
+        // Desktop / expanded: pinned TopAppBar (not Large/Medium).
         TopAppBar(
             title = title,
             navigationIcon = navigationIcon,
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = paneColor,
+                scrolledContainerColor = paneColor,
+            ),
         )
     }
 }
