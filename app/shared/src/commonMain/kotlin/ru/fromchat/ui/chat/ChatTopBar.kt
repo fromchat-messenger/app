@@ -72,6 +72,7 @@ import ru.fromchat.chat_members_count
 import ru.fromchat.ui.chat.utils.TypingUser
 import ru.fromchat.ui.components.ConnectingEllipsis
 import ru.fromchat.ui.components.Text
+import ru.fromchat.ui.extraStatusBars
 import ru.fromchat.ui.profile.StatusBadge
 import ru.fromchat.ui.profile.peerIsDeleted
 import ru.fromchat.ui.profile.resolveVerificationStatus
@@ -338,7 +339,7 @@ fun ChatTopBar(
         val topBarPlaceable = subcompose("topBar") {
             TopAppBar(
                 modifier = Modifier.fillMaxWidth(),
-                windowInsets = WindowInsets.statusBars,
+                windowInsets = WindowInsets.extraStatusBars,
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color.Transparent,
                     scrolledContainerColor = Color.Transparent,

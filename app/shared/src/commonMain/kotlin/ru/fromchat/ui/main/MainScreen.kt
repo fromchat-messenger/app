@@ -34,6 +34,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -75,16 +76,23 @@ import ru.fromchat.ui.main.chats.ChatContextMenuOverlayHost
 import ru.fromchat.ui.main.chats.ChatsTab
 import ru.fromchat.ui.main.settings.SettingsTab
 import ru.fromchat.ui.profile.ProfileScreen
+import ru.fromchat.ui.extraStatusBars
 
-private const val PAGE_CHATS = 0
-private const val PAGE_CONTACTS = 1
-private const val PAGE_SETTINGS = 2
-private const val PAGE_PROFILE = 3
+const val MAIN_PAGE_CHATS = 0
+const val MAIN_PAGE_CONTACTS = 1
+const val MAIN_PAGE_SETTINGS = 2
+const val MAIN_PAGE_PROFILE = 3
+
+private const val PAGE_CHATS = MAIN_PAGE_CHATS
+private const val PAGE_CONTACTS = MAIN_PAGE_CONTACTS
+private const val PAGE_SETTINGS = MAIN_PAGE_SETTINGS
+private const val PAGE_PROFILE = MAIN_PAGE_PROFILE
 private const val PAGE_COUNT = 4
 
 /**
  * @param listPaneOnly When true, renders only the chats list (no nav rail/bar) for use as the
- * list side of an expanded list–detail conversation layout.
+ * list side of a list–detail conversation layout. Host owns navigation chrome.
+ * @param initialPage Pager page when showing the full MainScreen.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -93,11 +101,12 @@ fun MainScreen(
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     snackbarHostState: SnackbarHostState? = null,
     listPaneOnly: Boolean = false,
+    initialPage: Int = PAGE_CHATS,
 ) {
     val effectiveSnackbarHostState = snackbarHostState ?: remember { SnackbarHostState() }
     val navController = LocalNavController.current
     val pagerState = rememberPagerState(
-        initialPage = PAGE_CHATS,
+        initialPage = initialPage.coerceIn(0, PAGE_COUNT - 1),
         pageCount = { PAGE_COUNT },
     )
     val scope = rememberCoroutineScope()
@@ -107,20 +116,30 @@ fun MainScreen(
     val contextMenuHazeState = rememberHazeState()
     val chatContextMenuOverlay = remember { ChatContextMenuOverlayController() }
 
-    val useNavigationRail = !listPaneOnly &&
-        currentWindowAdaptiveInfo().widthSizeClass != WindowWidthSizeClass.COMPACT
+    val widthClass = currentWindowAdaptiveInfo().widthSizeClass
+    // Compact/medium: bottom bar. Expanded: rail. List pane never owns chrome.
+    val useNavigationRail = !listPaneOnly && widthClass == WindowWidthSizeClass.EXPANDED
+    val useBottomBar = !listPaneOnly && !useNavigationRail
+
+    LaunchedEffect(initialPage) {
+        if (!listPaneOnly && pagerState.currentPage != initialPage) {
+            pagerState.scrollToPage(initialPage.coerceIn(0, PAGE_COUNT - 1))
+        }
+    }
 
     val selectedPage = pagerState.currentPage
     val isChatsPage = selectedPage == PAGE_CHATS
     val chatMenuBlurProgress = chatContextMenuOverlay.blurProgress
 
-    val statusBarTopDp = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val statusBarTop = with(density) {
+        WindowInsets.extraStatusBars.getTop(this).toDp()
+    }
     var bottomChromeHeightDp by remember { mutableStateOf(0.dp) }
 
-    val mainChromeInsets = remember(statusBarTopDp, bottomChromeHeightDp, useNavigationRail, listPaneOnly) {
+    val mainChromeInsets = remember(statusBarTop, bottomChromeHeightDp, useNavigationRail, useBottomBar) {
         MainChromeInsets(
-            top = statusBarTopDp,
-            bottom = if (useNavigationRail || listPaneOnly) 0.dp else bottomChromeHeightDp,
+            top = statusBarTop,
+            bottom = if (useBottomBar) bottomChromeHeightDp else 0.dp,
         )
     }
 
@@ -242,7 +261,7 @@ fun MainScreen(
                     }
                 }
 
-                if (!useNavigationRail && !listPaneOnly) {
+                if (useBottomBar) {
                     Column(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
