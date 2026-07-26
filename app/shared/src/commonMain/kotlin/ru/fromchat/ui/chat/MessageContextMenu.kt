@@ -37,17 +37,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
@@ -147,151 +148,148 @@ fun MessageContextMenu(
         if (state.isOpen && state.message != null) {
             shouldShowPopup = true
             animationProgress.floatValue = 0f
+            animate(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioLowBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                )
+            ) { value, _ ->
+                animationProgress.floatValue = value
+            }
         }
     }
 
     if (shouldShowPopup && state.message != null) {
-        var measuredSize by remember(state.message) { mutableStateOf(IntSize.Zero) }
-
-        SubcomposeLayout(Modifier.size(0.dp)) { _ ->
-            val looseConstraints = Constraints(
-                minWidth = 0,
-                minHeight = 0,
-                maxWidth = screenWidthPx,
-                maxHeight = screenHeightPx
-            )
-            val placeables = subcompose("measure") {
-                ContextMenuContent(
-                    message = state.message,
-                    isAuthor = isAuthor,
-                    canDelete = canDelete,
-                    onReply = {},
-                    onEdit = {},
-                    onDelete = {},
-                    onCopy = {},
-                    onSave = {},
-                    onCancelSend = {},
-                    onRetrySend = {},
-                    modifier = modifier.graphicsLayer(alpha = 0f),
-                    animated = false,
-                    withShadow = false,
-                    isReadOnly = isReadOnly,
-                )
-            }.map { it.measure(looseConstraints) }
-            val p = placeables.firstOrNull()
-            if (p != null && measuredSize == IntSize.Zero) {
-                measuredSize = IntSize(p.width, p.height)
-            }
-            layout(0, 0) {
-                placeables.forEach { it.placeRelative(-10000, -10000) }
-            }
-        }
-
         val density = LocalDensity.current
         val paddingPx = with(density) { 16.dp.toPx().toInt() }
         val allowOutsideWindow = supportsMouseMessageInteraction()
-        val rightEdge = screenWidthPx - paddingPx
-        val bottomEdge = screenHeightPx - paddingPx
+        var popupSize by remember(state.message) { mutableStateOf(IntSize.Zero) }
 
-        val adjustedOffset = remember(
-            measuredSize,
+        // Clamp with popupContentSize — do not SubcomposeLayout-measure under
+        // SharedTransitionLayout (writes state during LookaheadMeasuring).
+        val positionProvider = remember(
             state.position,
-            rightEdge,
-            bottomEdge,
+            screenWidthPx,
+            screenHeightPx,
             paddingPx,
             allowOutsideWindow,
         ) {
-            if (allowOutsideWindow || measuredSize == IntSize.Zero) {
+            object : PopupPositionProvider {
+                override fun calculatePosition(
+                    anchorBounds: IntRect,
+                    windowSize: IntSize,
+                    layoutDirection: LayoutDirection,
+                    popupContentSize: IntSize,
+                ): IntOffset {
+                    if (allowOutsideWindow) return state.position
+                    var x = state.position.x
+                    var y = state.position.y
+                    val rightEdge = screenWidthPx - paddingPx
+                    val bottomEdge = screenHeightPx - paddingPx
+                    if (x + popupContentSize.width > rightEdge) {
+                        x = rightEdge - popupContentSize.width
+                    }
+                    if (y + popupContentSize.height > bottomEdge) {
+                        y = bottomEdge - popupContentSize.height
+                    }
+                    if (x < paddingPx) x = paddingPx
+                    if (y < paddingPx) y = paddingPx
+                    return IntOffset(x, y)
+                }
+            }
+        }
+
+        val adjustedOffset = remember(
+            popupSize,
+            state.position,
+            screenWidthPx,
+            screenHeightPx,
+            paddingPx,
+            allowOutsideWindow,
+        ) {
+            if (allowOutsideWindow || popupSize == IntSize.Zero) {
                 state.position
             } else {
                 var x = state.position.x
                 var y = state.position.y
-                if (x + measuredSize.width > rightEdge) x = rightEdge - measuredSize.width
-                if (y + measuredSize.height > bottomEdge) y = bottomEdge - measuredSize.height
+                val rightEdge = screenWidthPx - paddingPx
+                val bottomEdge = screenHeightPx - paddingPx
+                if (x + popupSize.width > rightEdge) x = rightEdge - popupSize.width
+                if (y + popupSize.height > bottomEdge) y = bottomEdge - popupSize.height
                 if (x < paddingPx) x = paddingPx
                 if (y < paddingPx) y = paddingPx
                 IntOffset(x, y)
             }
         }
 
-        val sizeF = Offset(measuredSize.width.toFloat(), measuredSize.height.toFloat())
-        val transformOriginX = if (sizeF.x > 0f) {
-            ((state.position.x - adjustedOffset.x) / sizeF.x).coerceIn(0f, 1f)
-        } else 0f
-        val transformOriginY = if (sizeF.y > 0f) {
-            ((state.position.y - adjustedOffset.y) / sizeF.y).coerceIn(0f, 1f)
-        } else 0f
-
-        LaunchedEffect(measuredSize) {
-            if (measuredSize != IntSize.Zero) {
-                animate(
-                    initialValue = 0f,
-                    targetValue = 1f,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioLowBouncy,
-                        stiffness = Spring.StiffnessMediumLow
-                    )
-                ) { value, _ ->
-                    animationProgress.floatValue = value
-                }
-            }
+        val transformOriginX = if (popupSize.width > 0) {
+            ((state.position.x - adjustedOffset.x).toFloat() / popupSize.width).coerceIn(0f, 1f)
+        } else {
+            0f
+        }
+        val transformOriginY = if (popupSize.height > 0) {
+            ((state.position.y - adjustedOffset.y).toFloat() / popupSize.height).coerceIn(0f, 1f)
+        } else {
+            0f
         }
 
         val scale = 0.5f + 0.5f * animationProgress.floatValue
         val alpha = animationProgress.floatValue
 
-        if (measuredSize != IntSize.Zero) {
-            Popup(
-                onDismissRequest = onDismiss,
-                alignment = Alignment.TopStart,
-                offset = adjustedOffset,
-                properties = PopupProperties(
-                    dismissOnBackPress = true,
-                    dismissOnClickOutside = true,
-                    clippingEnabled = false
-                )
-            ) {
-                ContextMenuContent(
-                    message = state.message,
-                    isAuthor = isAuthor,
-                    canDelete = canDelete,
-                    onReply = {
-                        onReply(it)
-                        onDismiss()
-                    },
-                    onEdit = {
-                        onEdit(it)
-                        onDismiss()
-                    },
-                    onDelete = {
-                        onDelete(it)
-                        onDismiss()
-                    },
-                    onCopy = {
-                        onCopy(it)
-                        onDismiss()
-                    },
-                    onSave = {
-                        onSave(it)
-                        onDismiss()
-                    },
-                    onCancelSend = {
-                        onCancelSend(it)
-                        onDismiss()
-                    },
-                    onRetrySend = {
-                        onRetrySend(it)
-                        onDismiss()
-                    },
-                    modifier = modifier,
-                    animated = true,
-                    scale = scale,
-                    alpha = alpha,
-                    transformOriginX = transformOriginX,
-                    transformOriginY = transformOriginY,
-                    isReadOnly = isReadOnly
-                )
-            }
+        // [state.position] is window coordinates (see MessageItem localToWindow).
+        // Alignment+offset would add the popup parent’s window origin again (double offset
+        // in list–detail panes). Place with an absolute provider instead.
+        Popup(
+            onDismissRequest = onDismiss,
+            popupPositionProvider = positionProvider,
+            properties = PopupProperties(
+                dismissOnBackPress = true,
+                dismissOnClickOutside = true,
+                clippingEnabled = false,
+            ),
+        ) {
+            ContextMenuContent(
+                message = state.message,
+                isAuthor = isAuthor,
+                canDelete = canDelete,
+                onReply = {
+                    onReply(it)
+                    onDismiss()
+                },
+                onEdit = {
+                    onEdit(it)
+                    onDismiss()
+                },
+                onDelete = {
+                    onDelete(it)
+                    onDismiss()
+                },
+                onCopy = {
+                    onCopy(it)
+                    onDismiss()
+                },
+                onSave = {
+                    onSave(it)
+                    onDismiss()
+                },
+                onCancelSend = {
+                    onCancelSend(it)
+                    onDismiss()
+                },
+                onRetrySend = {
+                    onRetrySend(it)
+                    onDismiss()
+                },
+                modifier = modifier.onSizeChanged { popupSize = it },
+                animated = true,
+                scale = scale,
+                alpha = alpha,
+                transformOriginX = transformOriginX,
+                transformOriginY = transformOriginY,
+                isReadOnly = isReadOnly,
+            )
         }
     }
 }

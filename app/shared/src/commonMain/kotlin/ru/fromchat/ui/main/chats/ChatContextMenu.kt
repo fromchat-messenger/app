@@ -22,6 +22,9 @@ import androidx.compose.material.icons.rounded.MarkEmailRead
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,6 +37,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.pr0gramm3r101.utils.scaleOnPress
+import kotlinx.coroutines.channels.Channel
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.action_delete
@@ -57,6 +61,14 @@ internal fun ChatContextMenuMeasurer(
     screenHeightPx: Int,
     onMeasured: (IntSize) -> Unit,
 ) {
+    val latestOnMeasured = rememberUpdatedState(onMeasured)
+    val measuredSizes = remember { Channel<IntSize>(Channel.CONFLATED) }
+    LaunchedEffect(Unit) {
+        for (size in measuredSizes) {
+            latestOnMeasured.value(size)
+        }
+    }
+
     SubcomposeLayout(Modifier.size(0.dp)) { _ ->
         val looseConstraints = Constraints(
             minWidth = 0,
@@ -84,8 +96,9 @@ internal fun ChatContextMenuMeasurer(
             )
         }.map { it.measure(looseConstraints) }
         val measured = placeables.firstOrNull()?.let { IntSize(it.width, it.height) } ?: IntSize.Zero
+        // Do not write Compose state during measure (LookaheadMeasuring under SharedTransition).
         if (measured != IntSize.Zero) {
-            onMeasured(measured)
+            measuredSizes.trySend(measured)
         }
         layout(0, 0) {
             placeables.forEach { it.placeRelative(-10000, -10000) }
