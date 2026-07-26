@@ -11,7 +11,7 @@ import platform.Foundation.NSFileManager
 import platform.Foundation.NSUserDomainMask
 import platform.Foundation.create
 import platform.Foundation.writeToFile
-import ru.fromchat.api.db.MessageDatabaseProvider
+import ru.fromchat.api.local.db.store.MessageDatabaseProvider
 
 private const val GENERATION_FILE = ".generation"
 

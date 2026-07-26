@@ -37,11 +37,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.navigation.NavController
 import com.pr0gramm3r101.components.ListItemPosition
 import com.pr0gramm3r101.utils.SupportClipboardManager
-import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.blur.HazeProgressive
+import dev.chrisbanes.haze.blur.blurEffect
+import dev.chrisbanes.haze.blur.materials.HazeMaterials
 import dev.chrisbanes.haze.hazeEffect
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
-import dev.chrisbanes.haze.materials.HazeMaterials
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.CoroutineScope
 import ru.fromchat.api.local.db.store.PublicChatProfileCache
 import ru.fromchat.api.schema.chats.publicchat.PublicChatProfile
@@ -112,8 +114,6 @@ import com.pr0gramm3r101.components.ContextMenuPressable
 import com.pr0gramm3r101.components.ListItem
 import com.pr0gramm3r101.components.listItemPositionInGroup
 import com.pr0gramm3r101.utils.supportClipboardManagerImpl
-import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
 import io.ktor.client.plugins.ClientRequestException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
@@ -2028,7 +2028,6 @@ private fun ExpressiveProfileActionButton(
     }
 }
 
-@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 private fun ProfileFloatingBackBar(
     visible: Boolean,
@@ -2039,16 +2038,20 @@ private fun ProfileFloatingBackBar(
 ) {
     if (!visible) return
 
+    val backBarHazeStyle = HazeMaterials.thin()
     Box(modifier = modifier.fillMaxWidth()) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(blurHeight)
-                .hazeEffect(state = hazeState, style = HazeMaterials.thin()) {
-                    progressive = HazeProgressive.verticalGradient(
-                        startIntensity = 1f,
-                        endIntensity = 0f,
-                    )
+                .hazeEffect(state = hazeState) {
+                    blurEffect {
+                        style = backBarHazeStyle
+                        progressive = HazeProgressive.verticalGradient(
+                            startIntensity = 1f,
+                            endIntensity = 0f,
+                        )
+                    }
                 },
         )
         IconButton(

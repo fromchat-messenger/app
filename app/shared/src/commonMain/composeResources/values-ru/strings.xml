@@ -59,6 +59,7 @@
     <string name="auth_captcha_body">Подтвердите, что вы человек, чтобы продолжить создание аккаунта.</string>
     <string name="auth_captcha_failed">Не удалось пройти проверку. Попробуйте ещё раз.</string>
     <string name="auth_yandex_webview_title">Яндекс ID</string>
+    <string name="auth_yandex_browser_body">Завершите вход в браузере</string>
     <string name="auth_yandex_client_mismatch">Сервер вернул неожиданный идентификатор приложения Яндекса. Обновите приложение или обратитесь в поддержку.</string>
     <string name="auth_yandex_failed">Вход через Яндекс ID отменён или не удался.</string>
     <string name="chats">Чаты</string>
@@ -324,6 +325,7 @@
     <string name="settings_notifications_permission_required">Откройте системные настройки и разрешите уведомления.</string>
     <string name="settings_push_notifications">Push-уведомления</string>
     <string name="settings_push_notifications_d">Они помогут вам узнать, если появилось новое сообщение пока приложение закрыто.</string>
+    <string name="settings_push_notifications_unavailable">Недоступны на этой платформе. Новые сообщения видны только пока приложение открыто.</string>
 
     <string name="settings_devices_title">Устройства</string>
     <string name="settings_devices_empty">Нет активных сессий</string>

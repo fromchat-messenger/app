@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import ru.fromchat.api.ApiClient
+import ru.fromchat.api.local.send.installOutboxForegroundDrain
 import ru.fromchat.api.local.workers.AttachmentTransferBootstrap
 
 object IosApplicationBootstrap {
@@ -16,6 +17,7 @@ object IosApplicationBootstrap {
     fun launchOnApplicationStart() {
         if (started) return
         started = true
+        installOutboxForegroundDrain()
         scope.launch {
             runCatching { ApiClient.loadPersistedData() }
             runCatching { AttachmentTransferBootstrap.runColdStart() }

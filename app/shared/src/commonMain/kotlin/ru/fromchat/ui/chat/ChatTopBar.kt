@@ -62,8 +62,9 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.pr0gramm3r101.utils.conditional
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.blur.HazeBlurStyle
+import dev.chrisbanes.haze.blur.HazeColorEffect
+import dev.chrisbanes.haze.blur.blurEffect
 import dev.chrisbanes.haze.hazeEffect
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
@@ -325,6 +326,7 @@ fun ChatTopBar(
     callContentDescription: String,
     titleChrome: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    hazeBlurEnabled: Boolean = true,
 ) {
     val bottomCornerRadius = ChatFloatingHeaderBottomArcRadius
     // [BottomInsetTopBarShape] draws the arc in the strip from y = (content height) .. (content + r);
@@ -370,6 +372,7 @@ fun ChatTopBar(
         val layoutHeight = topBarPlaceable.height + arcExtentPx
 
         val bgPlaceable = subcompose("background") {
+            val hazeStyle = rememberChatSurfaceContainerHazeStyle()
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -379,7 +382,12 @@ fun ChatTopBar(
                         }
                     )
                     .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.91f))
-                    .hazeEffect(state = hazeState, style = rememberChatSurfaceContainerHazeStyle()),
+                    .hazeEffect(state = hazeState) {
+                        blurEffect {
+                            blurEnabled = hazeBlurEnabled
+                            style = hazeStyle
+                        }
+                    },
             )
         }.first().measure(Constraints.fixed(layoutWidth, layoutHeight))
 
@@ -447,18 +455,21 @@ private class BottomInsetTopBarShape(private val cornerRadius: Dp) : Shape {
 }
 
 /**
- * [HazeStyle] for chat chrome using only [androidx.compose.material3.MaterialTheme.colorScheme.surfaceContainer]
- * (24dp blur + luminance-scaled tint, slightly denser than old “thin” defaults), without [dev.chrisbanes.haze.materials.HazeMaterials].
+ * [HazeBlurStyle] for chat chrome using only [androidx.compose.material3.MaterialTheme.colorScheme.surfaceContainer]
+ * (24dp blur + luminance-scaled tint, slightly denser than old “thin” defaults), without
+ * [dev.chrisbanes.haze.blur.materials.HazeMaterials].
  */
 @Composable
-fun rememberChatSurfaceContainerHazeStyle(): HazeStyle {
+fun rememberChatSurfaceContainerHazeStyle(): HazeBlurStyle {
     val surface = MaterialTheme.colorScheme.surfaceContainer
 
     return remember(surface) {
-        HazeStyle(
+        HazeBlurStyle(
             blurRadius = 24.dp,
             backgroundColor = surface,
-            tint = HazeTint(surface.copy(alpha = if (surface.luminance() >= 0.5f) 0.74f else 0.79f)),
+            colorEffect = HazeColorEffect.tint(
+                surface.copy(alpha = if (surface.luminance() >= 0.5f) 0.74f else 0.79f),
+            ),
         )
     }
 }

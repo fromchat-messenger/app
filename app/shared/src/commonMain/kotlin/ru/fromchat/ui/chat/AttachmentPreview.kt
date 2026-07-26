@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalHazeMaterialsApi::class)
-
 package ru.fromchat.ui.chat
 
 import androidx.compose.animation.AnimatedContent
@@ -68,10 +66,10 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.pr0gramm3r101.utils.crypto.Base64
+import dev.chrisbanes.haze.blur.blurEffect
+import dev.chrisbanes.haze.blur.materials.HazeMaterials
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
-import dev.chrisbanes.haze.materials.HazeMaterials
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -122,7 +120,6 @@ internal fun isImageFilename(name: String): Boolean =
     name.endsWith(".png", true) || name.endsWith(".jpg", true) ||
         name.endsWith(".jpeg", true) || name.endsWith(".gif", true) || name.endsWith(".webp", true)
 
-@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 fun AttachmentPreview(
     file: DmFile?,
@@ -313,7 +310,7 @@ fun AttachmentPreview(
     }
 }
 
-@OptIn(ExperimentalHazeMaterialsApi::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ChatImageTileContent(
     messageId: Int,
@@ -458,7 +455,8 @@ private fun ChatImageTileContent(
 
     val imageContentScale = ContentScale.Crop
     val tilePlaceholderColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.42f)
-    val thumbHazeState = rememberHazeState(blurEnabled = true)
+    val thumbHazeState = rememberHazeState()
+    val thumbOverlayHazeStyle = HazeMaterials.thin()
 
     LaunchedEffect(messageId, fileIndex, cacheClientId) {
         DecryptedImageCache.getCached(messageId, fileIndex, cacheClientId)?.let { uri ->
@@ -793,10 +791,11 @@ private fun ChatImageTileContent(
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .hazeEffect(
-                                                state = thumbHazeState,
-                                                style = HazeMaterials.thin(),
-                                            ),
+                                            .hazeEffect(state = thumbHazeState) {
+                                                blurEffect {
+                                                    style = thumbOverlayHazeStyle
+                                                }
+                                            },
                                     )
                                 }
                             }
@@ -918,7 +917,6 @@ private fun ChatImageTileContent(
     }
 }
 
-@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 private fun DownloadCancelledImageOverlay(
     isAuthor: Boolean,
@@ -926,9 +924,14 @@ private fun DownloadCancelledImageOverlay(
     modifier: Modifier = Modifier,
 ) {
     val scrim = MaterialTheme.colorScheme.scrim.copy(alpha = 0.38f)
+    val overlayHazeStyle = HazeMaterials.thin()
     Box(
         modifier = modifier
-            .hazeEffect(style = HazeMaterials.thin())
+            .hazeEffect {
+                blurEffect {
+                    style = overlayHazeStyle
+                }
+            }
             .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.12f)),
         contentAlignment = Alignment.Center,
     ) {
@@ -958,7 +961,6 @@ private fun DownloadCancelledImageOverlay(
     }
 }
 
-@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 private fun UploadingImageOverlay(
     model: String?,
@@ -969,12 +971,17 @@ private fun UploadingImageOverlay(
     onCancelUpload: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
+    val overlayHazeStyle = HazeMaterials.thin()
     Box(modifier = modifier) {
         Box(
             modifier = Modifier
                 .matchParentSize()
                 .clip(clipShape)
-                .hazeEffect(style = HazeMaterials.thin())
+                .hazeEffect {
+                    blurEffect {
+                        style = overlayHazeStyle
+                    }
+                }
         ) {
             when {
                 previewBitmap != null -> {
@@ -1084,7 +1091,6 @@ internal fun ExpressiveUploadIndicator(
     }
 }
 
-@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 private fun PendingImageContent(
     uri: String,
@@ -1260,10 +1266,15 @@ private fun CorruptedImagePlaceholder(
     modifier: Modifier = Modifier,
     clipShape: RoundedCornerShape = attachmentImageCornerShape(isAuthor = false),
 ) {
+    val overlayHazeStyle = HazeMaterials.thin()
     Box(
         modifier = modifier
             .clip(clipShape)
-            .hazeEffect(style = HazeMaterials.thin()),
+            .hazeEffect {
+                blurEffect {
+                    style = overlayHazeStyle
+                }
+            },
         contentAlignment = Alignment.Center,
     ) {
         Icon(

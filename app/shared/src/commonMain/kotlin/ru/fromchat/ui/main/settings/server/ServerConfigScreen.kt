@@ -67,11 +67,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.pr0gramm3r101.utils.navigateAndWipeBackStack
 import com.pr0gramm3r101.utils.toDp
-import dev.chrisbanes.haze.HazeProgressive
+import dev.chrisbanes.haze.blur.HazeProgressive
+import dev.chrisbanes.haze.blur.blurEffect
+import dev.chrisbanes.haze.blur.materials.HazeMaterials
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
-import dev.chrisbanes.haze.materials.HazeMaterials
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -129,7 +129,6 @@ private object ServerConfigLazyListIndices {
     ExperimentalMaterial3Api::class,
     ExperimentalMaterial3ExpressiveApi::class,
     ExperimentalAnimationApi::class,
-    ExperimentalHazeMaterialsApi::class,
 )
 @Composable
 fun ServerConfigScreen() {
@@ -331,6 +330,7 @@ fun ServerConfigScreen() {
                 }
             },
             topBar = {
+                val topBarHazeStyle = HazeMaterials.thin()
                 TopAppBar(
                     title = {},
                     navigationIcon = {
@@ -345,11 +345,14 @@ fun ServerConfigScreen() {
                         containerColor = Color.Transparent,
                         scrolledContainerColor = Color.Transparent
                     ),
-                    modifier = Modifier.hazeEffect(state = actionHazeState, style = HazeMaterials.thin()) {
-                        progressive = HazeProgressive.verticalGradient(
-                            startIntensity = 1f,
-                            endIntensity = 0f,
-                        )
+                    modifier = Modifier.hazeEffect(state = actionHazeState) {
+                        blurEffect {
+                            style = topBarHazeStyle
+                            progressive = HazeProgressive.verticalGradient(
+                                startIntensity = 1f,
+                                endIntensity = 0f,
+                            )
+                        }
                     }
                 )
             }

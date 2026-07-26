@@ -1,4 +1,4 @@
-package ru.fromchat.ui
+package ru.fromchat.ui.components
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -14,8 +14,8 @@ actual fun BackHandler(enabled: Boolean, onBack: () -> Unit) {
 
 @OptIn(ExperimentalForeignApi::class)
 @Composable
-actual fun rememberHapticFeedbackInternal(): (Int) -> Unit {
-    return remember {
+actual fun rememberHapticFeedbackInternal(): (Int) -> Unit =
+    remember {
         { ordinal ->
             val style: UIImpactFeedbackStyle = when (ordinal) {
                 HapticFeedbackEvent.MessageSent.ordinal -> UIImpactFeedbackStyle.UIImpactFeedbackStyleMedium
@@ -23,8 +23,6 @@ actual fun rememberHapticFeedbackInternal(): (Int) -> Unit {
                 HapticFeedbackEvent.SelectionModeEntered.ordinal -> UIImpactFeedbackStyle.UIImpactFeedbackStyleMedium
                 else -> UIImpactFeedbackStyle.UIImpactFeedbackStyleLight
             }
-            val generator = UIImpactFeedbackGenerator(style)
-            generator.impactOccurred()
+            UIImpactFeedbackGenerator(style).impactOccurred()
         }
     }
-}

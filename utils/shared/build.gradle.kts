@@ -16,6 +16,8 @@ kotlin {
         minSdk = 24
     }
 
+    jvm()
+
     listOf(
         iosArm64(),
         iosSimulatorArm64()
@@ -57,6 +59,13 @@ kotlin {
 
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
+            implementation(libs.kotlinx.datetime)
+            implementation(libs.multiplatform.settings)
+            implementation(libs.multiplatform.settings.coroutines)
+            implementation(libs.multiplatform.settings.serialization)
+        }
+
+        jvmMain.dependencies {
             implementation(libs.kotlinx.datetime)
             implementation(libs.multiplatform.settings)
             implementation(libs.multiplatform.settings.coroutines)

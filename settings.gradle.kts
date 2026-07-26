@@ -38,5 +38,5 @@ dependencyResolutionManagement {
     }
 }
 
-include(":app:shared", ":utils:shared", ":app:android")
+include(":app:shared", ":utils:shared", ":app:android", ":app:desktop")
  

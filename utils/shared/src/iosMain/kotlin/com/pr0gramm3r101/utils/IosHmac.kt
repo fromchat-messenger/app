@@ -8,7 +8,7 @@ import platform.CoreCrypto.CCHmac
 import platform.CoreCrypto.kCCHmacAlgSHA256
 
 @OptIn(ExperimentalForeignApi::class)
-internal fun iosHmacSha256(key: ByteArray, data: ByteArray): ByteArray {
+fun iosHmacSha256(key: ByteArray, data: ByteArray): ByteArray {
     val mac = ByteArray(32)
 
     key.usePinned { keyPinned ->
