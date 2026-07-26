@@ -10,6 +10,7 @@ val javafxModules = listOf("base", "graphics", "controls", "media", "web", "swin
 
 dependencies {
     implementation(compose.desktop.currentOs)
+    implementation(libs.compose.components.resources)
     implementation(project(":app:shared"))
     implementation(project(":utils:shared"))
     implementation(libs.kotlinx.coroutines.swing)
