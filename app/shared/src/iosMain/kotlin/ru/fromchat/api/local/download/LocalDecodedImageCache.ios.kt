@@ -1,6 +1,6 @@
 @file:OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 
-package ru.fromchat.api.local.cache
+package ru.fromchat.api.local.download
 
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
@@ -23,8 +23,6 @@ import platform.UIKit.UIGraphicsGetImageFromCurrentImageContext
 import platform.UIKit.UIImage
 import platform.UIKit.UIImageOrientation
 import platform.UIKit.UIImagePNGRepresentation
-import ru.fromchat.api.local.download.decodeImageBytes
-
 actual object PlatformDecodedBitmapCache {
     private val cache = mutableMapOf<String, ImageBitmap>()
 

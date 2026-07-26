@@ -67,11 +67,11 @@ import coil3.compose.AsyncImage
 import com.pr0gramm3r101.components.Category
 import com.pr0gramm3r101.components.ListItem
 import com.pr0gramm3r101.utils.currentDeviceInfo
-import dev.chrisbanes.haze.HazeProgressive
+import dev.chrisbanes.haze.blur.HazeProgressive
+import dev.chrisbanes.haze.blur.blurEffect
+import dev.chrisbanes.haze.blur.materials.HazeMaterials
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
-import dev.chrisbanes.haze.materials.HazeMaterials
 import dev.chrisbanes.haze.rememberHazeState
 import io.ktor.client.network.sockets.ConnectTimeoutException
 import io.ktor.client.network.sockets.SocketTimeoutException
@@ -363,13 +363,13 @@ private fun DeviceSessionDetailBottomSheet(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalHazeMaterialsApi::class,
+@OptIn(ExperimentalMaterial3Api::class,
     ExperimentalMaterial3ExpressiveApi::class
 )
 @Composable
 fun DevicesScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val hazeState = rememberHazeState(blurEnabled = true)
+    val hazeState = rememberHazeState()
 
     val snackbarHostState = remember { SnackbarHostState() }
     val initialCache = remember { Settings.readDeviceSessionsCache() }
@@ -430,6 +430,7 @@ fun DevicesScreen(onBack: () -> Unit) {
         contentWindowInsets = WindowInsets.navigationBars,
         snackbarHost = { FromChatSnackbarHost(hostState = snackbarHostState) },
         topBar = {
+            val topBarHazeStyle = HazeMaterials.thin()
             TopAppBar(
                 title = {},
                 navigationIcon = {
@@ -441,14 +442,14 @@ fun DevicesScreen(onBack: () -> Unit) {
                     containerColor = Color.Transparent,
                     scrolledContainerColor = Color.Transparent
                 ),
-                modifier = Modifier.hazeEffect(
-                    state = hazeState,
-                    style = HazeMaterials.thin()
-                ) {
-                    progressive = HazeProgressive.verticalGradient(
-                        startIntensity = 1f,
-                        endIntensity = 0f,
-                    )
+                modifier = Modifier.hazeEffect(state = hazeState) {
+                    blurEffect {
+                        style = topBarHazeStyle
+                        progressive = HazeProgressive.verticalGradient(
+                            startIntensity = 1f,
+                            endIntensity = 0f,
+                        )
+                    }
                 }
             )
         },

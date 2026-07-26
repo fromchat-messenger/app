@@ -93,10 +93,10 @@ import androidx.compose.ui.zIndex
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.blur.blurEffect
+import dev.chrisbanes.haze.blur.materials.HazeMaterials
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
-import dev.chrisbanes.haze.materials.HazeMaterials
 import dev.chrisbanes.haze.rememberHazeState
 import io.livekit.android.RoomOptions
 import io.livekit.android.compose.local.RoomScope
@@ -275,7 +275,6 @@ private fun CallSlotSharedVideo(
     }
 }
 
-@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 actual fun CallMediaLayer(
     connect: LiveKitConnectSession?,
@@ -551,7 +550,6 @@ actual fun CallMediaLayer(
     }
 }
 
-@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 private fun CallRoomContent(
     room: Room,
@@ -651,7 +649,7 @@ private fun CallRoomContent(
     val participants = rememberParticipants(room).value
     val local = room.localParticipant
     val remote: Participant? = participants.firstOrNull { it != local }
-    val hazeState = rememberHazeState(blurEnabled = showInCallControls)
+    val hazeState = rememberHazeState()
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -1179,7 +1177,7 @@ private fun CallPreviewCluster(
     }
 }
 
-@OptIn(ExperimentalSharedTransitionApi::class, ExperimentalHazeMaterialsApi::class)
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 private fun PreviewTile(
     room: Room,
@@ -1198,7 +1196,7 @@ private fun PreviewTile(
     val tileShape = RoundedCornerShape(16.dp)
     // Only blur the *tile content* when the track isn't available yet.
     // Do not blur the whole call scene; otherwise the opponent video stays blurred.
-    val hazeState = rememberHazeState(blurEnabled = ref == null || !showVideo)
+    val hazeState = rememberHazeState()
     Box(
         modifier = Modifier
             .size(104.dp, 138.dp)
@@ -1223,11 +1221,16 @@ private fun PreviewTile(
                 innerClipShape = tileShape,
             )
         } else {
+            val placeholderHazeStyle = HazeMaterials.thick()
             Box(
                 Modifier
                     .fillMaxSize()
                     // Placeholder blur only for missing/disabled track.
-                    .hazeEffect(state = hazeState, style = HazeMaterials.thick())
+                    .hazeEffect(state = hazeState) {
+                        blurEffect {
+                            style = placeholderHazeStyle
+                        }
+                    }
                     .background(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.55f)),
             )
         }
@@ -1246,7 +1249,6 @@ private fun PreviewTile(
     }
 }
 
-@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 private fun CallInlineControlBar(
     room: Room,
@@ -1327,11 +1329,16 @@ private fun CallInlineControlBar(
         modifier = modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center,
     ) {
+        val controlsHazeStyle = HazeMaterials.thick()
         Box(
             modifier = Modifier
                 .fillMaxWidth(0.86f)
                 .clip(RoundedCornerShape(28.dp))
-                .hazeEffect(state = hazeState, style = HazeMaterials.thick())
+                .hazeEffect(state = hazeState) {
+                    blurEffect {
+                        style = controlsHazeStyle
+                    }
+                }
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.48f)),
         ) {
         Row(

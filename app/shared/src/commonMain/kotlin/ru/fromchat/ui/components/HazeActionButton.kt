@@ -12,30 +12,37 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.blur.HazeBlurStyle
+import dev.chrisbanes.haze.blur.HazeProgressive
+import dev.chrisbanes.haze.blur.blurEffect
+import dev.chrisbanes.haze.blur.materials.HazeMaterials
 import dev.chrisbanes.haze.hazeEffect
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
-import dev.chrisbanes.haze.materials.HazeMaterials
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 
-@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 fun HazeBottomBar(
     hazeState: HazeState,
     modifier: Modifier = Modifier,
-    hazeStyle: HazeStyle? = null,
+    hazeStyle: HazeBlurStyle? = null,
     content: @Composable () -> Unit,
 ) {
+    val resolvedStyle = hazeStyle ?: HazeMaterials.thin()
     val effectModifier = if (hazeStyle != null) {
-        Modifier.hazeEffect(state = hazeState, style = hazeStyle)
+        Modifier.hazeEffect(state = hazeState) {
+            blurEffect {
+                style = resolvedStyle
+            }
+        }
     } else {
-        Modifier.hazeEffect(state = hazeState, style = HazeMaterials.thin()) {
-            progressive = HazeProgressive.verticalGradient(
-                startIntensity = 0f,
-                endIntensity = 1f,
-            )
+        Modifier.hazeEffect(state = hazeState) {
+            blurEffect {
+                style = resolvedStyle
+                progressive = HazeProgressive.verticalGradient(
+                    startIntensity = 0f,
+                    endIntensity = 1f,
+                )
+            }
         }
     }
     Column(
@@ -57,14 +64,13 @@ fun HazeBottomBar(
     }
 }
 
-@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 fun HazeActionButton(
     onClick: () -> Unit,
     hazeState: HazeState,
     modifier: Modifier = Modifier,
     innerModifier: Modifier = Modifier,
-    hazeStyle: HazeStyle? = null,
+    hazeStyle: HazeBlurStyle? = null,
     enabled: Boolean = true,
     loading: Boolean = false,
     interactionSource: MutableInteractionSource? = null,

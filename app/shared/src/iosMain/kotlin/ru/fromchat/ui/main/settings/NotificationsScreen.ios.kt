@@ -11,6 +11,6 @@ actual fun openAppNotificationSettings(): Boolean {
     return UIApplication.sharedApplication.openURL(url)
 }
 
-actual fun areAppNotificationsEnabled(): Boolean {
-    return true
-}
+actual fun areAppNotificationsEnabled(): Boolean = false
+
+actual fun arePushNotificationsSupported(): Boolean = false

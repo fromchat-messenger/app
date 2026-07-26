@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
+import kotlinx.coroutines.runBlocking
 import kotlin.time.Clock
 import kotlin.time.Instant
 
@@ -52,8 +53,6 @@ object AppLogStore {
     private var loadedFromDisk = false
     private var nextEntryId = 0L
 
-    private val writeLock = Any()
-
     fun record(
         level: AppLogLevel,
         tag: String,
@@ -68,8 +67,14 @@ object AppLogStore {
             message = message,
             stackTrace = throwable?.stackTraceToString(),
         )
-        synchronized(writeLock) {
-            appendEntry(entry)
+        if (mutex.tryLock()) {
+            try {
+                appendEntry(entry)
+            } finally {
+                mutex.unlock()
+            }
+        } else {
+            runBlocking { mutex.withLock { appendEntry(entry) } }
         }
     }
 

@@ -59,10 +59,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.graphics.Color
 import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.blur.blurEffect
+import dev.chrisbanes.haze.blur.materials.HazeMaterials
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
-import dev.chrisbanes.haze.materials.HazeMaterials
 import dev.chrisbanes.haze.rememberHazeState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -340,20 +340,23 @@ private fun chatsTopAppBarColors(blurReveal: Float) = TopAppBarDefaults.topAppBa
     scrolledContainerColor = Color.Transparent,
 )
 
-@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 private fun ChatsTopBarHazeBackdrop(
     hazeState: HazeState,
     blurReveal: Float,
+    blurEnabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val topBarHazeStyle = HazeMaterials.thin()
     Box(
         modifier = modifier
             .graphicsLayer { alpha = blurReveal.coerceIn(0f, 1f) }
-            .hazeEffect(
-                state = hazeState,
-                style = HazeMaterials.thin(),
-            ),
+            .hazeEffect(state = hazeState) {
+                blurEffect {
+                    this.blurEnabled = blurEnabled
+                    style = topBarHazeStyle
+                }
+            },
     )
 }
 
@@ -518,7 +521,7 @@ private fun ChatsSelectionTopBar(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalHazeMaterialsApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatsTab(
     isVisible: Boolean = true,
@@ -573,7 +576,7 @@ fun ChatsTab(
     val publicChatProfile = publicChatProfileFromFlow ?: publicChatProfileFromDisk
     val searchBarHint = stringResource(Res.string.search_title)
     val tabListState = rememberLazyListState()
-    val topChromeHazeState = rememberHazeState(blurEnabled = isVisible)
+    val topChromeHazeState = rememberHazeState()
     val statusMap by UserStatusStore.status.collectAsState()
     var subscribedDmUserIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
     val statusSubscriptionScope = rememberCoroutineScope()
@@ -1032,6 +1035,7 @@ fun ChatsTab(
                 ChatsTopBarHazeBackdrop(
                     hazeState = topChromeHazeState,
                     blurReveal = topBarBlurReveal,
+                    blurEnabled = isVisible,
                     modifier = Modifier.matchParentSize(),
                 )
                 Box(modifier = Modifier.fillMaxWidth()) {

@@ -44,6 +44,7 @@ import ru.fromchat.settings_notifications_permission_required
 import ru.fromchat.settings_notifications_title
 import ru.fromchat.settings_push_notifications
 import ru.fromchat.settings_push_notifications_d
+import ru.fromchat.settings_push_notifications_unavailable
 import ru.fromchat.ui.components.FromChatSnackbarHost
 import ru.fromchat.ui.components.Text
 
@@ -84,48 +85,58 @@ fun NotificationsScreen(onBack: () -> Unit) {
             Category(
                 modifier = Modifier.padding(top = 16.dp)
             ) {
-                SwitchListItem(
-                    headline = stringResource(Res.string.settings_push_notifications),
-                    supportingText = stringResource(Res.string.settings_push_notifications_d),
-                    leadingContent = {
-                        Icon(Icons.Filled.Notifications, null)
-                    },
-                    checked = notificationsEnabled,
-                    onCheckedChange = { enabled ->
-                        coroutineScope.launch {
-                            if (enabled) {
-                                if (!areAppNotificationsEnabled()) {
-                                    if (!openAppNotificationSettings()) {
-                                        snackbarHostState.showSnackbar(message = unexpectedErrorText)
-                                    } else {
-                                        snackbarHostState.showSnackbar(message = notificationsPermissionText)
+                if (arePushNotificationsSupported()) {
+                    SwitchListItem(
+                        headline = stringResource(Res.string.settings_push_notifications),
+                        supportingText = stringResource(Res.string.settings_push_notifications_d),
+                        leadingContent = {
+                            Icon(Icons.Filled.Notifications, null)
+                        },
+                        checked = notificationsEnabled,
+                        onCheckedChange = { enabled ->
+                            coroutineScope.launch {
+                                if (enabled) {
+                                    if (!areAppNotificationsEnabled()) {
+                                        if (!openAppNotificationSettings()) {
+                                            snackbarHostState.showSnackbar(message = unexpectedErrorText)
+                                        } else {
+                                            snackbarHostState.showSnackbar(message = notificationsPermissionText)
+                                        }
+                                        return@launch
                                     }
-                                    return@launch
-                                }
 
-                                val registered = ensureFcmTokenRegistered()
-                                if (registered) {
-                                    notificationsEnabled = true
+                                    val registered = ensureFcmTokenRegistered()
+                                    if (registered) {
+                                        notificationsEnabled = true
+                                    } else {
+                                        snackbarHostState.showSnackbar(message = unexpectedErrorText)
+                                    }
                                 } else {
-                                    snackbarHostState.showSnackbar(message = unexpectedErrorText)
+                                    unregisterFcmTokenFromServer()
+                                    notificationsEnabled = false
                                 }
-                            } else {
-                                unregisterFcmTokenFromServer()
-                                notificationsEnabled = false
                             }
-                        }
-                    },
-                    divider = true
-                )
+                        },
+                        divider = true
+                    )
 
-                ListItem(
-                    headline = stringResource(Res.string.settings_notification_settings),
-                    supportingText = stringResource(Res.string.settings_notification_settings_d),
-                    leadingContent = {
-                        Icon(Icons.Filled.Settings, null)
-                    },
-                    onClick = { openAppNotificationSettings() }
-                )
+                    ListItem(
+                        headline = stringResource(Res.string.settings_notification_settings),
+                        supportingText = stringResource(Res.string.settings_notification_settings_d),
+                        leadingContent = {
+                            Icon(Icons.Filled.Settings, null)
+                        },
+                        onClick = { openAppNotificationSettings() }
+                    )
+                } else {
+                    ListItem(
+                        headline = stringResource(Res.string.settings_push_notifications),
+                        supportingText = stringResource(Res.string.settings_push_notifications_unavailable),
+                        leadingContent = {
+                            Icon(Icons.Filled.Notifications, null)
+                        },
+                    )
+                }
             }
         }
     }
@@ -141,3 +152,6 @@ expect fun openAppNotificationSettings(): Boolean
  * Returns true when notifications are currently enabled for this app, including runtime permission.
  */
 expect fun areAppNotificationsEnabled(): Boolean
+
+/** False on platforms without push delivery (e.g. iOS without APNs). */
+expect fun arePushNotificationsSupported(): Boolean

@@ -41,3 +41,5 @@ actual fun areAppNotificationsEnabled(): Boolean {
         true
     }
 }
+
+actual fun arePushNotificationsSupported(): Boolean = true

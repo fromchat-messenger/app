@@ -169,7 +169,7 @@ build_ios() {
     substep "Xcode Archiving..."
     rm -rf "$BUILD_DIR/ios" && mkdir -p "$BUILD_DIR/ios"
     if ! xcodebuild -project "$IOS_PROJECT_DIR/iosApp.xcodeproj" \
-        -scheme iOS \
+        -scheme iosApp \
         -configuration Release \
         -sdk iphoneos \
         -destination 'generic/platform=iOS' \

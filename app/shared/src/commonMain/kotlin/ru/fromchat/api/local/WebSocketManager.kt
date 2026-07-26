@@ -29,6 +29,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import ru.fromchat.AppForeground
+import ru.fromchat.keepWebSocketAliveInBackground
 import ru.fromchat.Logger
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.UpdateSyncManager
@@ -117,6 +118,7 @@ object WebSocketManager {
     }
 
     private suspend fun awaitForeground() {
+        if (keepWebSocketAliveInBackground()) return
         if (AppForeground.isInForeground.value) return
         AppForeground.isInForeground.first { it }
     }
@@ -369,7 +371,7 @@ object WebSocketManager {
     }
 
     fun onNetworkAvailable() {
-        if (!AppForeground.isInForeground.value) return
+        if (!keepWebSocketAliveInBackground() && !AppForeground.isInForeground.value) return
 
         val now = Clock.System.now().toEpochMilliseconds()
         val prev = lastOnNetworkAvailableWallMs
@@ -393,7 +395,7 @@ object WebSocketManager {
      * Restarts the reconnect loop immediately instead of waiting out exponential backoff.
      */
     fun onServerLikelyReachable() {
-        if (!AppForeground.isInForeground.value) return
+        if (!keepWebSocketAliveInBackground() && !AppForeground.isInForeground.value) return
         if (session != null) return
         if (ApiClient.token.isNullOrEmpty()) return
 

@@ -2,21 +2,28 @@ package ru.fromchat.logging
 
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.UByteVar
+import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.allocArray
 import kotlinx.cinterop.convert
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
-import kotlinx.cinterop.sizeOf
 import kotlinx.cinterop.toCValues
+import kotlinx.cinterop.usePinned
+import kotlinx.cinterop.value
+import platform.posix.memcpy
 import platform.zlib.Z_DEFAULT_COMPRESSION
 import platform.zlib.compress2
+import platform.zlib.uLongVar
 
 @OptIn(ExperimentalForeignApi::class)
 internal actual fun gzipCompress(input: ByteArray): ByteArray {
     if (input.isEmpty()) {
-        return byteArrayOf(0x1f, 0x8b.toByte(), 0x08, 0x00, 0, 0, 0, 0, 0, 0x03, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+        return byteArrayOf(
+            0x1f, 0x8b.toByte(), 0x08, 0x00, 0, 0, 0, 0, 0, 0x03,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        )
     }
 
     val header = byteArrayOf(
@@ -50,34 +57,42 @@ internal actual fun gzipCompress(input: ByteArray): ByteArray {
 }
 
 @OptIn(ExperimentalForeignApi::class)
-private fun deflateRaw(input: ByteArray): ByteArray = memScoped {
-    if (input.isEmpty()) return@memScoped ByteArray(0)
+private fun deflateRaw(input: ByteArray): ByteArray {
+    if (input.isEmpty()) return ByteArray(0)
 
-    var capacity = (input.size + (input.size / 10) + 12).coerceAtLeast(64)
-    while (true) {
-        val output = allocArray<UByteVar>(capacity)
-        val source = input.toUByteArray().toCValues()
-        val sourceLength = input.size.convert<platform.zlib.uLong>()
-        val destLength = alloc<platform.zlib.uLongVar>()
-        destLength.value = capacity.convert()
+    return memScoped {
+        var capacity = (input.size + (input.size / 10) + 12).coerceAtLeast(64)
+        while (true) {
+            val output = allocArray<UByteVar>(capacity)
+            val source = input.toUByteArray().toCValues()
+            val sourceLength = input.size.convert<platform.zlib.uLong>()
+            val destLength = alloc<uLongVar>()
+            destLength.value = capacity.convert()
 
-        val status = compress2(
-            output,
-            destLength.ptr,
-            source.ptr.reinterpret(),
-            sourceLength,
-            Z_DEFAULT_COMPRESSION,
-        )
+            val status = compress2(
+                output,
+                destLength.ptr,
+                source.ptr.reinterpret(),
+                sourceLength,
+                Z_DEFAULT_COMPRESSION,
+            )
 
-        if (status == 0) {
-            val size = destLength.value.toInt()
-            return@memScoped ByteArray(size) { index -> output[index].toByte() }
+            if (status == 0) {
+                val size = destLength.value.toInt()
+                val result = ByteArray(size)
+                result.usePinned { pinned ->
+                    memcpy(pinned.addressOf(0), output, size.convert())
+                }
+                return@memScoped result
+            }
+
+            capacity *= 2
+            if (capacity > input.size * 20) {
+                return@memScoped input
+            }
         }
-
-        capacity *= 2
-        if (capacity > input.size * 20) {
-            return@memScoped input
-        }
+        @Suppress("UNREACHABLE_CODE")
+        ByteArray(0)
     }
 }
 

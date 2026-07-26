@@ -79,11 +79,11 @@ import ru.fromchat.utils.rememberRegistrationDateFormatStrings
 import com.pr0gramm3r101.utils.resetFocus
 import com.pr0gramm3r101.utils.supportClipboardManagerImpl
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeProgressive
+import dev.chrisbanes.haze.blur.HazeProgressive
+import dev.chrisbanes.haze.blur.blurEffect
+import dev.chrisbanes.haze.blur.materials.HazeMaterials
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
-import dev.chrisbanes.haze.materials.HazeMaterials
 import dev.chrisbanes.haze.rememberHazeState
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
@@ -157,7 +157,7 @@ import ru.fromchat.utils.rememberLastSeenFormatStrings
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalHazeMaterialsApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
     panel: ChatPanel,
@@ -426,9 +426,8 @@ fun ChatScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     val profileUserId = panelState.profileUserId
-    val hazeState = rememberHazeState(
-        blurEnabled = !(panelState.isLoading && panelState.messages.isEmpty())
-    )
+    val hazeState = rememberHazeState()
+    val hazeBlurEnabled = !(panelState.isLoading && panelState.messages.isEmpty())
 
     val currentTypingUsers = panelState.typingUsers // Directly use from panelState
     val statusMap by UserStatusStore.status.collectAsState()
@@ -816,16 +815,21 @@ fun ChatScreen(
             // floating header Box only; avoids extra top inset on the fade / list and duplicate “padding”.
             contentWindowInsets = WindowInsets.navigationBars,
             bottomBar = {
+                val bottomBarHazeStyle = HazeMaterials.thin()
                 Column(
                     modifier = Modifier
                         .windowInsetsPadding(WindowInsets.ime)
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.surfaceContainer)
-                        .hazeEffect(state = hazeState, style = HazeMaterials.thin()) {
-                            progressive = HazeProgressive.verticalGradient(
-                                startIntensity = 0f,
-                                endIntensity = 1f,
-                            )
+                        .hazeEffect(state = hazeState) {
+                            blurEffect {
+                                blurEnabled = hazeBlurEnabled
+                                style = bottomBarHazeStyle
+                                progressive = HazeProgressive.verticalGradient(
+                                    startIntensity = 0f,
+                                    endIntensity = 1f,
+                                )
+                            }
                         }
                 ) {
                     if (peerDeleted && dmRecipientId != null) {
@@ -1045,6 +1049,7 @@ fun ChatScreen(
                         hazeState = hazeState,
                         supportsAttachments = panel.supportsAttachments,
                         isReadOnly = isReadOnly,
+                        hazeBlurEnabled = hazeBlurEnabled,
                         onReadOnlyMessageClick = {
                             if (isReadOnly) {
                                 showSuspendedSupportSheet = true
@@ -1383,11 +1388,13 @@ fun ChatScreen(
                                 },
                                 contentDescription = scrollToBottomCd,
                                 hazeState = hazeState,
+                                hazeBlurEnabled = hazeBlurEnabled,
                             )
                         }
 
                         ChatTopBar(
                             hazeState = hazeState,
+                            hazeBlurEnabled = hazeBlurEnabled,
                             onBack = {
                                 runNav { navController.navigateUp() }
                             },
@@ -1583,6 +1590,7 @@ private fun ChatScrollToBottomButton(
     contentDescription: String,
     hazeState: HazeState,
     modifier: Modifier = Modifier,
+    hazeBlurEnabled: Boolean = true,
 ) {
     val hazeStyle = rememberChatSurfaceContainerHazeStyle()
     Box(
@@ -1598,7 +1606,12 @@ private fun ChatScrollToBottomButton(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.91f))
-                .hazeEffect(state = hazeState, style = hazeStyle),
+                .hazeEffect(state = hazeState) {
+                    blurEffect {
+                        blurEnabled = hazeBlurEnabled
+                        style = hazeStyle
+                    }
+                },
         )
         Icon(
             imageVector = Icons.Rounded.KeyboardArrowDown,

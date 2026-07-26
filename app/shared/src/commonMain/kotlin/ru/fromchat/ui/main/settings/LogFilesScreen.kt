@@ -707,6 +707,7 @@ private fun formatLogFileSize(sizeBytes: Long): String {
     if (sizeBytes < 1024 * 1024) {
         return stringResource(Res.string.logs_file_size_kb, kb)
     }
-    val megabytes = "%.1f".format(sizeBytes / (1024f * 1024f))
+    val mb = sizeBytes / (1024.0 * 1024.0)
+    val megabytes = ((kotlin.math.round(mb * 10.0) / 10.0)).toString()
     return stringResource(Res.string.logs_file_size_mb, megabytes)
 }

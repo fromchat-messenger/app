@@ -2,14 +2,14 @@ Read in other languages: [Русский](./README.md)
 
 # FromChat
 
-FromChat is a 100% free and open-source messenger. This repository is the cross-platform client (Android + iOS; iOS is not ready yet).
+FromChat is a 100% free and open-source messenger. This repository is the cross-platform client (Android, Desktop via Compose Multiplatform, and iOS).
 
 [📥 Download](https://github.com/fromchat-messenger/android/releases/latest) • [💬 Telegram Channel](https://t.me/fromchat_ch) • [🖥️ Server](https://github.com/fromchat-messenger/backend)
 
 ## ✨ Features
 
 - **Voice and video calls** — LiveKit
-- **Screen sharing** during calls
+- **Screen sharing** during calls (Android)
 - **Public chat** — server-wide community
 - **Direct messages** — legal encryption scheme; server-side E2EE planned
 - **Device management** — active sessions
@@ -18,15 +18,16 @@ FromChat is a 100% free and open-source messenger. This repository is the cross-
 
 ## 📊 Client Comparison
 
-⚠️ **iOS is temporarily not supported** (Apple constraints and development cost). It will ship later.
+| Feature | Android | Desktop | Web | iOS |
+| --- | --- | --- | --- | --- |
+| **Messaging and profiles** | ✅ | ✅ | ✅ | ✅ |
+| **Voice/video calls** | ✅ | ✅ | ✅ | ✅ |
+| **Screen sharing** | ✅ | ❌ | ✅ | ❌ |
+| **Push when backgrounded** | ✅ (FCM) | ✅ (persistent WS + tray) | ✅ | ❌ (WS while open) |
+| **Message reactions** | ❌ | ❌ | ✅ | ❌ |
+| **Rich attachment support** | ✅ | ✅ | ❌ | ✅ |
 
-| Feature | Android | Web | iOS |
-| --- | --- | --- | --- |
-| **Messaging and profiles** | ✅ | ✅ | ❌ |
-| **Voice/video calls** | ✅ | ✅ | ❌ |
-| **Screen sharing** | ✅ | ✅ | ❌ |
-| **Message reactions** | ❌ | ✅ | ❌ |
-| **Rich attachment support** | ✅ | ❌ | ❌ |
+Desktop replaces the former Electron client in the Web repo. Run with `./gradlew :app:desktop:run`.
 
 ---
 

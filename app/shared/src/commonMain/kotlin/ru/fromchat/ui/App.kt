@@ -11,9 +11,13 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -24,6 +28,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NamedNavArgument
@@ -33,6 +38,7 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import coil3.ImageLoader
@@ -41,8 +47,11 @@ import coil3.network.ktor3.KtorNetworkFetcherFactory
 import coil3.svg.SvgDecoder
 import ru.fromchat.api.ApiClient
 import com.pr0gramm3r101.utils.LocalSystemBarsVisibility
+import com.pr0gramm3r101.utils.WindowWidthSizeClass
+import com.pr0gramm3r101.utils.currentWindowAdaptiveInfo
 import com.pr0gramm3r101.utils.navigateAndWipeBackStack
 import com.pr0gramm3r101.utils.rememberSystemBarsController
+import com.pr0gramm3r101.utils.widthSizeClass
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -55,6 +64,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import ru.fromchat.AppForeground
 import ru.fromchat.Logger
+import ru.fromchat.keepWebSocketAliveInBackground
 import ru.fromchat.api.DeferredStartupNetwork
 import ru.fromchat.api.ProfileUpdateSync
 import ru.fromchat.api.PublicChatProfileSync
@@ -115,6 +125,10 @@ import ru.fromchat.ui.components.ScreenSurface
 import ru.fromchat.utils.NetworkConnectivity
 
 val LocalNavController = compositionLocalOf<NavController> { error("NavController not provided") }
+
+private fun isConversationChatRoute(route: String?): Boolean =
+    route == PublicChatNav.CHAT_ROUTE ||
+        (route != null && route.startsWith("dm/") && "/chat" in route)
 
 private val rootNavTween = tween<Float>(durationMillis = 250, easing = FastOutSlowInEasing)
 
@@ -281,9 +295,14 @@ fun App(
     }
 
     // Foreground → WebSocket reconnect; background → pause reconnect attempts (see [WebSocketManager]).
+    // Desktop keeps the socket alive while the process runs (tray / hidden window).
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         fun syncForeground() {
+            if (keepWebSocketAliveInBackground()) {
+                AppForeground.setForeground(true)
+                return
+            }
             AppForeground.setForeground(
                 lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
             )
@@ -301,7 +320,11 @@ fun App(
                         }
                     }
                 }
-                Lifecycle.Event.ON_STOP -> AppForeground.setForeground(false)
+                Lifecycle.Event.ON_STOP -> {
+                    if (!keepWebSocketAliveInBackground()) {
+                        AppForeground.setForeground(false)
+                    }
+                }
                 else -> {}
             }
         }
@@ -413,16 +436,37 @@ fun App(
                 LocalSystemBarsVisibility provides rememberSystemBarsController()
             ) {
                 if (startDestination != null) {
+                    val currentEntry by navController.currentBackStackEntryAsState()
+                    val showConversationListDetail =
+                        currentWindowAdaptiveInfo().widthSizeClass == WindowWidthSizeClass.EXPANDED &&
+                            isConversationChatRoute(currentEntry?.destination?.route)
+
                     ScreenSurface {
                         Box(Modifier.fillMaxSize()) {
-                            NavHost(
-                            navController = navController,
-                            startDestination = startDestination!!,
-                            enterTransition = { rootNavEnterTransition() },
-                            exitTransition = { rootNavExitTransition() },
-                            popEnterTransition = { rootNavPopEnterTransition() },
-                            popExitTransition = { rootNavPopExitTransition() },
-                        ) {
+                            Row(Modifier.fillMaxSize()) {
+                                if (showConversationListDetail) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(360.dp)
+                                            .fillMaxHeight(),
+                                    ) {
+                                        MainScreen(
+                                            sharedTransitionScope = this@SharedTransitionLayout,
+                                            snackbarHostState = profileLookupSnackbarHostState,
+                                            listPaneOnly = true,
+                                        )
+                                    }
+                                    VerticalDivider()
+                                }
+                                Box(Modifier.weight(1f).fillMaxSize()) {
+                                    NavHost(
+                                        navController = navController,
+                                        startDestination = startDestination!!,
+                                        enterTransition = { rootNavEnterTransition() },
+                                        exitTransition = { rootNavExitTransition() },
+                                        popEnterTransition = { rootNavPopEnterTransition() },
+                                        popExitTransition = { rootNavPopExitTransition() },
+                                    ) {
                             composable("serverConfig") {
                                 ServerConfigScreen()
                             }
@@ -574,7 +618,7 @@ fun App(
                                 ),
                             ) { entry ->
                                 val focusField = EditProfileFocusField.fromArg(
-                                    entry.arguments?.getString(ProfileRoutes.ARG_FOCUS),
+                                    entry.savedStateHandle.get<String>(ProfileRoutes.ARG_FOCUS),
                                 )
                                 EditProfileScreen(
                                     onBack = { navController.navigateUp() },
@@ -733,8 +777,10 @@ fun App(
                                 ApiClient.onAuthError = null
                             }
                         }
+                                }
+                            }
 
-                        CallOverlay(Modifier.fillMaxSize())
+                            CallOverlay(Modifier.fillMaxSize())
                         }
                     }
                 }
