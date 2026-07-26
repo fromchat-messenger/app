@@ -149,6 +149,7 @@ import ru.fromchat.ui.chat.utils.imageAttachmentKey
 import ru.fromchat.ui.chat.utils.visibleMessageIdsInChatList
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.SuspendedAccountSupportSheet
+import ru.fromchat.ui.extraStatusBars
 import ru.fromchat.utils.NetworkConnectivity
 import ru.fromchat.utils.formatLastSeen
 import ru.fromchat.utils.haptic.HapticFeedbackEvent
@@ -1060,8 +1061,9 @@ fun ChatScreen(
                 }
             }
         ) { innerPadding ->
-            val density = LocalDensity.current
-            val statusBarTopDp = with(density) { WindowInsets.statusBars.getTop(this).toDp() }
+            val statusBarTopDp = with(density) {
+                WindowInsets.extraStatusBars.getTop(this).toDp()
+            }
             val floatingHeaderClearance =
                 statusBarTopDp + 64.dp + 12.dp + ChatFloatingHeaderBottomArcRadius
             SideEffect {

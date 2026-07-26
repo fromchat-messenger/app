@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.rounded.ErrorOutline
@@ -45,8 +46,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
@@ -77,6 +82,7 @@ import ru.fromchat.message_edited_suffix
 import ru.fromchat.message_reply_jump_cd
 import ru.fromchat.message_reply_photo
 import ru.fromchat.message_send_failed
+import ru.fromchat.supportsMouseMessageInteraction
 import ru.fromchat.ui.chat.utils.imageAspectRatioForMessage
 import ru.fromchat.ui.chat.utils.imageAttachmentKey
 import ru.fromchat.ui.components.Text
@@ -246,7 +252,14 @@ fun MessageItem(
     var replyPressed by remember(message.id) { mutableStateOf(false) }
     var rowLayoutCoords by remember(message.id) { mutableStateOf<LayoutCoordinates?>(null) }
     var bubbleContentCoords by remember(message.id) { mutableStateOf<LayoutCoordinates?>(null) }
-    val scaleTarget = if (isPressed && !isContextMenuForThisMessage && !isContextMenuOpen) 0.96f else 1f
+    LaunchedEffect(isContextMenuForThisMessage) {
+        if (!isContextMenuForThisMessage) isPressed = false
+    }
+    val scaleTarget = when {
+        isContextMenuForThisMessage -> 0.96f
+        isPressed && !isContextMenuOpen -> 0.96f
+        else -> 1f
+    }
     val avatarScaleTarget = if (avatarPressed && !isContextMenuOpen) 0.96f else 1f
     val replyScaleTarget = if (replyPressed && !isContextMenuOpen) 0.96f else 1f
     val scale by animateFloatAsState(
@@ -455,26 +468,47 @@ fun MessageItem(
             )
         }
 
+        val mouseMessageUi = supportsMouseMessageInteraction()
+
         val rowLongPress =
             if (isContextMenuOpen) Modifier
-            else Modifier.pointerInput(message.id, onLongPress) {
-                detectTapGestures(
-                    onPress = {
-                        isPressed = true
-                        try {
-                            awaitRelease()
-                        } finally {
-                            isPressed = false
+            else Modifier.pointerInput(message.id, onLongPress, mouseMessageUi) {
+                if (mouseMessageUi) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Main)
+                            if (event.type == PointerEventType.Press &&
+                                event.buttons.isSecondaryPressed
+                            ) {
+                                event.changes.forEach { it.consume() }
+                                val local = event.changes.firstOrNull()?.position ?: continue
+                                val coords = rowLayoutCoords
+                                if (coords != null && coords.isAttached) {
+                                    onTapPosition(coords.localToRoot(local))
+                                }
+                                onLongPress()
+                            }
                         }
-                    },
-                    onLongPress = { localOffset ->
-                        val coords = rowLayoutCoords
-                        if (coords != null && coords.isAttached) {
-                            onTapPosition(coords.localToRoot(localOffset))
-                        }
-                        onLongPress()
-                    },
-                )
+                    }
+                } else {
+                    detectTapGestures(
+                        onPress = {
+                            isPressed = true
+                            try {
+                                awaitRelease()
+                            } finally {
+                                isPressed = false
+                            }
+                        },
+                        onLongPress = { localOffset ->
+                            val coords = rowLayoutCoords
+                            if (coords != null && coords.isAttached) {
+                                onTapPosition(coords.localToRoot(localOffset))
+                            }
+                            onLongPress()
+                        },
+                    )
+                }
             }
 
         Row(
@@ -580,25 +614,48 @@ fun MessageItem(
                         if (isContextMenuOpen) Modifier
                         else Modifier
                             .onGloballyPositioned { bubbleContentCoords = it }
-                            .pointerInput(message.id, onBubbleTap, onLongPress) {
-                                detectTapGestures(
-                                    onPress = {
-                                        isPressed = true
-                                        try {
-                                            awaitRelease()
-                                        } finally {
-                                            isPressed = false
+                            .pointerInput(message.id, onBubbleTap, onLongPress, mouseMessageUi) {
+                                if (mouseMessageUi) {
+                                    awaitPointerEventScope {
+                                        while (true) {
+                                            val event = awaitPointerEvent(PointerEventPass.Main)
+                                            when {
+                                                event.type == PointerEventType.Press &&
+                                                    event.buttons.isSecondaryPressed -> {
+                                                    event.changes.forEach { it.consume() }
+                                                    val local =
+                                                        event.changes.firstOrNull()?.position
+                                                            ?: continue
+                                                    val coords = bubbleContentCoords
+                                                    if (coords != null && coords.isAttached) {
+                                                        onTapPosition(coords.localToRoot(local))
+                                                    }
+                                                    isPressed = true
+                                                    onLongPress()
+                                                }
+                                            }
                                         }
-                                    },
-                                    onTap = { onBubbleTap?.invoke() },
-                                    onLongPress = { localOffset ->
-                                        val coords = bubbleContentCoords
-                                        if (coords != null && coords.isAttached) {
-                                            onTapPosition(coords.localToRoot(localOffset))
-                                        }
-                                        onLongPress()
-                                    },
-                                )
+                                    }
+                                } else {
+                                    detectTapGestures(
+                                        onPress = {
+                                            isPressed = true
+                                            try {
+                                                awaitRelease()
+                                            } finally {
+                                                isPressed = false
+                                            }
+                                        },
+                                        onTap = { onBubbleTap?.invoke() },
+                                        onLongPress = { localOffset ->
+                                            val coords = bubbleContentCoords
+                                            if (coords != null && coords.isAttached) {
+                                                onTapPosition(coords.localToRoot(localOffset))
+                                            }
+                                            onLongPress()
+                                        },
+                                    )
+                                }
                             }
 
                     Box {
@@ -1021,12 +1078,23 @@ fun MessageItem(
                                             !isCorrupted &&
                                             !isFilenameOnlyMessageCaption(message)
                                         ) {
-                                            Text(
-                                                text = message.content,
-                                                style = MaterialTheme.typography.bodyLarge,
-                                                color = contentColor,
-                                                modifier = Modifier.padding(horizontal = 14.dp)
-                                            )
+                                            if (mouseMessageUi) {
+                                                SelectionContainer {
+                                                    Text(
+                                                        text = message.content,
+                                                        style = MaterialTheme.typography.bodyLarge,
+                                                        color = contentColor,
+                                                        modifier = Modifier.padding(horizontal = 14.dp)
+                                                    )
+                                                }
+                                            } else {
+                                                Text(
+                                                    text = message.content,
+                                                    style = MaterialTheme.typography.bodyLarge,
+                                                    color = contentColor,
+                                                    modifier = Modifier.padding(horizontal = 14.dp)
+                                                )
+                                            }
                                         }
                                             }
                                         }

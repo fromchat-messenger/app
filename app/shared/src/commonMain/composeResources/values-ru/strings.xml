@@ -63,6 +63,7 @@
     <string name="auth_yandex_client_mismatch">Сервер вернул неожиданный идентификатор приложения Яндекса. Обновите приложение или обратитесь в поддержку.</string>
     <string name="auth_yandex_failed">Вход через Яндекс ID отменён или не удался.</string>
     <string name="chats">Чаты</string>
+    <string name="select_chat_placeholder">Выберите чат, чтобы начать переписку</string>
     <string name="contacts">Контакты</string>
     <string name="profile">Профиль</string>
     <string name="dms">Личные чаты</string>
