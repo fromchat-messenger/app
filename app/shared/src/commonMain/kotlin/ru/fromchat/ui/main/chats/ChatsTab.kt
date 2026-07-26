@@ -541,6 +541,7 @@ fun ChatsTab(
     chatContextMenuOverlay: ChatContextMenuOverlayController,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
+    enterSelectionRequestId: Long = 0L,
 ) {
     val navController = LocalNavController.current
     val clipboard = supportClipboardManagerImpl
@@ -625,6 +626,8 @@ fun ChatsTab(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var pendingDeleteUserIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
 
+    var hadNonEmptySelection by remember { mutableStateOf(false) }
+
     fun enterSelectionModeFor(target: ChatContextMenuTarget, userId: Int?) {
         haptic(HapticFeedbackEvent.SelectionModeEntered)
         listMode = ChatsListMode.Selecting
@@ -636,11 +639,21 @@ fun ChatsTab(
         }
     }
 
+    fun enterSelectionModeEmpty() {
+        if (listMode == ChatsListMode.Selecting) return
+        haptic(HapticFeedbackEvent.SelectionModeEntered)
+        hadNonEmptySelection = false
+        listMode = ChatsListMode.Selecting
+        publicChatSelected = false
+        selectedOtherUserIds = emptySet()
+    }
+
     fun exitSelectionMode() {
         scope.launch { selectionTransitionProgress.snapTo(0f) }
         listMode = ChatsListMode.Normal
         publicChatSelected = false
         selectedOtherUserIds = emptySet()
+        hadNonEmptySelection = false
         contextMenuState = ChatContextMenuState()
         chatContextMenuOverlay.clear()
     }
@@ -657,6 +670,11 @@ fun ChatsTab(
             selectionTransitionProgress.snapTo(0f)
             selectionTransitionProgress.animateTo(1f, ChatSelectionTransitionSpring)
         }
+    }
+
+    LaunchedEffect(enterSelectionRequestId, isVisible) {
+        if (enterSelectionRequestId == 0L || !isVisible) return@LaunchedEffect
+        enterSelectionModeEmpty()
     }
 
     fun refreshDmList() {
@@ -683,9 +701,13 @@ fun ChatsTab(
         }
     }
 
-    LaunchedEffect(publicChatSelected, selectedOtherUserIds) {
-        if (listMode == ChatsListMode.Selecting && !publicChatSelected && selectedOtherUserIds.isEmpty()) {
-            requestExitSelectionMode()
+    LaunchedEffect(publicChatSelected, selectedOtherUserIds, listMode) {
+        if (listMode != ChatsListMode.Selecting) return@LaunchedEffect
+        val empty = !publicChatSelected && selectedOtherUserIds.isEmpty()
+        if (empty) {
+            if (hadNonEmptySelection) requestExitSelectionMode()
+        } else {
+            hadNonEmptySelection = true
         }
     }
 

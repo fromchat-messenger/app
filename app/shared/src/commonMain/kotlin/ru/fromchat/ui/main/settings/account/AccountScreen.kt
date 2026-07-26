@@ -19,8 +19,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -33,6 +31,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import com.pr0gramm3r101.components.Category
 import com.pr0gramm3r101.components.ListItem
+import com.pr0gramm3r101.utils.conditional
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
@@ -52,6 +51,7 @@ import ru.fromchat.settings_change_password
 import ru.fromchat.settings_security_change_password_sub
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.main.settings.SettingsDetailTopBar
+import ru.fromchat.ui.main.settings.rememberSettingsCollapsingScrollBehavior
 import ru.fromchat.ui.main.settings.settingsDetailUseCollapsingTopBar
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -64,7 +64,7 @@ fun AccountScreen(
     onDeleteAccount: () -> Unit,
 ) {
     val useCollapsing = settingsDetailUseCollapsingTopBar()
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val scrollBehavior = rememberSettingsCollapsingScrollBehavior()
     val scope = rememberCoroutineScope()
     var showLogoutConfirm by remember { mutableStateOf(false) }
     var yandexAvailable by remember { mutableStateOf(false) }
@@ -75,11 +75,6 @@ fun AccountScreen(
     }
 
     Scaffold(
-        modifier = if (useCollapsing) {
-            Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
-        } else {
-            Modifier
-        },
         topBar = {
             SettingsDetailTopBar(
                 title = { Text(stringResource(Res.string.settings_account_title)) },
@@ -91,6 +86,9 @@ fun AccountScreen(
         Column(
             Modifier
                 .fillMaxWidth()
+                .conditional(useCollapsing) {
+                    Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
+                }
                 .verticalScroll(rememberScrollState())
                 .padding(innerPadding)
         ) {

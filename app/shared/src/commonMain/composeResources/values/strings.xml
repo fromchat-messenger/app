@@ -23,13 +23,15 @@
     <string name="app_desc">100% free and open messenger. Supports self-hosted installation on your own server.</string>
 
     <!-- Desktop menu / tray -->
-    <string name="desktop_menu_actions">Actions</string>
+    <string name="desktop_menu_file">File</string>
     <string name="desktop_menu_edit">Edit</string>
     <string name="desktop_menu_window">Window</string>
     <string name="desktop_about_app">About FromChat</string>
     <string name="desktop_tray_show">Show</string>
     <string name="desktop_show_app">Show FromChat</string>
     <string name="desktop_quit">Quit</string>
+    <string name="desktop_new_chat">New Chat</string>
+    <string name="desktop_search_conversations">Search Conversations</string>
     <string name="desktop_cut">Cut</string>
     <string name="desktop_paste">Paste</string>
     <string name="desktop_select_all">Select All</string>

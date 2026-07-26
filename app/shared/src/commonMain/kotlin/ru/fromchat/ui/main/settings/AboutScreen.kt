@@ -16,8 +16,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import ru.fromchat.ui.components.Text
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,6 +30,7 @@ import coil3.compose.AsyncImage
 import com.pr0gramm3r101.components.Category
 import com.pr0gramm3r101.components.ListItem
 import com.pr0gramm3r101.ui.Website
+import com.pr0gramm3r101.utils.conditional
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
 import ru.fromchat.AppBuildInfo
@@ -56,16 +55,11 @@ private const val URL_WEBSITE = "https://fromchat.ru"
 @Composable
 fun AboutScreen() {
     val useCollapsing = settingsDetailUseCollapsingTopBar()
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val scrollBehavior = rememberSettingsCollapsingScrollBehavior()
     val navController = LocalNavController.current
     val uriHandler = LocalUriHandler.current
 
     Scaffold(
-        modifier = if (useCollapsing) {
-            Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
-        } else {
-            Modifier
-        },
         topBar = {
             SettingsDetailTopBar(
                 title = {
@@ -83,6 +77,9 @@ fun AboutScreen() {
         Column(
             Modifier
                 .fillMaxWidth()
+                .conditional(useCollapsing) {
+                    Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
+                }
                 .verticalScroll(rememberScrollState())
                 .padding(innerPadding)
         ) {

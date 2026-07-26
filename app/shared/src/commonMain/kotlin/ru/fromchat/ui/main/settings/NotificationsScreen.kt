@@ -12,8 +12,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -27,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import com.pr0gramm3r101.components.Category
 import com.pr0gramm3r101.components.ListItem
 import com.pr0gramm3r101.components.SwitchListItem
+import com.pr0gramm3r101.utils.conditional
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
@@ -48,7 +47,7 @@ import ru.fromchat.ui.components.Text
 @Composable
 fun NotificationsScreen(onBack: () -> Unit) {
     val useCollapsing = settingsDetailUseCollapsingTopBar()
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val scrollBehavior = rememberSettingsCollapsingScrollBehavior()
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var notificationsEnabled by remember { mutableStateOf(false) }
@@ -60,11 +59,6 @@ fun NotificationsScreen(onBack: () -> Unit) {
 
     Scaffold(
         snackbarHost = { FromChatSnackbarHost(hostState = snackbarHostState) },
-        modifier = if (useCollapsing) {
-            Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
-        } else {
-            Modifier
-        },
         topBar = {
             SettingsDetailTopBar(
                 title = { Text(stringResource(Res.string.settings_notifications_title)) },
@@ -76,6 +70,9 @@ fun NotificationsScreen(onBack: () -> Unit) {
         Column(
             Modifier
                 .fillMaxWidth()
+                .conditional(useCollapsing) {
+                    Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
+                }
                 .verticalScroll(rememberScrollState())
                 .padding(innerPadding)
         ) {

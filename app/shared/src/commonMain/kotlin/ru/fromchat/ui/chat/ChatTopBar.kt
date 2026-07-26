@@ -67,7 +67,6 @@ import dev.chrisbanes.haze.blur.HazeBlurStyle
 import dev.chrisbanes.haze.blur.HazeColorEffect
 import dev.chrisbanes.haze.blur.HazeProgressive
 import dev.chrisbanes.haze.blur.blurEffect
-import dev.chrisbanes.haze.blur.materials.HazeMaterials
 import dev.chrisbanes.haze.hazeEffect
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
@@ -393,7 +392,7 @@ fun ChatTopBar(
         val layoutHeight = topBarPlaceable.height + arcExtentPx
 
         val bgPlaceable = subcompose("background") {
-            val hazeStyle = HazeMaterials.thin()
+            val hazeStyle = rememberChatSurfaceContainerHazeStyle()
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -424,10 +423,10 @@ fun ChatTopBar(
 }
 
 /**
- * Two-pane chat chrome: separate back pill + title pill. Matches the chat input bottom bar
- * ([HazeMaterials.thin] + [androidx.compose.material3.ColorScheme.surfaceContainer] + progressive
- * blur). The haze strip is full-bleed; pills sit in [ConversationDetailContentPadding] so blur
- * breathes at the edges (same horizontal inset as [ChatInput]).
+ * Two-pane chat chrome: separate back pill + title pill. Matches [ChatInput] composer chrome
+ * ([rememberChatSurfaceContainerHazeStyle] + [androidx.compose.material3.ColorScheme.surfaceContainer]).
+ * Full-bleed progressive haze strip behind the pills (high at top → fade toward bottom); pills keep
+ * their own surfaceContainer + [hazeEffect]. Horizontal inset matches [ChatInput].
  */
 @Composable
 private fun ChatTopBarPill(
@@ -441,7 +440,7 @@ private fun ChatTopBarPill(
     modifier: Modifier = Modifier,
     hazeBlurEnabled: Boolean = true,
 ) {
-    val hazeStyle = HazeMaterials.thin()
+    val hazeStyle = rememberChatSurfaceContainerHazeStyle()
     val chromeColor = MaterialTheme.colorScheme.surfaceContainer
     val pillShape = RoundedCornerShape(28.dp)
 
@@ -473,7 +472,13 @@ private fun ChatTopBarPill(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(chromeColor),
+                    .background(chromeColor)
+                    .hazeEffect(state = hazeState) {
+                        blurEffect {
+                            blurEnabled = hazeBlurEnabled
+                            style = hazeStyle
+                        }
+                    },
                 contentAlignment = Alignment.Center,
             ) {
                 IconButton(onClick = onBack) {
@@ -486,8 +491,14 @@ private fun ChatTopBarPill(
             Row(
                 modifier = Modifier
                     .weight(1f)
+                    .background(chromeColor, pillShape)
                     .clip(pillShape)
-                    .background(chromeColor)
+                    .hazeEffect(state = hazeState) {
+                        blurEffect {
+                            blurEnabled = hazeBlurEnabled
+                            style = hazeStyle
+                        }
+                    }
                     .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

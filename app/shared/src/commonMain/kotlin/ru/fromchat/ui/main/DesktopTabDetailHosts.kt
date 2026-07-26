@@ -35,6 +35,8 @@ fun DesktopTabDetailHosts(
             active = selectedTab == MAIN_PAGE_CHATS,
             content = chatsDetail,
         )
+        // Profile bottom-nav is a Settings shortcut in two-pane (pager stays on Settings).
+        // MAIN_PAGE_PROFILE is retained only as a defensive fallback.
         TabDetailHost(
             active = selectedTab == MAIN_PAGE_SETTINGS || selectedTab == MAIN_PAGE_PROFILE,
             content = settingsDetail,
