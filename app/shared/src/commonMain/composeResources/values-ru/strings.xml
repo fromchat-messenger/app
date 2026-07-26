@@ -64,6 +64,8 @@
     <string name="auth_yandex_failed">Вход через Яндекс ID отменён или не удался.</string>
     <string name="chats">Чаты</string>
     <string name="select_chat_placeholder">Выберите чат, чтобы начать переписку</string>
+    <string name="select_contact_placeholder">Выберите контакт</string>
+    <string name="select_settings_placeholder">Выберите раздел настроек</string>
     <string name="contacts">Контакты</string>
     <string name="profile">Профиль</string>
     <string name="dms">Личные чаты</string>
@@ -299,6 +301,8 @@
     <string name="logout">Выйти</string>
     <string name="materialYou">Material You</string>
     <string name="materialYou_d">Цвета как на обоях. Работает с Android 12 и новее.</string>
+    <string name="enter_to_send">Отправка по Enter</string>
+    <string name="enter_to_send_d">Enter отправляет сообщение. Shift+Enter — новая строка.</string>
     <string name="theme">Оформление</string>
     <string name="as_system">Как на телефоне</string>
     <string name="light">Светлое</string>
@@ -374,6 +378,7 @@
     <string name="settings_security_step_confirm_body">Введите новый пароль ещё раз, чтобы убедиться, что без ошибок.</string>
     <string name="settings_next">Далее</string>
     <string name="settings_hub_about_sub">Версия, ссылки и другое</string>
+    <string name="settings_hub_profile_sub">Ваш профиль и публичная информация</string>
     <string name="logs_title">Журнал</string>
     <string name="settings_hub_logs_sub">Просмотр, отправка и очистка журнала</string>
     <string name="logs_empty">Записей пока нет</string>

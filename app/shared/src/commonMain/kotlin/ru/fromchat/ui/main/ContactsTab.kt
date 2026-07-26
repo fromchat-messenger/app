@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,29 +22,44 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import ru.fromchat.ui.components.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
-import ru.fromchat.*
+import ru.fromchat.contacts
+import ru.fromchat.contacts_empty_body
+import ru.fromchat.contacts_empty_title
+import ru.fromchat.ui.extraStatusBars
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContactsTab() {
     Scaffold(
+        containerColor = Color.Transparent,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
+                windowInsets = if (LocalMainChromeInsets.current.top > 0.dp) {
+                    WindowInsets.extraStatusBars
+                } else {
+                    WindowInsets(0, 0, 0, 0)
+                },
                 title = {
                     Text(
                         text = stringResource(Res.string.contacts),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                ),
             )
         }
     ) { innerPadding ->

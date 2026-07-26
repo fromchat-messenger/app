@@ -9,14 +9,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MediumTopAppBar
 import androidx.compose.material3.Scaffold
 import ru.fromchat.ui.components.Text
 import androidx.compose.material3.TopAppBarDefaults
@@ -47,7 +44,6 @@ import ru.fromchat.about_link_terms
 import ru.fromchat.about_link_website
 import ru.fromchat.about_version
 import ru.fromchat.app_desc
-import ru.fromchat.back
 import ru.fromchat.legal.DocumentType
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.components.BrandTitle
@@ -59,30 +55,28 @@ private const val URL_WEBSITE = "https://fromchat.ru"
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AboutScreen() {
+    val useCollapsing = settingsDetailUseCollapsingTopBar()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val navController = LocalNavController.current
     val uriHandler = LocalUriHandler.current
 
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        modifier = if (useCollapsing) {
+            Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
+        } else {
+            Modifier
+        },
         topBar = {
-            MediumTopAppBar(
+            SettingsDetailTopBar(
                 title = {
                     Text(
                         stringResource(Res.string.about),
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
                     )
                 },
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(Res.string.back)
-                        )
-                    }
-                },
-                scrollBehavior = scrollBehavior
+                onBack = { navController.navigateUp() },
+                scrollBehavior = scrollBehavior,
             )
         },
     ) { innerPadding ->
@@ -100,7 +94,7 @@ fun AboutScreen() {
             ) {
                 Box(Modifier.padding(bottom = 12.dp)) {
                     AsyncImage(
-                        model = Res.getUri("drawable/logo_square.svg"),
+                        model = Res.getUri("drawable/logo_square.png"),
                         contentDescription = null,
                         contentScale = ContentScale.Fit,
                         modifier = Modifier

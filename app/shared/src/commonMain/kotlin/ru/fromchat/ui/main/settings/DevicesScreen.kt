@@ -434,8 +434,10 @@ fun DevicesScreen(onBack: () -> Unit) {
             TopAppBar(
                 title = {},
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(Res.string.back))
+                    if (settingsDetailShowBackButton()) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(Res.string.back))
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

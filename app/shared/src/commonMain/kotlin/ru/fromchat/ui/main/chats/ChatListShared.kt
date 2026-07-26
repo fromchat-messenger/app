@@ -14,7 +14,9 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -60,6 +62,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
+import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.changedToDown
+import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -67,6 +74,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.fastAll
+import kotlinx.coroutines.withTimeout
 import ru.fromchat.ui.components.SearchBar
 import ru.fromchat.ui.components.SearchBarSharedElement
 import com.pr0gramm3r101.components.Category
@@ -125,6 +134,52 @@ private val ChatListCategoryMargin = PaddingValues(
     top = 8.dp,
     bottom = 12.dp,
 )
+
+/**
+ * Opens on primary click. Selection mode: touch/stylus long-press, or mouse secondary click.
+ * Mouse primary long-press does not enter selection.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+private fun Modifier.chatRowOpenAndSelectGestures(
+    selectionEnabled: Boolean,
+    interactionSource: MutableInteractionSource,
+    onOpen: () -> Unit,
+    onEnterSelection: () -> Unit,
+): Modifier =
+    combinedClickable(
+        interactionSource = interactionSource,
+        indication = ripple(),
+        onClick = onOpen,
+    ).pointerInput(selectionEnabled) {
+        if (!selectionEnabled) return@pointerInput
+        awaitEachGesture {
+            var downEvent: PointerEvent
+            do {
+                downEvent = awaitPointerEvent()
+            } while (!downEvent.changes.fastAll { it.changedToDown() })
+            val down = downEvent.changes.firstOrNull() ?: return@awaitEachGesture
+            when (down.type) {
+                PointerType.Mouse -> {
+                    if (!downEvent.buttons.isSecondaryPressed || down.isConsumed) {
+                        return@awaitEachGesture
+                    }
+                    downEvent.changes.forEach { it.consume() }
+                    onEnterSelection()
+                }
+                PointerType.Touch, PointerType.Stylus -> {
+                    try {
+                        withTimeout(viewConfiguration.longPressTimeoutMillis) {
+                            waitForUpOrCancellation()
+                        }
+                    } catch (_: PointerEventTimeoutCancellationException) {
+                        onEnterSelection()
+                        waitForUpOrCancellation()
+                    }
+                }
+                else -> Unit
+            }
+        }
+    }
 
 @Composable
 internal fun ChatListHeadlineWithBadge(
@@ -721,15 +776,11 @@ internal fun PublicChatRow(
             .alpha(if (isHiddenForOverlay) 0f else 1f)
             .fillMaxWidth()
             .clip(clipShape)
-            .combinedClickable(
+            .chatRowOpenAndSelectGestures(
+                selectionEnabled = listMode == ChatsListMode.Normal,
                 interactionSource = rowInteractionSource,
-                indication = ripple(),
-                onClick = onOpenPublic,
-                onLongClick = if (listMode == ChatsListMode.Normal) {
-                    { onBodyLongPress() }
-                } else {
-                    null
-                },
+                onOpen = onOpenPublic,
+                onEnterSelection = onBodyLongPress,
             )
             .onGloballyPositioned { coords ->
                 rowRootOffset = coords.positionInRoot()
@@ -871,15 +922,11 @@ internal fun DmConversationRow(
             .alpha(if (isHiddenForOverlay) 0f else 1f)
             .fillMaxWidth()
             .clip(clipShape)
-            .combinedClickable(
+            .chatRowOpenAndSelectGestures(
+                selectionEnabled = listMode == ChatsListMode.Normal,
                 interactionSource = rowInteractionSource,
-                indication = ripple(),
-                onClick = onOpenConversation,
-                onLongClick = if (listMode == ChatsListMode.Normal) {
-                    { onBodyLongPress() }
-                } else {
-                    null
-                },
+                onOpen = onOpenConversation,
+                onEnterSelection = onBodyLongPress,
             )
             .onGloballyPositioned { coords ->
                 rowRootOffset = coords.positionInRoot()
