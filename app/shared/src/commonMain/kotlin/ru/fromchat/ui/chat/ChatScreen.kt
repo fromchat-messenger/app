@@ -8,6 +8,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -98,6 +99,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Logger
+import ru.fromchat.ui.main.ConversationDetailContentPadding
+import ru.fromchat.ui.main.LocalConversationListDetailActive
 import ru.fromchat.Res
 import ru.fromchat.presence_recently
 import ru.fromchat.api.ApiClient
@@ -429,6 +432,9 @@ fun ChatScreen(
     val profileUserId = panelState.profileUserId
     val hazeState = rememberHazeState()
     val hazeBlurEnabled = !(panelState.isLoading && panelState.messages.isEmpty())
+    val listDetailActive = LocalConversationListDetailActive.current
+    val detailContentPad =
+        if (listDetailActive) ConversationDetailContentPadding else 0.dp
 
     val currentTypingUsers = panelState.typingUsers // Directly use from panelState
     val statusMap by UserStatusStore.status.collectAsState()
@@ -833,10 +839,12 @@ fun ChatScreen(
                             }
                         }
                 ) {
+                    val inputPad = Modifier.padding(horizontal = detailContentPad)
                     if (peerDeleted && dmRecipientId != null) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .then(inputPad)
                                 .padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
                         ) {
                             Button(
@@ -863,6 +871,7 @@ fun ChatScreen(
                             }
                         }
                     } else {
+                    Column(modifier = inputPad) {
                     ChatInput(
                         text = inputText,
                         onTextChange = { inputText = it },
@@ -1058,14 +1067,18 @@ fun ChatScreen(
                         }
                     )
                     }
+                    }
                 }
             }
         ) { innerPadding ->
             val statusBarTopDp = with(density) {
                 WindowInsets.extraStatusBars.getTop(this).toDp()
             }
-            val floatingHeaderClearance =
+            val floatingHeaderClearance = if (listDetailActive) {
+                statusBarTopDp + 8.dp + 48.dp + 8.dp
+            } else {
                 statusBarTopDp + 64.dp + 12.dp + ChatFloatingHeaderBottomArcRadius
+            }
             SideEffect {
                 chatScrollClearancePx.value = with(density) {
                     floatingHeaderClearance.roundToPx() to innerPadding.calculateBottomPadding().roundToPx()
@@ -1106,6 +1119,7 @@ fun ChatScreen(
                                 }
                                 .background(MaterialTheme.colorScheme.background)
                                 .hazeSource(hazeState),
+                            contentPadding = PaddingValues(horizontal = detailContentPad),
                             userScrollEnabled = !contextMenuState.isOpen,
                             reverseLayout = true,
                         ) {
@@ -1371,7 +1385,7 @@ fun ChatScreen(
                                 .align(Alignment.BottomEnd)
                                 .zIndex(2f)
                                 .padding(
-                                    end = 13.dp,
+                                    end = 13.dp + detailContentPad,
                                     bottom = innerPadding.calculateBottomPadding() + 12.dp,
                                 ),
                         ) {
@@ -1402,6 +1416,7 @@ fun ChatScreen(
                         ChatTopBar(
                             hazeState = hazeState,
                             hazeBlurEnabled = hazeBlurEnabled,
+                            pillChrome = listDetailActive,
                             onBack = {
                                 runNav { navController.navigateUp() }
                             },

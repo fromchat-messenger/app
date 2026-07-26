@@ -1,5 +1,6 @@
 package ru.fromchat.ui
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -10,6 +11,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
@@ -130,7 +132,9 @@ import ru.fromchat.ui.profile.EditProfileFocusField
 import ru.fromchat.ui.profile.EditProfileScreen
 import ru.fromchat.ui.profile.ProfileRoutes
 import ru.fromchat.ui.profile.ProfileScreen
+import ru.fromchat.ui.components.LocalPaneHazeState
 import ru.fromchat.ui.components.ScreenSurface
+import dev.chrisbanes.haze.rememberHazeState
 import ru.fromchat.utils.NetworkConnectivity
 
 val LocalNavController = compositionLocalOf<NavController> { error("NavController not provided") }
@@ -144,28 +148,32 @@ private fun isConversationProfileRoute(route: String?): Boolean =
         (route != null && route.startsWith("dm/") && route.endsWith("/profile"))
 
 private fun isStandaloneProfileRoute(route: String?): Boolean =
-    route != null && route.startsWith("profile/")
+    route != null &&
+        route.startsWith("profile/") &&
+        !route.startsWith(ProfileRoutes.Edit.substringBefore("?"))
 
-private fun standaloneProfileUserId(route: String?): Int? {
-    if (route == null || !isStandaloneProfileRoute(route)) return null
-    return route
-        .substringAfter("profile/")
-        .substringBefore("?")
-        .toIntOrNull()
-        ?.takeIf { it > 0 }
+/**
+ * Nav destination.route is the pattern (`profile/{userId}…`), not the filled path —
+ * read the userId from entry args / saved state.
+ */
+private fun standaloneProfileUserId(entry: NavBackStackEntry?): Int? {
+    val route = entry?.destination?.route ?: return null
+    if (!isStandaloneProfileRoute(route)) return null
+    return entry.savedStateHandle.get<String>("userId")?.toIntOrNull()?.takeIf { it > 0 }
 }
 
 private fun isConversationShellRoute(
     route: String?,
     previousRoute: String?,
     ownUserId: Int?,
+    profileUserId: Int?,
 ): Boolean {
     if (route == "chat" || isConversationChatRoute(route) || isConversationProfileRoute(route)) {
         return true
     }
     if (isStandaloneProfileRoute(route)) {
         if (isConversationChatRoute(previousRoute)) return true
-        return ownUserId != null && standaloneProfileUserId(route) == ownUserId
+        return ownUserId != null && profileUserId == ownUserId
     }
     if (route != null && route.startsWith("settings/")) return true
     if (route == "about") return true
@@ -491,12 +499,18 @@ fun App(
                     val currentRoute = currentEntry?.destination?.route
                     val previousRoute =
                         navController.previousBackStackEntry?.destination?.route
+                    val profileUserId = standaloneProfileUserId(currentEntry)
                     val widthSizeClass = currentWindowAdaptiveInfo().widthSizeClass
                     var pendingMainTab by remember { mutableIntStateOf(MAIN_PAGE_CHATS) }
                     val ownUserId = ApiClient.user?.id
                     val showConversationListDetail =
                         widthSizeClass != WindowWidthSizeClass.COMPACT &&
-                            isConversationShellRoute(currentRoute, previousRoute, ownUserId)
+                            isConversationShellRoute(
+                                currentRoute,
+                                previousRoute,
+                                ownUserId,
+                                profileUserId,
+                            )
 
                     ScreenSurface {
                         Box(Modifier.fillMaxSize()) {
@@ -517,7 +531,8 @@ fun App(
                                     showConversationListDetail &&
                                         isStandaloneProfileRoute(currentRoute) &&
                                         !showProfileThirdPane &&
-                                        standaloneProfileUserId(currentRoute) == ownUserId
+                                        profileUserId != null &&
+                                        profileUserId == ownUserId
                                 val listPaneWidth =
                                     if (widthSizeClass == WindowWidthSizeClass.EXPANDED) {
                                         448.dp
@@ -860,27 +875,61 @@ fun App(
                                 }
 
                                 if (showConversationListDetail) {
-                                    ConversationListDetailShell(
-                                        showProfilePane = showProfileThirdPane,
-                                        listPaneWidth = listPaneWidth,
-                                        listPane = {
-                                            MainScreen(
-                                                sharedTransitionScope = this@SharedTransitionLayout,
-                                                snackbarHostState = profileLookupSnackbarHostState,
-                                                embeddedInListDetail = true,
-                                                initialPage = pendingMainTab,
-                                                forceSettingsTab = forceSettingsListTab,
-                                                onPageChanged = { pendingMainTab = it },
-                                            )
-                                        },
+                                    val detailPaneState = when {
+                                        showProfileThirdPane -> "split"
+                                        currentRoute == "chat" -> "empty-$pendingMainTab"
+                                        else -> "nav"
+                                    }
+                                    val detailEdgeToEdge =
+                                        showProfileThirdPane || isConversationChatRoute(currentRoute)
+                                    // Empty settings placeholder stays transparent (no AppPanel fill).
+                                    val detailInPanel =
+                                        settingsProfileSplit || isSettingsDetailRoute(currentRoute)
+                                    val detailPaneAnim = tween<Float>(
+                                        durationMillis = 280,
+                                        easing = FastOutSlowInEasing,
+                                    )
+                                    val listPaneHazeState = rememberHazeState()
+                                    CompositionLocalProvider(
+                                        LocalPaneHazeState provides listPaneHazeState,
+                                    ) {
+                                        ConversationListDetailShell(
+                                            showProfilePane = showProfileThirdPane,
+                                            listPaneWidth = listPaneWidth,
+                                            detailInPanel = detailInPanel,
+                                            detailEdgeToEdge = detailEdgeToEdge,
+                                            listPane = {
+                                                MainScreen(
+                                                    sharedTransitionScope = this@SharedTransitionLayout,
+                                                    snackbarHostState = profileLookupSnackbarHostState,
+                                                    embeddedInListDetail = true,
+                                                    initialPage = pendingMainTab,
+                                                    forceSettingsTab = forceSettingsListTab,
+                                                    onPageChanged = { pendingMainTab = it },
+                                                )
+                                            },
                                         detailPane = {
-                                            when {
-                                                showProfileThirdPane -> {
-                                                    androidx.compose.animation.AnimatedVisibility(
-                                                        visible = true,
-                                                        enter = EnterTransition.None,
-                                                        exit = ExitTransition.None,
-                                                    ) {
+                                            AnimatedContent(
+                                                targetState = detailPaneState,
+                                                transitionSpec = {
+                                                    (
+                                                        fadeIn(animationSpec = detailPaneAnim) +
+                                                            scaleIn(
+                                                                initialScale = 0.98f,
+                                                                animationSpec = detailPaneAnim,
+                                                            )
+                                                        ) togetherWith fadeOut(
+                                                        animationSpec = tween(
+                                                            durationMillis = 180,
+                                                            easing = FastOutSlowInEasing,
+                                                        ),
+                                                    )
+                                                },
+                                                label = "detailPane",
+                                                modifier = Modifier.fillMaxSize(),
+                                            ) { state ->
+                                                when {
+                                                    state == "split" -> {
                                                         val chatRouteForDetail =
                                                             when {
                                                                 isConversationProfileRoute(currentRoute) ->
@@ -911,23 +960,22 @@ fun App(
                                                             }
                                                         }
                                                     }
-                                                }
-                                                isSettingsDetailRoute(currentRoute) ->
-                                                    AppNavHost(Modifier.fillMaxSize())
-                                                currentRoute == "chat" -> {
-                                                    when (pendingMainTab) {
-                                                        MAIN_PAGE_CONTACTS -> EmptyContactsPlaceholder()
-                                                        MAIN_PAGE_SETTINGS -> EmptySettingsPlaceholder()
-                                                        else -> EmptyConversationPlaceholder()
+                                                    state.startsWith("empty-") -> {
+                                                        when (pendingMainTab) {
+                                                            MAIN_PAGE_CONTACTS -> EmptyContactsPlaceholder()
+                                                            MAIN_PAGE_SETTINGS -> EmptySettingsPlaceholder()
+                                                            else -> EmptyConversationPlaceholder()
+                                                        }
                                                     }
+                                                    else -> AppNavHost(Modifier.fillMaxSize())
                                                 }
-                                                else -> AppNavHost(Modifier.fillMaxSize())
                                             }
                                         },
                                         profilePane = {
                                             AppNavHost(Modifier.fillMaxSize())
                                         },
-                                    )
+                                        )
+                                    }
                                 } else {
                                     AppNavHost(Modifier.fillMaxSize())
                                 }

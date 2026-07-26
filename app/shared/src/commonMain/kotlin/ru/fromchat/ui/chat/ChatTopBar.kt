@@ -19,9 +19,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Call
@@ -64,7 +65,9 @@ import com.pr0gramm3r101.utils.conditional
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.blur.HazeBlurStyle
 import dev.chrisbanes.haze.blur.HazeColorEffect
+import dev.chrisbanes.haze.blur.HazeProgressive
 import dev.chrisbanes.haze.blur.blurEffect
+import dev.chrisbanes.haze.blur.materials.HazeMaterials
 import dev.chrisbanes.haze.hazeEffect
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
@@ -73,6 +76,7 @@ import ru.fromchat.ui.chat.utils.TypingUser
 import ru.fromchat.ui.components.ConnectingEllipsis
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.extraStatusBars
+import ru.fromchat.ui.main.ConversationDetailContentPadding
 import ru.fromchat.ui.profile.StatusBadge
 import ru.fromchat.ui.profile.peerIsDeleted
 import ru.fromchat.ui.profile.resolveVerificationStatus
@@ -328,7 +332,23 @@ fun ChatTopBar(
     titleChrome: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     hazeBlurEnabled: Boolean = true,
+    pillChrome: Boolean = false,
 ) {
+    if (pillChrome) {
+        ChatTopBarPill(
+            hazeState = hazeState,
+            onBack = onBack,
+            backContentDescription = backContentDescription,
+            showCallButton = showCallButton,
+            onCallClick = onCallClick,
+            callContentDescription = callContentDescription,
+            titleChrome = titleChrome,
+            modifier = modifier,
+            hazeBlurEnabled = hazeBlurEnabled,
+        )
+        return
+    }
+
     val bottomCornerRadius = ChatFloatingHeaderBottomArcRadius
     // [BottomInsetTopBarShape] draws the arc in the strip from y = (content height) .. (content + r);
     // stack measured bar height + that depth so the scallop is never overlapped by TopAppBar children.
@@ -395,6 +415,94 @@ fun ChatTopBar(
         layout(layoutWidth, layoutHeight) {
             bgPlaceable.place(0, 0)
             topBarPlaceable.place(0, 0)
+        }
+    }
+}
+
+/**
+ * Two-pane chat chrome: separate back pill + title pill. Matches the chat input bottom bar
+ * ([HazeMaterials.thin] + [androidx.compose.material3.ColorScheme.surfaceContainer] + progressive
+ * blur). The haze strip is full-bleed to the window top (under traffic lights); pills sit in
+ * inset content so blur breathes at the edges.
+ */
+@Composable
+private fun ChatTopBarPill(
+    hazeState: HazeState,
+    onBack: () -> Unit,
+    backContentDescription: String,
+    showCallButton: Boolean,
+    onCallClick: () -> Unit,
+    callContentDescription: String,
+    titleChrome: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    hazeBlurEnabled: Boolean = true,
+) {
+    val hazeStyle = HazeMaterials.thin()
+    val chromeColor = MaterialTheme.colorScheme.surfaceContainer
+    val pillShape = RoundedCornerShape(28.dp)
+    // Soft chip over the frosted strip — not an opaque solid bar.
+    val pillBg = chromeColor.copy(alpha = 0.45f)
+
+    Box(modifier = modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(chromeColor)
+                .hazeEffect(state = hazeState) {
+                    blurEffect {
+                        blurEnabled = hazeBlurEnabled
+                        style = hazeStyle
+                        progressive = HazeProgressive.verticalGradient(
+                            startIntensity = 1f,
+                            endIntensity = 0f,
+                        )
+                    }
+                },
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.extraStatusBars)
+                .padding(horizontal = ConversationDetailContentPadding, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(pillBg),
+                contentAlignment = Alignment.Center,
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                        contentDescription = backContentDescription,
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(pillShape)
+                    .background(pillBg)
+                    .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.weight(1f)) {
+                    titleChrome()
+                }
+                if (showCallButton) {
+                    IconButton(onClick = onCallClick) {
+                        Icon(
+                            imageVector = Icons.Rounded.Call,
+                            contentDescription = callContentDescription,
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                }
+            }
         }
     }
 }

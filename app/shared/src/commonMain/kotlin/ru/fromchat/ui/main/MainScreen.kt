@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
@@ -39,9 +40,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import com.pr0gramm3r101.utils.WindowWidthSizeClass
 import com.pr0gramm3r101.utils.currentWindowAdaptiveInfo
@@ -64,6 +74,7 @@ import ru.fromchat.settings
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.chat.rememberChatSurfaceContainerHazeStyle
 import ru.fromchat.ui.components.FromChatSnackbarHost
+import ru.fromchat.ui.components.LocalPaneHazeState
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.extraStatusBars
 import ru.fromchat.ui.main.chats.ChatContextMenuOverlayController
@@ -71,6 +82,7 @@ import ru.fromchat.ui.main.chats.ChatContextMenuOverlayHost
 import ru.fromchat.ui.main.chats.ChatsTab
 import ru.fromchat.ui.main.settings.SettingsTab
 import ru.fromchat.ui.profile.ProfileScreen
+import kotlin.math.roundToInt
 
 const val MAIN_PAGE_CHATS = 0
 const val MAIN_PAGE_CONTACTS = 1
@@ -112,8 +124,11 @@ fun MainScreen(
     val density = LocalDensity.current
     val navBarHazeState = rememberHazeState()
     val navBarHazeStyle = rememberChatSurfaceContainerHazeStyle()
-    val contextMenuHazeState = rememberHazeState()
+    val paneHazeState = LocalPaneHazeState.current
+    val contextMenuHazeState = paneHazeState ?: rememberHazeState()
+    val paneProvidesHazeSource = paneHazeState != null
     val chatContextMenuOverlay = remember { ChatContextMenuOverlayController() }
+    var contextMenuBlurPaneBoundsInWindow by remember { mutableStateOf(IntRect.Zero) }
 
     val widthClass = currentWindowAdaptiveInfo().widthSizeClass
 
@@ -194,11 +209,29 @@ fun MainScreen(
             selectedPage
         }
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    BoxWithConstraints(
+        Modifier
+            .fillMaxSize()
+            .onGloballyPositioned { coords ->
+                val bounds = coords.boundsInWindow()
+                contextMenuBlurPaneBoundsInWindow = IntRect(
+                    left = bounds.left.roundToInt(),
+                    top = bounds.top.roundToInt(),
+                    right = bounds.right.roundToInt(),
+                    bottom = bounds.bottom.roundToInt(),
+                )
+            },
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .hazeSource(contextMenuHazeState),
+                .then(
+                    if (paneProvidesHazeSource) {
+                        Modifier
+                    } else {
+                        Modifier.hazeSource(contextMenuHazeState)
+                    },
+                ),
         ) {
             Scaffold(
                 snackbarHost = {
@@ -327,9 +360,9 @@ fun MainScreen(
             ChatContextMenuBlurLayer(
                 hazeState = contextMenuHazeState,
                 blurProgress = chatMenuBlurProgress,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .zIndex(2f),
+                paneBoundsInWindow = contextMenuBlurPaneBoundsInWindow,
+                expandBeyondPane = paneProvidesHazeSource,
+                modifier = Modifier.zIndex(2f),
             )
         }
 
@@ -348,22 +381,78 @@ fun MainScreen(
 private fun ChatContextMenuBlurLayer(
     hazeState: HazeState,
     blurProgress: Float,
+    paneBoundsInWindow: IntRect,
+    expandBeyondPane: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val blurRadius = 12.dp * blurProgress
     if (blurRadius <= 0.dp) return
+    val density = LocalDensity.current
+    val expandPx = if (expandBeyondPane) {
+        with(density) { (24.dp + blurRadius).roundToPx() }
+    } else {
+        0
+    }
+    val blurBounds = if (paneBoundsInWindow.width > 0 && paneBoundsInWindow.height > 0) {
+        IntRect(
+            left = (paneBoundsInWindow.left - expandPx).coerceAtLeast(0),
+            top = (paneBoundsInWindow.top - expandPx).coerceAtLeast(0),
+            right = paneBoundsInWindow.right + expandPx,
+            bottom = paneBoundsInWindow.bottom + expandPx,
+        )
+    } else {
+        null
+    }
 
-    Box(
-        modifier = modifier.hazeEffect(state = hazeState) {
-            blurEffect {
-                style = HazeBlurStyle(
-                    blurRadius = blurRadius,
-                    colorEffects = emptyList(),
-                    backgroundColor = Color.Transparent,
-                    noiseFactor = 0f,
-                    fallbackColorEffect = HazeColorEffect.tint(Color.Transparent),
-                )
-            }
+    val blurModifier = Modifier.hazeEffect(state = hazeState) {
+        blurEffect {
+            style = HazeBlurStyle(
+                blurRadius = blurRadius,
+                colorEffects = emptyList(),
+                backgroundColor = Color.Transparent,
+                noiseFactor = 0f,
+                fallbackColorEffect = HazeColorEffect.tint(Color.Transparent),
+            )
+        }
+    }
+
+    if (blurBounds == null || !expandBeyondPane) {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .then(blurModifier),
+        )
+        return
+    }
+
+    // Escape AppPanel clip so blurred panel chrome / rounded outlines are covered.
+    Popup(
+        popupPositionProvider = object : PopupPositionProvider {
+            override fun calculatePosition(
+                anchorBounds: IntRect,
+                windowSize: IntSize,
+                layoutDirection: LayoutDirection,
+                popupContentSize: IntSize,
+            ): IntOffset = IntOffset(blurBounds.left, blurBounds.top)
         },
-    )
+        properties = PopupProperties(
+            focusable = false,
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false,
+            clippingEnabled = false,
+        ),
+    ) {
+        Box(
+            modifier = modifier
+                .then(
+                    with(density) {
+                        Modifier.size(
+                            width = blurBounds.width.toDp(),
+                            height = blurBounds.height.toDp(),
+                        )
+                    },
+                )
+                .then(blurModifier),
+        )
+    }
 }

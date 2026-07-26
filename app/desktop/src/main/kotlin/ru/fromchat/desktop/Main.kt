@@ -53,11 +53,29 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.skia.Image
 import ru.fromchat.AppForeground
 import ru.fromchat.Logger
+import ru.fromchat.Res
+import ru.fromchat.action_copy
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.workers.AttachmentTransferBootstrap
+import ru.fromchat.app_name
+import ru.fromchat.desktop_about_app
+import ru.fromchat.desktop_cut
+import ru.fromchat.desktop_menu_actions
+import ru.fromchat.desktop_menu_edit
+import ru.fromchat.desktop_menu_window
+import ru.fromchat.desktop_minimize
+import ru.fromchat.desktop_paste
+import ru.fromchat.desktop_quit
+import ru.fromchat.desktop_select_all
+import ru.fromchat.desktop_show_app
+import ru.fromchat.desktop_tray_show
+import ru.fromchat.desktop_zoom
 import ru.fromchat.ui.App
 import ru.fromchat.ui.LocalExtraStatusBarTop
 
@@ -196,7 +214,8 @@ private object DesktopProtocolRegistration {
 
 fun main(args: Array<String>) {
     if (isMacOs()) {
-        System.setProperty("apple.awt.application.name", "FromChat")
+        val appName = runBlocking { getString(Res.string.app_name) }
+        System.setProperty("apple.awt.application.name", appName)
         System.setProperty("apple.laf.useScreenMenuBar", "true")
     }
     if (!DesktopSingleInstance.acquireOrForward(args)) return
@@ -220,6 +239,10 @@ fun main(args: Array<String>) {
         val windowIcon = remember { loadAppIconPainter(tray = false) }
         val traySupported = remember { java.awt.SystemTray.isSupported() }
         val mac = remember { isMacOs() }
+        val appName = stringResource(Res.string.app_name)
+        val aboutApp = stringResource(Res.string.desktop_about_app)
+        val trayShow = stringResource(Res.string.desktop_tray_show)
+        val quit = stringResource(Res.string.desktop_quit)
 
         DisposableEffect(trayState) {
             DesktopNotifier.sink = { title, body ->
@@ -247,13 +270,13 @@ fun main(args: Array<String>) {
             Tray(
                 icon = trayIcon,
                 state = trayState,
-                tooltip = "FromChat",
+                tooltip = appName,
                 onAction = { windowVisible = true },
                 menu = {
-                    Item("Show") { windowVisible = true }
-                    Item("About FromChat") { aboutOpen = true }
+                    Item(trayShow) { windowVisible = true }
+                    Item(aboutApp) { aboutOpen = true }
                     Separator()
-                    Item("Quit") { exitApplication() }
+                    Item(quit) { exitApplication() }
                 },
             )
         }
@@ -267,7 +290,7 @@ fun main(args: Array<String>) {
                     exitApplication()
                 }
             },
-            title = "FromChat",
+            title = appName,
             state = windowState,
             visible = windowVisible || !traySupported,
             icon = windowIcon,
@@ -330,7 +353,7 @@ fun main(args: Array<String>) {
         if (aboutOpen) {
             Window(
                 onCloseRequest = { aboutOpen = false },
-                title = "About FromChat",
+                title = aboutApp,
                 state = aboutWindowState,
                 icon = windowIcon,
             ) {
@@ -347,45 +370,57 @@ private fun FrameWindowScope.FromChatMenuBar(
     onMinimize: () -> Unit,
     onZoom: () -> Unit,
 ) {
+    val actions = stringResource(Res.string.desktop_menu_actions)
+    val aboutApp = stringResource(Res.string.desktop_about_app)
+    val showApp = stringResource(Res.string.desktop_show_app)
+    val edit = stringResource(Res.string.desktop_menu_edit)
+    val cut = stringResource(Res.string.desktop_cut)
+    val copy = stringResource(Res.string.action_copy)
+    val paste = stringResource(Res.string.desktop_paste)
+    val selectAll = stringResource(Res.string.desktop_select_all)
+    val windowMenu = stringResource(Res.string.desktop_menu_window)
+    val minimize = stringResource(Res.string.desktop_minimize)
+    val zoom = stringResource(Res.string.desktop_zoom)
+
     MenuBar {
-        Menu("Actions", mnemonic = 'A') {
-            Item("About FromChat", onClick = onAbout)
+        Menu(actions, mnemonic = 'A') {
+            Item(aboutApp, onClick = onAbout)
             Item(
-                "Show FromChat",
+                showApp,
                 shortcut = KeyShortcut(Key.N, meta = true, shift = true),
                 onClick = onShow,
             )
         }
-        Menu("Edit", mnemonic = 'E') {
+        Menu(edit, mnemonic = 'E') {
             Item(
-                "Cut",
+                cut,
                 shortcut = KeyShortcut(Key.X, meta = true),
                 onClick = { performAwtEditAction(DefaultEditorKit.cutAction) },
             )
             Item(
-                "Copy",
+                copy,
                 shortcut = KeyShortcut(Key.C, meta = true),
                 onClick = { performAwtEditAction(DefaultEditorKit.copyAction) },
             )
             Item(
-                "Paste",
+                paste,
                 shortcut = KeyShortcut(Key.V, meta = true),
                 onClick = { performAwtEditAction(DefaultEditorKit.pasteAction) },
             )
             Separator()
             Item(
-                "Select All",
+                selectAll,
                 shortcut = KeyShortcut(Key.A, meta = true),
                 onClick = { performAwtEditAction(DefaultEditorKit.selectAllAction) },
             )
         }
-        Menu("Window", mnemonic = 'W') {
+        Menu(windowMenu, mnemonic = 'W') {
             Item(
-                "Minimize",
+                minimize,
                 shortcut = KeyShortcut(Key.M, meta = true),
                 onClick = onMinimize,
             )
-            Item("Zoom", onClick = onZoom)
+            Item(zoom, onClick = onZoom)
         }
     }
 }
