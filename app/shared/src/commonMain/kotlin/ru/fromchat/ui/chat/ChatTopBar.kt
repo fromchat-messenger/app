@@ -333,6 +333,7 @@ fun ChatTopBar(
     modifier: Modifier = Modifier,
     hazeBlurEnabled: Boolean = true,
     pillChrome: Boolean = false,
+    showBackButton: Boolean = true,
 ) {
     if (pillChrome) {
         ChatTopBarPill(
@@ -345,6 +346,7 @@ fun ChatTopBar(
             titleChrome = titleChrome,
             modifier = modifier,
             hazeBlurEnabled = hazeBlurEnabled,
+            showBackButton = showBackButton,
         )
         return
     }
@@ -366,11 +368,13 @@ fun ChatTopBar(
                     titleContentColor = MaterialTheme.colorScheme.onSurface,
                 ),
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = backContentDescription
-                        )
+                    if (showBackButton) {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                contentDescription = backContentDescription
+                            )
+                        }
                     }
                 },
                 title = { titleChrome() },
@@ -441,6 +445,7 @@ private fun ChatTopBarPill(
     titleChrome: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     hazeBlurEnabled: Boolean = true,
+    showBackButton: Boolean = true,
 ) {
     val hazeStyle = rememberChatSurfaceContainerHazeStyle()
     val progressiveStripHazeStyle = HazeMaterials.thin()
@@ -471,24 +476,26 @@ private fun ChatTopBarPill(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(chromeColor)
-                    .hazeEffect(state = hazeState) {
-                        blurEffect {
-                            blurEnabled = hazeBlurEnabled
-                            style = hazeStyle
-                        }
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                        contentDescription = backContentDescription,
-                    )
+            if (showBackButton) {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(chromeColor)
+                        .hazeEffect(state = hazeState) {
+                            blurEffect {
+                                blurEnabled = hazeBlurEnabled
+                                style = hazeStyle
+                            }
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = backContentDescription,
+                        )
+                    }
                 }
             }
             Row(
