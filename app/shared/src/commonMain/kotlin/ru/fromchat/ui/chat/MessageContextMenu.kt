@@ -62,6 +62,7 @@ import ru.fromchat.api.local.download.resolveSavableMessageFile
 import ru.fromchat.api.local.download.resolveSavableMessageImage
 import ru.fromchat.api.local.messages.isQueuedOutbound
 import ru.fromchat.api.schema.messages.Message
+import ru.fromchat.supportsMouseMessageInteraction
 import ru.fromchat.ui.components.Text
 import com.pr0gramm3r101.utils.scaleOnPress
 
@@ -188,11 +189,19 @@ fun MessageContextMenu(
 
         val density = LocalDensity.current
         val paddingPx = with(density) { 16.dp.toPx().toInt() }
+        val allowOutsideWindow = supportsMouseMessageInteraction()
         val rightEdge = screenWidthPx - paddingPx
         val bottomEdge = screenHeightPx - paddingPx
 
-        val adjustedOffset = remember(measuredSize, state.position, rightEdge, bottomEdge, paddingPx) {
-            if (measuredSize == IntSize.Zero) {
+        val adjustedOffset = remember(
+            measuredSize,
+            state.position,
+            rightEdge,
+            bottomEdge,
+            paddingPx,
+            allowOutsideWindow,
+        ) {
+            if (allowOutsideWindow || measuredSize == IntSize.Zero) {
                 state.position
             } else {
                 var x = state.position.x

@@ -71,6 +71,7 @@
     <string name="auth_yandex_failed">Yandex sign-in was cancelled or failed.</string>
     <!-- Main Screen -->
     <string name="chats">Chats</string>
+    <string name="select_chat_placeholder">Select a chat to start messaging</string>
     <string name="contacts">Contacts</string>
     <string name="profile">Profile</string>
     <string name="dms">Private chats</string>

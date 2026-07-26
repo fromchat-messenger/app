@@ -75,6 +75,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import ru.fromchat.ui.extraStatusBars
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -374,7 +375,7 @@ private fun ChatsNormalTopBar(
 ) {
     TopAppBar(
         modifier = modifier,
-        windowInsets = WindowInsets.statusBars,
+        windowInsets = WindowInsets.extraStatusBars,
         colors = chatsTopAppBarColors(blurReveal),
         title = {
             Row(
@@ -468,7 +469,7 @@ private fun ChatsSelectionTopBar(
 
     TopAppBar(
         modifier = modifier,
-        windowInsets = WindowInsets.statusBars,
+        windowInsets = WindowInsets.extraStatusBars,
         colors = chatsTopAppBarColors(blurReveal),
         navigationIcon = {
             IconButton(onClick = onClose) {

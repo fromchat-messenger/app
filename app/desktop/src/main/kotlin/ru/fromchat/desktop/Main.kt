@@ -1,14 +1,17 @@
 package ru.fromchat.desktop
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Notification
 import androidx.compose.ui.window.Tray
 import androidx.compose.ui.window.Window
@@ -20,10 +23,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import org.jetbrains.skia.Image
 import ru.fromchat.AppForeground
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.workers.AttachmentTransferBootstrap
 import ru.fromchat.ui.App
+import ru.fromchat.ui.LocalExtraStatusBarTop
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
@@ -32,6 +37,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.swing.JRootPane
 import kotlin.concurrent.thread
 
 private object DesktopApplicationBootstrap {
@@ -189,7 +195,7 @@ fun main(args: Array<String>) {
         val windowState = rememberWindowState()
         var windowVisible by remember { mutableStateOf(true) }
         val trayState = rememberTrayState()
-        val trayIcon = remember { createTrayIconPainter() }
+        val appIcon = remember { loadAppIconPainter() }
         val traySupported = remember { java.awt.SystemTray.isSupported() }
 
         DisposableEffect(trayState) {
@@ -206,7 +212,7 @@ fun main(args: Array<String>) {
 
         if (traySupported) {
             Tray(
-                icon = trayIcon,
+                icon = appIcon,
                 state = trayState,
                 tooltip = "FromChat",
                 onAction = { windowVisible = true },
@@ -229,21 +235,39 @@ fun main(args: Array<String>) {
             title = "FromChat",
             state = windowState,
             visible = windowVisible || !traySupported,
-            icon = trayIcon,
+            icon = appIcon,
         ) {
+            LaunchedEffect(window) {
+                enableEdgeToEdgeTitleBar(window.rootPane)
+            }
             DisposableEffect(Unit) {
                 AppForeground.setForeground(true)
                 onDispose { }
             }
-            App()
+            CompositionLocalProvider(
+                LocalExtraStatusBarTop provides if (isMacOs()) 28.dp else 0.dp,
+            ) {
+                App()
+            }
         }
     }
 }
 
-private fun createTrayIconPainter(): Painter = object : Painter() {
-    override val intrinsicSize: Size = Size(32f, 32f)
+private fun isMacOs(): Boolean =
+    System.getProperty("os.name").orEmpty().lowercase().contains("mac")
 
-    override fun DrawScope.onDraw() {
-        drawRect(Color(0xFF4484F4))
-    }
+private fun enableEdgeToEdgeTitleBar(rootPane: JRootPane) {
+    if (!isMacOs()) return
+    rootPane.putClientProperty("apple.awt.fullWindowContent", true)
+    rootPane.putClientProperty("apple.awt.transparentTitleBar", true)
+    rootPane.putClientProperty("apple.awt.windowTitleVisible", false)
+}
+
+private fun loadAppIconPainter(): Painter {
+    val bytes = DesktopApplicationBootstrap::class.java.classLoader
+        .getResourceAsStream("app_icon.png")
+        ?.use { it.readBytes() }
+        ?: return BitmapPainter(ImageBitmap(32, 32))
+    val skiaImage = Image.makeFromEncoded(bytes)
+    return BitmapPainter(skiaImage.toComposeImageBitmap())
 }

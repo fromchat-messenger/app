@@ -11,6 +11,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,6 +25,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -100,6 +102,10 @@ import ru.fromchat.ui.chat.panels.dm.DmProfileRoute
 import ru.fromchat.ui.chat.panels.publicchat.PublicChatChatRoute
 import ru.fromchat.ui.chat.panels.publicchat.PublicChatNav
 import ru.fromchat.ui.chat.panels.publicchat.PublicChatProfileRoute
+import ru.fromchat.ui.main.ConversationListDetailShell
+import ru.fromchat.ui.main.ConversationProfileThirdPaneMinWidth
+import ru.fromchat.ui.main.EmptyConversationPlaceholder
+import ru.fromchat.ui.main.MAIN_PAGE_CHATS
 import ru.fromchat.ui.main.MainScreen
 import ru.fromchat.ui.main.chats.ChatsSearchScreen
 import ru.fromchat.ui.main.settings.LOG_FILE_OPEN_RESULT_KEY
@@ -129,6 +135,20 @@ val LocalNavController = compositionLocalOf<NavController> { error("NavControlle
 private fun isConversationChatRoute(route: String?): Boolean =
     route == PublicChatNav.CHAT_ROUTE ||
         (route != null && route.startsWith("dm/") && "/chat" in route)
+
+private fun isConversationProfileRoute(route: String?): Boolean =
+    route == PublicChatNav.PROFILE_ROUTE ||
+        (route != null && route.startsWith("dm/") && route.endsWith("/profile"))
+
+private fun isConversationShellRoute(route: String?): Boolean =
+    route == "chat" ||
+        isConversationChatRoute(route) ||
+        isConversationProfileRoute(route)
+
+private fun dmUserIdFromRoute(route: String?): Int? {
+    if (route == null || !route.startsWith("dm/")) return null
+    return route.substringAfter("dm/").substringBefore("/").toIntOrNull()?.takeIf { it > 0 }
+}
 
 private val rootNavTween = tween<Float>(durationMillis = 250, easing = FastOutSlowInEasing)
 
@@ -437,31 +457,27 @@ fun App(
             ) {
                 if (startDestination != null) {
                     val currentEntry by navController.currentBackStackEntryAsState()
+                    val currentRoute = currentEntry?.destination?.route
+                    val widthSizeClass = currentWindowAdaptiveInfo().widthSizeClass
+                    var pendingMainTab by remember { mutableIntStateOf(MAIN_PAGE_CHATS) }
                     val showConversationListDetail =
-                        currentWindowAdaptiveInfo().widthSizeClass == WindowWidthSizeClass.EXPANDED &&
-                            isConversationChatRoute(currentEntry?.destination?.route)
+                        widthSizeClass != WindowWidthSizeClass.COMPACT &&
+                            isConversationShellRoute(currentRoute)
 
                     ScreenSurface {
                         Box(Modifier.fillMaxSize()) {
-                            Row(Modifier.fillMaxSize()) {
-                                if (showConversationListDetail) {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(360.dp)
-                                            .fillMaxHeight(),
-                                    ) {
-                                        MainScreen(
-                                            sharedTransitionScope = this@SharedTransitionLayout,
-                                            snackbarHostState = profileLookupSnackbarHostState,
-                                            listPaneOnly = true,
-                                        )
-                                    }
-                                    VerticalDivider()
-                                }
-                                Box(Modifier.weight(1f).fillMaxSize()) {
+                            BoxWithConstraints(Modifier.fillMaxSize()) {
+                                val showProfileThirdPane =
+                                    showConversationListDetail &&
+                                        isConversationProfileRoute(currentRoute) &&
+                                        maxWidth >= ConversationProfileThirdPaneMinWidth
+
+                                @Composable
+                                fun AppNavHost(modifier: Modifier = Modifier) {
                                     NavHost(
                                         navController = navController,
                                         startDestination = startDestination!!,
+                                        modifier = modifier,
                                         enterTransition = { rootNavEnterTransition() },
                                         exitTransition = { rootNavExitTransition() },
                                         popEnterTransition = { rootNavPopEnterTransition() },
@@ -517,11 +533,16 @@ fun App(
                             }
 
                             composable("chat") {
-                                MainScreen(
-                                    sharedTransitionScope = this@SharedTransitionLayout,
-                                    animatedVisibilityScope = this,
-                                    snackbarHostState = profileLookupSnackbarHostState
-                                )
+                                if (showConversationListDetail) {
+                                    EmptyConversationPlaceholder()
+                                } else {
+                                    MainScreen(
+                                        sharedTransitionScope = this@SharedTransitionLayout,
+                                        animatedVisibilityScope = this,
+                                        snackbarHostState = profileLookupSnackbarHostState,
+                                        initialPage = pendingMainTab,
+                                    )
+                                }
                             }
 
                             composable(PublicChatNav.CHAT_ROUTE) {
@@ -777,6 +798,63 @@ fun App(
                                 ApiClient.onAuthError = null
                             }
                         }
+                                }
+
+                                if (showConversationListDetail) {
+                                    ConversationListDetailShell(
+                                        widthSizeClass = widthSizeClass,
+                                        showProfilePane = showProfileThirdPane,
+                                        listPane = {
+                                            MainScreen(
+                                                sharedTransitionScope = this@SharedTransitionLayout,
+                                                snackbarHostState = profileLookupSnackbarHostState,
+                                                listPaneOnly = true,
+                                            )
+                                        },
+                                        detailPane = {
+                                            if (showProfileThirdPane) {
+                                                androidx.compose.animation.AnimatedVisibility(
+                                                    visible = true,
+                                                    enter = EnterTransition.None,
+                                                    exit = ExitTransition.None,
+                                                ) {
+                                                    val dmUserId = dmUserIdFromRoute(currentRoute)
+                                                    when {
+                                                        dmUserId != null -> DmChatRoute(
+                                                            otherUserId = dmUserId,
+                                                            scrollToMessageId = null,
+                                                            navController = navController,
+                                                            sharedTransitionScope = this@SharedTransitionLayout,
+                                                            animatedVisibilityScope = this,
+                                                        )
+                                                        currentRoute == PublicChatNav.PROFILE_ROUTE ||
+                                                            currentRoute == PublicChatNav.CHAT_ROUTE -> {
+                                                            PublicChatChatRoute(
+                                                                scrollToMessageId = scrollToMessageId,
+                                                                navController = navController,
+                                                                sharedTransitionScope = this@SharedTransitionLayout,
+                                                                animatedVisibilityScope = this,
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            } else {
+                                                AppNavHost(Modifier.fillMaxSize())
+                                            }
+                                        },
+                                        profilePane = {
+                                            AppNavHost(Modifier.fillMaxSize())
+                                        },
+                                        onSelectMainTab = { page ->
+                                            pendingMainTab = page
+                                            navController.navigate("chat") {
+                                                popUpTo("chat") { inclusive = true }
+                                                launchSingleTop = true
+                                            }
+                                        },
+                                    )
+                                } else {
+                                    AppNavHost(Modifier.fillMaxSize())
                                 }
                             }
 
