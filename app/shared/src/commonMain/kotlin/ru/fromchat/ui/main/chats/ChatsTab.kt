@@ -829,7 +829,6 @@ fun ChatsTab(
         ),
     )
     val rowRevealProgress = chatContextMenuOverlay.rowRevealProgress
-    val overlayCloneReady = chatContextMenuOverlay.overlayCloneReady
     val callsEnabled = ServerConfig.callsEnabled
 
     fun markSelectedChatsRead() {
@@ -968,7 +967,6 @@ fun ChatsTab(
                         publicChatSelected = publicChatSelected,
                         selectedOtherUserIds = selectedOtherUserIds,
                         contextMenuState = contextMenuState,
-                        overlayCloneReady = overlayCloneReady,
                         rowRevealProgress = rowRevealProgress,
                         listContentPadding = PaddingValues(top = fixedTopBarHeight),
                         showSearchBar = true,
@@ -1033,7 +1031,6 @@ fun ChatsTab(
                                 return@ChatConversationsList
                             }
                             haptic(HapticFeedbackEvent.ContextMenuOpened)
-                            chatContextMenuOverlay.overlayCloneReady = false
                             contextMenuState = ChatContextMenuState(
                                 phase = ChatContextMenuPhase.Animating,
                                 target = target,
@@ -1049,7 +1046,6 @@ fun ChatsTab(
                             if (suspensionState.isSuspended) return@ChatConversationsList
                             haptic(HapticFeedbackEvent.ContextMenuOpened)
                             avatarPressMark = null
-                            chatContextMenuOverlay.overlayCloneReady = false
                             contextMenuState = ChatContextMenuState(
                                 phase = ChatContextMenuPhase.Animating,
                                 target = target,
@@ -1185,9 +1181,6 @@ fun ChatsTab(
                 animatingOut = true,
             )
         }
-        chatContextMenuOverlay.onOverlayCloneReady = {
-            chatContextMenuOverlay.overlayCloneReady = true
-        }
 
         val shouldPublishOverlay = isVisible &&
             contextMenuState.isOverlayReplicaActive &&
@@ -1215,19 +1208,10 @@ fun ChatsTab(
             null
         }
         if (chatContextMenuOverlay.uiState != overlayUiState) {
-            val previousOverlay = chatContextMenuOverlay.uiState
             chatContextMenuOverlay.uiState = overlayUiState
             if (overlayUiState == null) {
                 chatContextMenuOverlay.blurProgress = 0f
                 chatContextMenuOverlay.rowRevealProgress = 0f
-                chatContextMenuOverlay.overlayCloneReady = false
-            } else {
-                val isNewOverlaySession = previousOverlay == null ||
-                    previousOverlay.contextMenuState.listIndex != overlayUiState.contextMenuState.listIndex ||
-                    !previousOverlay.contextMenuState.isOverlayReplicaActive
-                if (isNewOverlaySession) {
-                    chatContextMenuOverlay.overlayCloneReady = false
-                }
             }
         }
 
@@ -1277,7 +1261,6 @@ internal fun ChatContextMenuOverlayHost(
             uiState.contextMenuState.otherUserId?.let(controller.onDelete)
         },
         onSelect = controller.onSelect,
-        onOverlayCloneReady = controller.onOverlayCloneReady,
         modifier = modifier,
     )
 }
@@ -1297,7 +1280,6 @@ private fun ChatContextMenuOverlay(
     onMarkRead: () -> Unit,
     onDelete: () -> Unit,
     onSelect: () -> Unit,
-    onOverlayCloneReady: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val contextMenuState = uiState.contextMenuState
@@ -1500,17 +1482,6 @@ private fun ChatContextMenuOverlay(
             ) { value, _ ->
                 menuOpenProgress = value
             }
-        }
-    }
-
-    LaunchedEffect(
-        layoutReady,
-        contextMenuState.listIndex,
-        contextMenuState.target,
-        contextMenuState.otherUserId,
-    ) {
-        if (layoutReady && contextMenuState.isOverlayReplicaActive) {
-            onOverlayCloneReady()
         }
     }
 

@@ -52,6 +52,7 @@ import kotlin.concurrent.thread
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.skia.Image
@@ -232,7 +233,7 @@ fun main(args: Array<String>) {
         UtilsLibrary.init()
         DesktopApplicationBootstrap.launchOnApplicationStart()
 
-        val windowState = rememberWindowState()
+        val windowState = rememberWindowState(size = remember { DesktopWindowPrefs.loadSize() })
         val aboutWindowState = rememberWindowState(
             position = WindowPosition.Aligned(Alignment.Center),
             size = DpSize(440.dp, 640.dp),
@@ -248,6 +249,11 @@ fun main(args: Array<String>) {
         val aboutApp = stringResource(Res.string.desktop_about_app)
         val trayShow = stringResource(Res.string.desktop_tray_show)
         val quit = stringResource(Res.string.desktop_quit)
+
+        LaunchedEffect(windowState.size) {
+            delay(3_000)
+            DesktopWindowPrefs.saveSize(windowState.size)
+        }
 
         DisposableEffect(trayState) {
             DesktopNotifier.sink = { title, body ->

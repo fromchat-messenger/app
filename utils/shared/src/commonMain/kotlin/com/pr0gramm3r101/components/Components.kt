@@ -681,7 +681,12 @@ fun ListItem(
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
-                            leadingContent()
+                            // Material list leadingIconColor default: onSurfaceVariant
+                            CompositionLocalProvider(
+                                LocalContentColor provides MaterialTheme.colorScheme.onSurfaceVariant,
+                            ) {
+                                leadingContent()
+                            }
                         }
                     }
 

@@ -67,6 +67,7 @@ import dev.chrisbanes.haze.blur.HazeBlurStyle
 import dev.chrisbanes.haze.blur.HazeColorEffect
 import dev.chrisbanes.haze.blur.HazeProgressive
 import dev.chrisbanes.haze.blur.blurEffect
+import dev.chrisbanes.haze.blur.materials.HazeMaterials
 import dev.chrisbanes.haze.hazeEffect
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
@@ -425,8 +426,9 @@ fun ChatTopBar(
 /**
  * Two-pane chat chrome: separate back pill + title pill. Matches [ChatInput] composer chrome
  * ([rememberChatSurfaceContainerHazeStyle] + [androidx.compose.material3.ColorScheme.surfaceContainer]).
- * Full-bleed progressive haze strip behind the pills (high at top → fade toward bottom); pills keep
- * their own surfaceContainer + [hazeEffect]. Horizontal inset matches [ChatInput].
+ * Full-bleed progressive haze strip behind the pills uses [HazeMaterials.thin] (high at top → fade
+ * toward bottom); pills keep surfaceContainer + [rememberChatSurfaceContainerHazeStyle].
+ * Horizontal inset matches [ChatInput].
  */
 @Composable
 private fun ChatTopBarPill(
@@ -441,6 +443,7 @@ private fun ChatTopBarPill(
     hazeBlurEnabled: Boolean = true,
 ) {
     val hazeStyle = rememberChatSurfaceContainerHazeStyle()
+    val progressiveStripHazeStyle = HazeMaterials.thin()
     val chromeColor = MaterialTheme.colorScheme.surfaceContainer
     val pillShape = RoundedCornerShape(28.dp)
 
@@ -452,7 +455,7 @@ private fun ChatTopBarPill(
                 .hazeEffect(state = hazeState) {
                     blurEffect {
                         blurEnabled = hazeBlurEnabled
-                        style = hazeStyle
+                        style = progressiveStripHazeStyle
                         progressive = HazeProgressive.verticalGradient(
                             startIntensity = 1f,
                             endIntensity = 0f,
