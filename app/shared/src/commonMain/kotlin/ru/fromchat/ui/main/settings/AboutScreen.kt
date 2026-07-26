@@ -60,6 +60,7 @@ fun AboutScreen() {
     val uriHandler = LocalUriHandler.current
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
         topBar = {
             SettingsDetailTopBar(
                 title = {

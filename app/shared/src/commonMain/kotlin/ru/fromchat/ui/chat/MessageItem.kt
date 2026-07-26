@@ -1110,6 +1110,15 @@ fun MessageItem(
                                             !isCorrupted &&
                                             !isFilenameOnlyMessageCaption(message)
                                         ) {
+                                            // I-beam over message text: SelectionContainer registers
+                                            // PointerIcon.Text on Android/desktop; outer hover icon
+                                            // covers padding and ContextMenuArea gaps on desktop.
+                                            val selectableTextModifier = Modifier
+                                                .pointerHoverIcon(
+                                                    PointerIcon.Text,
+                                                    overrideDescendants = true,
+                                                )
+                                                .padding(horizontal = 14.dp)
                                             if (mouseMessageUi) {
                                                 // Default selection colors use primary; on author
                                                 // bubbles that matches the background, so
@@ -1141,19 +1150,20 @@ fun MessageItem(
                                                                 text = message.content,
                                                                 style = MaterialTheme.typography.bodyLarge,
                                                                 color = contentColor,
-                                                                modifier = Modifier.padding(
-                                                                    horizontal = 14.dp,
-                                                                ),
+                                                                modifier = selectableTextModifier,
                                                             )
                                                         }
                                                     }
                                                 }
                                             } else {
+                                                // Android (and touch): still show text cursor when a
+                                                // mouse/trackpad hovers the caption; selection stays
+                                                // off so long-press keeps opening the message menu.
                                                 Text(
                                                     text = message.content,
                                                     style = MaterialTheme.typography.bodyLarge,
                                                     color = contentColor,
-                                                    modifier = Modifier.padding(horizontal = 14.dp)
+                                                    modifier = selectableTextModifier,
                                                 )
                                             }
                                         }

@@ -101,6 +101,7 @@ import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Logger
 import ru.fromchat.ui.main.ConversationDetailContentPadding
 import ru.fromchat.ui.main.LocalConversationListDetailActive
+import ru.fromchat.ui.main.detailPaneShowBackButton
 import ru.fromchat.Res
 import ru.fromchat.presence_recently
 import ru.fromchat.api.ApiClient
@@ -1414,6 +1415,7 @@ fun ChatScreen(
                             hazeState = hazeState,
                             hazeBlurEnabled = hazeBlurEnabled,
                             pillChrome = listDetailActive,
+                            showBackButton = detailPaneShowBackButton(),
                             onBack = {
                                 runNav { navController.navigateUp() }
                             },

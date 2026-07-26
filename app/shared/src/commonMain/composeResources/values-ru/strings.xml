@@ -111,6 +111,8 @@
     <string name="search_not_found_message">Ничего не найдено. Попробуйте переформулировать запрос.</string>
     <string name="message_placeholder">Напишите сообщение…</string>
     <string name="status_connecting">Соединение</string>
+    <string name="status_connected">Подключено</string>
+    <string name="status_disconnected">Отключено</string>
     <string name="status_updating">Обновление</string>
     <string name="chat_group_label">Группа</string>
     <string name="chat_members_count">%1$d человек</string>
