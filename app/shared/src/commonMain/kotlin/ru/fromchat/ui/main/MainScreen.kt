@@ -95,15 +95,9 @@ private const val PAGE_COUNT = 4
  * File-private (not a local fun inside [MainScreen]) so desktop JVM incremental runs do not
  * chase missing nested classes like `MainScreenKt$MainScreen$openOwnProfileInDetailPane$1`.
  */
-private fun openOwnProfileInDetailPane(
-    navController: NavController,
-    embeddedInListDetail: Boolean,
-) {
+private fun openOwnProfileInDetailPane(navController: NavController) {
     val userId = ApiClient.user?.id?.takeIf { it > 0 } ?: return
-    navController.navigateReplacingMainDetail(
-        route = "profile/$userId",
-        preserveConversationDetail = embeddedInListDetail,
-    )
+    navController.navigateReplacingMainDetail(route = "profile/$userId")
 }
 
 /**
@@ -120,8 +114,7 @@ private fun selectMainPage(
     widthClass: WindowWidthSizeClass,
     scope: CoroutineScope,
     pagerState: PagerState,
-    navController: NavController,
-    embeddedInListDetail: Boolean,
+    settingsDetailNavController: NavController,
 ) {
     when {
         page == PAGE_PROFILE && widthClass != WindowWidthSizeClass.COMPACT -> {
@@ -129,13 +122,13 @@ private fun selectMainPage(
             val ownUserId = ApiClient.user?.id?.takeIf { it > 0 }
             val alreadyShowingOwnProfile =
                 ownUserId != null &&
-                    navController.isCurrentMainDetailRoute("profile/$ownUserId")
+                    settingsDetailNavController.isCurrentMainDetailRoute("profile/$ownUserId")
             if (alreadyOnSettingsList && alreadyShowingOwnProfile) return
             if (!alreadyOnSettingsList) {
                 scope.launch { pagerState.animateScrollToPage(PAGE_SETTINGS) }
             }
             if (!alreadyShowingOwnProfile) {
-                openOwnProfileInDetailPane(navController, embeddedInListDetail)
+                openOwnProfileInDetailPane(settingsDetailNavController)
             }
         }
         else -> {
@@ -168,6 +161,8 @@ fun MainScreen(
 ) {
     val effectiveSnackbarHostState = snackbarHostState ?: remember { SnackbarHostState() }
     val navController = LocalNavController.current
+    val settingsDetailNavController =
+        LocalDesktopSettingsNavController.current ?: navController
     val pagerState = rememberPagerState(
         initialPage = initialPage.coerceIn(0, PAGE_COUNT - 1),
         pageCount = { PAGE_COUNT },
@@ -212,6 +207,11 @@ fun MainScreen(
                         pagerState.scrollToPage(PAGE_CHATS)
                     }
                     chatListSelectionRequestId += 1
+                }
+                DesktopMenuCommand.OpenAbout -> {
+                    if (pagerState.currentPage != PAGE_SETTINGS) {
+                        pagerState.scrollToPage(PAGE_SETTINGS)
+                    }
                 }
             }
         }
@@ -347,8 +347,7 @@ fun MainScreen(
                                 widthClass = widthClass,
                                 scope = scope,
                                 pagerState = pagerState,
-                                navController = navController,
-                                embeddedInListDetail = embeddedInListDetail,
+                                settingsDetailNavController = settingsDetailNavController,
                             )
                         },
                         label = { Text(chatsLabel) },
@@ -367,8 +366,7 @@ fun MainScreen(
                                 widthClass = widthClass,
                                 scope = scope,
                                 pagerState = pagerState,
-                                navController = navController,
-                                embeddedInListDetail = embeddedInListDetail,
+                                settingsDetailNavController = settingsDetailNavController,
                             )
                         },
                         label = { Text(contactsLabel) },
@@ -384,8 +382,7 @@ fun MainScreen(
                                 widthClass = widthClass,
                                 scope = scope,
                                 pagerState = pagerState,
-                                navController = navController,
-                                embeddedInListDetail = embeddedInListDetail,
+                                settingsDetailNavController = settingsDetailNavController,
                             )
                         },
                         label = { Text(settingsLabel) },
@@ -404,8 +401,7 @@ fun MainScreen(
                                 widthClass = widthClass,
                                 scope = scope,
                                 pagerState = pagerState,
-                                navController = navController,
-                                embeddedInListDetail = embeddedInListDetail,
+                                settingsDetailNavController = settingsDetailNavController,
                             )
                         },
                         label = { Text(profileLabel) },

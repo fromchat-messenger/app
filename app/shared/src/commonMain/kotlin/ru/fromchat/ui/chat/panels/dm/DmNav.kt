@@ -44,7 +44,7 @@ fun NavController.navigateToDmChat(
     builder: NavOptionsBuilder.() -> Unit = {},
 ) {
     navigate(DmNav.chatRoute(otherUserId, sourceMessageId)) {
-        popUpTo("chat") { saveState = true }
+        popUpTo(graph.startDestinationId) { saveState = true }
         launchSingleTop = true
         builder()
     }

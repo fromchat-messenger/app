@@ -8,11 +8,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.graphics.toPainter
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.KeyShortcut
@@ -20,7 +18,6 @@ import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.FrameWindowScope
 import androidx.compose.ui.window.MenuBar
@@ -28,15 +25,20 @@ import androidx.compose.ui.window.Notification
 import androidx.compose.ui.window.Tray
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
-import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberTrayState
 import androidx.compose.ui.window.rememberWindowState
 import com.pr0gramm3r101.utils.UtilsLibrary
 import java.awt.Desktop
+import java.awt.Image
 import java.awt.KeyboardFocusManager
+import java.awt.RenderingHints
+import java.awt.Taskbar
 import java.awt.event.ActionEvent
+import java.awt.image.BufferedImage
 import java.io.BufferedReader
+import java.io.ByteArrayInputStream
+import java.io.File
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.InetAddress
@@ -44,6 +46,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.imageio.ImageIO
 import javax.swing.JComponent
 import javax.swing.JRootPane
 import javax.swing.SwingUtilities
@@ -55,7 +58,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
-import org.jetbrains.skia.Image
+import org.jetbrains.skia.Image as SkiaImage
+import ru.fromchat.AppBuildInfo
 import ru.fromchat.AppForeground
 import ru.fromchat.Logger
 import ru.fromchat.Res
@@ -64,6 +68,7 @@ import ru.fromchat.action_select
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.workers.AttachmentTransferBootstrap
 import ru.fromchat.app_name
+import ru.fromchat.app_name_beta
 import ru.fromchat.desktop_about_app
 import ru.fromchat.desktop_cut
 import ru.fromchat.desktop_menu_edit
@@ -220,8 +225,11 @@ fun main(args: Array<String>) {
     System.setProperty("compose.layers.type", "WINDOW")
     if (isMacOs()) {
         // Must be set before AWT Toolkit init (do not call getString / Compose here).
-        // Value matches Res.string.app_name in values / values-ru.
-        System.setProperty("apple.awt.application.name", "FromChat")
+        // Matches Res.string.app_name / app_name_beta.
+        System.setProperty(
+            "apple.awt.application.name",
+            if (AppBuildInfo.isDebug) "FromChat Beta" else "FromChat",
+        )
         System.setProperty("apple.laf.useScreenMenuBar", "true")
     }
     if (!DesktopSingleInstance.acquireOrForward(args)) return
@@ -229,30 +237,38 @@ fun main(args: Array<String>) {
     args.filter { DesktopDeepLinkBus.isFromChatUri(it) }
         .forEach { DesktopDeepLinkBus.handleUri(it) }
 
+    val dockIconImage = loadAppIconBufferedImage(tray = false)
+    applyDockIcon(dockIconImage)
+    // Re-apply after AWT is fully up — Taskbar can ignore early sets on macOS :run.
+    SwingUtilities.invokeLater { applyDockIcon(dockIconImage) }
+
     application {
         UtilsLibrary.init()
         DesktopApplicationBootstrap.launchOnApplicationStart()
 
-        val windowState = rememberWindowState(size = remember { DesktopWindowPrefs.loadSize() })
-        val aboutWindowState = rememberWindowState(
-            position = WindowPosition.Aligned(Alignment.Center),
-            size = DpSize(440.dp, 640.dp),
+        val windowState = rememberWindowState(
+            size = remember { DesktopWindowPrefs.loadSize() },
+            position = remember { DesktopWindowPrefs.loadPosition() },
         )
         var windowVisible by remember { mutableStateOf(true) }
-        var aboutOpen by remember { mutableStateOf(false) }
         val trayState = rememberTrayState()
+        // BufferedImage.toPainter() keeps the AWT pixels (avoids blank BitmapPainter round-trip).
         val trayIcon = remember { loadAppIconPainter(tray = true) }
-        val windowIcon = remember { loadAppIconPainter(tray = false) }
+        val windowIcon = remember {
+            dockIconImage?.toPainter() ?: loadAppIconPainter(tray = false)
+        }
         val traySupported = remember { java.awt.SystemTray.isSupported() }
         val mac = remember { isMacOs() }
-        val appName = stringResource(Res.string.app_name)
+        val appName = stringResource(
+            if (AppBuildInfo.isDebug) Res.string.app_name_beta else Res.string.app_name,
+        )
         val aboutApp = stringResource(Res.string.desktop_about_app)
         val trayShow = stringResource(Res.string.desktop_tray_show)
         val quit = stringResource(Res.string.desktop_quit)
 
-        LaunchedEffect(windowState.size) {
+        LaunchedEffect(windowState.size, windowState.position) {
             delay(3_000)
-            DesktopWindowPrefs.saveSize(windowState.size)
+            DesktopWindowPrefs.save(windowState.size, windowState.position)
         }
 
         DisposableEffect(trayState) {
@@ -267,12 +283,17 @@ fun main(args: Array<String>) {
             }
         }
 
+        fun openAbout() {
+            windowVisible = true
+            DesktopMenuCommands.emit(DesktopMenuCommand.OpenAbout)
+        }
+
         LaunchedEffect(Unit) {
             if (!mac || !Desktop.isDesktopSupported()) return@LaunchedEffect
             val desktop = Desktop.getDesktop()
             if (desktop.isSupported(Desktop.Action.APP_ABOUT)) {
                 desktop.setAboutHandler {
-                    SwingUtilities.invokeLater { aboutOpen = true }
+                    SwingUtilities.invokeLater { openAbout() }
                 }
             }
         }
@@ -285,7 +306,7 @@ fun main(args: Array<String>) {
                 onAction = { windowVisible = true },
                 menu = {
                     Item(trayShow) { windowVisible = true }
-                    Item(aboutApp) { aboutOpen = true }
+                    Item(aboutApp) { openAbout() }
                     Separator()
                     Item(quit) { exitApplication() }
                 },
@@ -327,7 +348,7 @@ fun main(args: Array<String>) {
                         true
                     }
                     event.isShiftPressed && event.key == Key.A -> {
-                        aboutOpen = true
+                        openAbout()
                         true
                     }
                     event.isShiftPressed && event.key == Key.N -> {
@@ -349,6 +370,10 @@ fun main(args: Array<String>) {
             LaunchedEffect(window, appName) {
                 window.title = appName
                 enableEdgeToEdgeTitleBar(window.rootPane)
+                dockIconImage?.let { image ->
+                    window.iconImages = listOf(image)
+                    applyDockIcon(image)
+                }
             }
             DisposableEffect(Unit) {
                 AppForeground.setForeground(true)
@@ -387,17 +412,6 @@ fun main(args: Array<String>) {
                 LocalExtraStatusBarTop provides if (mac) 28.dp else 0.dp,
             ) {
                 App()
-            }
-        }
-
-        if (aboutOpen) {
-            Window(
-                onCloseRequest = { aboutOpen = false },
-                title = aboutApp,
-                state = aboutWindowState,
-                icon = windowIcon,
-            ) {
-                DesktopAboutContent(onClose = { aboutOpen = false })
             }
         }
     }
@@ -515,43 +529,191 @@ private fun enableEdgeToEdgeTitleBar(rootPane: JRootPane) {
     rootPane.putClientProperty("apple.awt.windowTitleVisible", false)
 }
 
+private fun applyDockIcon(image: BufferedImage?) {
+    if (image == null) {
+        Logger.w("DesktopIcon", "applyDockIcon skipped — image is null")
+        return
+    }
+    runCatching {
+        if (!Taskbar.isTaskbarSupported()) {
+            Logger.w("DesktopIcon", "Taskbar unsupported; dock icon not set")
+            return
+        }
+        val taskbar = Taskbar.getTaskbar()
+        if (taskbar.isSupported(Taskbar.Feature.ICON_IMAGE)) {
+            taskbar.iconImage = image
+            Logger.i("DesktopIcon", "Taskbar dock icon set (${image.width}x${image.height})")
+        } else {
+            Logger.w("DesktopIcon", "Taskbar.Feature.ICON_IMAGE unsupported")
+        }
+    }.onFailure { error ->
+        Logger.w("DesktopIcon", "Failed to set dock icon: ${error.message}")
+    }
+}
+
 /**
- * Loads the desktop tray or window icon from packaged resources.
- * Prefers PNG, then WebP; returns a tiny empty bitmap only if every decode fails.
+ * Loads the desktop tray or window/dock icon from packaged resources.
+ * Tray prefers the flat mark (`app_icon`); dock/window prefer the gradient (`app_window_icon`).
+ *
+ * Uses [BufferedImage.toPainter] so Compose Tray/Window hand the same AWT pixels to the OS
+ * (BitmapPainter → ImageBitmap round-trips can rasterize blank and fall back to Compose's default).
  */
 private fun loadAppIconPainter(tray: Boolean): Painter {
+    val image = loadAppIconBufferedImage(tray)
+    if (image == null) {
+        Logger.e(
+            "DesktopIcon",
+            "loadAppIconPainter fell through — no resource decoded (tray=$tray); using solid fallback",
+        )
+        return solidFallbackIcon().toPainter()
+    }
+    Logger.i(
+        "DesktopIcon",
+        "loadAppIconPainter ok tray=$tray size=${image.width}x${image.height} type=${image.type}",
+    )
+    return image.toPainter()
+}
+
+private fun loadAppIconBufferedImage(tray: Boolean): BufferedImage? {
     val names = if (tray) {
         listOf("app_icon.png", "app_icon.webp", "app_window_icon.png", "app_window_icon.webp")
     } else {
         listOf("app_window_icon.png", "app_window_icon.webp", "app_icon.png", "app_icon.webp")
     }
     val loaders = listOfNotNull(
-        Thread.currentThread().contextClassLoader,
         DesktopApplicationBootstrap::class.java.classLoader,
+        Thread.currentThread().contextClassLoader,
         ClassLoader.getSystemClassLoader(),
-    )
+    ).distinct()
 
     for (name in names) {
-        for (loader in loaders) {
-            val stream = loader.getResourceAsStream(name)
-                ?: loader.getResourceAsStream("/$name")
+        val bytes = readClasspathBytes(name, loaders)
+            ?: readFileFallbackBytes(name)
+            ?: continue
+        if (bytes.isEmpty()) continue
+        val decoded = decodeImageBytes(bytes, name) ?: continue
+        if (decoded.width < 16 || decoded.height < 16) {
+            Logger.w("DesktopIcon", "Skipping $name — decoded size ${decoded.width}x${decoded.height}")
+            continue
+        }
+        // Ensure TYPE_INT_ARGB so AWT Tray/Taskbar get a predictable raster.
+        val argb = ensureArgb(decoded)
+        val image = if (tray) scaleBufferedImage(argb, 64) else argb
+        Logger.i("DesktopIcon", "Loaded $name (${image.width}x${image.height}) tray=$tray")
+        return image
+    }
+    Logger.e("DesktopIcon", "No icon resource found for tray=$tray (tried $names)")
+    return null
+}
+
+private fun readClasspathBytes(name: String, loaders: List<ClassLoader>): ByteArray? {
+    val paths = listOf(name, "/$name")
+    for (loader in loaders) {
+        for (path in paths) {
+            val stream = loader.getResourceAsStream(path) ?: continue
+            val bytes = runCatching { stream.use { it.readBytes() } }
+                .onFailure { error ->
+                    Logger.w("DesktopIcon", "Failed reading $path from $loader: ${error.message}")
+                }
+                .getOrNull()
                 ?: continue
-            val bytes = runCatching { stream.use { it.readBytes() } }.getOrNull() ?: continue
-            if (bytes.isEmpty()) continue
-            val bitmap = runCatching {
-                Image.makeFromEncoded(bytes).toComposeImageBitmap()
-            }.onFailure { error ->
-                Logger.w("DesktopIcon", "Failed to decode $name: ${error.message}")
-            }.getOrNull() ?: continue
-            if (bitmap.width < 16 || bitmap.height < 16) {
-                Logger.w("DesktopIcon", "Skipping $name — decoded size ${bitmap.width}x${bitmap.height}")
-                continue
+            if (bytes.isNotEmpty()) {
+                Logger.i("DesktopIcon", "Classpath hit $path via $loader (${bytes.size} bytes)")
+                return bytes
             }
-            Logger.i("DesktopIcon", "Loaded $name (${bitmap.width}x${bitmap.height}) tray=$tray")
-            return BitmapPainter(bitmap)
         }
     }
+    // Explicit class resource (works when context CL is a filtered compose run CL).
+    for (path in paths) {
+        val stream = DesktopApplicationBootstrap::class.java.getResourceAsStream(path) ?: continue
+        val bytes = runCatching { stream.use { it.readBytes() } }.getOrNull() ?: continue
+        if (bytes.isNotEmpty()) {
+            Logger.i("DesktopIcon", "Class resource hit $path (${bytes.size} bytes)")
+            return bytes
+        }
+    }
+    return null
+}
 
-    Logger.w("DesktopIcon", "No app icon resource decoded; using empty placeholder")
-    return BitmapPainter(ImageBitmap(32, 32))
+/** Last resort when classpath packaging under `:run` omits resources. */
+private fun readFileFallbackBytes(name: String): ByteArray? {
+    val candidates = listOf(
+        File("app/desktop/src/main/resources", name),
+        File("src/main/resources", name),
+        File(System.getProperty("user.dir"), "src/main/resources/$name"),
+        File(System.getProperty("user.dir"), "app/desktop/src/main/resources/$name"),
+    )
+    for (file in candidates) {
+        if (!file.isFile) continue
+        val bytes = runCatching { file.readBytes() }.getOrNull() ?: continue
+        if (bytes.isNotEmpty()) {
+            Logger.i("DesktopIcon", "File fallback hit ${file.absolutePath} (${bytes.size} bytes)")
+            return bytes
+        }
+    }
+    return null
+}
+
+private fun decodeImageBytes(bytes: ByteArray, name: String): BufferedImage? {
+    val viaImageIo = runCatching {
+        ImageIO.read(ByteArrayInputStream(bytes))
+    }.onFailure { error ->
+        Logger.w("DesktopIcon", "ImageIO failed for $name: ${error.message}")
+    }.getOrNull()
+    if (viaImageIo != null) return viaImageIo
+
+    return runCatching {
+        val skia = SkiaImage.makeFromEncoded(bytes)
+        bufferedImageFromComposeArgb(skia.toComposeImageBitmap())
+    }.onFailure { error ->
+        Logger.w("DesktopIcon", "Skia decode failed for $name: ${error.message}")
+    }.getOrNull()
+}
+
+private fun ensureArgb(source: BufferedImage): BufferedImage {
+    if (source.type == BufferedImage.TYPE_INT_ARGB) return source
+    val out = BufferedImage(source.width, source.height, BufferedImage.TYPE_INT_ARGB)
+    val graphics = out.createGraphics()
+    graphics.drawImage(source, 0, 0, null)
+    graphics.dispose()
+    return out
+}
+
+private fun bufferedImageFromComposeArgb(
+    bitmap: androidx.compose.ui.graphics.ImageBitmap,
+): BufferedImage {
+    val w = bitmap.width
+    val h = bitmap.height
+    val pixels = IntArray(w * h)
+    bitmap.readPixels(pixels)
+    val out = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
+    out.setRGB(0, 0, w, h, pixels, 0, w)
+    return out
+}
+
+private fun scaleBufferedImage(source: BufferedImage, size: Int): BufferedImage {
+    if (source.width == size && source.height == size) return source
+    val out = BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB)
+    val graphics = out.createGraphics()
+    graphics.setRenderingHint(
+        RenderingHints.KEY_INTERPOLATION,
+        RenderingHints.VALUE_INTERPOLATION_BILINEAR,
+    )
+    graphics.setRenderingHint(
+        RenderingHints.KEY_RENDERING,
+        RenderingHints.VALUE_RENDER_QUALITY,
+    )
+    graphics.drawImage(source.getScaledInstance(size, size, Image.SCALE_SMOOTH), 0, 0, null)
+    graphics.dispose()
+    return out
+}
+
+/** Opaque mark so Tray never substitutes the Compose default for a blank painter. */
+private fun solidFallbackIcon(): BufferedImage {
+    val out = BufferedImage(32, 32, BufferedImage.TYPE_INT_ARGB)
+    val graphics = out.createGraphics()
+    graphics.color = java.awt.Color(0x1A, 0x73, 0xE8)
+    graphics.fillRoundRect(2, 2, 28, 28, 8, 8)
+    graphics.dispose()
+    return out
 }
