@@ -31,7 +31,7 @@ fun NavController.navigateToPublicChat(
     builder: NavOptionsBuilder.() -> Unit = {},
 ) {
     navigate(PublicChatNav.CHAT_ROUTE) {
-        popUpTo("chat") { saveState = true }
+        popUpTo(graph.startDestinationId) { saveState = true }
         launchSingleTop = true
         builder()
     }
