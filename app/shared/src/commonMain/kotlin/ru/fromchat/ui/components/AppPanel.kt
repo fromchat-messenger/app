@@ -13,11 +13,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeSource
 
 /**
- * When non-null, [AppPanel] is a haze source so overlays (chat context-menu blur) include
- * panel chrome / rounded outlines. Provide above the panel (list–detail); null in compact.
+ * Shared [HazeState] for the list pane’s context-menu blur. Provide above the list–detail shell;
+ * [ru.fromchat.ui.main.MainScreen] applies [dev.chrisbanes.haze.hazeSource] to list content only
+ * so the blur layer and sharp overlay stay outside the source. Null in compact layouts.
  */
 val LocalPaneHazeState = staticCompositionLocalOf<HazeState?> { null }
 
@@ -32,15 +32,8 @@ fun AppPanel(
     shape: Shape = RoundedCornerShape(24.dp),
     content: @Composable BoxScope.() -> Unit,
 ) {
-    val paneHazeState = LocalPaneHazeState.current
     Surface(
-        modifier = modifier.then(
-            if (paneHazeState != null) {
-                Modifier.hazeSource(paneHazeState)
-            } else {
-                Modifier
-            },
-        ),
+        modifier = modifier,
         shape = shape,
         color = color,
     ) {

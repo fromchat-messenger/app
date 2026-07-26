@@ -57,8 +57,8 @@ fun DmChatRoute(
     otherUserId: Int,
     scrollToMessageId: Int? = null,
     navController: NavController,
-    sharedTransitionScope: SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
     modifier: Modifier = Modifier,
 ) {
     val activeInstanceId by CacheContext.activeInstanceId.collectAsState()

@@ -118,6 +118,7 @@ import com.pr0gramm3r101.utils.plus
 import com.pr0gramm3r101.utils.right
 import com.pr0gramm3r101.utils.scaleOnPress
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import tech.annexflow.constraintlayout.compose.ConstraintLayout
 import tech.annexflow.constraintlayout.compose.ConstraintLayoutScope
@@ -251,6 +252,12 @@ private fun ListItemContextMenuPopup(
     }
 
     var measuredSize by remember { mutableStateOf(IntSize.Zero) }
+    val measuredSizes = remember { Channel<IntSize>(Channel.CONFLATED) }
+    LaunchedEffect(Unit) {
+        for (size in measuredSizes) {
+            if (measuredSize == IntSize.Zero) measuredSize = size
+        }
+    }
 
     SubcomposeLayout(Modifier.size(0.dp)) { _ ->
         val looseConstraints = Constraints(
@@ -269,7 +276,7 @@ private fun ListItemContextMenuPopup(
         }.map { it.measure(looseConstraints) }
         val p = placeables.firstOrNull()
         if (p != null && measuredSize == IntSize.Zero) {
-            measuredSize = IntSize(p.width, p.height)
+            measuredSizes.trySend(IntSize(p.width, p.height))
         }
         layout(0, 0) {
             placeables.forEach { it.placeRelative(-10000, -10000) }

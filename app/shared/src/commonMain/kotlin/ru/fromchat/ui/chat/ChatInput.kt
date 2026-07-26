@@ -98,6 +98,8 @@ import ru.fromchat.cd_send
 import ru.fromchat.config.Settings
 import ru.fromchat.message_corrupted_short
 import ru.fromchat.message_editing_title
+import ru.fromchat.ui.main.ConversationDetailContentPadding
+import ru.fromchat.ui.main.LocalConversationListDetailActive
 import ru.fromchat.message_placeholder
 import ru.fromchat.message_replying_to
 import ru.fromchat.suspend_chat_banner_message
@@ -322,12 +324,14 @@ fun ChatInput(
         typingHandler.stopTyping()
     }
 
+    val chromeHorizontalPad =
+        if (LocalConversationListDetailActive.current) ConversationDetailContentPadding else 8.dp
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .background(Color.Transparent)
             .windowInsetsPadding(WindowInsets.navigationBars)
-            .padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
+            .padding(start = chromeHorizontalPad, end = chromeHorizontalPad, bottom = 12.dp),
     ) {
         val pillShape = RoundedCornerShape(28.dp)
 

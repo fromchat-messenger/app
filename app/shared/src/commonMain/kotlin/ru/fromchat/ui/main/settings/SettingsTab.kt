@@ -68,6 +68,13 @@ fun SettingsTab() {
     val navController = LocalNavController.current
     val isTwoPane = currentWindowAdaptiveInfo().widthSizeClass != WindowWidthSizeClass.COMPACT
 
+    fun openDetail(route: String) {
+        navController.navigateReplacingMainDetail(
+            route = route,
+            preserveConversationDetail = isTwoPane,
+        )
+    }
+
     Scaffold(
         modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = Color.Transparent,
@@ -104,7 +111,7 @@ fun SettingsTab() {
                         supportingText = stringResource(Res.string.settings_hub_profile_sub),
                         onClick = {
                             val userId = ApiClient.user?.id?.takeIf { it > 0 } ?: return@ListItem
-                            navController.navigateReplacingMainDetail("profile/$userId")
+                            openDetail("profile/$userId")
                         },
                         leadingContent = { Icon(Icons.Filled.Person, null) },
                     )
@@ -115,7 +122,7 @@ fun SettingsTab() {
                 ListItem(
                     headline = stringResource(Res.string.settings_category_account),
                     supportingText = stringResource(Res.string.settings_category_account_d),
-                    onClick = { navController.navigateReplacingMainDetail(SettingsRoutes.Account) },
+                    onClick = { openDetail(SettingsRoutes.Account) },
                     leadingContent = { Icon(Icons.Filled.AccountCircle, null) },
                     divider = true
                 )
@@ -123,7 +130,7 @@ fun SettingsTab() {
                 ListItem(
                     headline = stringResource(Res.string.settings_category_devices),
                     supportingText = stringResource(Res.string.settings_category_devices_d),
-                    onClick = { navController.navigateReplacingMainDetail(SettingsRoutes.Devices) },
+                    onClick = { openDetail(SettingsRoutes.Devices) },
                     leadingContent = { Icon(Icons.Filled.Devices, null) },
                     divider = true
                 )
@@ -131,7 +138,7 @@ fun SettingsTab() {
                 ListItem(
                     headline = stringResource(Res.string.settings_category_appearance),
                     supportingText = stringResource(Res.string.settings_category_appearance_d),
-                    onClick = { navController.navigateReplacingMainDetail(SettingsRoutes.Appearance) },
+                    onClick = { openDetail(SettingsRoutes.Appearance) },
                     leadingContent = { Icon(Icons.Filled.Palette, null) },
                     divider = true
                 )
@@ -139,7 +146,7 @@ fun SettingsTab() {
                 ListItem(
                     headline = stringResource(Res.string.settings_category_notifications),
                     supportingText = stringResource(Res.string.settings_category_notifications_d),
-                    onClick = { navController.navigateReplacingMainDetail(SettingsRoutes.Notifications) },
+                    onClick = { openDetail(SettingsRoutes.Notifications) },
                     leadingContent = { Icon(Icons.Filled.Notifications, null) },
                     divider = true
                 )
@@ -147,7 +154,7 @@ fun SettingsTab() {
                 ListItem(
                     headline = stringResource(Res.string.change_server),
                     supportingText = stringResource(Res.string.change_server_d),
-                    onClick = { navController.navigateReplacingMainDetail(SettingsRoutes.ServerConfig) },
+                    onClick = { openDetail(SettingsRoutes.ServerConfig) },
                     leadingContent = { Icon(Icons.Filled.Storage, null) },
                     divider = true
                 )
@@ -155,7 +162,7 @@ fun SettingsTab() {
                 ListItem(
                     headline = stringResource(Res.string.about),
                     supportingText = stringResource(Res.string.settings_hub_about_sub),
-                    onClick = { navController.navigateReplacingMainDetail(SettingsRoutes.About) },
+                    onClick = { openDetail(SettingsRoutes.About) },
                     leadingContent = { Icon(Icons.Filled.Info, null) },
                     divider = true
                 )
@@ -163,7 +170,7 @@ fun SettingsTab() {
                 ListItem(
                     headline = stringResource(Res.string.logs_title),
                     supportingText = stringResource(Res.string.settings_hub_logs_sub),
-                    onClick = { navController.navigateReplacingMainDetail(SettingsRoutes.Logs) },
+                    onClick = { openDetail(SettingsRoutes.Logs) },
                     leadingContent = { Icon(Icons.Outlined.BugReport, null) }
                 )
             }

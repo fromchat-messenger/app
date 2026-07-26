@@ -63,6 +63,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -698,17 +699,25 @@ fun ProfileScreen(
             animatedVisibilityScope != null &&
             sharedAvatarKey != null
 
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter,
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
-                    .hazeSource(hazeState),
+                    .widthIn(max = 600.dp),
             ) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background)
+                        .hazeSource(hazeState),
+                ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
                 when {
                     showAvatarSkeleton && !hideAvatar -> {
                         item {
@@ -862,9 +871,11 @@ fun ProfileScreen(
                 .padding(bottom = 16.dp)
                 .fillMaxWidth(),
         )
+            }
         }
     }
 }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PublicChatProfileScreen(
@@ -985,17 +996,25 @@ fun PublicChatProfileScreen(
         sharedAvatarKey != null
 
     ScreenSurface(modifier = modifier) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter,
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
-                    .hazeSource(hazeState),
+                    .widthIn(max = 600.dp),
             ) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background)
+                        .hazeSource(hazeState),
                 ) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
                 when {
                     useSharedAvatar && displayName.isNotBlank() -> {
                         item {
@@ -1071,6 +1090,7 @@ fun PublicChatProfileScreen(
                 .padding(bottom = 16.dp)
                 .fillMaxWidth(),
         )
+            }
         }
     }
 }
