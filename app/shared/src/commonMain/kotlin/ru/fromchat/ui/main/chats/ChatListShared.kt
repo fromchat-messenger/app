@@ -268,7 +268,6 @@ internal fun ChatConversationsList(
     publicChatSelected: Boolean,
     selectedOtherUserIds: Set<Int>,
     contextMenuState: ChatContextMenuState,
-    overlayCloneReady: Boolean,
     rowRevealProgress: Float,
     listContentPadding: PaddingValues = PaddingValues(0.dp),
     showSearchBar: Boolean = false,
@@ -380,11 +379,11 @@ internal fun ChatConversationsList(
                             selectionTransitionProgress = selectionTransitionProgress,
                             isSelected = publicChatSelected,
                             isHiddenForOverlay = contextMenuState.listIndex == ChatListLayout.PUBLIC_CHAT_ROW &&
-                                contextMenuState.isOverlayReplicaActive &&
-                                overlayCloneReady,
+                                contextMenuState.isOverlayReplicaActive,
                             isPressingForContextMenu = contextMenuState.listIndex == ChatListLayout.PUBLIC_CHAT_ROW &&
                                 contextMenuState.phase == ChatContextMenuPhase.Pressing,
-                            contextMenuPressScaleActive = contextMenuState.phase == ChatContextMenuPhase.Animating &&
+                            contextMenuPressScaleActive = contextMenuState.listIndex == ChatListLayout.PUBLIC_CHAT_ROW &&
+                                contextMenuState.phase == ChatContextMenuPhase.Animating &&
                                 !contextMenuState.animatingOut,
                             rowRevealProgress = if (contextMenuState.listIndex == ChatListLayout.PUBLIC_CHAT_ROW) {
                                 rowRevealProgress
@@ -461,11 +460,11 @@ internal fun ChatConversationsList(
                             selectionTransitionProgress = selectionTransitionProgress,
                             isSelected = conversation.otherUserId in selectedOtherUserIds,
                             isHiddenForOverlay = contextMenuState.listIndex == lazyIndex &&
-                                contextMenuState.isOverlayReplicaActive &&
-                                overlayCloneReady,
+                                contextMenuState.isOverlayReplicaActive,
                             isPressingForContextMenu = contextMenuState.listIndex == lazyIndex &&
                                 contextMenuState.phase == ChatContextMenuPhase.Pressing,
-                            contextMenuPressScaleActive = contextMenuState.phase == ChatContextMenuPhase.Animating &&
+                            contextMenuPressScaleActive = contextMenuState.listIndex == lazyIndex &&
+                                contextMenuState.phase == ChatContextMenuPhase.Animating &&
                                 !contextMenuState.animatingOut,
                             rowRevealProgress = if (contextMenuState.listIndex == lazyIndex) {
                                 rowRevealProgress

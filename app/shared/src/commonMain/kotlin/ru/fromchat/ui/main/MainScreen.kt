@@ -442,11 +442,15 @@ private fun ChatContextMenuBlurLayer(
     blurProgress: Float,
     modifier: Modifier = Modifier,
 ) {
-    val blurRadius = 12.dp * blurProgress
+    val progress = blurProgress.coerceIn(0f, 1f)
+    val blurRadius = 12.dp * progress
     if (blurRadius <= 0.dp) return
 
+    // Opaque enough background so rounded chrome corners don't stay razor-sharp while
+    // interiors look frosted (Transparent + no tint left original AA edges unblurred).
     // In-tree under the overlay (zIndex). Never use a Popup here: platform popups stack above
     // the sharp row/menu, blur them, and intercept dismiss taps.
+    val surface = MaterialTheme.colorScheme.surfaceContainerLowest
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -454,10 +458,12 @@ private fun ChatContextMenuBlurLayer(
                 blurEffect {
                     style = HazeBlurStyle(
                         blurRadius = blurRadius,
-                        colorEffects = emptyList(),
-                        backgroundColor = Color.Transparent,
+                        backgroundColor = surface,
+                        colorEffects = listOf(
+                            HazeColorEffect.tint(surface.copy(alpha = 0.4f * progress)),
+                        ),
                         noiseFactor = 0f,
-                        fallbackColorEffect = HazeColorEffect.tint(Color.Transparent),
+                        fallbackColorEffect = HazeColorEffect.tint(surface.copy(alpha = 0.4f * progress)),
                     )
                 }
             },
