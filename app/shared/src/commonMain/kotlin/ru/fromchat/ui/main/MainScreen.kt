@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
@@ -43,6 +44,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.navigation.NavController
 import com.pr0gramm3r101.utils.WindowWidthSizeClass
 import com.pr0gramm3r101.utils.currentWindowAdaptiveInfo
 import com.pr0gramm3r101.utils.widthSizeClass
@@ -53,12 +55,15 @@ import dev.chrisbanes.haze.blur.blurEffect
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
 import ru.fromchat.chats
 import ru.fromchat.contacts
+import ru.fromchat.desktop.DesktopMenuCommand
+import ru.fromchat.desktop.DesktopMenuCommands
 import ru.fromchat.profile
 import ru.fromchat.settings
 import ru.fromchat.ui.LocalNavController
@@ -72,6 +77,7 @@ import ru.fromchat.ui.main.chats.ChatContextMenuOverlayHost
 import ru.fromchat.ui.main.chats.ChatsTab
 import ru.fromchat.ui.main.settings.SettingsTab
 import ru.fromchat.ui.profile.ProfileScreen
+
 const val MAIN_PAGE_CHATS = 0
 const val MAIN_PAGE_CONTACTS = 1
 const val MAIN_PAGE_SETTINGS = 2
@@ -82,6 +88,64 @@ private const val PAGE_CONTACTS = MAIN_PAGE_CONTACTS
 private const val PAGE_SETTINGS = MAIN_PAGE_SETTINGS
 private const val PAGE_PROFILE = MAIN_PAGE_PROFILE
 private const val PAGE_COUNT = 4
+
+/**
+ * Opens the signed-in user's profile in the list–detail pane (large screens).
+ *
+ * File-private (not a local fun inside [MainScreen]) so desktop JVM incremental runs do not
+ * chase missing nested classes like `MainScreenKt$MainScreen$openOwnProfileInDetailPane$1`.
+ */
+private fun openOwnProfileInDetailPane(
+    navController: NavController,
+    embeddedInListDetail: Boolean,
+) {
+    val userId = ApiClient.user?.id?.takeIf { it > 0 } ?: return
+    navController.navigateReplacingMainDetail(
+        route = "profile/$userId",
+        preserveConversationDetail = embeddedInListDetail,
+    )
+}
+
+/**
+ * Switches the main hub pager page. On large screens, Profile is a button: selects Settings
+ * in the list and opens own profile in the detail pane (Profile is never the active tab).
+ *
+ * Kept file-private (not nested in [MainScreen]) for the same desktop JVM class-loading reason
+ * as [openOwnProfileInDetailPane] / ChatRowAvatar gesture helpers.
+ *
+ * Skips pager animation and detail navigation when the destination is already showing.
+ */
+private fun selectMainPage(
+    page: Int,
+    widthClass: WindowWidthSizeClass,
+    scope: CoroutineScope,
+    pagerState: PagerState,
+    navController: NavController,
+    embeddedInListDetail: Boolean,
+) {
+    when {
+        page == PAGE_PROFILE && widthClass != WindowWidthSizeClass.COMPACT -> {
+            val alreadyOnSettingsList = pagerState.currentPage == PAGE_SETTINGS
+            val ownUserId = ApiClient.user?.id?.takeIf { it > 0 }
+            val alreadyShowingOwnProfile =
+                ownUserId != null &&
+                    navController.isCurrentMainDetailRoute("profile/$ownUserId")
+            if (alreadyOnSettingsList && alreadyShowingOwnProfile) return
+            if (!alreadyOnSettingsList) {
+                scope.launch { pagerState.animateScrollToPage(PAGE_SETTINGS) }
+            }
+            if (!alreadyShowingOwnProfile) {
+                openOwnProfileInDetailPane(navController, embeddedInListDetail)
+            }
+        }
+        else -> {
+            // Desktop list–detail: do not pop the chat (or settings) stack — each tab
+            // keeps its own detail host, so switching tabs must not wipe the other tab.
+            if (pagerState.currentPage == page) return
+            scope.launch { pagerState.animateScrollToPage(page) }
+        }
+    }
+}
 
 /**
  * @param embeddedInListDetail When true, this screen is the left pane of a list–detail layout.
@@ -115,12 +179,41 @@ fun MainScreen(
     val paneHazeState = LocalPaneHazeState.current
     val contextMenuHazeState = paneHazeState ?: rememberHazeState()
     val chatContextMenuOverlay = remember { ChatContextMenuOverlayController() }
+    var chatListSelectionRequestId by remember { mutableStateOf(0L) }
 
     val widthClass = currentWindowAdaptiveInfo().widthSizeClass
 
     LaunchedEffect(forceSettingsTab) {
         if (forceSettingsTab && pagerState.currentPage != PAGE_SETTINGS) {
             pagerState.scrollToPage(PAGE_SETTINGS)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        DesktopMenuCommands.commands.collect { command ->
+            when (command) {
+                DesktopMenuCommand.NewChat,
+                DesktopMenuCommand.SearchConversations,
+                -> {
+                    if (pagerState.currentPage != PAGE_CHATS) {
+                        pagerState.scrollToPage(PAGE_CHATS)
+                    }
+                    navController.navigate("search/conversations") {
+                        launchSingleTop = true
+                    }
+                }
+                DesktopMenuCommand.EnterChatListSelection -> {
+                    if (navController.currentBackStackEntry?.destination?.route ==
+                        "search/conversations"
+                    ) {
+                        navController.popBackStack()
+                    }
+                    if (pagerState.currentPage != PAGE_CHATS) {
+                        pagerState.scrollToPage(PAGE_CHATS)
+                    }
+                    chatListSelectionRequestId += 1
+                }
+            }
         }
     }
 
@@ -152,38 +245,6 @@ fun MainScreen(
     val contactsLabel = stringResource(Res.string.contacts)
     val settingsLabel = stringResource(Res.string.settings)
     val profileLabel = stringResource(Res.string.profile)
-
-    fun openOwnProfileInDetailPane() {
-        val userId = ApiClient.user?.id?.takeIf { it > 0 } ?: return
-        navController.navigateReplacingMainDetail(
-            route = "profile/$userId",
-            preserveConversationDetail = embeddedInListDetail,
-        )
-    }
-
-    fun selectMainPage(page: Int) {
-        when {
-            page == PAGE_PROFILE && widthClass != WindowWidthSizeClass.COMPACT -> {
-                scope.launch { pagerState.animateScrollToPage(PAGE_SETTINGS) }
-                openOwnProfileInDetailPane()
-            }
-            else -> {
-                // Desktop list–detail: do not pop the chat (or settings) stack — each tab
-                // keeps its own detail host, so switching tabs must not wipe the other tab.
-                scope.launch { pagerState.animateScrollToPage(page) }
-            }
-        }
-    }
-
-    val navSelectedPage =
-        if (selectedPage == PAGE_SETTINGS &&
-            widthClass != WindowWidthSizeClass.COMPACT &&
-            navController.currentBackStackEntry?.destination?.route?.startsWith("profile/") == true
-        ) {
-            PAGE_PROFILE
-        } else {
-            selectedPage
-        }
 
     BoxWithConstraints(
         Modifier.fillMaxSize(),
@@ -227,6 +288,7 @@ fun MainScreen(
                                     chatContextMenuOverlay = chatContextMenuOverlay,
                                     sharedTransitionScope = sharedTransitionScope,
                                     animatedVisibilityScope = animatedVisibilityScope,
+                                    enterSelectionRequestId = chatListSelectionRequestId,
                                 )
                                 PAGE_CONTACTS -> ContactsTab()
                                 PAGE_SETTINGS -> SettingsTab()
@@ -278,8 +340,17 @@ fun MainScreen(
                     windowInsets = WindowInsets.navigationBars.only(WindowInsetsSides.Bottom),
                 ) {
                     NavigationBarItem(
-                        selected = navSelectedPage == PAGE_CHATS,
-                        onClick = { selectMainPage(PAGE_CHATS) },
+                        selected = selectedPage == PAGE_CHATS,
+                        onClick = {
+                            selectMainPage(
+                                page = PAGE_CHATS,
+                                widthClass = widthClass,
+                                scope = scope,
+                                pagerState = pagerState,
+                                navController = navController,
+                                embeddedInListDetail = embeddedInListDetail,
+                            )
+                        },
                         label = { Text(chatsLabel) },
                         icon = {
                             Icon(
@@ -289,24 +360,54 @@ fun MainScreen(
                         },
                     )
                     NavigationBarItem(
-                        selected = navSelectedPage == PAGE_CONTACTS,
-                        onClick = { selectMainPage(PAGE_CONTACTS) },
+                        selected = selectedPage == PAGE_CONTACTS,
+                        onClick = {
+                            selectMainPage(
+                                page = PAGE_CONTACTS,
+                                widthClass = widthClass,
+                                scope = scope,
+                                pagerState = pagerState,
+                                navController = navController,
+                                embeddedInListDetail = embeddedInListDetail,
+                            )
+                        },
                         label = { Text(contactsLabel) },
                         icon = {
                             Icon(Icons.Filled.Contacts, contentDescription = null)
                         },
                     )
                     NavigationBarItem(
-                        selected = navSelectedPage == PAGE_SETTINGS,
-                        onClick = { selectMainPage(PAGE_SETTINGS) },
+                        selected = selectedPage == PAGE_SETTINGS,
+                        onClick = {
+                            selectMainPage(
+                                page = PAGE_SETTINGS,
+                                widthClass = widthClass,
+                                scope = scope,
+                                pagerState = pagerState,
+                                navController = navController,
+                                embeddedInListDetail = embeddedInListDetail,
+                            )
+                        },
                         label = { Text(settingsLabel) },
                         icon = {
                             Icon(Icons.Filled.Settings, contentDescription = null)
                         },
                     )
                     NavigationBarItem(
-                        selected = navSelectedPage == PAGE_PROFILE,
-                        onClick = { selectMainPage(PAGE_PROFILE) },
+                        // Two-pane: Profile is a shortcut button — never selected; Settings stays
+                        // highlighted while own profile is open in the detail pane.
+                        selected = widthClass == WindowWidthSizeClass.COMPACT &&
+                            selectedPage == PAGE_PROFILE,
+                        onClick = {
+                            selectMainPage(
+                                page = PAGE_PROFILE,
+                                widthClass = widthClass,
+                                scope = scope,
+                                pagerState = pagerState,
+                                navController = navController,
+                                embeddedInListDetail = embeddedInListDetail,
+                            )
+                        },
                         label = { Text(profileLabel) },
                         icon = {
                             Icon(Icons.Filled.Person, contentDescription = null)

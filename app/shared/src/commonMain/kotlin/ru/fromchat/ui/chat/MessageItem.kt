@@ -29,13 +29,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -51,8 +54,10 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.layout
@@ -1106,16 +1111,41 @@ fun MessageItem(
                                             !isFilenameOnlyMessageCaption(message)
                                         ) {
                                             if (mouseMessageUi) {
+                                                // Default selection colors use primary; on author
+                                                // bubbles that matches the background, so
+                                                // highlight/handles are invisible.
+                                                val selectionHandle =
+                                                    if (isAuthor) {
+                                                        contentColor
+                                                    } else {
+                                                        MaterialTheme.colorScheme.primary
+                                                    }
                                                 ProvideChatTextSelectionMenu {
-                                                    SelectionContainer {
-                                                        Text(
-                                                            text = message.content,
-                                                            style = MaterialTheme.typography.bodyLarge,
-                                                            color = contentColor,
-                                                            modifier = Modifier.padding(
-                                                                horizontal = 14.dp,
+                                                    CompositionLocalProvider(
+                                                        LocalTextSelectionColors provides
+                                                            TextSelectionColors(
+                                                                handleColor = selectionHandle,
+                                                                backgroundColor =
+                                                                    selectionHandle.copy(
+                                                                        alpha = 0.35f,
+                                                                    ),
                                                             ),
-                                                        )
+                                                    ) {
+                                                        SelectionContainer(
+                                                            modifier = Modifier.pointerHoverIcon(
+                                                                PointerIcon.Text,
+                                                                overrideDescendants = true,
+                                                            ),
+                                                        ) {
+                                                            Text(
+                                                                text = message.content,
+                                                                style = MaterialTheme.typography.bodyLarge,
+                                                                color = contentColor,
+                                                                modifier = Modifier.padding(
+                                                                    horizontal = 14.dp,
+                                                                ),
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             } else {

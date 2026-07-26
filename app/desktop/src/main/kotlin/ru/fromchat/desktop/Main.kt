@@ -53,25 +53,26 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.skia.Image
 import ru.fromchat.AppForeground
 import ru.fromchat.Logger
 import ru.fromchat.Res
 import ru.fromchat.action_copy
+import ru.fromchat.action_select
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.workers.AttachmentTransferBootstrap
 import ru.fromchat.app_name
 import ru.fromchat.desktop_about_app
 import ru.fromchat.desktop_cut
-import ru.fromchat.desktop_menu_actions
 import ru.fromchat.desktop_menu_edit
+import ru.fromchat.desktop_menu_file
 import ru.fromchat.desktop_menu_window
 import ru.fromchat.desktop_minimize
+import ru.fromchat.desktop_new_chat
 import ru.fromchat.desktop_paste
 import ru.fromchat.desktop_quit
+import ru.fromchat.desktop_search_conversations
 import ru.fromchat.desktop_select_all
 import ru.fromchat.desktop_show_app
 import ru.fromchat.desktop_tray_show
@@ -217,8 +218,9 @@ fun main(args: Array<String>) {
     // (closer to Android Popup behavior). Must be set before any Compose UI runs.
     System.setProperty("compose.layers.type", "WINDOW")
     if (isMacOs()) {
-        val appName = runBlocking { getString(Res.string.app_name) }
-        System.setProperty("apple.awt.application.name", appName)
+        // Must be set before AWT Toolkit init (do not call getString / Compose here).
+        // Value matches Res.string.app_name in values / values-ru.
+        System.setProperty("apple.awt.application.name", "FromChat")
         System.setProperty("apple.laf.useScreenMenuBar", "true")
     }
     if (!DesktopSingleInstance.acquireOrForward(args)) return
@@ -298,10 +300,26 @@ fun main(args: Array<String>) {
             visible = windowVisible || !traySupported,
             icon = windowIcon,
             onPreviewKeyEvent = { event ->
+                // macOS: MenuBar KeyShortcuts handle these. Win/Linux: no menu bar.
                 if (mac || event.type != KeyEventType.KeyDown || !event.isCtrlPressed) {
                     return@Window false
                 }
                 when {
+                    !event.isShiftPressed && event.key == Key.N -> {
+                        windowVisible = true
+                        DesktopMenuCommands.emit(DesktopMenuCommand.NewChat)
+                        true
+                    }
+                    !event.isShiftPressed && event.key == Key.F -> {
+                        windowVisible = true
+                        DesktopMenuCommands.emit(DesktopMenuCommand.SearchConversations)
+                        true
+                    }
+                    event.isShiftPressed && event.key == Key.S -> {
+                        windowVisible = true
+                        DesktopMenuCommands.emit(DesktopMenuCommand.EnterChatListSelection)
+                        true
+                    }
                     event.isShiftPressed && event.key == Key.A -> {
                         aboutOpen = true
                         true
@@ -322,7 +340,8 @@ fun main(args: Array<String>) {
                 }
             },
         ) {
-            LaunchedEffect(window) {
+            LaunchedEffect(window, appName) {
+                window.title = appName
                 enableEdgeToEdgeTitleBar(window.rootPane)
             }
             DisposableEffect(Unit) {
@@ -332,7 +351,18 @@ fun main(args: Array<String>) {
 
             if (mac) {
                 FromChatMenuBar(
-                    onAbout = { aboutOpen = true },
+                    onNewChat = {
+                        windowVisible = true
+                        DesktopMenuCommands.emit(DesktopMenuCommand.NewChat)
+                    },
+                    onSearchConversations = {
+                        windowVisible = true
+                        DesktopMenuCommands.emit(DesktopMenuCommand.SearchConversations)
+                    },
+                    onSelectChats = {
+                        windowVisible = true
+                        DesktopMenuCommands.emit(DesktopMenuCommand.EnterChatListSelection)
+                    },
                     onShow = { windowVisible = true },
                     onMinimize = { windowState.isMinimized = true },
                     onZoom = {
@@ -343,6 +373,7 @@ fun main(args: Array<String>) {
                                 WindowPlacement.Maximized
                             }
                     },
+                    onQuit = { exitApplication() },
                 )
             }
 
@@ -368,30 +399,46 @@ fun main(args: Array<String>) {
 
 @Composable
 private fun FrameWindowScope.FromChatMenuBar(
-    onAbout: () -> Unit,
+    onNewChat: () -> Unit,
+    onSearchConversations: () -> Unit,
+    onSelectChats: () -> Unit,
     onShow: () -> Unit,
     onMinimize: () -> Unit,
     onZoom: () -> Unit,
+    onQuit: () -> Unit,
 ) {
-    val actions = stringResource(Res.string.desktop_menu_actions)
-    val aboutApp = stringResource(Res.string.desktop_about_app)
-    val showApp = stringResource(Res.string.desktop_show_app)
+    val file = stringResource(Res.string.desktop_menu_file)
+    val newChat = stringResource(Res.string.desktop_new_chat)
+    val searchConversations = stringResource(Res.string.desktop_search_conversations)
+    val quit = stringResource(Res.string.desktop_quit)
     val edit = stringResource(Res.string.desktop_menu_edit)
     val cut = stringResource(Res.string.desktop_cut)
     val copy = stringResource(Res.string.action_copy)
     val paste = stringResource(Res.string.desktop_paste)
     val selectAll = stringResource(Res.string.desktop_select_all)
+    val select = stringResource(Res.string.action_select)
     val windowMenu = stringResource(Res.string.desktop_menu_window)
     val minimize = stringResource(Res.string.desktop_minimize)
     val zoom = stringResource(Res.string.desktop_zoom)
+    val showApp = stringResource(Res.string.desktop_show_app)
 
     MenuBar {
-        Menu(actions, mnemonic = 'A') {
-            Item(aboutApp, onClick = onAbout)
+        Menu(file, mnemonic = 'F') {
             Item(
-                showApp,
-                shortcut = KeyShortcut(Key.N, meta = true, shift = true),
-                onClick = onShow,
+                newChat,
+                shortcut = KeyShortcut(Key.N, meta = true),
+                onClick = onNewChat,
+            )
+            Item(
+                searchConversations,
+                shortcut = KeyShortcut(Key.F, meta = true),
+                onClick = onSearchConversations,
+            )
+            Separator()
+            Item(
+                quit,
+                shortcut = KeyShortcut(Key.Q, meta = true),
+                onClick = onQuit,
             )
         }
         Menu(edit, mnemonic = 'E') {
@@ -416,6 +463,11 @@ private fun FrameWindowScope.FromChatMenuBar(
                 shortcut = KeyShortcut(Key.A, meta = true),
                 onClick = { performAwtEditAction(DefaultEditorKit.selectAllAction) },
             )
+            Item(
+                select,
+                shortcut = KeyShortcut(Key.S, meta = true, shift = true),
+                onClick = onSelectChats,
+            )
         }
         Menu(windowMenu, mnemonic = 'W') {
             Item(
@@ -424,6 +476,12 @@ private fun FrameWindowScope.FromChatMenuBar(
                 onClick = onMinimize,
             )
             Item(zoom, onClick = onZoom)
+            Separator()
+            Item(
+                showApp,
+                shortcut = KeyShortcut(Key.N, meta = true, shift = true),
+                onClick = onShow,
+            )
         }
     }
 }

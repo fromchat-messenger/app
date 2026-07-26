@@ -23,8 +23,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import ru.fromchat.ui.components.Text
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -38,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.pr0gramm3r101.components.Category
 import com.pr0gramm3r101.components.ListItem
 import com.pr0gramm3r101.components.SwitchListItem
+import com.pr0gramm3r101.utils.conditional
 import com.pr0gramm3r101.utils.materialYouAvailable
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
@@ -59,7 +58,7 @@ import ru.fromchat.ui.theme
 @Composable
 fun AppearanceScreen(onBack: () -> Unit) {
     val useCollapsing = settingsDetailUseCollapsingTopBar()
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val scrollBehavior = rememberSettingsCollapsingScrollBehavior()
 
     var materialYouSwitch by remember {
         mutableStateOf(Settings.materialYou && materialYouAvailable)
@@ -68,11 +67,6 @@ fun AppearanceScreen(onBack: () -> Unit) {
     var themeChipIndex by remember { mutableIntStateOf(Settings.theme.ordinal) }
 
     Scaffold(
-        modifier = if (useCollapsing) {
-            Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
-        } else {
-            Modifier
-        },
         topBar = {
             SettingsDetailTopBar(
                 title = { Text(stringResource(Res.string.settings_category_appearance)) },
@@ -84,6 +78,9 @@ fun AppearanceScreen(onBack: () -> Unit) {
         Column(
             Modifier
                 .fillMaxWidth()
+                .conditional(useCollapsing) {
+                    Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
+                }
                 .verticalScroll(rememberScrollState())
                 .padding(innerPadding)
         ) {

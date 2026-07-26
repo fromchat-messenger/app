@@ -516,23 +516,26 @@ fun App(
 
                     ScreenSurface {
                         Box(Modifier.fillMaxSize()) {
-                            // Own profile from the Profile tab uses the settings detail host.
-                            // Profile opened from a chat stays in the chats detail (push/slide).
+                            // Own profile (Profile tab / settings hub) always uses the settings
+                            // detail host — even when a chat remains under the back stack via
+                            // preserveConversationDetail. Other users' profiles opened from a
+                            // conversation stay in the chats detail (see chatsDetailKey).
                             val settingsProfileSplit =
                                 showConversationListDetail &&
                                     isStandaloneProfileRoute(currentRoute) &&
                                     profileUserId != null &&
-                                    profileUserId == ownUserId &&
-                                    !isConversationChatRoute(previousRoute)
+                                    profileUserId == ownUserId
                             val listPaneWidth =
                                 if (widthSizeClass == WindowWidthSizeClass.EXPANDED) {
                                     448.dp
                                 } else {
                                     360.dp
                                 }
-                            // Only nudge the list pager when opening own profile from the
-                            // Profile tab — do not yank the user back when they switch to Chats
-                            // while a settings destination is still on the back stack.
+                            // Own profile lives in the settings detail host: keep the Settings
+                            // list tab active (Profile is only a shortcut button in two-pane).
+                            // forceSettingsTab only scrolls when true — clearing it does not
+                            // snap back, so switching to Chats while profile stays on the stack
+                            // is fine.
                             val forceSettingsListTab = settingsProfileSplit
 
                             var retainedChatsRoute by remember { mutableStateOf<String?>(null) }
@@ -886,6 +889,7 @@ fun App(
                                         isConversationProfileRoute(currentRoute) ||
                                         (
                                             isStandaloneProfileRoute(currentRoute) &&
+                                                !settingsProfileSplit &&
                                                 isConversationChatRoute(previousRoute)
                                             ) -> "nav"
                                     retainedChatsRoute != null -> "retained:$retainedChatsRoute"
