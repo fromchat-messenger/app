@@ -54,6 +54,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.pr0gramm3r101.utils.ToggleNavScrimEffect
+import dev.chrisbanes.haze.blur.blurEffect
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
@@ -101,7 +102,7 @@ fun DocumentScreen(
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val listState = rememberLazyListState()
-    val hazeState = rememberHazeState(blurEnabled = true)
+    val hazeState = rememberHazeState()
 
     LaunchedEffect(type) {
         listState.scrollToItem(0)
@@ -116,6 +117,7 @@ fun DocumentScreen(
         contentColor = MaterialTheme.colorScheme.onSurface,
         contentWindowInsets = WindowInsets.navigationBars,
         topBar = {
+            val topBarHazeStyle = rememberChatSurfaceContainerHazeStyle()
             MediumTopAppBar(
                 title = {
                     Text(
@@ -141,10 +143,11 @@ fun DocumentScreen(
                 ),
                 modifier = Modifier
                     .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.91f))
-                    .hazeEffect(
-                        state = hazeState,
-                        style = rememberChatSurfaceContainerHazeStyle(),
-                    ),
+                    .hazeEffect(state = hazeState) {
+                        blurEffect {
+                            style = topBarHazeStyle
+                        }
+                    },
             )
         },
     ) { innerPadding ->

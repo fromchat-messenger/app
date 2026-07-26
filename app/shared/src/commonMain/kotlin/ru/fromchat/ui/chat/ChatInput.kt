@@ -72,6 +72,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.blur.blurEffect
 import dev.chrisbanes.haze.hazeEffect
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -244,6 +245,7 @@ fun ChatInput(
     isReadOnly: Boolean = false,
     onReadOnlyMessageClick: () -> Unit = {},
     snackbarHostState: SnackbarHostState? = null,
+    hazeBlurEnabled: Boolean = true,
 ) {
     val composerHazeStyle = rememberChatSurfaceContainerHazeStyle()
     val scope = rememberCoroutineScope()
@@ -313,7 +315,12 @@ fun ChatInput(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(pillShape)
-                    .hazeEffect(state = hazeState, style = composerHazeStyle)
+                    .hazeEffect(state = hazeState) {
+                        blurEffect {
+                            blurEnabled = hazeBlurEnabled
+                            style = composerHazeStyle
+                        }
+                    }
                     .clickable(enabled = true) { onReadOnlyMessageClick() },
             ) {
                 Text(
@@ -344,7 +351,12 @@ fun ChatInput(
                             .fillMaxWidth()
                             .background(MaterialTheme.colorScheme.surfaceContainer, pillShape)
                             .clip(pillShape)
-                            .hazeEffect(state = hazeState, style = composerHazeStyle),
+                            .hazeEffect(state = hazeState) {
+                                blurEffect {
+                                    blurEnabled = hazeBlurEnabled
+                                    style = composerHazeStyle
+                                }
+                            },
                     ) {
                         AnimatedPreviewBar(replyTo) { reply ->
                             val replySubtitle = if (reply.isContentCorrupted) {
@@ -550,10 +562,14 @@ fun ChatInput(
                         modifier = Modifier
                             .fillMaxSize()
                             .background(actionBackground)
-                            .hazeEffect(state = hazeState, style = composerHazeStyle) {
-                                // Keep the node in the tree in both directions; fading alpha avoids the
-                                // frosted layer popping on over the color when send -> voice.
-                                alpha = hazeOverlayAlpha
+                            .hazeEffect(state = hazeState) {
+                                blurEffect {
+                                    // Keep the node in the tree in both directions; fading alpha avoids the
+                                    // frosted layer popping on over the color when send -> voice.
+                                    blurEnabled = hazeBlurEnabled
+                                    style = composerHazeStyle
+                                    alpha = hazeOverlayAlpha
+                                }
                             },
                     )
                     AnimatedContent(
