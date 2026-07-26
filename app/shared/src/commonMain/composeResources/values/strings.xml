@@ -66,6 +66,7 @@
     <string name="auth_captcha_body">Confirm you’re human to continue creating your account.</string>
     <string name="auth_captcha_failed">Captcha verification failed. Please try again.</string>
     <string name="auth_yandex_webview_title">Yandex ID</string>
+    <string name="auth_yandex_browser_body">Complete sign-in in your browser</string>
     <string name="auth_yandex_client_mismatch">This server returned an unexpected Yandex app id. Update the app or contact support.</string>
     <string name="auth_yandex_failed">Yandex sign-in was cancelled or failed.</string>
     <!-- Main Screen -->
@@ -353,6 +354,7 @@
     <string name="settings_notifications_permission_required">Open system notification settings to allow alerts.</string>
     <string name="settings_push_notifications">Push notifications</string>
     <string name="settings_push_notifications_d">These will let you know if you got a new message when the app is closed.</string>
+    <string name="settings_push_notifications_unavailable">Not available on this platform. New messages are only visible while the app is open.</string>
 
     <string name="settings_devices_title">Devices</string>
     <string name="settings_devices_empty">No active sessions</string>

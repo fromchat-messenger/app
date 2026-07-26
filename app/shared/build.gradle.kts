@@ -75,6 +75,8 @@ kotlin {
         freeCompilerArgs.addAll("-Xexpect-actual-classes")
     }
 
+    jvm()
+
     listOf(
         iosArm64(),
         iosSimulatorArm64(),
@@ -107,8 +109,8 @@ kotlin {
             implementation(libs.navigation.compose)
             implementation(libs.compose.materialIconsExtended)
             implementation(libs.haze)
-            implementation(libs.haze.materials)
-            implementation(libs.androidx.core.ktx)
+            implementation(libs.haze.blur)
+            implementation(libs.haze.blur.materials)
             implementation(libs.androidx.lifecycle.runtime.compose)
 
             // Serialization
@@ -142,6 +144,7 @@ kotlin {
         }
 
         androidMain.dependencies {
+            implementation(libs.androidx.core.ktx)
             implementation(libs.markdown.renderer.m3)
             implementation(libs.bouncycastle.bcprov)
             implementation(libs.androidx.exifinterface)
@@ -164,6 +167,37 @@ kotlin {
             implementation(libs.multiplatform.crypto.libsodium.bindings)
             implementation(libs.sqldelight.driver.native)
         }
+
+        jvmMain.dependencies {
+            implementation(libs.jetbrains.kotlinx.io.bytestring)
+            implementation(libs.jetbrains.kotlinx.coroutines.core)
+            implementation(libs.ktor.client.cio)
+            implementation(libs.multiplatform.crypto.libsodium.bindings)
+            implementation(libs.sqldelight.driver.sqlite)
+            implementation(libs.bouncycastle.bcprov)
+            // OpenJFX publishes empty jars without a classifier; declare every module
+            // with the host classifier and exclude transitive stubs.
+            val javafxVersion = libs.versions.openjfx.get()
+            val javafxClassifier = openjfxClassifier()
+            listOf("base", "graphics", "controls", "media", "web", "swing").forEach { module ->
+                implementation("org.openjfx:javafx-$module:$javafxVersion:$javafxClassifier") {
+                    exclude(group = "org.openjfx")
+                }
+            }
+        }
+    }
+}
+
+private fun openjfxClassifier(): String {
+    val os = System.getProperty("os.name").lowercase()
+    val arch = System.getProperty("os.arch").lowercase()
+    val isArm = arch == "aarch64" || arch == "arm64"
+    return when {
+        os.contains("mac") && isArm -> "mac-aarch64"
+        os.contains("mac") -> "mac"
+        os.contains("win") -> "win"
+        isArm -> "linux-aarch64"
+        else -> "linux"
     }
 }
 

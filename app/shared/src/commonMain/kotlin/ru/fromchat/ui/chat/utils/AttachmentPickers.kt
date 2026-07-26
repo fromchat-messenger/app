@@ -13,7 +13,7 @@ data class SelectedAttachment(
 /**
  * Platform-specific image picker. Returns a launch function.
  * On Android: PickVisualMedia (images only, multiple).
- * On iOS: Placeholder (no-op until Phase 4).
+ * On iOS: PHPickerViewController (images only, multiple).
  */
 @Composable
 expect fun rememberImagePicker(onResult: (List<String>) -> Unit): () -> Unit
@@ -21,7 +21,7 @@ expect fun rememberImagePicker(onResult: (List<String>) -> Unit): () -> Unit
 /**
  * Platform-specific file picker. Returns a launch function.
  * On Android: OpenDocument/OpenMultipleDocuments (SAF).
- * On iOS: Placeholder (no-op until Phase 4).
+ * On iOS: UIDocumentPickerViewController (multiple, asCopy).
  */
 @Composable
 expect fun rememberFilePicker(onResult: (List<String>) -> Unit): () -> Unit

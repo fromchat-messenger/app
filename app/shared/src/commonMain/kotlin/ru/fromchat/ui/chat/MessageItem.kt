@@ -534,7 +534,7 @@ fun MessageItem(
             BoxWithConstraints(
                 modifier = Modifier.weight(1f, fill = false)
             ) {
-                val maxBubbleWidth = maxWidth * 0.7f
+                val maxBubbleWidth = minOf(maxWidth * 0.7f, 420.dp)
 
                 Column(
                     horizontalAlignment = if (isAuthor) Alignment.End else Alignment.Start
