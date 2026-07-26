@@ -8,6 +8,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
 import androidx.navigation.NavController
+import com.pr0gramm3r101.utils.WindowWidthSizeClass
+import com.pr0gramm3r101.utils.currentWindowAdaptiveInfo
+import com.pr0gramm3r101.utils.widthSizeClass
+import ru.fromchat.ui.LocalNavController
 
 /**
  * Empty roots for desktop per-tab detail [androidx.navigation.NavHost]s.
@@ -17,6 +21,26 @@ object DesktopDetailNav {
     const val CHATS_ROOT = "desktop_chats_detail_root"
     const val SETTINGS_ROOT = "desktop_settings_detail_root"
     const val CONTACTS_ROOT = "desktop_contacts_detail_root"
+
+    fun isEmptyRoot(route: String?): Boolean =
+        route == CHATS_ROOT || route == SETTINGS_ROOT || route == CONTACTS_ROOT
+}
+
+/**
+ * Whether a detail-pane / full-screen top bar should show a back control.
+ *
+ * Compact (full-screen stack): always — leaving the screen requires back.
+ * Large list–detail: only when the previous entry is a real destination, not an empty
+ * desktop detail root or the main `chat` shell (popping would only reveal a placeholder).
+ */
+@Composable
+fun detailPaneShowBackButton(): Boolean {
+    if (currentWindowAdaptiveInfo().widthSizeClass == WindowWidthSizeClass.COMPACT) {
+        return true
+    }
+    val previousRoute = LocalNavController.current.previousBackStackEntry?.destination?.route
+        ?: return false
+    return previousRoute != "chat" && !DesktopDetailNav.isEmptyRoot(previousRoute)
 }
 
 /**

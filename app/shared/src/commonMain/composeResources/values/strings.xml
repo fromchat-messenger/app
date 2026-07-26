@@ -123,6 +123,8 @@
 
     <!-- Connection / chat chrome -->
     <string name="status_connecting">Connecting</string>
+    <string name="status_connected">Connected</string>
+    <string name="status_disconnected">Disconnected</string>
     <string name="status_updating">Updating</string>
     <string name="chat_group_label">Group</string>
     <string name="chat_members_count">%1$d people</string>

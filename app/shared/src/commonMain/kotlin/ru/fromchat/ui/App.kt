@@ -24,7 +24,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavBackStackEntry
@@ -221,7 +220,9 @@ fun App(
     startAtProfileUserId: Int? = null,
     startAtProfileUsername: String? = null,
     profileLookupErrorMessage: String? = null,
-    onProfileLookupErrorMessageConsumed: () -> Unit = {}
+    onProfileLookupErrorMessageConsumed: () -> Unit = {},
+    /** Desktop: fired once [startDestination] is known so the window can show after bootstrap. */
+    onContentReady: () -> Unit = {},
 ) {
     setSingletonImageLoaderFactory { context ->
         ImageLoader.Builder(context)
@@ -262,6 +263,7 @@ fun App(
             hasToken -> "chat"
             else -> "welcome"
         }
+        onContentReady()
 
         runCatching {
             UpdateSyncManager.initializeFromStorage(ApiClient.user?.id)
@@ -516,13 +518,6 @@ fun App(
 
                     ScreenSurface {
                         Box(Modifier.fillMaxSize()) {
-                            val listPaneWidth =
-                                if (widthSizeClass == WindowWidthSizeClass.EXPANDED) {
-                                    448.dp
-                                } else {
-                                    360.dp
-                                }
-
                             @Composable
                             fun AppNavHost(modifier: Modifier = Modifier) {
                                 NavHost(
@@ -677,7 +672,6 @@ fun App(
                                     LocalDesktopMainTab provides pendingMainTab,
                                 ) {
                                     ConversationListDetailShell(
-                                        listPaneWidth = listPaneWidth,
                                         detailInPanel = false,
                                         detailEdgeToEdge = detailEdgeToEdge,
                                         listPane = {

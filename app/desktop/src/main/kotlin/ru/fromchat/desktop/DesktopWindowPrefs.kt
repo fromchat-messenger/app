@@ -11,6 +11,9 @@ import java.util.prefs.Preferences
  * Stored in the same JVM prefs node as PlatformSettings (`ru.fromchat.settings`):
  * - `desktop_window_width` / `desktop_window_height` (float dp)
  * - `desktop_window_x` / `desktop_window_y` (float dp, absolute; absent → platform default)
+ *
+ * List–detail left pane width uses the sibling key `desktop_list_pane_width`
+ * (see [ru.fromchat.ui.main.ConversationListDetailShell]).
  */
 internal object DesktopWindowPrefs {
     private const val WIDTH_KEY = "desktop_window_width"

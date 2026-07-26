@@ -21,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -88,6 +89,11 @@ fun SettingsTab() {
                 title = {
                     Text(stringResource(Res.string.settings), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 },
+                // Match AppPanel / Chats unscrolled chrome — default `surface` reads as an
+                // elevated (scrolled) stripe over `surfaceContainerLowest`.
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+                ),
             )
         }
     ) { innerPadding ->

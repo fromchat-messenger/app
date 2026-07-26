@@ -72,7 +72,6 @@ fun DesktopChatsDetailNavHost(
             profileDetailDestinations(
                 navController = navController,
                 sharedTransitionScope = sharedTransitionScope,
-                showBackOnProfile = true,
             )
         }
     }
@@ -126,7 +125,6 @@ fun DesktopSettingsDetailNavHost(
                 profileDetailDestinations(
                     navController = navController,
                     sharedTransitionScope = sharedTransitionScope,
-                    showBackOnProfile = false,
                     onOpenChat = onOpenChatFromProfile,
                 )
             }
