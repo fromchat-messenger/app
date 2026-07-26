@@ -63,7 +63,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -192,6 +192,7 @@ import ru.fromchat.ui.components.ScreenSurface
 import ru.fromchat.ui.components.ShimmerBox
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.showReplacingSnackbar
+import ru.fromchat.ui.extraStatusBars
 import ru.fromchat.utils.RegistrationDateFormatStrings
 import ru.fromchat.utils.formatLastSeen
 import ru.fromchat.utils.formatProfileRegistrationDate
@@ -269,7 +270,7 @@ fun ProfileScreen(
     val navController = LocalNavController.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
-    val statusBarTopDp = with(density) { WindowInsets.statusBars.getTop(this).toDp() }
+    val statusBarTopDp = with(density) { WindowInsets.extraStatusBars.getTop(this).toDp() }
     val profileAvatarTop = statusBarTopDp + 24.dp
 
     val profileLoadFailed = stringResource(Res.string.profile_load_failed)
@@ -698,17 +699,25 @@ fun ProfileScreen(
             animatedVisibilityScope != null &&
             sharedAvatarKey != null
 
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter,
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
-                    .hazeSource(hazeState),
+                    .widthIn(max = 600.dp),
             ) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background)
+                        .hazeSource(hazeState),
+                ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
                 when {
                     showAvatarSkeleton && !hideAvatar -> {
                         item {
@@ -862,9 +871,11 @@ fun ProfileScreen(
                 .padding(bottom = 16.dp)
                 .fillMaxWidth(),
         )
+            }
         }
     }
 }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PublicChatProfileScreen(
@@ -881,7 +892,7 @@ fun PublicChatProfileScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val density = LocalDensity.current
-    val statusBarTopDp = with(density) { WindowInsets.statusBars.getTop(this).toDp() }
+    val statusBarTopDp = with(density) { WindowInsets.extraStatusBars.getTop(this).toDp() }
     val profileAvatarTop = statusBarTopDp + 24.dp
     val profileLoadFailed = stringResource(Res.string.profile_load_failed)
     val profileNotFound = stringResource(Res.string.profile_not_found)
@@ -985,17 +996,25 @@ fun PublicChatProfileScreen(
         sharedAvatarKey != null
 
     ScreenSurface(modifier = modifier) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter,
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
-                    .hazeSource(hazeState),
+                    .widthIn(max = 600.dp),
             ) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background)
+                        .hazeSource(hazeState),
                 ) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
                 when {
                     useSharedAvatar && displayName.isNotBlank() -> {
                         item {
@@ -1071,6 +1090,7 @@ fun PublicChatProfileScreen(
                 .padding(bottom = 16.dp)
                 .fillMaxWidth(),
         )
+            }
         }
     }
 }
@@ -2058,7 +2078,7 @@ private fun ProfileFloatingBackBar(
             onClick = onBack,
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .windowInsetsPadding(WindowInsets.statusBars),
+                .windowInsetsPadding(WindowInsets.extraStatusBars),
             colors = IconButtonDefaults.iconButtonColors(
                 contentColor = MaterialTheme.colorScheme.onSurface,
             ),

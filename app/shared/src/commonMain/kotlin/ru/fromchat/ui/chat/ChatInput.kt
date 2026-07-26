@@ -36,6 +36,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Reply
 import androidx.compose.material.icons.rounded.ArrowUpward
@@ -63,14 +65,22 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.pr0gramm3r101.utils.conditional
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.blur.blurEffect
 import dev.chrisbanes.haze.hazeEffect
@@ -85,8 +95,11 @@ import ru.fromchat.cd_pick_file
 import ru.fromchat.cd_pick_image
 import ru.fromchat.cd_remove
 import ru.fromchat.cd_send
+import ru.fromchat.config.Settings
 import ru.fromchat.message_corrupted_short
 import ru.fromchat.message_editing_title
+import ru.fromchat.ui.main.ConversationDetailContentPadding
+import ru.fromchat.ui.main.LocalConversationListDetailActive
 import ru.fromchat.message_placeholder
 import ru.fromchat.message_replying_to
 import ru.fromchat.suspend_chat_banner_message
@@ -290,6 +303,7 @@ fun ChatInput(
     }
 
     val canSend = !isReadOnly && (text.isNotBlank() || attachments.isNotEmpty())
+    val enterToSend = Settings.enterToSend
     val cdClose = stringResource(Res.string.cd_close)
     val cdRemove = stringResource(Res.string.cd_remove)
     val cdPickImage = stringResource(Res.string.cd_pick_image)
@@ -301,12 +315,23 @@ fun ChatInput(
     val blockedMessage = stringResource(Res.string.suspend_chat_banner_message)
     val cdVoiceUnavailable = "Функция пока не готова. Следите за обновлениями!"
 
+    fun sendMessage() {
+        if (!canSend) return
+        val plaintext = text.trim().ifBlank { "" }
+        onSend(plaintext, attachments)
+        onTextChange("")
+        attachments = emptyList()
+        typingHandler.stopTyping()
+    }
+
+    val chromeHorizontalPad =
+        if (LocalConversationListDetailActive.current) ConversationDetailContentPadding else 8.dp
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .background(Color.Transparent)
             .windowInsetsPadding(WindowInsets.navigationBars)
-            .padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
+            .padding(start = chromeHorizontalPad, end = chromeHorizontalPad, bottom = 12.dp),
     ) {
         val pillShape = RoundedCornerShape(28.dp)
 
@@ -447,10 +472,27 @@ fun ChatInput(
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxWidth()
-                                    .align(Alignment.Bottom),
+                                    .align(Alignment.Bottom)
+                                    .conditional(enterToSend) {
+                                        onPreviewKeyEvent { event ->
+                                            if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                                            if (event.key != Key.Enter && event.key != Key.NumPadEnter) {
+                                                return@onPreviewKeyEvent false
+                                            }
+                                            if (event.isShiftPressed) return@onPreviewKeyEvent false
+                                            sendMessage()
+                                            true
+                                        }
+                                    },
                                 textStyle = inputTextStyle,
                                 singleLine = false,
                                 maxLines = 5,
+                                keyboardOptions = KeyboardOptions(
+                                    imeAction = if (enterToSend) ImeAction.Send else ImeAction.Default,
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onSend = { sendMessage() },
+                                ),
                                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                                 decorationBox = { innerTextField ->
                                     Box(
@@ -545,11 +587,7 @@ fun ChatInput(
                         .clip(CircleShape)
                         .clickable {
                             if (canSend) {
-                                val plaintext = text.trim().ifBlank { "" }
-                                onSend(plaintext, attachments)
-                                onTextChange("")
-                                attachments = emptyList()
-                                typingHandler.stopTyping()
+                                sendMessage()
                             } else {
                                 scope.launch {
                                     snackbarHostState?.showSnackbar(message = cdVoiceUnavailable)

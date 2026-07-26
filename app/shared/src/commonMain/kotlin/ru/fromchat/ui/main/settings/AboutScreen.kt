@@ -9,18 +9,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MediumTopAppBar
 import androidx.compose.material3.Scaffold
 import ru.fromchat.ui.components.Text
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +30,7 @@ import coil3.compose.AsyncImage
 import com.pr0gramm3r101.components.Category
 import com.pr0gramm3r101.components.ListItem
 import com.pr0gramm3r101.ui.Website
+import com.pr0gramm3r101.utils.conditional
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
 import ru.fromchat.AppBuildInfo
@@ -47,7 +43,6 @@ import ru.fromchat.about_link_terms
 import ru.fromchat.about_link_website
 import ru.fromchat.about_version
 import ru.fromchat.app_desc
-import ru.fromchat.back
 import ru.fromchat.legal.DocumentType
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.components.BrandTitle
@@ -59,36 +54,32 @@ private const val URL_WEBSITE = "https://fromchat.ru"
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AboutScreen() {
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val useCollapsing = settingsDetailUseCollapsingTopBar()
+    val scrollBehavior = rememberSettingsCollapsingScrollBehavior()
     val navController = LocalNavController.current
     val uriHandler = LocalUriHandler.current
 
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            MediumTopAppBar(
+            SettingsDetailTopBar(
                 title = {
                     Text(
                         stringResource(Res.string.about),
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
                     )
                 },
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(Res.string.back)
-                        )
-                    }
-                },
-                scrollBehavior = scrollBehavior
+                onBack = { navController.navigateUp() },
+                scrollBehavior = scrollBehavior,
             )
         },
     ) { innerPadding ->
         Column(
             Modifier
                 .fillMaxWidth()
+                .conditional(useCollapsing) {
+                    Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
+                }
                 .verticalScroll(rememberScrollState())
                 .padding(innerPadding)
         ) {
@@ -100,7 +91,7 @@ fun AboutScreen() {
             ) {
                 Box(Modifier.padding(bottom = 12.dp)) {
                     AsyncImage(
-                        model = Res.getUri("drawable/logo_square.svg"),
+                        model = Res.getUri("drawable/logo_square.png"),
                         contentDescription = null,
                         contentScale = ContentScale.Fit,
                         modifier = Modifier

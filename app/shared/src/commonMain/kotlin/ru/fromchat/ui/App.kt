@@ -1,6 +1,5 @@
 package ru.fromchat.ui
 
-import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.SharedTransitionLayout
@@ -11,19 +10,16 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -31,16 +27,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
-import androidx.navigation.NavGraphBuilder
-import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.navArgument
 import coil3.ImageLoader
 import coil3.compose.setSingletonImageLoaderFactory
 import coil3.network.ktor3.KtorNetworkFetcherFactory
@@ -85,8 +77,8 @@ import ru.fromchat.api.local.send.OutgoingMessageCoordinator
 import ru.fromchat.api.schema.websocket.WebSocketMessage
 import ru.fromchat.api.schema.websocket.types.WebSocketUpdatesData
 import ru.fromchat.config.ServerConfig
-import ru.fromchat.legal.DocumentScreen
-import ru.fromchat.legal.DocumentType
+import ru.fromchat.desktop.DesktopMenuCommand
+import ru.fromchat.desktop.DesktopMenuCommands
 import ru.fromchat.notifications.NotificationLaunchCoordinator
 import ru.fromchat.ui.auth.AuthScreen
 import ru.fromchat.ui.auth.captcha.SmartCaptchaNav
@@ -94,41 +86,52 @@ import ru.fromchat.ui.auth.captcha.SmartCaptchaScreen
 import ru.fromchat.ui.auth.yandex.YandexOAuthNav
 import ru.fromchat.ui.auth.yandex.YandexOAuthScreen
 import ru.fromchat.ui.calls.CallOverlay
-import ru.fromchat.ui.chat.panels.dm.DmChatRoute
-import ru.fromchat.ui.chat.panels.dm.DmNav
-import ru.fromchat.ui.chat.panels.dm.DmProfileRoute
-import ru.fromchat.ui.chat.panels.publicchat.PublicChatChatRoute
+import ru.fromchat.ui.chat.panels.dm.navigateToDmChat
 import ru.fromchat.ui.chat.panels.publicchat.PublicChatNav
-import ru.fromchat.ui.chat.panels.publicchat.PublicChatProfileRoute
+import ru.fromchat.ui.chat.panels.publicchat.navigateToPublicChat
+import ru.fromchat.ui.main.ConversationListDetailShell
+import ru.fromchat.ui.main.DesktopChatsDetailNavHost
+import ru.fromchat.ui.main.DesktopContactsDetailNavHost
+import ru.fromchat.ui.main.DesktopSettingsDetailNavHost
+import ru.fromchat.ui.main.DesktopTabDetailHosts
+import ru.fromchat.ui.main.LocalDesktopChatsNavController
+import ru.fromchat.ui.main.LocalDesktopMainTab
+import ru.fromchat.ui.main.LocalDesktopSettingsNavController
+import ru.fromchat.ui.main.MAIN_PAGE_CHATS
+import ru.fromchat.ui.main.MAIN_PAGE_CONTACTS
+import ru.fromchat.ui.main.MAIN_PAGE_SETTINGS
 import ru.fromchat.ui.main.MainScreen
 import ru.fromchat.ui.main.chats.ChatsSearchScreen
-import ru.fromchat.ui.main.settings.LOG_FILE_OPEN_RESULT_KEY
-import ru.fromchat.ui.main.settings.LogFilesScreen
-import ru.fromchat.ui.main.settings.LogsScreen
-import ru.fromchat.ui.main.settings.AboutScreen
-import ru.fromchat.ui.main.settings.AppearanceScreen
-import ru.fromchat.ui.main.settings.DevicesScreen
-import ru.fromchat.ui.main.settings.NotificationsScreen
+import ru.fromchat.ui.main.conversationDetailDestinations
+import ru.fromchat.ui.main.navigateReplacingMainDetail
+import ru.fromchat.ui.main.profileDetailDestinations
 import ru.fromchat.ui.main.settings.SettingsRoutes
-import ru.fromchat.ui.main.settings.account.AccountScreen
-import ru.fromchat.ui.main.settings.account.changepassword.ChangePasswordScreen
-import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexConfirmScreen
-import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexDoneScreen
-import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexOAuthScreen
-import ru.fromchat.ui.main.settings.account.delete.DeleteAccountScreen
-import ru.fromchat.ui.main.settings.server.ServerConfigScreen
-import ru.fromchat.ui.profile.EditProfileFocusField
-import ru.fromchat.ui.profile.EditProfileScreen
+import ru.fromchat.ui.main.settingsDetailDestinations
 import ru.fromchat.ui.profile.ProfileRoutes
-import ru.fromchat.ui.profile.ProfileScreen
+import ru.fromchat.ui.components.LocalPaneHazeState
 import ru.fromchat.ui.components.ScreenSurface
+import dev.chrisbanes.haze.rememberHazeState
 import ru.fromchat.utils.NetworkConnectivity
 
 val LocalNavController = compositionLocalOf<NavController> { error("NavController not provided") }
 
-private fun isConversationChatRoute(route: String?): Boolean =
-    route == PublicChatNav.CHAT_ROUTE ||
-        (route != null && route.startsWith("dm/") && "/chat" in route)
+private fun isStandaloneProfileRoute(route: String?): Boolean =
+    route != null &&
+        route.startsWith("profile/") &&
+        !route.startsWith(ProfileRoutes.Edit.substringBefore("?"))
+
+private fun isEditProfileRoute(route: String?): Boolean =
+    route != null && route.startsWith("profile/edit")
+
+/**
+ * Nav destination.route is the pattern (`profile/{userId}…`), not the filled path —
+ * read the userId from entry args / saved state.
+ */
+private fun standaloneProfileUserId(entry: NavBackStackEntry?): Int? {
+    val route = entry?.destination?.route ?: return null
+    if (!isStandaloneProfileRoute(route)) return null
+    return entry.savedStateHandle.get<String>("userId")?.toIntOrNull()?.takeIf { it > 0 }
+}
 
 private val rootNavTween = tween<Float>(durationMillis = 250, easing = FastOutSlowInEasing)
 
@@ -210,18 +213,6 @@ private fun handlePresenceEvent(message: WebSocketMessage) {
     }
 }
 
-private fun NavGraphBuilder.settingsComposable(
-    route: String,
-    arguments: List<NamedNavArgument> = emptyList(),
-    content: @Composable AnimatedContentScope.(NavBackStackEntry) -> Unit,
-) {
-    composable(
-        route = route,
-        arguments = arguments,
-        content = content,
-    )
-}
-
 @Composable
 fun App(
     scrollToMessageId: Int? = null,
@@ -268,9 +259,7 @@ fun App(
         }
 
         startDestination = when {
-            hasToken && startAtDmConversationUserId != null -> "chat"
-            hasToken && startAtPublicChat -> "chats/publicChat"
-            hasToken && !startAtPublicChat -> "chat"
+            hasToken -> "chat"
             else -> "welcome"
         }
 
@@ -348,6 +337,9 @@ fun App(
     FromChatTheme {
         SharedTransitionLayout {
             val navController = rememberNavController()
+            val chatsDetailNavController = rememberNavController()
+            val settingsDetailNavController = rememberNavController()
+            val contactsDetailNavController = rememberNavController()
             val profileLookupSnackbarHostState = remember { SnackbarHostState() }
             LaunchedEffect(profileLookupErrorMessage) {
                 profileLookupErrorMessage?.let { message ->
@@ -361,11 +353,16 @@ fun App(
                 }
             }
 
+            val widthSizeClass = currentWindowAdaptiveInfo().widthSizeClass
+            val isDesktopListDetail = widthSizeClass != WindowWidthSizeClass.COMPACT
+            var pendingMainTab by remember { mutableIntStateOf(MAIN_PAGE_CHATS) }
+
             // Handle startup/deep-link navigation targets (profile links)
             LaunchedEffect(
                 startAtProfileUserId,
                 startAtProfileUsername,
-                startDestination
+                startDestination,
+                isDesktopListDetail,
             ) {
                 Logger.d(
                     "ProfileDeepLink",
@@ -381,7 +378,19 @@ fun App(
                         "ProfileDeepLink",
                         "navigating by deep link userId=$startAtProfileUserId"
                     )
-                    navController.navigate("profile/$startAtProfileUserId?fromDeepLink=true")
+                    val route = "profile/$startAtProfileUserId?fromDeepLink=true"
+                    val ownId = ApiClient.user?.id
+                    if (isDesktopListDetail) {
+                        if (ownId != null && startAtProfileUserId == ownId) {
+                            pendingMainTab = MAIN_PAGE_SETTINGS
+                            settingsDetailNavController.navigateReplacingMainDetail(route)
+                        } else {
+                            pendingMainTab = MAIN_PAGE_CHATS
+                            chatsDetailNavController.navigateReplacingMainDetail(route)
+                        }
+                    } else {
+                        navController.navigate(route)
+                    }
                 } else {
                     val trimmedUsername = startAtProfileUsername?.trim()
                     if (!trimmedUsername.isNullOrBlank()) {
@@ -389,8 +398,27 @@ fun App(
                             "ProfileDeepLink",
                             "navigating by deep link username=$trimmedUsername"
                         )
-                        navController.navigate("profile/$trimmedUsername?fromDeepLink=true")
+                        val route = "profile/$trimmedUsername?fromDeepLink=true"
+                        if (isDesktopListDetail) {
+                            pendingMainTab = MAIN_PAGE_CHATS
+                            chatsDetailNavController.navigateReplacingMainDetail(route)
+                        } else {
+                            navController.navigate(route)
+                        }
                     }
+                }
+            }
+
+            LaunchedEffect(startDestination) {
+                if (startDestination == null || startDestination == "welcome") {
+                    return@LaunchedEffect
+                }
+                if (!startAtPublicChat) return@LaunchedEffect
+                if (isDesktopListDetail) {
+                    pendingMainTab = MAIN_PAGE_CHATS
+                    chatsDetailNavController.navigateToPublicChat()
+                } else {
+                    navController.navigateToPublicChat()
                 }
             }
 
@@ -407,14 +435,20 @@ fun App(
                                 "navigating to dm user=${target.dmConversationUserId} " +
                                     "messageId=${target.scrollToMessageId} launchId=${target.launchId}"
                             )
-                            navController.navigate(
-                                DmNav.chatRoute(
+                            if (isDesktopListDetail) {
+                                pendingMainTab = MAIN_PAGE_CHATS
+                                if (navController.currentBackStackEntry?.destination?.route != "chat") {
+                                    navController.popBackStack("chat", inclusive = false)
+                                }
+                                chatsDetailNavController.navigateToDmChat(
                                     otherUserId = target.dmConversationUserId,
                                     sourceMessageId = target.scrollToMessageId,
                                 )
-                            ) {
-                                launchSingleTop = true
-                                popUpTo("chat") { saveState = true }
+                            } else {
+                                navController.navigateToDmChat(
+                                    otherUserId = target.dmConversationUserId,
+                                    sourceMessageId = target.scrollToMessageId,
+                                )
                             }
                         }
 
@@ -423,8 +457,14 @@ fun App(
                                 "NotificationLaunch",
                                 "navigating to public chat launchId=${target.launchId}"
                             )
-                            navController.navigate(PublicChatNav.CHAT_ROUTE) {
-                                launchSingleTop = true
+                            if (isDesktopListDetail) {
+                                pendingMainTab = MAIN_PAGE_CHATS
+                                if (navController.currentBackStackEntry?.destination?.route != "chat") {
+                                    navController.popBackStack("chat", inclusive = false)
+                                }
+                                chatsDetailNavController.navigateToPublicChat()
+                            } else {
+                                navController.navigateToPublicChat()
                             }
                         }
                     }
@@ -433,350 +473,258 @@ fun App(
 
             CompositionLocalProvider(
                 LocalNavController provides navController,
+                LocalDesktopChatsNavController provides
+                    if (isDesktopListDetail) chatsDetailNavController else null,
+                LocalDesktopSettingsNavController provides
+                    if (isDesktopListDetail) settingsDetailNavController else null,
                 LocalSystemBarsVisibility provides rememberSystemBarsController()
             ) {
                 if (startDestination != null) {
                     val currentEntry by navController.currentBackStackEntryAsState()
+                    val currentRoute = currentEntry?.destination?.route
+                    val settingsEntry by settingsDetailNavController.currentBackStackEntryAsState()
+                    val settingsRoute = settingsEntry?.destination?.route
+                    val settingsProfileUserId = standaloneProfileUserId(settingsEntry)
+                    val ownUserId = ApiClient.user?.id
                     val showConversationListDetail =
-                        currentWindowAdaptiveInfo().widthSizeClass == WindowWidthSizeClass.EXPANDED &&
-                            isConversationChatRoute(currentEntry?.destination?.route)
+                        isDesktopListDetail && currentRoute == "chat"
+                    val forceSettingsListTab =
+                        showConversationListDetail && (
+                            isEditProfileRoute(settingsRoute) ||
+                                (
+                                    isStandaloneProfileRoute(settingsRoute) &&
+                                        settingsProfileUserId != null &&
+                                        settingsProfileUserId == ownUserId
+                                    )
+                            )
+
+                    LaunchedEffect(Unit) {
+                        DesktopMenuCommands.commands.collect { command ->
+                            if (command != DesktopMenuCommand.OpenAbout) return@collect
+                            pendingMainTab = MAIN_PAGE_SETTINGS
+                            if (isDesktopListDetail) {
+                                settingsDetailNavController.navigateReplacingMainDetail(
+                                    route = SettingsRoutes.About,
+                                )
+                            } else {
+                                navController.navigateReplacingMainDetail(
+                                    route = SettingsRoutes.About,
+                                )
+                            }
+                        }
+                    }
 
                     ScreenSurface {
                         Box(Modifier.fillMaxSize()) {
-                            Row(Modifier.fillMaxSize()) {
-                                if (showConversationListDetail) {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(360.dp)
-                                            .fillMaxHeight(),
-                                    ) {
-                                        MainScreen(
-                                            sharedTransitionScope = this@SharedTransitionLayout,
-                                            snackbarHostState = profileLookupSnackbarHostState,
-                                            listPaneOnly = true,
+                            val listPaneWidth =
+                                if (widthSizeClass == WindowWidthSizeClass.EXPANDED) {
+                                    448.dp
+                                } else {
+                                    360.dp
+                                }
+
+                            @Composable
+                            fun AppNavHost(modifier: Modifier = Modifier) {
+                                NavHost(
+                                    navController = navController,
+                                    startDestination = startDestination!!,
+                                    modifier = modifier,
+                                    enterTransition = { rootNavEnterTransition() },
+                                    exitTransition = { rootNavExitTransition() },
+                                    popEnterTransition = { rootNavPopEnterTransition() },
+                                    popExitTransition = { rootNavPopExitTransition() },
+                                ) {
+                                    composable("welcome") {
+                                        WelcomeScreen(
+                                            onGetStarted = {
+                                                navController.navigate("auth") {
+                                                    popUpTo("auth") { inclusive = true }
+                                                    launchSingleTop = true
+                                                }
+                                            },
+                                            onAlreadyLoggedIn = {
+                                                WebSocketManager.connect(forceRestart = true)
+                                                navController.navigateAndWipeBackStack("chat")
+                                            },
                                         )
                                     }
-                                    VerticalDivider()
-                                }
-                                Box(Modifier.weight(1f).fillMaxSize()) {
-                                    NavHost(
-                                        navController = navController,
-                                        startDestination = startDestination!!,
-                                        enterTransition = { rootNavEnterTransition() },
-                                        exitTransition = { rootNavExitTransition() },
-                                        popEnterTransition = { rootNavPopEnterTransition() },
-                                        popExitTransition = { rootNavPopExitTransition() },
-                                    ) {
-                            composable("serverConfig") {
-                                ServerConfigScreen()
-                            }
 
-                            composable("welcome") {
-                                WelcomeScreen(
-                                    onGetStarted = {
-                                        navController.navigate("auth") {
-                                            popUpTo("auth") { inclusive = true }
-                                            launchSingleTop = true
-                                        }
-                                    },
-                                    onAlreadyLoggedIn = {
-                                        WebSocketManager.connect(forceRestart = true)
-                                        navController.navigateAndWipeBackStack("chat")
-                                    },
-                                )
-                            }
+                                    composable("auth") {
+                                        AuthScreen(
+                                            onAuthSuccess = {
+                                                MainScope().launch {
+                                                    runCatching {
+                                                        bootstrapSessionInstance(
+                                                            hasToken = true,
+                                                            forceNetwork = false,
+                                                        )
+                                                    }
+                                                    PublicChatProfileSync.ensureStarted()
+                                                    ProfileUpdateSync.ensureStarted()
+                                                    StatusSubscriptionCoordinator.ensureStarted()
+                                                    scheduleSessionInstanceNetworkRefresh()
+                                                }
+                                                WebSocketManager.connect(forceRestart = true)
+                                                navController.navigateAndWipeBackStack("chat")
+                                            },
+                                            onBackToWelcome = { navController.navigateUp() },
+                                        )
+                                    }
 
-                            composable("auth") {
-                                AuthScreen(
-                                    onAuthSuccess = {
-                                        MainScope().launch {
-                                            runCatching {
-                                                bootstrapSessionInstance(
-                                                    hasToken = true,
-                                                    forceNetwork = false,
-                                                )
-                                            }
-                                            PublicChatProfileSync.ensureStarted()
-                                            ProfileUpdateSync.ensureStarted()
-            StatusSubscriptionCoordinator.ensureStarted()
-                                            scheduleSessionInstanceNetworkRefresh()
-                                        }
-                                        WebSocketManager.connect(forceRestart = true)
-                                        navController.navigateAndWipeBackStack("chat")
-                                    },
-                                    onBackToWelcome = { navController.navigateUp() },
-                                )
-                            }
+                                    composable(YandexOAuthNav.ROUTE) {
+                                        YandexOAuthScreen()
+                                    }
 
-                            composable(YandexOAuthNav.ROUTE) {
-                                YandexOAuthScreen()
-                            }
+                                    composable(SmartCaptchaNav.ROUTE) {
+                                        SmartCaptchaScreen()
+                                    }
 
-                            composable(SmartCaptchaNav.ROUTE) {
-                                SmartCaptchaScreen()
-                            }
-
-                            composable("chat") {
-                                MainScreen(
-                                    sharedTransitionScope = this@SharedTransitionLayout,
-                                    animatedVisibilityScope = this,
-                                    snackbarHostState = profileLookupSnackbarHostState
-                                )
-                            }
-
-                            composable(PublicChatNav.CHAT_ROUTE) {
-                                PublicChatChatRoute(
-                                    scrollToMessageId = scrollToMessageId,
-                                    navController = navController,
-                                    sharedTransitionScope = this@SharedTransitionLayout,
-                                    animatedVisibilityScope = this,
-                                )
-                            }
-
-                            composable(PublicChatNav.PROFILE_ROUTE) {
-                                PublicChatProfileRoute(
-                                    navController = navController,
-                                    sharedTransitionScope = this@SharedTransitionLayout,
-                                    animatedVisibilityScope = this,
-                                )
-                            }
-
-                            composable(
-                                route = "search/conversations",
-                                enterTransition = { searchScreenEnterTransition() },
-                                exitTransition = { searchScreenExitTransition() },
-                                popEnterTransition = { searchScreenEnterTransition() },
-                                popExitTransition = { searchScreenExitTransition() },
-                            ) {
-                                ChatsSearchScreen(
-                                    onBack = { navController.popBackStack() },
-                                    sharedTransitionScope = this@SharedTransitionLayout,
-                                    animatedVisibilityScope = this,
-                                    onOpenProfile = { userId: Int ->
-                                        if (userId != 0) {
-                                            navController.navigate("profile/$userId")
-                                        }
-                                    },
-                                    onOpenConversation = { userId: Int ->
-                                        if (userId != 0) {
-                                            navController.navigate(DmNav.chatRoute(userId))
+                                    composable("chat") {
+                                        // List–detail keeps the root on `chat` under the shell;
+                                        // empty placeholders live in Desktop*DetailNavHost only.
+                                        // Drawing EmptyConversationPlaceholder here ghosts a
+                                        // second copy through the transparent chats detail pane.
+                                        if (!showConversationListDetail) {
+                                            MainScreen(
+                                                sharedTransitionScope = this@SharedTransitionLayout,
+                                                animatedVisibilityScope = this,
+                                                snackbarHostState = profileLookupSnackbarHostState,
+                                                initialPage = pendingMainTab,
+                                            )
                                         }
                                     }
-                                )
-                            }
 
-                            composable(
-                                route = "profile/{userId}?fromDeepLink={fromDeepLink}",
-                                arguments = listOf(
-                                    navArgument("userId") { type = NavType.StringType },
-                                    navArgument("fromDeepLink") {
-                                        type = NavType.BoolType
-                                        defaultValue = false
-                                    },
-                                )
-                            ) { backStackEntry ->
-                                val args = backStackEntry.savedStateHandle
-                                val userIdParam = args.get<String>("userId")
-                                val parsedUserId = userIdParam?.toIntOrNull()
-                                val userId = if ((parsedUserId ?: 0) > 0) parsedUserId else null
-                                val profileUsername = if (userId == null) {
-                                    userIdParam?.trim()?.takeIf { it.isNotBlank() }
-                                } else null
+                                    composable(
+                                        route = "search/conversations",
+                                        enterTransition = { searchScreenEnterTransition() },
+                                        exitTransition = { searchScreenExitTransition() },
+                                        popEnterTransition = { searchScreenEnterTransition() },
+                                        popExitTransition = { searchScreenExitTransition() },
+                                    ) {
+                                        ChatsSearchScreen(
+                                            onBack = { navController.popBackStack() },
+                                            sharedTransitionScope = this@SharedTransitionLayout,
+                                            animatedVisibilityScope = this,
+                                            onOpenProfile = { userId: Int ->
+                                                if (userId == 0) return@ChatsSearchScreen
+                                                if (isDesktopListDetail) {
+                                                    navController.popBackStack("chat", inclusive = false)
+                                                    pendingMainTab = MAIN_PAGE_CHATS
+                                                    chatsDetailNavController.navigateReplacingMainDetail(
+                                                        "profile/$userId",
+                                                    )
+                                                } else {
+                                                    navController.navigateReplacingMainDetail(
+                                                        "profile/$userId",
+                                                    )
+                                                }
+                                            },
+                                            onOpenConversation = { userId: Int ->
+                                                if (userId == 0) return@ChatsSearchScreen
+                                                if (isDesktopListDetail) {
+                                                    navController.popBackStack("chat", inclusive = false)
+                                                    pendingMainTab = MAIN_PAGE_CHATS
+                                                    chatsDetailNavController.navigateToDmChat(userId)
+                                                } else {
+                                                    navController.navigateToDmChat(userId)
+                                                }
+                                            }
+                                        )
+                                    }
 
-                                val fromDeepLink = when (val rawFromDeepLink = args.get<Any?>("fromDeepLink")) {
-                                    is Boolean -> rawFromDeepLink
-                                    is String -> rawFromDeepLink == "true"
-                                    else -> false
+                                    // Root graph keeps all detail routes for compact + welcome.
+                                    // Desktop list–detail navigates per-tab NavHosts instead and
+                                    // leaves the root on `chat` while the shell is visible.
+                                    conversationDetailDestinations(
+                                        navController = navController,
+                                        sharedTransitionScope = this@SharedTransitionLayout,
+                                        scrollToMessageId = scrollToMessageId,
+                                    )
+                                    profileDetailDestinations(
+                                        navController = navController,
+                                        sharedTransitionScope = this@SharedTransitionLayout,
+                                    )
+                                    settingsDetailDestinations(
+                                        navController = navController,
+                                        rootNavController = navController,
+                                    )
                                 }
 
-                                Logger.d(
-                                    "ProfileRoute",
-                                    "profile entry args: rawUserId=$userIdParam parsedUserId=$parsedUserId resolvedUserId=$userId " +
-                                        "resolvedUsername=$profileUsername fromDeepLink=$fromDeepLink " +
-                                        "currentRoute=${backStackEntry.destination.route}"
-                                )
-
-                                ProfileScreen(
-                                    userId = userId,
-                                    username = profileUsername,
-                                    showBackButton = true,
-                                    onBack = { navController.navigateUp() },
-                                    onChat = { navController.navigate(DmNav.chatRoute(it)) },
-                                    sharedTransitionScope = this@SharedTransitionLayout,
-                                    animatedVisibilityScope = this@composable,
-                                    showErrorAsToast = fromDeepLink
-                                )
-                            }
-
-                            composable(
-                                route = ProfileRoutes.Edit,
-                                arguments = listOf(
-                                    navArgument(ProfileRoutes.ARG_FOCUS) {
-                                        type = NavType.StringType
-                                        defaultValue = ""
-                                    },
-                                ),
-                            ) { entry ->
-                                val focusField = EditProfileFocusField.fromArg(
-                                    entry.savedStateHandle.get<String>(ProfileRoutes.ARG_FOCUS),
-                                )
-                                EditProfileScreen(
-                                    onBack = { navController.navigateUp() },
-                                    initialFocusField = focusField,
-                                )
-                            }
-
-                            composable(
-                                route = DmNav.CHAT_ROUTE,
-                                arguments = listOf(
-                                    navArgument("otherUserId") { type = NavType.StringType },
-                                    navArgument("sourceMessageId") { type = NavType.IntType; defaultValue = -1 },
-                                ),
-                            ) { entry ->
-                                val otherUserId = entry.savedStateHandle.get<String>("otherUserId")?.toIntOrNull() ?: 0
-                                val sourceMessageId = entry.savedStateHandle.get<Int>("sourceMessageId") ?: -1
-                                if (otherUserId <= 0) return@composable
-                                DmChatRoute(
-                                    otherUserId = otherUserId,
-                                    scrollToMessageId = if (sourceMessageId > 0) sourceMessageId else null,
-                                    navController = navController,
-                                    sharedTransitionScope = this@SharedTransitionLayout,
-                                    animatedVisibilityScope = this,
-                                )
-                            }
-
-                            composable(
-                                route = DmNav.PROFILE_ROUTE,
-                                arguments = listOf(navArgument("otherUserId") { type = NavType.StringType }),
-                            ) { entry ->
-                                val otherUserId = entry.savedStateHandle.get<String>("otherUserId")?.toIntOrNull() ?: 0
-                                if (otherUserId <= 0) return@composable
-                                DmProfileRoute(
-                                    otherUserId = otherUserId,
-                                    navController = navController,
-                                    sharedTransitionScope = this@SharedTransitionLayout,
-                                    animatedVisibilityScope = this,
-                                )
-                            }
-
-                            settingsComposable("about") {
-                                AboutScreen()
-                            }
-
-                            settingsComposable(SettingsRoutes.Logs) {
-                                LogsScreen()
-                            }
-
-                            settingsComposable(SettingsRoutes.LogFiles) {
-                                LogFilesScreen(
-                                    onOpenFile = { file ->
-                                        navController.previousBackStackEntry
-                                            ?.savedStateHandle
-                                            ?.set(LOG_FILE_OPEN_RESULT_KEY, file.path)
-                                        navController.navigateUp()
-                                    },
-                                )
-                            }
-
-                            settingsComposable(
-                                route = DocumentType.ROUTE,
-                                arguments = listOf(
-                                    navArgument(DocumentType.ARG_DOCUMENT_TYPE) { type = NavType.StringType },
-                                ),
-                            ) { entry ->
-                                val type = entry.savedStateHandle
-                                    .get<String>(DocumentType.ARG_DOCUMENT_TYPE)
-                                    ?.let(DocumentType::typeFromArg)
-                                    ?: return@settingsComposable
-                                DocumentScreen(
-                                    type = type,
-                                    onBack = { navController.navigateUp() },
-                                    onOpenLegalDocument = { linkedType ->
-                                        navController.navigate(DocumentType.route(linkedType)) {
-                                            launchSingleTop = true
+                                DisposableEffect(navController) {
+                                    ApiClient.onAuthError = {
+                                        Logger.i("App", "Global auth error handler triggered, navigating to login")
+                                        runCatching {
+                                            navController.navigateAndWipeBackStack("welcome")
+                                        }.onFailure { e ->
+                                            Logger.w("App", "Auth navigation failed: ${e.message}", e)
                                         }
-                                    },
-                                )
-                            }
-
-                            settingsComposable(SettingsRoutes.Appearance) {
-                                AppearanceScreen(onBack = { navController.navigateUp() })
-                            }
-
-                            settingsComposable(SettingsRoutes.Notifications) {
-                                NotificationsScreen(onBack = { navController.navigateUp() })
-                            }
-
-                            settingsComposable(SettingsRoutes.Devices) {
-                                DevicesScreen(onBack = { navController.navigateUp() })
-                            }
-
-                            settingsComposable(SettingsRoutes.SecurityPasswordFlow) {
-                                ChangePasswordScreen(
-                                    onBack = { navController.navigateUp() },
-                                    onDone = { navController.popBackStack() },
-                                )
-                            }
-
-                            settingsComposable(SettingsRoutes.AccountDeleteFlow) {
-                                DeleteAccountScreen(
-                                    onBack = { navController.navigateUp() },
-                                    onDeleted = {
-                                        navController.navigate("welcome") {
-                                            popUpTo("chat") { inclusive = true }
-                                        }
-                                    },
-                                )
-                            }
-
-                            settingsComposable(SettingsRoutes.AccountYandexFlow) {
-                                ChangeYandexConfirmScreen(
-                                    onBack = { navController.navigateUp() },
-                                )
-                            }
-
-                            settingsComposable(SettingsRoutes.AccountYandexOAuth) {
-                                ChangeYandexOAuthScreen(
-                                    onBack = { navController.navigateUp() },
-                                )
-                            }
-
-                            settingsComposable(SettingsRoutes.AccountYandexDone) {
-                                ChangeYandexDoneScreen(
-                                    onDone = {
-                                        navController.popBackStack(SettingsRoutes.Account, inclusive = false)
-                                    },
-                                )
-                            }
-
-                            settingsComposable(SettingsRoutes.Account) {
-                                AccountScreen(
-                                    onBack = { navController.navigateUp() },
-                                    onLogout = {
-                                        navController.navigate("welcome") {
-                                            popUpTo("chat") { inclusive = true }
-                                        }
-                                    },
-                                    onChangePassword = { navController.navigate(SettingsRoutes.SecurityPasswordFlow) },
-                                    onChangeYandexId = { navController.navigate(SettingsRoutes.AccountYandexFlow) },
-                                    onDeleteAccount = { navController.navigate(SettingsRoutes.AccountDeleteFlow) },
-                                )
-                            }
-                        }
-
-                        DisposableEffect(navController) {
-                            ApiClient.onAuthError = {
-                                Logger.i("App", "Global auth error handler triggered, navigating to login")
-                                runCatching {
-                                    navController.navigateAndWipeBackStack("welcome")
-                                }.onFailure { e ->
-                                    Logger.w("App", "Auth navigation failed: ${e.message}", e)
+                                    }
+                                    onDispose {
+                                        ApiClient.onAuthError = null
+                                    }
                                 }
                             }
-                            onDispose {
-                                ApiClient.onAuthError = null
-                            }
-                        }
+
+                            AppNavHost(Modifier.fillMaxSize())
+
+                            if (showConversationListDetail) {
+                                val detailEdgeToEdge =
+                                    pendingMainTab == MAIN_PAGE_CHATS ||
+                                        pendingMainTab == MAIN_PAGE_CONTACTS
+                                val listPaneHazeState = rememberHazeState()
+                                CompositionLocalProvider(
+                                    LocalPaneHazeState provides listPaneHazeState,
+                                    LocalDesktopMainTab provides pendingMainTab,
+                                ) {
+                                    ConversationListDetailShell(
+                                        listPaneWidth = listPaneWidth,
+                                        detailInPanel = false,
+                                        detailEdgeToEdge = detailEdgeToEdge,
+                                        listPane = {
+                                            MainScreen(
+                                                sharedTransitionScope = this@SharedTransitionLayout,
+                                                snackbarHostState = profileLookupSnackbarHostState,
+                                                embeddedInListDetail = true,
+                                                initialPage = pendingMainTab,
+                                                forceSettingsTab = forceSettingsListTab,
+                                                onPageChanged = { pendingMainTab = it },
+                                            )
+                                        },
+                                        detailPane = {
+                                            DesktopTabDetailHosts(
+                                                selectedTab = pendingMainTab,
+                                                chatsDetail = {
+                                                    DesktopChatsDetailNavHost(
+                                                        navController = chatsDetailNavController,
+                                                        sharedTransitionScope =
+                                                            this@SharedTransitionLayout,
+                                                        scrollToMessageId = scrollToMessageId,
+                                                    )
+                                                },
+                                                settingsDetail = {
+                                                    DesktopSettingsDetailNavHost(
+                                                        navController = settingsDetailNavController,
+                                                        rootNavController = navController,
+                                                        sharedTransitionScope =
+                                                            this@SharedTransitionLayout,
+                                                        onOpenChatFromProfile = { userId ->
+                                                            if (userId > 0) {
+                                                                pendingMainTab = MAIN_PAGE_CHATS
+                                                                chatsDetailNavController.navigateToDmChat(
+                                                                    userId,
+                                                                )
+                                                            }
+                                                        },
+                                                    )
+                                                },
+                                                contactsDetail = {
+                                                    DesktopContactsDetailNavHost(
+                                                        navController = contactsDetailNavController,
+                                                    )
+                                                },
+                                            )
+                                        },
+                                    )
                                 }
                             }
 

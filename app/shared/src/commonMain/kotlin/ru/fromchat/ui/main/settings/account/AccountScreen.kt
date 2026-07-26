@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AccountCircle
@@ -17,13 +16,9 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MediumTopAppBar
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -36,12 +31,12 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import com.pr0gramm3r101.components.Category
 import com.pr0gramm3r101.components.ListItem
+import com.pr0gramm3r101.utils.conditional
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
 import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
-import ru.fromchat.back
 import ru.fromchat.cancel
 import ru.fromchat.ic_yandex
 import ru.fromchat.logout
@@ -55,6 +50,9 @@ import ru.fromchat.settings_account_title
 import ru.fromchat.settings_change_password
 import ru.fromchat.settings_security_change_password_sub
 import ru.fromchat.ui.components.Text
+import ru.fromchat.ui.main.settings.SettingsDetailTopBar
+import ru.fromchat.ui.main.settings.rememberSettingsCollapsingScrollBehavior
+import ru.fromchat.ui.main.settings.settingsDetailUseCollapsingTopBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,7 +63,8 @@ fun AccountScreen(
     onChangeYandexId: () -> Unit,
     onDeleteAccount: () -> Unit,
 ) {
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val useCollapsing = settingsDetailUseCollapsingTopBar()
+    val scrollBehavior = rememberSettingsCollapsingScrollBehavior()
     val scope = rememberCoroutineScope()
     var showLogoutConfirm by remember { mutableStateOf(false) }
     var yandexAvailable by remember { mutableStateOf(false) }
@@ -76,22 +75,20 @@ fun AccountScreen(
     }
 
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            MediumTopAppBar(
+            SettingsDetailTopBar(
                 title = { Text(stringResource(Res.string.settings_account_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(Res.string.back))
-                    }
-                },
-                scrollBehavior = scrollBehavior
+                onBack = onBack,
+                scrollBehavior = scrollBehavior,
             )
         }
     ) { innerPadding ->
         Column(
             Modifier
                 .fillMaxWidth()
+                .conditional(useCollapsing) {
+                    Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
+                }
                 .verticalScroll(rememberScrollState())
                 .padding(innerPadding)
         ) {

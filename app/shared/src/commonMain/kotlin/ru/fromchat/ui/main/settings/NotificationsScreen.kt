@@ -6,17 +6,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MediumTopAppBar
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -30,13 +25,13 @@ import androidx.compose.ui.unit.dp
 import com.pr0gramm3r101.components.Category
 import com.pr0gramm3r101.components.ListItem
 import com.pr0gramm3r101.components.SwitchListItem
+import com.pr0gramm3r101.utils.conditional
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.api.ensureFcmTokenRegistered
 import ru.fromchat.api.isFcmPushRegisteredLocally
 import ru.fromchat.api.unregisterFcmTokenFromServer
-import ru.fromchat.back
 import ru.fromchat.error_unexpected
 import ru.fromchat.settings_notification_settings
 import ru.fromchat.settings_notification_settings_d
@@ -51,7 +46,8 @@ import ru.fromchat.ui.components.Text
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotificationsScreen(onBack: () -> Unit) {
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val useCollapsing = settingsDetailUseCollapsingTopBar()
+    val scrollBehavior = rememberSettingsCollapsingScrollBehavior()
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var notificationsEnabled by remember { mutableStateOf(false) }
@@ -63,22 +59,20 @@ fun NotificationsScreen(onBack: () -> Unit) {
 
     Scaffold(
         snackbarHost = { FromChatSnackbarHost(hostState = snackbarHostState) },
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            MediumTopAppBar(
+            SettingsDetailTopBar(
                 title = { Text(stringResource(Res.string.settings_notifications_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(Res.string.back))
-                    }
-                },
-                scrollBehavior = scrollBehavior
+                onBack = onBack,
+                scrollBehavior = scrollBehavior,
             )
         }
     ) { innerPadding ->
         Column(
             Modifier
                 .fillMaxWidth()
+                .conditional(useCollapsing) {
+                    Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
+                }
                 .verticalScroll(rememberScrollState())
                 .padding(innerPadding)
         ) {

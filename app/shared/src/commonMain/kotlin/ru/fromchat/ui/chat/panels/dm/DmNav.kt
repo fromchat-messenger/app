@@ -8,9 +8,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.navigation.NavController
+import androidx.navigation.NavOptionsBuilder
 import ru.fromchat.api.local.cache.CacheContext
 import androidx.compose.ui.Modifier
-import androidx.navigation.NavController
 import ru.fromchat.api.local.db.store.ProfileCache
 import ru.fromchat.ui.chat.rememberChatNavigationGate
 import ru.fromchat.utils.haptic.HapticFeedbackEvent
@@ -33,6 +34,22 @@ object DmNav {
     fun profileRoute(otherUserId: Int) = "dm/$otherUserId/profile"
 }
 
+/**
+ * Opens a DM chat, replacing any prior conversation/profile above the main `chat` root
+ * so large-screen switches do not stack previous chats.
+ */
+fun NavController.navigateToDmChat(
+    otherUserId: Int,
+    sourceMessageId: Int? = null,
+    builder: NavOptionsBuilder.() -> Unit = {},
+) {
+    navigate(DmNav.chatRoute(otherUserId, sourceMessageId)) {
+        popUpTo(graph.startDestinationId) { saveState = true }
+        launchSingleTop = true
+        builder()
+    }
+}
+
 private const val DM_AVATAR_KEY_PREFIX = "dm-avatar-"
 
 @Composable
@@ -40,8 +57,8 @@ fun DmChatRoute(
     otherUserId: Int,
     scrollToMessageId: Int? = null,
     navController: NavController,
-    sharedTransitionScope: SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
     modifier: Modifier = Modifier,
 ) {
     val activeInstanceId by CacheContext.activeInstanceId.collectAsState()
@@ -105,7 +122,7 @@ fun DmProfileRoute(
         onChat = {
             runNav {
                 haptic(HapticFeedbackEvent.ProfileClosed)
-                navController.popBackStack()
+                navController.navigateToDmChat(otherUserId)
             }
         },
         modifier = modifier.fillMaxSize(),

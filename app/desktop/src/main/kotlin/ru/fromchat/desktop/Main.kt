@@ -1,30 +1,44 @@
 package ru.fromchat.desktop
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.graphics.toPainter
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.KeyShortcut
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.FrameWindowScope
+import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Notification
 import androidx.compose.ui.window.Tray
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberTrayState
 import androidx.compose.ui.window.rememberWindowState
 import com.pr0gramm3r101.utils.UtilsLibrary
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
-import ru.fromchat.AppForeground
-import ru.fromchat.api.ApiClient
-import ru.fromchat.api.local.workers.AttachmentTransferBootstrap
-import ru.fromchat.ui.App
+import java.awt.Desktop
+import java.awt.Image
+import java.awt.KeyboardFocusManager
+import java.awt.RenderingHints
+import java.awt.Taskbar
+import java.awt.event.ActionEvent
+import java.awt.image.BufferedImage
 import java.io.BufferedReader
+import java.io.ByteArrayInputStream
+import java.io.File
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.InetAddress
@@ -32,7 +46,45 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.imageio.ImageIO
+import javax.swing.JComponent
+import javax.swing.JRootPane
+import javax.swing.SwingUtilities
+import javax.swing.text.DefaultEditorKit
 import kotlin.concurrent.thread
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringResource
+import org.jetbrains.skia.Image as SkiaImage
+import ru.fromchat.AppBuildInfo
+import ru.fromchat.AppForeground
+import ru.fromchat.Logger
+import ru.fromchat.Res
+import ru.fromchat.action_copy
+import ru.fromchat.action_select
+import ru.fromchat.api.ApiClient
+import ru.fromchat.api.local.workers.AttachmentTransferBootstrap
+import ru.fromchat.app_name
+import ru.fromchat.app_name_beta
+import ru.fromchat.desktop_about_app
+import ru.fromchat.desktop_cut
+import ru.fromchat.desktop_menu_edit
+import ru.fromchat.desktop_menu_file
+import ru.fromchat.desktop_menu_window
+import ru.fromchat.desktop_minimize
+import ru.fromchat.desktop_new_chat
+import ru.fromchat.desktop_paste
+import ru.fromchat.desktop_quit
+import ru.fromchat.desktop_search_conversations
+import ru.fromchat.desktop_select_all
+import ru.fromchat.desktop_show_app
+import ru.fromchat.desktop_tray_show
+import ru.fromchat.desktop_zoom
+import ru.fromchat.ui.App
+import ru.fromchat.ui.LocalExtraStatusBarTop
 
 private object DesktopApplicationBootstrap {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -107,28 +159,19 @@ private object DesktopProtocolRegistration {
     fun registerBestEffort() {
         runCatching {
             when {
-                isMac() -> Unit // Packaged macOS builds declare CFBundleURLTypes in Info.plist.
-                isWindows() -> registerWindows()
-                isLinux() -> registerLinux()
+                isMacOs() -> Unit // Packaged macOS builds declare CFBundleURLTypes in Info.plist.
+                isWindowsOs() -> registerWindows()
+                isLinuxOs() -> registerLinux()
             }
         }
     }
 
-    private fun isMac(): Boolean =
-        System.getProperty("os.name").orEmpty().lowercase().contains("mac")
-
-    private fun isWindows(): Boolean =
-        System.getProperty("os.name").orEmpty().lowercase().contains("win")
-
-    private fun isLinux(): Boolean =
-        System.getProperty("os.name").orEmpty().lowercase().contains("linux")
-
     private fun javaLauncherCommand(): String {
         val javaHome = System.getProperty("java.home")
-        val javaBin = if (isWindows()) "$javaHome\\bin\\javaw.exe" else "$javaHome/bin/java"
+        val javaBin = if (isWindowsOs()) "$javaHome\\bin\\javaw.exe" else "$javaHome/bin/java"
         val classPath = System.getProperty("java.class.path")
         val main = "ru.fromchat.desktop.MainKt"
-        return if (isWindows()) {
+        return if (isWindowsOs()) {
             "\"$javaBin\" -cp \"$classPath\" $main"
         } else {
             "$javaBin -cp ${shellQuote(classPath)} $main"
@@ -177,20 +220,56 @@ private object DesktopProtocolRegistration {
 }
 
 fun main(args: Array<String>) {
+    // Separate AWT windows for Popup/Dialog so menus can draw past the app window edge
+    // (closer to Android Popup behavior). Must be set before any Compose UI runs.
+    System.setProperty("compose.layers.type", "WINDOW")
+    if (isMacOs()) {
+        // Must be set before AWT Toolkit init (do not call getString / Compose here).
+        // Matches Res.string.app_name / app_name_beta.
+        System.setProperty(
+            "apple.awt.application.name",
+            if (AppBuildInfo.isDebug) "FromChat Beta" else "FromChat",
+        )
+        System.setProperty("apple.laf.useScreenMenuBar", "true")
+    }
     if (!DesktopSingleInstance.acquireOrForward(args)) return
     DesktopProtocolRegistration.registerBestEffort()
     args.filter { DesktopDeepLinkBus.isFromChatUri(it) }
         .forEach { DesktopDeepLinkBus.handleUri(it) }
 
+    val dockIconImage = loadAppIconBufferedImage(tray = false)
+    applyDockIcon(dockIconImage)
+    // Re-apply after AWT is fully up — Taskbar can ignore early sets on macOS :run.
+    SwingUtilities.invokeLater { applyDockIcon(dockIconImage) }
+
     application {
         UtilsLibrary.init()
         DesktopApplicationBootstrap.launchOnApplicationStart()
 
-        val windowState = rememberWindowState()
+        val windowState = rememberWindowState(
+            size = remember { DesktopWindowPrefs.loadSize() },
+            position = remember { DesktopWindowPrefs.loadPosition() },
+        )
         var windowVisible by remember { mutableStateOf(true) }
         val trayState = rememberTrayState()
-        val trayIcon = remember { createTrayIconPainter() }
+        // BufferedImage.toPainter() keeps the AWT pixels (avoids blank BitmapPainter round-trip).
+        val trayIcon = remember { loadAppIconPainter(tray = true) }
+        val windowIcon = remember {
+            dockIconImage?.toPainter() ?: loadAppIconPainter(tray = false)
+        }
         val traySupported = remember { java.awt.SystemTray.isSupported() }
+        val mac = remember { isMacOs() }
+        val appName = stringResource(
+            if (AppBuildInfo.isDebug) Res.string.app_name_beta else Res.string.app_name,
+        )
+        val aboutApp = stringResource(Res.string.desktop_about_app)
+        val trayShow = stringResource(Res.string.desktop_tray_show)
+        val quit = stringResource(Res.string.desktop_quit)
+
+        LaunchedEffect(windowState.size, windowState.position) {
+            delay(3_000)
+            DesktopWindowPrefs.save(windowState.size, windowState.position)
+        }
 
         DisposableEffect(trayState) {
             DesktopNotifier.sink = { title, body ->
@@ -204,15 +283,32 @@ fun main(args: Array<String>) {
             }
         }
 
+        fun openAbout() {
+            windowVisible = true
+            DesktopMenuCommands.emit(DesktopMenuCommand.OpenAbout)
+        }
+
+        LaunchedEffect(Unit) {
+            if (!mac || !Desktop.isDesktopSupported()) return@LaunchedEffect
+            val desktop = Desktop.getDesktop()
+            if (desktop.isSupported(Desktop.Action.APP_ABOUT)) {
+                desktop.setAboutHandler {
+                    SwingUtilities.invokeLater { openAbout() }
+                }
+            }
+        }
+
         if (traySupported) {
             Tray(
                 icon = trayIcon,
                 state = trayState,
-                tooltip = "FromChat",
+                tooltip = appName,
                 onAction = { windowVisible = true },
                 menu = {
-                    Item("Show") { windowVisible = true }
-                    Item("Quit") { exitApplication() }
+                    Item(trayShow) { windowVisible = true }
+                    Item(aboutApp) { openAbout() }
+                    Separator()
+                    Item(quit) { exitApplication() }
                 },
             )
         }
@@ -226,24 +322,398 @@ fun main(args: Array<String>) {
                     exitApplication()
                 }
             },
-            title = "FromChat",
+            title = appName,
             state = windowState,
             visible = windowVisible || !traySupported,
-            icon = trayIcon,
+            icon = windowIcon,
+            onPreviewKeyEvent = { event ->
+                // macOS: MenuBar KeyShortcuts handle these. Win/Linux: no menu bar.
+                if (mac || event.type != KeyEventType.KeyDown || !event.isCtrlPressed) {
+                    return@Window false
+                }
+                when {
+                    !event.isShiftPressed && event.key == Key.N -> {
+                        windowVisible = true
+                        DesktopMenuCommands.emit(DesktopMenuCommand.NewChat)
+                        true
+                    }
+                    !event.isShiftPressed && event.key == Key.F -> {
+                        windowVisible = true
+                        DesktopMenuCommands.emit(DesktopMenuCommand.SearchConversations)
+                        true
+                    }
+                    event.isShiftPressed && event.key == Key.S -> {
+                        windowVisible = true
+                        DesktopMenuCommands.emit(DesktopMenuCommand.EnterChatListSelection)
+                        true
+                    }
+                    event.isShiftPressed && event.key == Key.A -> {
+                        openAbout()
+                        true
+                    }
+                    event.isShiftPressed && event.key == Key.N -> {
+                        windowVisible = true
+                        true
+                    }
+                    event.key == Key.M -> {
+                        windowState.isMinimized = true
+                        true
+                    }
+                    event.key == Key.Q -> {
+                        exitApplication()
+                        true
+                    }
+                    else -> false
+                }
+            },
         ) {
+            LaunchedEffect(window, appName) {
+                window.title = appName
+                enableEdgeToEdgeTitleBar(window.rootPane)
+                dockIconImage?.let { image ->
+                    window.iconImages = listOf(image)
+                    applyDockIcon(image)
+                }
+            }
             DisposableEffect(Unit) {
                 AppForeground.setForeground(true)
                 onDispose { }
             }
-            App()
+
+            if (mac) {
+                FromChatMenuBar(
+                    onNewChat = {
+                        windowVisible = true
+                        DesktopMenuCommands.emit(DesktopMenuCommand.NewChat)
+                    },
+                    onSearchConversations = {
+                        windowVisible = true
+                        DesktopMenuCommands.emit(DesktopMenuCommand.SearchConversations)
+                    },
+                    onSelectChats = {
+                        windowVisible = true
+                        DesktopMenuCommands.emit(DesktopMenuCommand.EnterChatListSelection)
+                    },
+                    onShow = { windowVisible = true },
+                    onMinimize = { windowState.isMinimized = true },
+                    onZoom = {
+                        windowState.placement =
+                            if (windowState.placement == WindowPlacement.Maximized) {
+                                WindowPlacement.Floating
+                            } else {
+                                WindowPlacement.Maximized
+                            }
+                    },
+                    onQuit = { exitApplication() },
+                )
+            }
+
+            CompositionLocalProvider(
+                LocalExtraStatusBarTop provides if (mac) 28.dp else 0.dp,
+            ) {
+                App()
+            }
         }
     }
 }
 
-private fun createTrayIconPainter(): Painter = object : Painter() {
-    override val intrinsicSize: Size = Size(32f, 32f)
+@Composable
+private fun FrameWindowScope.FromChatMenuBar(
+    onNewChat: () -> Unit,
+    onSearchConversations: () -> Unit,
+    onSelectChats: () -> Unit,
+    onShow: () -> Unit,
+    onMinimize: () -> Unit,
+    onZoom: () -> Unit,
+    onQuit: () -> Unit,
+) {
+    val file = stringResource(Res.string.desktop_menu_file)
+    val newChat = stringResource(Res.string.desktop_new_chat)
+    val searchConversations = stringResource(Res.string.desktop_search_conversations)
+    val quit = stringResource(Res.string.desktop_quit)
+    val edit = stringResource(Res.string.desktop_menu_edit)
+    val cut = stringResource(Res.string.desktop_cut)
+    val copy = stringResource(Res.string.action_copy)
+    val paste = stringResource(Res.string.desktop_paste)
+    val selectAll = stringResource(Res.string.desktop_select_all)
+    val select = stringResource(Res.string.action_select)
+    val windowMenu = stringResource(Res.string.desktop_menu_window)
+    val minimize = stringResource(Res.string.desktop_minimize)
+    val zoom = stringResource(Res.string.desktop_zoom)
+    val showApp = stringResource(Res.string.desktop_show_app)
 
-    override fun DrawScope.onDraw() {
-        drawRect(Color(0xFF4484F4))
+    MenuBar {
+        Menu(file, mnemonic = 'F') {
+            Item(
+                newChat,
+                shortcut = KeyShortcut(Key.N, meta = true),
+                onClick = onNewChat,
+            )
+            Item(
+                searchConversations,
+                shortcut = KeyShortcut(Key.F, meta = true),
+                onClick = onSearchConversations,
+            )
+            Separator()
+            Item(
+                quit,
+                shortcut = KeyShortcut(Key.Q, meta = true),
+                onClick = onQuit,
+            )
+        }
+        Menu(edit, mnemonic = 'E') {
+            Item(
+                cut,
+                shortcut = KeyShortcut(Key.X, meta = true),
+                onClick = { performAwtEditAction(DefaultEditorKit.cutAction) },
+            )
+            Item(
+                copy,
+                shortcut = KeyShortcut(Key.C, meta = true),
+                onClick = { performAwtEditAction(DefaultEditorKit.copyAction) },
+            )
+            Item(
+                paste,
+                shortcut = KeyShortcut(Key.V, meta = true),
+                onClick = { performAwtEditAction(DefaultEditorKit.pasteAction) },
+            )
+            Separator()
+            Item(
+                selectAll,
+                shortcut = KeyShortcut(Key.A, meta = true),
+                onClick = { performAwtEditAction(DefaultEditorKit.selectAllAction) },
+            )
+            Item(
+                select,
+                shortcut = KeyShortcut(Key.S, meta = true, shift = true),
+                onClick = onSelectChats,
+            )
+        }
+        Menu(windowMenu, mnemonic = 'W') {
+            Item(
+                minimize,
+                shortcut = KeyShortcut(Key.M, meta = true),
+                onClick = onMinimize,
+            )
+            Item(zoom, onClick = onZoom)
+            Separator()
+            Item(
+                showApp,
+                shortcut = KeyShortcut(Key.N, meta = true, shift = true),
+                onClick = onShow,
+            )
+        }
     }
+}
+
+private fun performAwtEditAction(actionName: String) {
+    val focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner as? JComponent
+        ?: return
+    val action = focusOwner.actionMap.get(actionName) ?: return
+    action.actionPerformed(ActionEvent(focusOwner, ActionEvent.ACTION_PERFORMED, actionName))
+}
+
+private fun isMacOs(): Boolean =
+    System.getProperty("os.name").orEmpty().lowercase().contains("mac")
+
+private fun isWindowsOs(): Boolean =
+    System.getProperty("os.name").orEmpty().lowercase().contains("win")
+
+private fun isLinuxOs(): Boolean =
+    System.getProperty("os.name").orEmpty().lowercase().contains("linux")
+
+private fun enableEdgeToEdgeTitleBar(rootPane: JRootPane) {
+    if (!isMacOs()) return
+    rootPane.putClientProperty("apple.awt.fullWindowContent", true)
+    rootPane.putClientProperty("apple.awt.transparentTitleBar", true)
+    rootPane.putClientProperty("apple.awt.windowTitleVisible", false)
+}
+
+private fun applyDockIcon(image: BufferedImage?) {
+    if (image == null) {
+        Logger.w("DesktopIcon", "applyDockIcon skipped — image is null")
+        return
+    }
+    runCatching {
+        if (!Taskbar.isTaskbarSupported()) {
+            Logger.w("DesktopIcon", "Taskbar unsupported; dock icon not set")
+            return
+        }
+        val taskbar = Taskbar.getTaskbar()
+        if (taskbar.isSupported(Taskbar.Feature.ICON_IMAGE)) {
+            taskbar.iconImage = image
+            Logger.i("DesktopIcon", "Taskbar dock icon set (${image.width}x${image.height})")
+        } else {
+            Logger.w("DesktopIcon", "Taskbar.Feature.ICON_IMAGE unsupported")
+        }
+    }.onFailure { error ->
+        Logger.w("DesktopIcon", "Failed to set dock icon: ${error.message}")
+    }
+}
+
+/**
+ * Loads the desktop tray or window/dock icon from packaged resources.
+ * Tray prefers the flat mark (`app_icon`); dock/window prefer the gradient (`app_window_icon`).
+ *
+ * Uses [BufferedImage.toPainter] so Compose Tray/Window hand the same AWT pixels to the OS
+ * (BitmapPainter → ImageBitmap round-trips can rasterize blank and fall back to Compose's default).
+ */
+private fun loadAppIconPainter(tray: Boolean): Painter {
+    val image = loadAppIconBufferedImage(tray)
+    if (image == null) {
+        Logger.e(
+            "DesktopIcon",
+            "loadAppIconPainter fell through — no resource decoded (tray=$tray); using solid fallback",
+        )
+        return solidFallbackIcon().toPainter()
+    }
+    Logger.i(
+        "DesktopIcon",
+        "loadAppIconPainter ok tray=$tray size=${image.width}x${image.height} type=${image.type}",
+    )
+    return image.toPainter()
+}
+
+private fun loadAppIconBufferedImage(tray: Boolean): BufferedImage? {
+    val names = if (tray) {
+        listOf("app_icon.png", "app_icon.webp", "app_window_icon.png", "app_window_icon.webp")
+    } else {
+        listOf("app_window_icon.png", "app_window_icon.webp", "app_icon.png", "app_icon.webp")
+    }
+    val loaders = listOfNotNull(
+        DesktopApplicationBootstrap::class.java.classLoader,
+        Thread.currentThread().contextClassLoader,
+        ClassLoader.getSystemClassLoader(),
+    ).distinct()
+
+    for (name in names) {
+        val bytes = readClasspathBytes(name, loaders)
+            ?: readFileFallbackBytes(name)
+            ?: continue
+        if (bytes.isEmpty()) continue
+        val decoded = decodeImageBytes(bytes, name) ?: continue
+        if (decoded.width < 16 || decoded.height < 16) {
+            Logger.w("DesktopIcon", "Skipping $name — decoded size ${decoded.width}x${decoded.height}")
+            continue
+        }
+        // Ensure TYPE_INT_ARGB so AWT Tray/Taskbar get a predictable raster.
+        val argb = ensureArgb(decoded)
+        val image = if (tray) scaleBufferedImage(argb, 64) else argb
+        Logger.i("DesktopIcon", "Loaded $name (${image.width}x${image.height}) tray=$tray")
+        return image
+    }
+    Logger.e("DesktopIcon", "No icon resource found for tray=$tray (tried $names)")
+    return null
+}
+
+private fun readClasspathBytes(name: String, loaders: List<ClassLoader>): ByteArray? {
+    val paths = listOf(name, "/$name")
+    for (loader in loaders) {
+        for (path in paths) {
+            val stream = loader.getResourceAsStream(path) ?: continue
+            val bytes = runCatching { stream.use { it.readBytes() } }
+                .onFailure { error ->
+                    Logger.w("DesktopIcon", "Failed reading $path from $loader: ${error.message}")
+                }
+                .getOrNull()
+                ?: continue
+            if (bytes.isNotEmpty()) {
+                Logger.i("DesktopIcon", "Classpath hit $path via $loader (${bytes.size} bytes)")
+                return bytes
+            }
+        }
+    }
+    // Explicit class resource (works when context CL is a filtered compose run CL).
+    for (path in paths) {
+        val stream = DesktopApplicationBootstrap::class.java.getResourceAsStream(path) ?: continue
+        val bytes = runCatching { stream.use { it.readBytes() } }.getOrNull() ?: continue
+        if (bytes.isNotEmpty()) {
+            Logger.i("DesktopIcon", "Class resource hit $path (${bytes.size} bytes)")
+            return bytes
+        }
+    }
+    return null
+}
+
+/** Last resort when classpath packaging under `:run` omits resources. */
+private fun readFileFallbackBytes(name: String): ByteArray? {
+    val candidates = listOf(
+        File("app/desktop/src/main/resources", name),
+        File("src/main/resources", name),
+        File(System.getProperty("user.dir"), "src/main/resources/$name"),
+        File(System.getProperty("user.dir"), "app/desktop/src/main/resources/$name"),
+    )
+    for (file in candidates) {
+        if (!file.isFile) continue
+        val bytes = runCatching { file.readBytes() }.getOrNull() ?: continue
+        if (bytes.isNotEmpty()) {
+            Logger.i("DesktopIcon", "File fallback hit ${file.absolutePath} (${bytes.size} bytes)")
+            return bytes
+        }
+    }
+    return null
+}
+
+private fun decodeImageBytes(bytes: ByteArray, name: String): BufferedImage? {
+    val viaImageIo = runCatching {
+        ImageIO.read(ByteArrayInputStream(bytes))
+    }.onFailure { error ->
+        Logger.w("DesktopIcon", "ImageIO failed for $name: ${error.message}")
+    }.getOrNull()
+    if (viaImageIo != null) return viaImageIo
+
+    return runCatching {
+        val skia = SkiaImage.makeFromEncoded(bytes)
+        bufferedImageFromComposeArgb(skia.toComposeImageBitmap())
+    }.onFailure { error ->
+        Logger.w("DesktopIcon", "Skia decode failed for $name: ${error.message}")
+    }.getOrNull()
+}
+
+private fun ensureArgb(source: BufferedImage): BufferedImage {
+    if (source.type == BufferedImage.TYPE_INT_ARGB) return source
+    val out = BufferedImage(source.width, source.height, BufferedImage.TYPE_INT_ARGB)
+    val graphics = out.createGraphics()
+    graphics.drawImage(source, 0, 0, null)
+    graphics.dispose()
+    return out
+}
+
+private fun bufferedImageFromComposeArgb(
+    bitmap: androidx.compose.ui.graphics.ImageBitmap,
+): BufferedImage {
+    val w = bitmap.width
+    val h = bitmap.height
+    val pixels = IntArray(w * h)
+    bitmap.readPixels(pixels)
+    val out = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
+    out.setRGB(0, 0, w, h, pixels, 0, w)
+    return out
+}
+
+private fun scaleBufferedImage(source: BufferedImage, size: Int): BufferedImage {
+    if (source.width == size && source.height == size) return source
+    val out = BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB)
+    val graphics = out.createGraphics()
+    graphics.setRenderingHint(
+        RenderingHints.KEY_INTERPOLATION,
+        RenderingHints.VALUE_INTERPOLATION_BILINEAR,
+    )
+    graphics.setRenderingHint(
+        RenderingHints.KEY_RENDERING,
+        RenderingHints.VALUE_RENDER_QUALITY,
+    )
+    graphics.drawImage(source.getScaledInstance(size, size, Image.SCALE_SMOOTH), 0, 0, null)
+    graphics.dispose()
+    return out
+}
+
+/** Opaque mark so Tray never substitutes the Compose default for a blank painter. */
+private fun solidFallbackIcon(): BufferedImage {
+    val out = BufferedImage(32, 32, BufferedImage.TYPE_INT_ARGB)
+    val graphics = out.createGraphics()
+    graphics.color = java.awt.Color(0x1A, 0x73, 0xE8)
+    graphics.fillRoundRect(2, 2, 28, 28, 8, 8)
+    graphics.dispose()
+    return out
 }

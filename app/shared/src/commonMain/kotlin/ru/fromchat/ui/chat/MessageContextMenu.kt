@@ -37,17 +37,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
@@ -62,6 +63,7 @@ import ru.fromchat.api.local.download.resolveSavableMessageFile
 import ru.fromchat.api.local.download.resolveSavableMessageImage
 import ru.fromchat.api.local.messages.isQueuedOutbound
 import ru.fromchat.api.schema.messages.Message
+import ru.fromchat.supportsMouseMessageInteraction
 import ru.fromchat.ui.components.Text
 import com.pr0gramm3r101.utils.scaleOnPress
 
@@ -146,143 +148,148 @@ fun MessageContextMenu(
         if (state.isOpen && state.message != null) {
             shouldShowPopup = true
             animationProgress.floatValue = 0f
+            animate(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioLowBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                )
+            ) { value, _ ->
+                animationProgress.floatValue = value
+            }
         }
     }
 
     if (shouldShowPopup && state.message != null) {
-        var measuredSize by remember(state.message) { mutableStateOf(IntSize.Zero) }
+        val density = LocalDensity.current
+        val paddingPx = with(density) { 16.dp.toPx().toInt() }
+        val allowOutsideWindow = supportsMouseMessageInteraction()
+        var popupSize by remember(state.message) { mutableStateOf(IntSize.Zero) }
 
-        SubcomposeLayout(Modifier.size(0.dp)) { _ ->
-            val looseConstraints = Constraints(
-                minWidth = 0,
-                minHeight = 0,
-                maxWidth = screenWidthPx,
-                maxHeight = screenHeightPx
-            )
-            val placeables = subcompose("measure") {
-                ContextMenuContent(
-                    message = state.message,
-                    isAuthor = isAuthor,
-                    canDelete = canDelete,
-                    onReply = {},
-                    onEdit = {},
-                    onDelete = {},
-                    onCopy = {},
-                    onSave = {},
-                    onCancelSend = {},
-                    onRetrySend = {},
-                    modifier = modifier.graphicsLayer(alpha = 0f),
-                    animated = false,
-                    withShadow = false,
-                    isReadOnly = isReadOnly,
-                )
-            }.map { it.measure(looseConstraints) }
-            val p = placeables.firstOrNull()
-            if (p != null && measuredSize == IntSize.Zero) {
-                measuredSize = IntSize(p.width, p.height)
-            }
-            layout(0, 0) {
-                placeables.forEach { it.placeRelative(-10000, -10000) }
+        // Clamp with popupContentSize — do not SubcomposeLayout-measure under
+        // SharedTransitionLayout (writes state during LookaheadMeasuring).
+        val positionProvider = remember(
+            state.position,
+            screenWidthPx,
+            screenHeightPx,
+            paddingPx,
+            allowOutsideWindow,
+        ) {
+            object : PopupPositionProvider {
+                override fun calculatePosition(
+                    anchorBounds: IntRect,
+                    windowSize: IntSize,
+                    layoutDirection: LayoutDirection,
+                    popupContentSize: IntSize,
+                ): IntOffset {
+                    if (allowOutsideWindow) return state.position
+                    var x = state.position.x
+                    var y = state.position.y
+                    val rightEdge = screenWidthPx - paddingPx
+                    val bottomEdge = screenHeightPx - paddingPx
+                    if (x + popupContentSize.width > rightEdge) {
+                        x = rightEdge - popupContentSize.width
+                    }
+                    if (y + popupContentSize.height > bottomEdge) {
+                        y = bottomEdge - popupContentSize.height
+                    }
+                    if (x < paddingPx) x = paddingPx
+                    if (y < paddingPx) y = paddingPx
+                    return IntOffset(x, y)
+                }
             }
         }
 
-        val density = LocalDensity.current
-        val paddingPx = with(density) { 16.dp.toPx().toInt() }
-        val rightEdge = screenWidthPx - paddingPx
-        val bottomEdge = screenHeightPx - paddingPx
-
-        val adjustedOffset = remember(measuredSize, state.position, rightEdge, bottomEdge, paddingPx) {
-            if (measuredSize == IntSize.Zero) {
+        val adjustedOffset = remember(
+            popupSize,
+            state.position,
+            screenWidthPx,
+            screenHeightPx,
+            paddingPx,
+            allowOutsideWindow,
+        ) {
+            if (allowOutsideWindow || popupSize == IntSize.Zero) {
                 state.position
             } else {
                 var x = state.position.x
                 var y = state.position.y
-                if (x + measuredSize.width > rightEdge) x = rightEdge - measuredSize.width
-                if (y + measuredSize.height > bottomEdge) y = bottomEdge - measuredSize.height
+                val rightEdge = screenWidthPx - paddingPx
+                val bottomEdge = screenHeightPx - paddingPx
+                if (x + popupSize.width > rightEdge) x = rightEdge - popupSize.width
+                if (y + popupSize.height > bottomEdge) y = bottomEdge - popupSize.height
                 if (x < paddingPx) x = paddingPx
                 if (y < paddingPx) y = paddingPx
                 IntOffset(x, y)
             }
         }
 
-        val sizeF = Offset(measuredSize.width.toFloat(), measuredSize.height.toFloat())
-        val transformOriginX = if (sizeF.x > 0f) {
-            ((state.position.x - adjustedOffset.x) / sizeF.x).coerceIn(0f, 1f)
-        } else 0f
-        val transformOriginY = if (sizeF.y > 0f) {
-            ((state.position.y - adjustedOffset.y) / sizeF.y).coerceIn(0f, 1f)
-        } else 0f
-
-        LaunchedEffect(measuredSize) {
-            if (measuredSize != IntSize.Zero) {
-                animate(
-                    initialValue = 0f,
-                    targetValue = 1f,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioLowBouncy,
-                        stiffness = Spring.StiffnessMediumLow
-                    )
-                ) { value, _ ->
-                    animationProgress.floatValue = value
-                }
-            }
+        val transformOriginX = if (popupSize.width > 0) {
+            ((state.position.x - adjustedOffset.x).toFloat() / popupSize.width).coerceIn(0f, 1f)
+        } else {
+            0f
+        }
+        val transformOriginY = if (popupSize.height > 0) {
+            ((state.position.y - adjustedOffset.y).toFloat() / popupSize.height).coerceIn(0f, 1f)
+        } else {
+            0f
         }
 
         val scale = 0.5f + 0.5f * animationProgress.floatValue
         val alpha = animationProgress.floatValue
 
-        if (measuredSize != IntSize.Zero) {
-            Popup(
-                onDismissRequest = onDismiss,
-                alignment = Alignment.TopStart,
-                offset = adjustedOffset,
-                properties = PopupProperties(
-                    dismissOnBackPress = true,
-                    dismissOnClickOutside = true,
-                    clippingEnabled = false
-                )
-            ) {
-                ContextMenuContent(
-                    message = state.message,
-                    isAuthor = isAuthor,
-                    canDelete = canDelete,
-                    onReply = {
-                        onReply(it)
-                        onDismiss()
-                    },
-                    onEdit = {
-                        onEdit(it)
-                        onDismiss()
-                    },
-                    onDelete = {
-                        onDelete(it)
-                        onDismiss()
-                    },
-                    onCopy = {
-                        onCopy(it)
-                        onDismiss()
-                    },
-                    onSave = {
-                        onSave(it)
-                        onDismiss()
-                    },
-                    onCancelSend = {
-                        onCancelSend(it)
-                        onDismiss()
-                    },
-                    onRetrySend = {
-                        onRetrySend(it)
-                        onDismiss()
-                    },
-                    modifier = modifier,
-                    animated = true,
-                    scale = scale,
-                    alpha = alpha,
-                    transformOriginX = transformOriginX,
-                    transformOriginY = transformOriginY,
-                    isReadOnly = isReadOnly
-                )
-            }
+        // [state.position] is window coordinates (see MessageItem localToWindow).
+        // Alignment+offset would add the popup parent’s window origin again (double offset
+        // in list–detail panes). Place with an absolute provider instead.
+        Popup(
+            onDismissRequest = onDismiss,
+            popupPositionProvider = positionProvider,
+            properties = PopupProperties(
+                dismissOnBackPress = true,
+                dismissOnClickOutside = true,
+                clippingEnabled = false,
+            ),
+        ) {
+            ContextMenuContent(
+                message = state.message,
+                isAuthor = isAuthor,
+                canDelete = canDelete,
+                onReply = {
+                    onReply(it)
+                    onDismiss()
+                },
+                onEdit = {
+                    onEdit(it)
+                    onDismiss()
+                },
+                onDelete = {
+                    onDelete(it)
+                    onDismiss()
+                },
+                onCopy = {
+                    onCopy(it)
+                    onDismiss()
+                },
+                onSave = {
+                    onSave(it)
+                    onDismiss()
+                },
+                onCancelSend = {
+                    onCancelSend(it)
+                    onDismiss()
+                },
+                onRetrySend = {
+                    onRetrySend(it)
+                    onDismiss()
+                },
+                modifier = modifier.onSizeChanged { popupSize = it },
+                animated = true,
+                scale = scale,
+                alpha = alpha,
+                transformOriginX = transformOriginX,
+                transformOriginY = transformOriginY,
+                isReadOnly = isReadOnly,
+            )
         }
     }
 }
@@ -308,15 +315,114 @@ private fun ContextMenuContent(
     transformOriginX: Float = 0f,
     transformOriginY: Float = 0f,
 ) {
-    val menuShape = RoundedCornerShape(16.dp)
     val menuScrollState = rememberScrollState()
+    val labelReply = stringResource(Res.string.action_reply)
+    val labelEdit = stringResource(Res.string.action_edit)
+    val labelDelete = stringResource(Res.string.action_delete)
+    val labelCopy = stringResource(Res.string.action_copy)
+    val labelSave = stringResource(Res.string.action_save)
+    val labelCancelSend = stringResource(Res.string.action_cancel_send)
+    val labelRetrySend = stringResource(Res.string.action_retry_send)
+    val isQueued = message.isQueuedOutbound() && isAuthor
+    val sendFailed = isQueued && !message.uploadError.isNullOrBlank()
+    val canSave = resolveSavableMessageImage(message) != null ||
+        resolveSavableMessageFile(message) != null
+
+    ChatStyleContextMenuFrame(
+        modifier = modifier,
+        animated = animated,
+        withShadow = withShadow,
+        scale = scale,
+        alpha = alpha,
+        transformOriginX = transformOriginX,
+        transformOriginY = transformOriginY,
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(horizontal = 8.dp, vertical = 8.dp)
+                .verticalScroll(menuScrollState),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            if (!message.isContentCorrupted) {
+                ChatStyleContextMenuItem(
+                    icon = Icons.Rounded.ContentCopy,
+                    text = labelCopy,
+                    onClick = { onCopy(message) },
+                )
+            }
+            if (canSave) {
+                ChatStyleContextMenuItem(
+                    icon = Icons.Rounded.SaveAlt,
+                    text = labelSave,
+                    onClick = { onSave(message) },
+                )
+            }
+            if (sendFailed) {
+                ChatStyleContextMenuItem(
+                    icon = Icons.Rounded.Refresh,
+                    text = labelRetrySend,
+                    onClick = { onRetrySend(message) },
+                )
+                ChatStyleContextMenuItem(
+                    icon = Icons.Rounded.Close,
+                    text = labelCancelSend,
+                    onClick = { onCancelSend(message) },
+                    isError = true,
+                )
+            } else if (isQueued) {
+                ChatStyleContextMenuItem(
+                    icon = Icons.Rounded.Close,
+                    text = labelCancelSend,
+                    onClick = { onCancelSend(message) },
+                    isError = true,
+                )
+            } else if (!isReadOnly) {
+                ChatStyleContextMenuItem(
+                    icon = Icons.AutoMirrored.Rounded.Reply,
+                    text = labelReply,
+                    onClick = { onReply(message) },
+                )
+                if (isAuthor && !message.isContentCorrupted) {
+                    ChatStyleContextMenuItem(
+                        icon = Icons.Rounded.Edit,
+                        text = labelEdit,
+                        onClick = { onEdit(message) },
+                    )
+                }
+                if (canDelete) {
+                    ChatStyleContextMenuItem(
+                        icon = Icons.Rounded.Delete,
+                        text = labelDelete,
+                        onClick = { onDelete(message) },
+                        isError = true,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private val chatStyleMenuItemShape = RoundedCornerShape(12.dp)
+
+/** Shared chrome for message + text-selection context menus. */
+@Composable
+internal fun ChatStyleContextMenuFrame(
+    modifier: Modifier = Modifier,
+    animated: Boolean = false,
+    withShadow: Boolean = true,
+    scale: Float = 1f,
+    alpha: Float = 1f,
+    transformOriginX: Float = 0f,
+    transformOriginY: Float = 0f,
+    content: @Composable () -> Unit,
+) {
+    val menuShape = RoundedCornerShape(16.dp)
     val density = LocalDensity.current
     val shadowElevationPx = if (withShadow) {
         with(density) { 12.dp.toPx() }
     } else {
         0f
     }
-
     val baseModifier = modifier.width(IntrinsicSize.Max)
     val containerModifier =
         if (animated) {
@@ -327,150 +433,78 @@ private fun ContextMenuContent(
                 transformOrigin = TransformOrigin(transformOriginX, transformOriginY),
                 shadowElevation = shadowElevationPx,
                 shape = menuShape,
-                clip = true
+                clip = true,
             )
         } else {
             baseModifier.graphicsLayer(
                 shadowElevation = shadowElevationPx,
                 shape = menuShape,
-                clip = true
+                clip = true,
             )
         }
 
-    val menuColor = MaterialTheme.colorScheme.surfaceContainer
-    val edgePadding = 8.dp
-    val itemSpacing = 2.dp
-    val labelReply = stringResource(Res.string.action_reply)
-    val labelEdit = stringResource(Res.string.action_edit)
-    val labelDelete = stringResource(Res.string.action_delete)
-    val labelCopy = stringResource(Res.string.action_copy)
-    val labelSave = stringResource(Res.string.action_save)
-    val labelCancelSend = stringResource(Res.string.action_cancel_send)
-    val labelRetrySend = stringResource(Res.string.action_retry_send)
-    val isQueued = message.isQueuedOutbound() && isAuthor
-    val sendFailed = isQueued && !message.uploadError.isNullOrBlank()
-    val savableImage = resolveSavableMessageImage(message)
-    val savableFile = resolveSavableMessageFile(message)
-    val canSave = savableImage != null || savableFile != null
-
     Box(modifier = containerModifier) {
-        Box(modifier = Modifier.matchParentSize().background(menuColor, menuShape))
-        Column(
+        Box(
             modifier = Modifier
-                .padding(horizontal = edgePadding, vertical = edgePadding)
-                .verticalScroll(menuScrollState),
-            verticalArrangement = Arrangement.spacedBy(itemSpacing)
-        ) {
-            if (!message.isContentCorrupted) {
-                ContextMenuItem(
-                    icon = Icons.Rounded.ContentCopy,
-                    text = labelCopy,
-                    onClick = { onCopy(message) }
-                )
-            }
-            if (canSave) {
-                ContextMenuItem(
-                    icon = Icons.Rounded.SaveAlt,
-                    text = labelSave,
-                    onClick = { onSave(message) }
-                )
-            }
-            if (sendFailed) {
-                ContextMenuItem(
-                    icon = Icons.Rounded.Refresh,
-                    text = labelRetrySend,
-                    onClick = { onRetrySend(message) },
-                )
-                ContextMenuItem(
-                    icon = Icons.Rounded.Close,
-                    text = labelCancelSend,
-                    onClick = { onCancelSend(message) },
-                    isError = true,
-                )
-            } else if (isQueued) {
-                ContextMenuItem(
-                    icon = Icons.Rounded.Close,
-                    text = labelCancelSend,
-                    onClick = { onCancelSend(message) },
-                    isError = true
-                )
-            } else if (!isReadOnly) {
-                ContextMenuItem(
-                    icon = Icons.AutoMirrored.Rounded.Reply,
-                    text = labelReply,
-                    onClick = { onReply(message) }
-                )
-                if (isAuthor && !message.isContentCorrupted) {
-                    ContextMenuItem(
-                        icon = Icons.Rounded.Edit,
-                        text = labelEdit,
-                        onClick = { onEdit(message) }
-                    )
-                }
-                if (canDelete) {
-                    ContextMenuItem(
-                        icon = Icons.Rounded.Delete,
-                        text = labelDelete,
-                        onClick = { onDelete(message) },
-                        isError = true
-                    )
-                }
-            }
-        }
+                .matchParentSize()
+                .background(MaterialTheme.colorScheme.surfaceContainer, menuShape),
+        )
+        content()
     }
 }
 
-private val itemShape = RoundedCornerShape(12.dp)
-
 @Composable
-private fun ContextMenuItem(
+internal fun ChatStyleContextMenuItem(
     icon: ImageVector,
     text: String,
     onClick: () -> Unit,
     isError: Boolean = false,
-    modifier: Modifier = Modifier
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
 ) {
-    val textColor = if (isError) {
-        MaterialTheme.colorScheme.error
-    } else {
-        MaterialTheme.colorScheme.onSurface
+    val textColor = when {
+        !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+        isError -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurface
     }
-    val iconColor = if (isError) {
-        MaterialTheme.colorScheme.error
-    } else {
-        MaterialTheme.colorScheme.onSurface
-    }
+    val iconColor = textColor
     Box(
         modifier = modifier
             .fillMaxWidth()
             .padding(4.dp)
-            .clip(itemShape)
-            .scaleOnPress(
-                scale = 0.96f,
-                onClick = onClick,
-                indication = LocalIndication.current,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessMedium,
-                ),
+            .clip(chatStyleMenuItemShape)
+            .then(
+                if (enabled) {
+                    Modifier.scaleOnPress(
+                        scale = 0.96f,
+                        onClick = onClick,
+                        indication = LocalIndication.current,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessMedium,
+                        ),
+                    )
+                } else {
+                    Modifier
+                },
             )
             .padding(horizontal = 12.dp, vertical = 8.dp),
-        contentAlignment = Alignment.CenterStart
+        contentAlignment = Alignment.CenterStart,
     ) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = text,
                 tint = iconColor,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(20.dp),
             )
             Text(
                 text = text,
                 style = MaterialTheme.typography.bodyMedium,
-                color = textColor
+                color = textColor,
             )
         }
     }
