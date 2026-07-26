@@ -1,6 +1,5 @@
 package ru.fromchat.ui.main.settings
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Spacer
@@ -22,7 +21,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -34,10 +32,6 @@ import com.pr0gramm3r101.utils.WindowWidthSizeClass
 import com.pr0gramm3r101.utils.currentWindowAdaptiveInfo
 import com.pr0gramm3r101.utils.verticalScroll
 import com.pr0gramm3r101.utils.widthSizeClass
-import dev.chrisbanes.haze.blur.blurEffect
-import dev.chrisbanes.haze.hazeEffect
-import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.about
@@ -59,9 +53,9 @@ import ru.fromchat.settings_hub_about_sub
 import ru.fromchat.settings_hub_logs_sub
 import ru.fromchat.settings_hub_profile_sub
 import ru.fromchat.ui.LocalNavController
-import ru.fromchat.ui.chat.rememberChatSurfaceContainerHazeStyle
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.extraStatusBars
+import ru.fromchat.ui.main.LocalDesktopSettingsNavController
 import ru.fromchat.ui.main.LocalMainChromeInsets
 import ru.fromchat.ui.main.mainPagerBottomInset
 import ru.fromchat.ui.main.navigateReplacingMainDetail
@@ -71,17 +65,12 @@ val SettingsStepHorizontalPadding = 24.dp
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SettingsTab() {
-    val navController = LocalNavController.current
+    val navController =
+        LocalDesktopSettingsNavController.current ?: LocalNavController.current
     val isTwoPane = currentWindowAdaptiveInfo().widthSizeClass != WindowWidthSizeClass.COMPACT
-    val topChromeHazeState = rememberHazeState()
-    // Same material as MainScreen bottom nav (not HazeMaterials.thin).
-    val topChromeHazeStyle = rememberChatSurfaceContainerHazeStyle()
 
     fun openDetail(route: String) {
-        navController.navigateReplacingMainDetail(
-            route = route,
-            preserveConversationDetail = isTwoPane,
-        )
+        navController.navigateReplacingMainDetail(route = route)
     }
 
     Scaffold(
@@ -99,28 +88,15 @@ fun SettingsTab() {
                 title = {
                     Text(stringResource(Res.string.settings), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                ),
-                // Match MainScreen bottom chrome: surfaceContainer + hazeEffect/blurEffect.
-                modifier = Modifier
-                    .background(MaterialTheme.colorScheme.surfaceContainer)
-                    .hazeEffect(state = topChromeHazeState) {
-                        blurEffect {
-                            style = topChromeHazeStyle
-                        }
-                    },
             )
         }
     ) { innerPadding ->
         Column(
             Modifier
                 .fillMaxSize()
-                .hazeSource(topChromeHazeState)
                 .verticalScroll()
                 .mainPagerBottomInset()
         ) {
-            // Scrollable top inset so rows can pass under the frosted top chrome.
             Spacer(Modifier.height(innerPadding.calculateTopPadding()))
 
             if (isTwoPane) {

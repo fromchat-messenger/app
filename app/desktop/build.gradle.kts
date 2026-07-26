@@ -23,6 +23,9 @@ dependencies {
     }
 }
 
+val desktopWindowIconPng = layout.projectDirectory.file("src/main/resources/app_window_icon.png")
+val desktopWindowIconIcns = layout.projectDirectory.file("icons/app_window_icon.icns")
+
 compose.desktop {
     application {
         mainClass = "ru.fromchat.desktop.MainKt"
@@ -42,8 +45,16 @@ compose.desktop {
                 "javafx.swing",
             )
 
+            // Without iconFile, packaged apps (and macOS dock via jpackage) use Compose's default logo.
+            linux {
+                iconFile.set(desktopWindowIconPng)
+            }
+            windows {
+                iconFile.set(desktopWindowIconPng)
+            }
             macOS {
                 bundleID = "ru.fromchat.desktop"
+                iconFile.set(desktopWindowIconIcns)
                 infoPlist {
                     extraKeysRawXml = """
                         <key>CFBundleURLTypes</key>
@@ -80,8 +91,20 @@ tasks.matching { it.name == "run" }.configureEach {
             javafxModules.any { module -> file.name.startsWith("javafx-$module-") }
         }
         classpath = files(classpath.files.filterNot { it in javafxJars.toSet() })
+        val dockIconArgs = buildList {
+            // Compose only adds -Xdock:icon when macOS.iconFile is set; pin PNG for :run too.
+            val os = System.getProperty("os.name").orEmpty().lowercase()
+            if (os.contains("mac")) {
+                val png = desktopWindowIconPng.asFile
+                val icns = desktopWindowIconIcns.asFile
+                when {
+                    icns.isFile -> add("-Xdock:icon=${icns.absolutePath}")
+                    png.isFile -> add("-Xdock:icon=${png.absolutePath}")
+                }
+            }
+        }
         jvmArgs(
-            listOf(
+            dockIconArgs + listOf(
                 "--module-path",
                 javafxJars.joinToString(File.pathSeparator) { it.absolutePath },
                 "--add-modules",

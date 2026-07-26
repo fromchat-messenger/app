@@ -9,6 +9,8 @@ enum class DesktopMenuCommand {
     NewChat,
     SearchConversations,
     EnterChatListSelection,
+    /** Open the in-app Settings → About screen (not a separate window). */
+    OpenAbout,
 }
 
 /**

@@ -139,6 +139,7 @@ import ru.fromchat.status_connecting
 import ru.fromchat.status_updating
 import ru.fromchat.account_suspended
 import ru.fromchat.ui.LocalNavController
+import ru.fromchat.ui.main.LocalDesktopChatsNavController
 import ru.fromchat.ui.main.LocalMainChromeInsets
 import ru.fromchat.ui.chat.panels.dm.navigateToDmChat
 import ru.fromchat.ui.chat.panels.publicchat.navigateToPublicChat
@@ -543,7 +544,8 @@ fun ChatsTab(
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     enterSelectionRequestId: Long = 0L,
 ) {
-    val navController = LocalNavController.current
+    val navController =
+        LocalDesktopChatsNavController.current ?: LocalNavController.current
     val clipboard = supportClipboardManagerImpl
     val haptic = rememberHapticFeedback()
     val scope = rememberCoroutineScope()

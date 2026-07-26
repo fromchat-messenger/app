@@ -2,17 +2,21 @@ package ru.fromchat.desktop
 
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.WindowPosition
 import java.util.prefs.Preferences
 
 /**
- * Desktop main-window size prefs.
+ * Desktop main-window size and position prefs.
  *
- * Stored in the same JVM prefs node as PlatformSettings (`ru.fromchat.settings`),
- * keys `desktop_window_width` / `desktop_window_height` (float dp).
+ * Stored in the same JVM prefs node as PlatformSettings (`ru.fromchat.settings`):
+ * - `desktop_window_width` / `desktop_window_height` (float dp)
+ * - `desktop_window_x` / `desktop_window_y` (float dp, absolute; absent → platform default)
  */
 internal object DesktopWindowPrefs {
     private const val WIDTH_KEY = "desktop_window_width"
     private const val HEIGHT_KEY = "desktop_window_height"
+    private const val X_KEY = "desktop_window_x"
+    private const val Y_KEY = "desktop_window_y"
 
     private val prefs: Preferences =
         Preferences.userRoot().node("ru.fromchat.settings")
@@ -27,9 +31,20 @@ internal object DesktopWindowPrefs {
         }
     }
 
-    fun saveSize(size: DpSize) {
+    fun loadPosition(): WindowPosition {
+        if (prefs.get(X_KEY, null) == null || prefs.get(Y_KEY, null) == null) {
+            return WindowPosition.PlatformDefault
+        }
+        return WindowPosition(prefs.getFloat(X_KEY, 0f).dp, prefs.getFloat(Y_KEY, 0f).dp)
+    }
+
+    fun save(size: DpSize, position: WindowPosition) {
         prefs.putFloat(WIDTH_KEY, size.width.value)
         prefs.putFloat(HEIGHT_KEY, size.height.value)
+        if (position is WindowPosition.Absolute) {
+            prefs.putFloat(X_KEY, position.x.value)
+            prefs.putFloat(Y_KEY, position.y.value)
+        }
         runCatching { prefs.flush() }
     }
 }
