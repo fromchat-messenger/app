@@ -376,6 +376,9 @@ fun LogsScreen() {
     }
 
     fun enterEntrySelection(entryId: Long) {
+        if (searchMode) {
+            exitSearchMode()
+        }
         haptic(HapticFeedbackEvent.SelectionModeEntered)
         scope.launch { selectionTransitionProgress.snapTo(0f) }
         listMode = LogsListMode.Selecting
@@ -467,6 +470,12 @@ fun LogsScreen() {
 
     LaunchedEffect(Unit) {
         AppLogStore.ensureLoaded()
+        listMode = LogsListMode.Normal
+        selectedEntryIds = emptySet()
+        searchMode = false
+        searchQuery = ""
+        selectionTransitionProgress.snapTo(0f)
+        searchTransitionProgress.snapTo(0f)
     }
 
     LaunchedEffect(navController.currentBackStackEntry) {
@@ -767,14 +776,16 @@ fun LogsScreen() {
                         }
                         .background(MaterialTheme.colorScheme.surfaceContainer),
                     navigationIcon = {
-                        IconButton(
-                            onClick = { navController.navigateUp() },
-                            enabled = selectionProgress < 1f && searchProgress < 1f,
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(Res.string.back),
-                            )
+                        if (settingsDetailShowBackButton()) {
+                            IconButton(
+                                onClick = { navController.navigateUp() },
+                                enabled = selectionProgress < 1f && searchProgress < 1f,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = stringResource(Res.string.back),
+                                )
+                            }
                         }
                     },
                     title = {
@@ -871,7 +882,7 @@ fun LogsScreen() {
                     },
                     scrollBehavior = scrollBehavior,
                 )
-                if (searchMode || searchProgress > 0f) {
+                if (searchMode) {
                     TopAppBar(
                         modifier = Modifier.graphicsLayer { alpha = searchProgress },
                         colors = logsTransparentTopAppBarColors(),
@@ -931,7 +942,7 @@ fun LogsScreen() {
                         },
                     )
                 }
-                if (selectionMode || selectionProgress > 0f) {
+                if (selectionMode) {
                     TopAppBar(
                         modifier = Modifier.graphicsLayer { alpha = selectionProgress },
                         navigationIcon = {

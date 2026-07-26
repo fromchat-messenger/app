@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavController
+import androidx.navigation.NavOptionsBuilder
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.db.store.PublicChatProfileCache
 import ru.fromchat.ui.chat.rememberChatNavigationGate
@@ -21,6 +22,19 @@ object PublicChatNav {
     const val PROFILE_ROUTE = "chats/publicChat/profile"
 
     const val SHARED_HEADER_KEY = "public-chat-header"
+}
+
+/**
+ * Opens the public chat, replacing any prior conversation/profile above the main `chat` root.
+ */
+fun NavController.navigateToPublicChat(
+    builder: NavOptionsBuilder.() -> Unit = {},
+) {
+    navigate(PublicChatNav.CHAT_ROUTE) {
+        popUpTo("chat") { saveState = true }
+        launchSingleTop = true
+        builder()
+    }
 }
 
 @Composable
@@ -78,7 +92,7 @@ fun PublicChatProfileRoute(
         onChat = {
             runNav {
                 haptic(HapticFeedbackEvent.ProfileClosed)
-                navController.popBackStack()
+                navController.navigateToPublicChat()
             }
         },
         modifier = modifier.fillMaxSize(),

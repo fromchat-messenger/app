@@ -17,6 +17,7 @@ import com.pr0gramm3r101.utils.settings.Settings as PlatformSettings
 object Settings {
     private const val MATERIAL_YOU_KEY = "materialYou"
     private const val THEME_KEY = "theme"
+    private const val ENTER_TO_SEND_KEY = "enter_to_send"
     /** Legacy single field "host:port" or hostname — migrated once to [SERVER_IP_KEY] / [API_PORT_KEY]. */
     private const val SERVER_URL_KEY = "server_url"
     private const val SERVER_IP_KEY = "server_ip"
@@ -79,6 +80,16 @@ object Settings {
     var theme: Theme
         get() = runBlocking { Theme.entries[settings.getInt(THEME_KEY, Theme.AsSystem.ordinal)] }
         set(value) = runIO { settings.putInt(THEME_KEY, value.ordinal) }
+
+    /**
+     * When true, Enter sends the message and Shift+Enter inserts a newline.
+     * When false, Enter inserts a newline (previous composer behavior).
+     *
+     * Default: ON on desktop (JVM), OFF on mobile (Android / iOS).
+     */
+    var enterToSend: Boolean
+        get() = runBlocking { settings.getBoolean(ENTER_TO_SEND_KEY, defaultEnterToSend()) }
+        set(value) = runIO { settings.putBoolean(ENTER_TO_SEND_KEY, value) }
 
     var httpsEnabled: Boolean
         get() = runBlocking {

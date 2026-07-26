@@ -12,13 +12,9 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -99,15 +95,22 @@ import ru.fromchat.ui.calls.CallOverlay
 import ru.fromchat.ui.chat.panels.dm.DmChatRoute
 import ru.fromchat.ui.chat.panels.dm.DmNav
 import ru.fromchat.ui.chat.panels.dm.DmProfileRoute
+import ru.fromchat.ui.chat.panels.dm.navigateToDmChat
 import ru.fromchat.ui.chat.panels.publicchat.PublicChatChatRoute
 import ru.fromchat.ui.chat.panels.publicchat.PublicChatNav
 import ru.fromchat.ui.chat.panels.publicchat.PublicChatProfileRoute
+import ru.fromchat.ui.chat.panels.publicchat.navigateToPublicChat
 import ru.fromchat.ui.main.ConversationListDetailShell
 import ru.fromchat.ui.main.ConversationProfileThirdPaneMinWidth
+import ru.fromchat.ui.main.EmptyContactsPlaceholder
 import ru.fromchat.ui.main.EmptyConversationPlaceholder
+import ru.fromchat.ui.main.EmptySettingsPlaceholder
 import ru.fromchat.ui.main.MAIN_PAGE_CHATS
+import ru.fromchat.ui.main.MAIN_PAGE_CONTACTS
+import ru.fromchat.ui.main.MAIN_PAGE_SETTINGS
 import ru.fromchat.ui.main.MainScreen
 import ru.fromchat.ui.main.chats.ChatsSearchScreen
+import ru.fromchat.ui.main.navigateReplacingMainDetail
 import ru.fromchat.ui.main.settings.LOG_FILE_OPEN_RESULT_KEY
 import ru.fromchat.ui.main.settings.LogFilesScreen
 import ru.fromchat.ui.main.settings.LogsScreen
@@ -140,10 +143,45 @@ private fun isConversationProfileRoute(route: String?): Boolean =
     route == PublicChatNav.PROFILE_ROUTE ||
         (route != null && route.startsWith("dm/") && route.endsWith("/profile"))
 
-private fun isConversationShellRoute(route: String?): Boolean =
-    route == "chat" ||
-        isConversationChatRoute(route) ||
-        isConversationProfileRoute(route)
+private fun isStandaloneProfileRoute(route: String?): Boolean =
+    route != null && route.startsWith("profile/")
+
+private fun standaloneProfileUserId(route: String?): Int? {
+    if (route == null || !isStandaloneProfileRoute(route)) return null
+    return route
+        .substringAfter("profile/")
+        .substringBefore("?")
+        .toIntOrNull()
+        ?.takeIf { it > 0 }
+}
+
+private fun isConversationShellRoute(
+    route: String?,
+    previousRoute: String?,
+    ownUserId: Int?,
+): Boolean {
+    if (route == "chat" || isConversationChatRoute(route) || isConversationProfileRoute(route)) {
+        return true
+    }
+    if (isStandaloneProfileRoute(route)) {
+        if (isConversationChatRoute(previousRoute)) return true
+        return ownUserId != null && standaloneProfileUserId(route) == ownUserId
+    }
+    if (route != null && route.startsWith("settings/")) return true
+    if (route == "about") return true
+    if (route == SettingsRoutes.ServerConfig) {
+        return previousRoute == "chat" ||
+            previousRoute == "about" ||
+            (previousRoute != null && previousRoute.startsWith("settings/"))
+    }
+    return false
+}
+
+private fun isSettingsDetailRoute(route: String?): Boolean {
+    if (route == null) return false
+    if (route.startsWith("settings/") || route == "about") return true
+    return route == SettingsRoutes.ServerConfig
+}
 
 private fun dmUserIdFromRoute(route: String?): Int? {
     if (route == null || !route.startsWith("dm/")) return null
@@ -427,15 +465,10 @@ fun App(
                                 "navigating to dm user=${target.dmConversationUserId} " +
                                     "messageId=${target.scrollToMessageId} launchId=${target.launchId}"
                             )
-                            navController.navigate(
-                                DmNav.chatRoute(
-                                    otherUserId = target.dmConversationUserId,
-                                    sourceMessageId = target.scrollToMessageId,
-                                )
-                            ) {
-                                launchSingleTop = true
-                                popUpTo("chat") { saveState = true }
-                            }
+                            navController.navigateToDmChat(
+                                otherUserId = target.dmConversationUserId,
+                                sourceMessageId = target.scrollToMessageId,
+                            )
                         }
 
                         target.startAtPublicChat -> {
@@ -443,9 +476,7 @@ fun App(
                                 "NotificationLaunch",
                                 "navigating to public chat launchId=${target.launchId}"
                             )
-                            navController.navigate(PublicChatNav.CHAT_ROUTE) {
-                                launchSingleTop = true
-                            }
+                            navController.navigateToPublicChat()
                         }
                     }
                 }
@@ -458,19 +489,47 @@ fun App(
                 if (startDestination != null) {
                     val currentEntry by navController.currentBackStackEntryAsState()
                     val currentRoute = currentEntry?.destination?.route
+                    val previousRoute =
+                        navController.previousBackStackEntry?.destination?.route
                     val widthSizeClass = currentWindowAdaptiveInfo().widthSizeClass
                     var pendingMainTab by remember { mutableIntStateOf(MAIN_PAGE_CHATS) }
+                    val ownUserId = ApiClient.user?.id
                     val showConversationListDetail =
                         widthSizeClass != WindowWidthSizeClass.COMPACT &&
-                            isConversationShellRoute(currentRoute)
+                            isConversationShellRoute(currentRoute, previousRoute, ownUserId)
 
                     ScreenSurface {
                         Box(Modifier.fillMaxSize()) {
                             BoxWithConstraints(Modifier.fillMaxSize()) {
+                                val canFitProfileThirdPane =
+                                    maxWidth >= ConversationProfileThirdPaneMinWidth
                                 val showProfileThirdPane =
                                     showConversationListDetail &&
-                                        isConversationProfileRoute(currentRoute) &&
-                                        maxWidth >= ConversationProfileThirdPaneMinWidth
+                                        canFitProfileThirdPane &&
+                                        (
+                                            isConversationProfileRoute(currentRoute) ||
+                                                (
+                                                    isStandaloneProfileRoute(currentRoute) &&
+                                                        isConversationChatRoute(previousRoute)
+                                                    )
+                                            )
+                                val settingsProfileSplit =
+                                    showConversationListDetail &&
+                                        isStandaloneProfileRoute(currentRoute) &&
+                                        !showProfileThirdPane &&
+                                        standaloneProfileUserId(currentRoute) == ownUserId
+                                val listPaneWidth =
+                                    if (widthSizeClass == WindowWidthSizeClass.EXPANDED) {
+                                        448.dp
+                                    } else {
+                                        360.dp
+                                    }
+                                val forceSettingsListTab =
+                                    settingsProfileSplit ||
+                                        (
+                                            showConversationListDetail &&
+                                                isSettingsDetailRoute(currentRoute)
+                                            )
 
                                 @Composable
                                 fun AppNavHost(modifier: Modifier = Modifier) {
@@ -575,12 +634,12 @@ fun App(
                                     animatedVisibilityScope = this,
                                     onOpenProfile = { userId: Int ->
                                         if (userId != 0) {
-                                            navController.navigate("profile/$userId")
+                                            navController.navigateReplacingMainDetail("profile/$userId")
                                         }
                                     },
                                     onOpenConversation = { userId: Int ->
                                         if (userId != 0) {
-                                            navController.navigate(DmNav.chatRoute(userId))
+                                            navController.navigateToDmChat(userId)
                                         }
                                     }
                                 )
@@ -620,9 +679,9 @@ fun App(
                                 ProfileScreen(
                                     userId = userId,
                                     username = profileUsername,
-                                    showBackButton = true,
+                                    showBackButton = !settingsProfileSplit,
                                     onBack = { navController.navigateUp() },
-                                    onChat = { navController.navigate(DmNav.chatRoute(it)) },
+                                    onChat = { navController.navigateToDmChat(it) },
                                     sharedTransitionScope = this@SharedTransitionLayout,
                                     animatedVisibilityScope = this@composable,
                                     showErrorAsToast = fromDeepLink
@@ -802,55 +861,71 @@ fun App(
 
                                 if (showConversationListDetail) {
                                     ConversationListDetailShell(
-                                        widthSizeClass = widthSizeClass,
                                         showProfilePane = showProfileThirdPane,
+                                        listPaneWidth = listPaneWidth,
                                         listPane = {
                                             MainScreen(
                                                 sharedTransitionScope = this@SharedTransitionLayout,
                                                 snackbarHostState = profileLookupSnackbarHostState,
-                                                listPaneOnly = true,
+                                                embeddedInListDetail = true,
+                                                initialPage = pendingMainTab,
+                                                forceSettingsTab = forceSettingsListTab,
+                                                onPageChanged = { pendingMainTab = it },
                                             )
                                         },
                                         detailPane = {
-                                            if (showProfileThirdPane) {
-                                                androidx.compose.animation.AnimatedVisibility(
-                                                    visible = true,
-                                                    enter = EnterTransition.None,
-                                                    exit = ExitTransition.None,
-                                                ) {
-                                                    val dmUserId = dmUserIdFromRoute(currentRoute)
-                                                    when {
-                                                        dmUserId != null -> DmChatRoute(
-                                                            otherUserId = dmUserId,
-                                                            scrollToMessageId = null,
-                                                            navController = navController,
-                                                            sharedTransitionScope = this@SharedTransitionLayout,
-                                                            animatedVisibilityScope = this,
-                                                        )
-                                                        currentRoute == PublicChatNav.PROFILE_ROUTE ||
-                                                            currentRoute == PublicChatNav.CHAT_ROUTE -> {
-                                                            PublicChatChatRoute(
-                                                                scrollToMessageId = scrollToMessageId,
+                                            when {
+                                                showProfileThirdPane -> {
+                                                    androidx.compose.animation.AnimatedVisibility(
+                                                        visible = true,
+                                                        enter = EnterTransition.None,
+                                                        exit = ExitTransition.None,
+                                                    ) {
+                                                        val chatRouteForDetail =
+                                                            when {
+                                                                isConversationProfileRoute(currentRoute) ->
+                                                                    currentRoute
+                                                                isConversationChatRoute(previousRoute) ->
+                                                                    previousRoute
+                                                                else -> null
+                                                            }
+                                                        val dmUserId = dmUserIdFromRoute(chatRouteForDetail)
+                                                            ?: dmUserIdFromRoute(currentRoute)
+                                                        when {
+                                                            dmUserId != null -> DmChatRoute(
+                                                                otherUserId = dmUserId,
+                                                                scrollToMessageId = null,
                                                                 navController = navController,
                                                                 sharedTransitionScope = this@SharedTransitionLayout,
                                                                 animatedVisibilityScope = this,
                                                             )
+                                                            chatRouteForDetail == PublicChatNav.PROFILE_ROUTE ||
+                                                                chatRouteForDetail == PublicChatNav.CHAT_ROUTE ||
+                                                                currentRoute == PublicChatNav.PROFILE_ROUTE -> {
+                                                                PublicChatChatRoute(
+                                                                    scrollToMessageId = scrollToMessageId,
+                                                                    navController = navController,
+                                                                    sharedTransitionScope = this@SharedTransitionLayout,
+                                                                    animatedVisibilityScope = this,
+                                                                )
+                                                            }
                                                         }
                                                     }
                                                 }
-                                            } else {
-                                                AppNavHost(Modifier.fillMaxSize())
+                                                isSettingsDetailRoute(currentRoute) ->
+                                                    AppNavHost(Modifier.fillMaxSize())
+                                                currentRoute == "chat" -> {
+                                                    when (pendingMainTab) {
+                                                        MAIN_PAGE_CONTACTS -> EmptyContactsPlaceholder()
+                                                        MAIN_PAGE_SETTINGS -> EmptySettingsPlaceholder()
+                                                        else -> EmptyConversationPlaceholder()
+                                                    }
+                                                }
+                                                else -> AppNavHost(Modifier.fillMaxSize())
                                             }
                                         },
                                         profilePane = {
                                             AppNavHost(Modifier.fillMaxSize())
-                                        },
-                                        onSelectMainTab = { page ->
-                                            pendingMainTab = page
-                                            navController.navigate("chat") {
-                                                popUpTo("chat") { inclusive = true }
-                                                launchSingleTop = true
-                                            }
                                         },
                                     )
                                 } else {
