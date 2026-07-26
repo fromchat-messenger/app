@@ -13,7 +13,6 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
@@ -103,10 +102,11 @@ import ru.fromchat.ui.chat.panels.publicchat.PublicChatNav
 import ru.fromchat.ui.chat.panels.publicchat.PublicChatProfileRoute
 import ru.fromchat.ui.chat.panels.publicchat.navigateToPublicChat
 import ru.fromchat.ui.main.ConversationListDetailShell
-import ru.fromchat.ui.main.ConversationProfileThirdPaneMinWidth
+import ru.fromchat.ui.main.DesktopTabDetailHosts
 import ru.fromchat.ui.main.EmptyContactsPlaceholder
 import ru.fromchat.ui.main.EmptyConversationPlaceholder
 import ru.fromchat.ui.main.EmptySettingsPlaceholder
+import ru.fromchat.ui.main.LocalDesktopMainTab
 import ru.fromchat.ui.main.MAIN_PAGE_CHATS
 import ru.fromchat.ui.main.MAIN_PAGE_CONTACTS
 import ru.fromchat.ui.main.MAIN_PAGE_SETTINGS
@@ -132,8 +132,10 @@ import ru.fromchat.ui.profile.EditProfileFocusField
 import ru.fromchat.ui.profile.EditProfileScreen
 import ru.fromchat.ui.profile.ProfileRoutes
 import ru.fromchat.ui.profile.ProfileScreen
+import ru.fromchat.ui.components.AppPanel
 import ru.fromchat.ui.components.LocalPaneHazeState
 import ru.fromchat.ui.components.ScreenSurface
+import androidx.compose.foundation.shape.RoundedCornerShape
 import dev.chrisbanes.haze.rememberHazeState
 import ru.fromchat.utils.NetworkConnectivity
 
@@ -514,49 +516,49 @@ fun App(
 
                     ScreenSurface {
                         Box(Modifier.fillMaxSize()) {
-                            BoxWithConstraints(Modifier.fillMaxSize()) {
-                                val canFitProfileThirdPane =
-                                    maxWidth >= ConversationProfileThirdPaneMinWidth
-                                val showProfileThirdPane =
-                                    showConversationListDetail &&
-                                        canFitProfileThirdPane &&
-                                        (
-                                            isConversationProfileRoute(currentRoute) ||
-                                                (
-                                                    isStandaloneProfileRoute(currentRoute) &&
-                                                        isConversationChatRoute(previousRoute)
-                                                    )
-                                            )
-                                val settingsProfileSplit =
-                                    showConversationListDetail &&
-                                        isStandaloneProfileRoute(currentRoute) &&
-                                        !showProfileThirdPane &&
-                                        profileUserId != null &&
-                                        profileUserId == ownUserId
-                                val listPaneWidth =
-                                    if (widthSizeClass == WindowWidthSizeClass.EXPANDED) {
-                                        448.dp
-                                    } else {
-                                        360.dp
-                                    }
-                                val forceSettingsListTab =
-                                    settingsProfileSplit ||
-                                        (
-                                            showConversationListDetail &&
-                                                isSettingsDetailRoute(currentRoute)
-                                            )
+                            // Own profile from the Profile tab uses the settings detail host.
+                            // Profile opened from a chat stays in the chats detail (push/slide).
+                            val settingsProfileSplit =
+                                showConversationListDetail &&
+                                    isStandaloneProfileRoute(currentRoute) &&
+                                    profileUserId != null &&
+                                    profileUserId == ownUserId &&
+                                    !isConversationChatRoute(previousRoute)
+                            val listPaneWidth =
+                                if (widthSizeClass == WindowWidthSizeClass.EXPANDED) {
+                                    448.dp
+                                } else {
+                                    360.dp
+                                }
+                            // Only nudge the list pager when opening own profile from the
+                            // Profile tab — do not yank the user back when they switch to Chats
+                            // while a settings destination is still on the back stack.
+                            val forceSettingsListTab = settingsProfileSplit
 
-                                @Composable
-                                fun AppNavHost(modifier: Modifier = Modifier) {
-                                    NavHost(
-                                        navController = navController,
-                                        startDestination = startDestination!!,
-                                        modifier = modifier,
-                                        enterTransition = { rootNavEnterTransition() },
-                                        exitTransition = { rootNavExitTransition() },
-                                        popEnterTransition = { rootNavPopEnterTransition() },
-                                        popExitTransition = { rootNavPopExitTransition() },
-                                    ) {
+                            var retainedChatsRoute by remember { mutableStateOf<String?>(null) }
+                            LaunchedEffect(currentRoute, pendingMainTab) {
+                                when {
+                                    isConversationChatRoute(currentRoute) -> {
+                                        retainedChatsRoute = currentRoute
+                                    }
+                                    currentRoute == "chat" &&
+                                        pendingMainTab == MAIN_PAGE_CHATS -> {
+                                        retainedChatsRoute = null
+                                    }
+                                }
+                            }
+
+                            @Composable
+                            fun AppNavHost(modifier: Modifier = Modifier) {
+                                NavHost(
+                                    navController = navController,
+                                    startDestination = startDestination!!,
+                                    modifier = modifier,
+                                    enterTransition = { rootNavEnterTransition() },
+                                    exitTransition = { rootNavExitTransition() },
+                                    popEnterTransition = { rootNavPopEnterTransition() },
+                                    popExitTransition = { rootNavPopExitTransition() },
+                                ) {
                             composable("serverConfig") {
                                 ServerConfigScreen()
                             }
@@ -872,113 +874,166 @@ fun App(
                                 ApiClient.onAuthError = null
                             }
                         }
-                                }
+                            }
 
-                                if (showConversationListDetail) {
-                                    val detailPaneState = when {
-                                        showProfileThirdPane -> "split"
-                                        currentRoute == "chat" -> "empty-$pendingMainTab"
-                                        else -> "nav"
-                                    }
-                                    val detailEdgeToEdge =
-                                        showProfileThirdPane || isConversationChatRoute(currentRoute)
-                                    // Empty settings placeholder stays transparent (no AppPanel fill).
-                                    val detailInPanel =
-                                        settingsProfileSplit || isSettingsDetailRoute(currentRoute)
-                                    val detailPaneAnim = tween<Float>(
-                                        durationMillis = 280,
-                                        easing = FastOutSlowInEasing,
-                                    )
-                                    val listPaneHazeState = rememberHazeState()
-                                    CompositionLocalProvider(
-                                        LocalPaneHazeState provides listPaneHazeState,
-                                    ) {
-                                        ConversationListDetailShell(
-                                            showProfilePane = showProfileThirdPane,
-                                            listPaneWidth = listPaneWidth,
-                                            detailInPanel = detailInPanel,
-                                            detailEdgeToEdge = detailEdgeToEdge,
-                                            listPane = {
-                                                MainScreen(
-                                                    sharedTransitionScope = this@SharedTransitionLayout,
-                                                    snackbarHostState = profileLookupSnackbarHostState,
-                                                    embeddedInListDetail = true,
-                                                    initialPage = pendingMainTab,
-                                                    forceSettingsTab = forceSettingsListTab,
-                                                    onPageChanged = { pendingMainTab = it },
-                                                )
-                                            },
+                            if (showConversationListDetail) {
+                                val detailPaneAnim = tween<Float>(
+                                    durationMillis = 280,
+                                    easing = FastOutSlowInEasing,
+                                )
+                                val chatsDetailKey = when {
+                                    isConversationChatRoute(currentRoute) ||
+                                        isConversationProfileRoute(currentRoute) ||
+                                        (
+                                            isStandaloneProfileRoute(currentRoute) &&
+                                                isConversationChatRoute(previousRoute)
+                                            ) -> "nav"
+                                    retainedChatsRoute != null -> "retained:$retainedChatsRoute"
+                                    else -> "empty"
+                                }
+                                val settingsDetailKey = when {
+                                    settingsProfileSplit || isSettingsDetailRoute(currentRoute) -> "nav"
+                                    else -> "empty"
+                                }
+                                // Chats / contacts stay edge-to-edge; settings host wraps its
+                                // own AppPanel so shell structure stays stable across tabs.
+                                val detailEdgeToEdge =
+                                    pendingMainTab == MAIN_PAGE_CHATS ||
+                                        pendingMainTab == MAIN_PAGE_CONTACTS
+                                val listPaneHazeState = rememberHazeState()
+                                CompositionLocalProvider(
+                                    LocalPaneHazeState provides listPaneHazeState,
+                                    LocalDesktopMainTab provides pendingMainTab,
+                                ) {
+                                    ConversationListDetailShell(
+                                        listPaneWidth = listPaneWidth,
+                                        detailInPanel = false,
+                                        detailEdgeToEdge = detailEdgeToEdge,
+                                        listPane = {
+                                            MainScreen(
+                                                sharedTransitionScope = this@SharedTransitionLayout,
+                                                snackbarHostState = profileLookupSnackbarHostState,
+                                                embeddedInListDetail = true,
+                                                initialPage = pendingMainTab,
+                                                forceSettingsTab = forceSettingsListTab,
+                                                onPageChanged = { pendingMainTab = it },
+                                            )
+                                        },
                                         detailPane = {
-                                            AnimatedContent(
-                                                targetState = detailPaneState,
-                                                transitionSpec = {
-                                                    (
-                                                        fadeIn(animationSpec = detailPaneAnim) +
-                                                            scaleIn(
-                                                                initialScale = 0.98f,
-                                                                animationSpec = detailPaneAnim,
-                                                            )
-                                                        ) togetherWith fadeOut(
-                                                        animationSpec = tween(
-                                                            durationMillis = 180,
-                                                            easing = FastOutSlowInEasing,
-                                                        ),
-                                                    )
-                                                },
-                                                label = "detailPane",
-                                                modifier = Modifier.fillMaxSize(),
-                                            ) { state ->
-                                                when {
-                                                    state == "split" -> {
-                                                        val chatRouteForDetail =
-                                                            when {
-                                                                isConversationProfileRoute(currentRoute) ->
-                                                                    currentRoute
-                                                                isConversationChatRoute(previousRoute) ->
-                                                                    previousRoute
-                                                                else -> null
-                                                            }
-                                                        val dmUserId = dmUserIdFromRoute(chatRouteForDetail)
-                                                            ?: dmUserIdFromRoute(currentRoute)
-                                                        when {
-                                                            dmUserId != null -> DmChatRoute(
-                                                                otherUserId = dmUserId,
-                                                                scrollToMessageId = null,
-                                                                navController = navController,
-                                                                sharedTransitionScope = this@SharedTransitionLayout,
-                                                                animatedVisibilityScope = this,
-                                                            )
-                                                            chatRouteForDetail == PublicChatNav.PROFILE_ROUTE ||
-                                                                chatRouteForDetail == PublicChatNav.CHAT_ROUTE ||
-                                                                currentRoute == PublicChatNav.PROFILE_ROUTE -> {
-                                                                PublicChatChatRoute(
-                                                                    scrollToMessageId = scrollToMessageId,
-                                                                    navController = navController,
-                                                                    sharedTransitionScope = this@SharedTransitionLayout,
-                                                                    animatedVisibilityScope = this,
+                                            DesktopTabDetailHosts(
+                                                selectedTab = pendingMainTab,
+                                                chatsDetail = {
+                                                    // SizeTransform uses Lookahead under SharedTransitionLayout;
+                                                    // nesting that with always-composed tab hosts crashes with
+                                                    // "Parents state is LookaheadMeasuring". Disable size morph.
+                                                    AnimatedContent(
+                                                        targetState = chatsDetailKey,
+                                                        transitionSpec = {
+                                                            val navHostSwap =
+                                                                (
+                                                                    initialState == "nav" &&
+                                                                        targetState.startsWith("retained:")
+                                                                    ) ||
+                                                                    (
+                                                                        initialState.startsWith("retained:") &&
+                                                                            targetState == "nav"
+                                                                        )
+                                                            val transform = if (navHostSwap) {
+                                                                EnterTransition.None togetherWith
+                                                                    ExitTransition.None
+                                                            } else {
+                                                                (
+                                                                    fadeIn(animationSpec = detailPaneAnim) +
+                                                                        scaleIn(
+                                                                            initialScale = 0.98f,
+                                                                            animationSpec = detailPaneAnim,
+                                                                        )
+                                                                    ) togetherWith fadeOut(
+                                                                    animationSpec = tween(
+                                                                        durationMillis = 180,
+                                                                        easing = FastOutSlowInEasing,
+                                                                    ),
                                                                 )
                                                             }
-                                                        }
-                                                    }
-                                                    state.startsWith("empty-") -> {
-                                                        when (pendingMainTab) {
-                                                            MAIN_PAGE_CONTACTS -> EmptyContactsPlaceholder()
-                                                            MAIN_PAGE_SETTINGS -> EmptySettingsPlaceholder()
+                                                            transform.using(null)
+                                                        },
+                                                        label = "chatsDetailPane",
+                                                        modifier = Modifier.fillMaxSize(),
+                                                    ) { state ->
+                                                        when {
+                                                            state == "nav" -> {
+                                                                AppNavHost(Modifier.fillMaxSize())
+                                                            }
+                                                            state.startsWith("retained:") -> {
+                                                                val route =
+                                                                    state.removePrefix("retained:")
+                                                                val dmUserId = dmUserIdFromRoute(route)
+                                                                when {
+                                                                    dmUserId != null -> DmChatRoute(
+                                                                        otherUserId = dmUserId,
+                                                                        scrollToMessageId = null,
+                                                                        navController = navController,
+                                                                        sharedTransitionScope = null,
+                                                                        animatedVisibilityScope = null,
+                                                                    )
+                                                                    route == PublicChatNav.CHAT_ROUTE -> {
+                                                                        PublicChatChatRoute(
+                                                                            scrollToMessageId =
+                                                                                scrollToMessageId,
+                                                                            navController = navController,
+                                                                            sharedTransitionScope = null,
+                                                                            animatedVisibilityScope = null,
+                                                                        )
+                                                                    }
+                                                                }
+                                                            }
                                                             else -> EmptyConversationPlaceholder()
                                                         }
                                                     }
-                                                    else -> AppNavHost(Modifier.fillMaxSize())
-                                                }
-                                            }
+                                                },
+                                                settingsDetail = {
+                                                    AnimatedContent(
+                                                        targetState = settingsDetailKey,
+                                                        transitionSpec = {
+                                                            (
+                                                                (
+                                                                    fadeIn(animationSpec = detailPaneAnim) +
+                                                                        scaleIn(
+                                                                            initialScale = 0.98f,
+                                                                            animationSpec = detailPaneAnim,
+                                                                        )
+                                                                    ) togetherWith fadeOut(
+                                                                    animationSpec = tween(
+                                                                        durationMillis = 180,
+                                                                        easing = FastOutSlowInEasing,
+                                                                    ),
+                                                                )
+                                                                ).using(null)
+                                                        },
+                                                        label = "settingsDetailPane",
+                                                        modifier = Modifier.fillMaxSize(),
+                                                    ) { state ->
+                                                        if (state == "nav") {
+                                                            AppPanel(
+                                                                Modifier.fillMaxSize(),
+                                                                shape = RoundedCornerShape(24.dp),
+                                                            ) {
+                                                                AppNavHost(Modifier.fillMaxSize())
+                                                            }
+                                                        } else {
+                                                            EmptySettingsPlaceholder()
+                                                        }
+                                                    }
+                                                },
+                                                contactsDetail = {
+                                                    EmptyContactsPlaceholder()
+                                                },
+                                            )
                                         },
-                                        profilePane = {
-                                            AppNavHost(Modifier.fillMaxSize())
-                                        },
-                                        )
-                                    }
-                                } else {
-                                    AppNavHost(Modifier.fillMaxSize())
+                                    )
                                 }
+                            } else {
+                                AppNavHost(Modifier.fillMaxSize())
                             }
 
                             CallOverlay(Modifier.fillMaxSize())

@@ -503,7 +503,7 @@ fun MessageItem(
 
         val openMessageMenu: (LayoutCoordinates?, Offset) -> Unit = { coords, localOffset ->
             if (coords != null && coords.isAttached) {
-                onTapPosition(coords.localToRoot(localOffset))
+                onTapPosition(coords.localToWindow(localOffset))
             }
             isPressed = true
             onLongPress()
@@ -773,7 +773,7 @@ fun MessageItem(
                                                                 coords.size.height / 2f,
                                                             )
                                                             onTapPosition(
-                                                                coords.localToRoot(center),
+                                                                coords.localToWindow(center),
                                                             )
                                                         }
                                                         onLongPress()

@@ -41,8 +41,8 @@ fun NavController.navigateToPublicChat(
 fun PublicChatChatRoute(
     scrollToMessageId: Int? = null,
     navController: NavController,
-    sharedTransitionScope: SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
     modifier: Modifier = Modifier,
 ) {
     val haptic = rememberHapticFeedback()

@@ -839,12 +839,11 @@ fun ChatScreen(
                             }
                         }
                 ) {
-                    val inputPad = Modifier.padding(horizontal = detailContentPad)
                     if (peerDeleted && dmRecipientId != null) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .then(inputPad)
+                                .padding(horizontal = detailContentPad)
                                 .padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
                         ) {
                             Button(
@@ -871,7 +870,6 @@ fun ChatScreen(
                             }
                         }
                     } else {
-                    Column(modifier = inputPad) {
                     ChatInput(
                         text = inputText,
                         onTextChange = { inputText = it },
@@ -1067,7 +1065,6 @@ fun ChatScreen(
                         }
                     )
                     }
-                    }
                 }
             }
         ) { innerPadding ->
@@ -1153,7 +1150,7 @@ fun ChatScreen(
                                 }
                                 is ChatListItem.MessageRow -> {
                                     val message = item.message
-                                    var tapPositionInRoot by remember {
+                                    var tapPositionInWindow by remember {
                                         mutableStateOf(IntOffset(0, 0))
                                     }
                                     val messageKey = timestampGroupKey(message)
@@ -1291,11 +1288,11 @@ fun ChatScreen(
                                             contextMenuState = ContextMenuState(
                                                 isOpen = true,
                                                 message = message,
-                                                position = tapPositionInRoot
+                                                position = tapPositionInWindow,
                                             )
                                         },
                                         onTapPosition = { offset ->
-                                            tapPositionInRoot =
+                                            tapPositionInWindow =
                                                 IntOffset(offset.x.toInt(), offset.y.toInt())
                                         },
                                         onUsernameClick =

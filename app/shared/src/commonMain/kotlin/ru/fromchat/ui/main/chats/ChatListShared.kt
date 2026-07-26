@@ -61,6 +61,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.PointerType
@@ -181,6 +182,52 @@ private fun Modifier.chatRowOpenAndSelectGestures(
             }
         }
     }
+
+/**
+ * Touch/stylus: press feedback + long-press opens the menu.
+ * Mouse: ignore avatar presses (row right-click handles the menu).
+ */
+private fun Modifier.chatRowAvatarGestures(
+    enabled: Boolean,
+    onPressStart: () -> Unit,
+    onPressEnd: () -> Unit,
+    onLongPress: (Offset) -> Unit,
+): Modifier =
+    pointerInput(enabled) {
+        if (!enabled) return@pointerInput
+        awaitEachGesture {
+            handleChatRowAvatarGesture(
+                onPressStart = onPressStart,
+                onPressEnd = onPressEnd,
+                onLongPress = onLongPress,
+            )
+        }
+    }
+
+private suspend fun AwaitPointerEventScope.handleChatRowAvatarGesture(
+    onPressStart: () -> Unit,
+    onPressEnd: () -> Unit,
+    onLongPress: (Offset) -> Unit,
+) {
+    var downEvent: PointerEvent
+    do {
+        downEvent = awaitPointerEvent()
+    } while (!downEvent.changes.fastAll { it.changedToDown() })
+    val down = downEvent.changes.firstOrNull() ?: return
+    if (down.type == PointerType.Mouse) return
+    if (down.type != PointerType.Touch && down.type != PointerType.Stylus) return
+    onPressStart()
+    try {
+        withTimeout(viewConfiguration.longPressTimeoutMillis) {
+            waitForUpOrCancellation()
+        }
+    } catch (_: PointerEventTimeoutCancellationException) {
+        onLongPress(down.position)
+        waitForUpOrCancellation()
+    } finally {
+        onPressEnd()
+    }
+}
 
 @Composable
 internal fun ChatListHeadlineWithBadge(
@@ -692,32 +739,12 @@ internal fun ChatRowAvatar(
     Box(
         modifier
             .size(40.dp)
-            .pointerInput(enabled) {
-                if (!enabled) return@pointerInput
-                awaitEachGesture {
-                    var downEvent: PointerEvent
-                    do {
-                        downEvent = awaitPointerEvent()
-                    } while (!downEvent.changes.fastAll { it.changedToDown() })
-                    val down = downEvent.changes.firstOrNull() ?: return@awaitEachGesture
-                    // Mouse: avatar press/click is disabled; use row right-click for the menu.
-                    if (down.type == PointerType.Mouse) return@awaitEachGesture
-                    if (down.type != PointerType.Touch && down.type != PointerType.Stylus) {
-                        return@awaitEachGesture
-                    }
-                    onPressStart()
-                    try {
-                        withTimeout(viewConfiguration.longPressTimeoutMillis) {
-                            waitForUpOrCancellation()
-                        }
-                    } catch (_: PointerEventTimeoutCancellationException) {
-                        onLongPress(down.position)
-                        waitForUpOrCancellation()
-                    } finally {
-                        onPressEnd()
-                    }
-                }
-            },
+            .chatRowAvatarGestures(
+                enabled = enabled,
+                onPressStart = onPressStart,
+                onPressEnd = onPressEnd,
+                onLongPress = onLongPress,
+            ),
     ) {
         Avatar(
             profilePictureUrl = profilePictureUrl,

@@ -393,7 +393,7 @@ fun ChatTopBar(
         val layoutHeight = topBarPlaceable.height + arcExtentPx
 
         val bgPlaceable = subcompose("background") {
-            val hazeStyle = rememberChatSurfaceContainerHazeStyle()
+            val hazeStyle = HazeMaterials.thin()
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -402,11 +402,15 @@ fun ChatTopBar(
                             BottomInsetTopBarShape(bottomCornerRadius)
                         }
                     )
-                    .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.91f))
+                    .background(MaterialTheme.colorScheme.surfaceContainer)
                     .hazeEffect(state = hazeState) {
                         blurEffect {
                             blurEnabled = hazeBlurEnabled
                             style = hazeStyle
+                            progressive = HazeProgressive.verticalGradient(
+                                startIntensity = 1f,
+                                endIntensity = 0f,
+                            )
                         }
                     },
             )
@@ -422,8 +426,8 @@ fun ChatTopBar(
 /**
  * Two-pane chat chrome: separate back pill + title pill. Matches the chat input bottom bar
  * ([HazeMaterials.thin] + [androidx.compose.material3.ColorScheme.surfaceContainer] + progressive
- * blur). The haze strip is full-bleed to the window top (under traffic lights); pills sit in
- * inset content so blur breathes at the edges.
+ * blur). The haze strip is full-bleed; pills sit in [ConversationDetailContentPadding] so blur
+ * breathes at the edges (same horizontal inset as [ChatInput]).
  */
 @Composable
 private fun ChatTopBarPill(
@@ -440,8 +444,6 @@ private fun ChatTopBarPill(
     val hazeStyle = HazeMaterials.thin()
     val chromeColor = MaterialTheme.colorScheme.surfaceContainer
     val pillShape = RoundedCornerShape(28.dp)
-    // Soft chip over the frosted strip — not an opaque solid bar.
-    val pillBg = chromeColor.copy(alpha = 0.45f)
 
     Box(modifier = modifier.fillMaxWidth()) {
         Box(
@@ -471,7 +473,7 @@ private fun ChatTopBarPill(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(pillBg),
+                    .background(chromeColor),
                 contentAlignment = Alignment.Center,
             ) {
                 IconButton(onClick = onBack) {
@@ -485,7 +487,7 @@ private fun ChatTopBarPill(
                 modifier = Modifier
                     .weight(1f)
                     .clip(pillShape)
-                    .background(pillBg)
+                    .background(chromeColor)
                     .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

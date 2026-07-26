@@ -213,6 +213,9 @@ private object DesktopProtocolRegistration {
 }
 
 fun main(args: Array<String>) {
+    // Separate AWT windows for Popup/Dialog so menus can draw past the app window edge
+    // (closer to Android Popup behavior). Must be set before any Compose UI runs.
+    System.setProperty("compose.layers.type", "WINDOW")
     if (isMacOs()) {
         val appName = runBlocking { getString(Res.string.app_name) }
         System.setProperty("apple.awt.application.name", appName)
