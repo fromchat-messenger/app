@@ -119,6 +119,7 @@ import ru.fromchat.ui.components.SettingsPasswordOutlineFieldShape
 import ru.fromchat.ui.components.rememberLazyListFocusScrollState
 import ru.fromchat.ui.components.trackLazyListFocus
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
+import ru.fromchat.ui.main.settings.settingsDetailShowBackButton
 
 private object ServerConfigLazyListIndices {
     const val SERVER_IP_FIELD = 2
@@ -334,11 +335,13 @@ fun ServerConfigScreen() {
                 TopAppBar(
                     title = {},
                     navigationIcon = {
-                        IconButton(onClick = navController::navigateUp) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(Res.string.back)
-                            )
+                        if (settingsDetailShowBackButton()) {
+                            IconButton(onClick = navController::navigateUp) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = stringResource(Res.string.back)
+                                )
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(

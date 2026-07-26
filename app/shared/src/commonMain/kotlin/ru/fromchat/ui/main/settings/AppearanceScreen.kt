@@ -11,18 +11,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.KeyboardReturn
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MediumTopAppBar
 import androidx.compose.material3.Scaffold
 import ru.fromchat.ui.components.Text
 import androidx.compose.material3.TopAppBarDefaults
@@ -44,9 +42,10 @@ import com.pr0gramm3r101.utils.materialYouAvailable
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.as_system
-import ru.fromchat.back
 import ru.fromchat.config.Settings
 import ru.fromchat.dark
+import ru.fromchat.enter_to_send
+import ru.fromchat.enter_to_send_d
 import ru.fromchat.light
 import ru.fromchat.materialYou
 import ru.fromchat.materialYou_d
@@ -59,24 +58,26 @@ import ru.fromchat.ui.theme
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AppearanceScreen(onBack: () -> Unit) {
+    val useCollapsing = settingsDetailUseCollapsingTopBar()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
 
     var materialYouSwitch by remember {
         mutableStateOf(Settings.materialYou && materialYouAvailable)
     }
+    var enterToSendSwitch by remember { mutableStateOf(Settings.enterToSend) }
     var themeChipIndex by remember { mutableIntStateOf(Settings.theme.ordinal) }
 
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        modifier = if (useCollapsing) {
+            Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
+        } else {
+            Modifier
+        },
         topBar = {
-            MediumTopAppBar(
+            SettingsDetailTopBar(
                 title = { Text(stringResource(Res.string.settings_category_appearance)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(Res.string.back))
-                    }
-                },
-                scrollBehavior = scrollBehavior
+                onBack = onBack,
+                scrollBehavior = scrollBehavior,
             )
         }
     ) { innerPadding ->
@@ -103,6 +104,19 @@ fun AppearanceScreen(onBack: () -> Unit) {
                     divider = true,
                     leadingContent = {
                         Icon(Icons.Filled.Wallpaper, null)
+                    }
+                )
+                SwitchListItem(
+                    headline = stringResource(Res.string.enter_to_send),
+                    supportingText = stringResource(Res.string.enter_to_send_d),
+                    checked = enterToSendSwitch,
+                    onCheckedChange = {
+                        enterToSendSwitch = it
+                        Settings.enterToSend = it
+                    },
+                    divider = true,
+                    leadingContent = {
+                        Icon(Icons.Filled.KeyboardReturn, null)
                     }
                 )
                 ListItem(

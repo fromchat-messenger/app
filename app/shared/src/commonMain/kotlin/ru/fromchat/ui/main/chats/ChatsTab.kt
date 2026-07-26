@@ -53,7 +53,6 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.union
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
@@ -141,7 +140,8 @@ import ru.fromchat.status_updating
 import ru.fromchat.account_suspended
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.main.LocalMainChromeInsets
-import ru.fromchat.ui.chat.panels.dm.DmNav
+import ru.fromchat.ui.chat.panels.dm.navigateToDmChat
+import ru.fromchat.ui.chat.panels.publicchat.navigateToPublicChat
 import ru.fromchat.ui.components.BackHandler
 import ru.fromchat.ui.components.BrandTitle
 import ru.fromchat.ui.components.ConnectingEllipsis
@@ -337,7 +337,9 @@ private fun rememberSearchBarCollapseSnap(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun chatsTopAppBarColors(blurReveal: Float) = TopAppBarDefaults.topAppBarColors(
-    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 1f - blurReveal.coerceIn(0f, 1f)),
+    // Match AppPanel (`surfaceContainerLowest`) when unscrolled so the bar is not a separate stripe.
+    containerColor = MaterialTheme.colorScheme.surfaceContainerLowest
+        .copy(alpha = 1f - blurReveal.coerceIn(0f, 1f)),
     scrolledContainerColor = Color.Transparent,
 )
 
@@ -375,7 +377,12 @@ private fun ChatsNormalTopBar(
 ) {
     TopAppBar(
         modifier = modifier,
-        windowInsets = WindowInsets.extraStatusBars,
+        // Shell already applies/consumes status insets in list–detail; avoid double top padding.
+        windowInsets = if (LocalMainChromeInsets.current.top > 0.dp) {
+            WindowInsets.extraStatusBars
+        } else {
+            WindowInsets(0, 0, 0, 0)
+        },
         colors = chatsTopAppBarColors(blurReveal),
         title = {
             Row(
@@ -384,7 +391,7 @@ private fun ChatsNormalTopBar(
                 horizontalArrangement = Arrangement.Start,
             ) {
                 AsyncImage(
-                    model = Res.getUri("drawable/logo_square.svg"),
+                    model = Res.getUri("drawable/logo_square.png"),
                     contentDescription = null,
                     contentScale = ContentScale.Fit,
                     modifier = Modifier
@@ -469,7 +476,11 @@ private fun ChatsSelectionTopBar(
 
     TopAppBar(
         modifier = modifier,
-        windowInsets = WindowInsets.extraStatusBars,
+        windowInsets = if (LocalMainChromeInsets.current.top > 0.dp) {
+            WindowInsets.extraStatusBars
+        } else {
+            WindowInsets(0, 0, 0, 0)
+        },
         colors = chatsTopAppBarColors(blurReveal),
         navigationIcon = {
             IconButton(onClick = onClose) {
@@ -841,6 +852,7 @@ fun ChatsTab(
         PredictiveBackHandler(
             enabled = selectionMode,
             onProgress = { backProgress ->
+                if (!selectionMode) return@PredictiveBackHandler
                 scope.launch {
                     selectionTransitionProgress.snapTo((1f - backProgress).coerceIn(0f, 1f))
                 }
@@ -950,7 +962,7 @@ fun ChatsTab(
                             when {
                                 selectionMode && publicChatSelected -> publicChatSelected = false
                                 selectionMode -> publicChatSelected = true
-                                else -> navController.navigate("chats/publicChat")
+                                else -> navController.navigateToPublicChat()
                             }
                         },
                         onOpenConversation = { userId ->
@@ -961,7 +973,7 @@ fun ChatsTab(
 
                                 selectionMode -> selectedOtherUserIds += userId
 
-                                userId != 0 -> navController.navigate(DmNav.chatRoute(userId))
+                                userId != 0 -> navController.navigateToDmChat(userId)
                             }
                         },
                         onAvatarContextMenuPressStart = { lazyIndex, target, userId, rowOffset, rowSize, position, groupCount ->
@@ -1084,9 +1096,9 @@ fun ChatsTab(
         }
         chatContextMenuOverlay.onMessage = {
             when (contextMenuState.target) {
-                ChatContextMenuTarget.Public -> navController.navigate("chats/publicChat")
+                ChatContextMenuTarget.Public -> navController.navigateToPublicChat()
                 ChatContextMenuTarget.Dm -> {
-                    contextMenuState.otherUserId?.let { navController.navigate(DmNav.chatRoute(it)) }
+                    contextMenuState.otherUserId?.let { navController.navigateToDmChat(it) }
                 }
             }
         }

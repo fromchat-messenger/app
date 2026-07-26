@@ -317,15 +317,114 @@ private fun ContextMenuContent(
     transformOriginX: Float = 0f,
     transformOriginY: Float = 0f,
 ) {
-    val menuShape = RoundedCornerShape(16.dp)
     val menuScrollState = rememberScrollState()
+    val labelReply = stringResource(Res.string.action_reply)
+    val labelEdit = stringResource(Res.string.action_edit)
+    val labelDelete = stringResource(Res.string.action_delete)
+    val labelCopy = stringResource(Res.string.action_copy)
+    val labelSave = stringResource(Res.string.action_save)
+    val labelCancelSend = stringResource(Res.string.action_cancel_send)
+    val labelRetrySend = stringResource(Res.string.action_retry_send)
+    val isQueued = message.isQueuedOutbound() && isAuthor
+    val sendFailed = isQueued && !message.uploadError.isNullOrBlank()
+    val canSave = resolveSavableMessageImage(message) != null ||
+        resolveSavableMessageFile(message) != null
+
+    ChatStyleContextMenuFrame(
+        modifier = modifier,
+        animated = animated,
+        withShadow = withShadow,
+        scale = scale,
+        alpha = alpha,
+        transformOriginX = transformOriginX,
+        transformOriginY = transformOriginY,
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(horizontal = 8.dp, vertical = 8.dp)
+                .verticalScroll(menuScrollState),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            if (!message.isContentCorrupted) {
+                ChatStyleContextMenuItem(
+                    icon = Icons.Rounded.ContentCopy,
+                    text = labelCopy,
+                    onClick = { onCopy(message) },
+                )
+            }
+            if (canSave) {
+                ChatStyleContextMenuItem(
+                    icon = Icons.Rounded.SaveAlt,
+                    text = labelSave,
+                    onClick = { onSave(message) },
+                )
+            }
+            if (sendFailed) {
+                ChatStyleContextMenuItem(
+                    icon = Icons.Rounded.Refresh,
+                    text = labelRetrySend,
+                    onClick = { onRetrySend(message) },
+                )
+                ChatStyleContextMenuItem(
+                    icon = Icons.Rounded.Close,
+                    text = labelCancelSend,
+                    onClick = { onCancelSend(message) },
+                    isError = true,
+                )
+            } else if (isQueued) {
+                ChatStyleContextMenuItem(
+                    icon = Icons.Rounded.Close,
+                    text = labelCancelSend,
+                    onClick = { onCancelSend(message) },
+                    isError = true,
+                )
+            } else if (!isReadOnly) {
+                ChatStyleContextMenuItem(
+                    icon = Icons.AutoMirrored.Rounded.Reply,
+                    text = labelReply,
+                    onClick = { onReply(message) },
+                )
+                if (isAuthor && !message.isContentCorrupted) {
+                    ChatStyleContextMenuItem(
+                        icon = Icons.Rounded.Edit,
+                        text = labelEdit,
+                        onClick = { onEdit(message) },
+                    )
+                }
+                if (canDelete) {
+                    ChatStyleContextMenuItem(
+                        icon = Icons.Rounded.Delete,
+                        text = labelDelete,
+                        onClick = { onDelete(message) },
+                        isError = true,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private val chatStyleMenuItemShape = RoundedCornerShape(12.dp)
+
+/** Shared chrome for message + text-selection context menus. */
+@Composable
+internal fun ChatStyleContextMenuFrame(
+    modifier: Modifier = Modifier,
+    animated: Boolean = false,
+    withShadow: Boolean = true,
+    scale: Float = 1f,
+    alpha: Float = 1f,
+    transformOriginX: Float = 0f,
+    transformOriginY: Float = 0f,
+    content: @Composable () -> Unit,
+) {
+    val menuShape = RoundedCornerShape(16.dp)
     val density = LocalDensity.current
     val shadowElevationPx = if (withShadow) {
         with(density) { 12.dp.toPx() }
     } else {
         0f
     }
-
     val baseModifier = modifier.width(IntrinsicSize.Max)
     val containerModifier =
         if (animated) {
@@ -336,150 +435,78 @@ private fun ContextMenuContent(
                 transformOrigin = TransformOrigin(transformOriginX, transformOriginY),
                 shadowElevation = shadowElevationPx,
                 shape = menuShape,
-                clip = true
+                clip = true,
             )
         } else {
             baseModifier.graphicsLayer(
                 shadowElevation = shadowElevationPx,
                 shape = menuShape,
-                clip = true
+                clip = true,
             )
         }
 
-    val menuColor = MaterialTheme.colorScheme.surfaceContainer
-    val edgePadding = 8.dp
-    val itemSpacing = 2.dp
-    val labelReply = stringResource(Res.string.action_reply)
-    val labelEdit = stringResource(Res.string.action_edit)
-    val labelDelete = stringResource(Res.string.action_delete)
-    val labelCopy = stringResource(Res.string.action_copy)
-    val labelSave = stringResource(Res.string.action_save)
-    val labelCancelSend = stringResource(Res.string.action_cancel_send)
-    val labelRetrySend = stringResource(Res.string.action_retry_send)
-    val isQueued = message.isQueuedOutbound() && isAuthor
-    val sendFailed = isQueued && !message.uploadError.isNullOrBlank()
-    val savableImage = resolveSavableMessageImage(message)
-    val savableFile = resolveSavableMessageFile(message)
-    val canSave = savableImage != null || savableFile != null
-
     Box(modifier = containerModifier) {
-        Box(modifier = Modifier.matchParentSize().background(menuColor, menuShape))
-        Column(
+        Box(
             modifier = Modifier
-                .padding(horizontal = edgePadding, vertical = edgePadding)
-                .verticalScroll(menuScrollState),
-            verticalArrangement = Arrangement.spacedBy(itemSpacing)
-        ) {
-            if (!message.isContentCorrupted) {
-                ContextMenuItem(
-                    icon = Icons.Rounded.ContentCopy,
-                    text = labelCopy,
-                    onClick = { onCopy(message) }
-                )
-            }
-            if (canSave) {
-                ContextMenuItem(
-                    icon = Icons.Rounded.SaveAlt,
-                    text = labelSave,
-                    onClick = { onSave(message) }
-                )
-            }
-            if (sendFailed) {
-                ContextMenuItem(
-                    icon = Icons.Rounded.Refresh,
-                    text = labelRetrySend,
-                    onClick = { onRetrySend(message) },
-                )
-                ContextMenuItem(
-                    icon = Icons.Rounded.Close,
-                    text = labelCancelSend,
-                    onClick = { onCancelSend(message) },
-                    isError = true,
-                )
-            } else if (isQueued) {
-                ContextMenuItem(
-                    icon = Icons.Rounded.Close,
-                    text = labelCancelSend,
-                    onClick = { onCancelSend(message) },
-                    isError = true
-                )
-            } else if (!isReadOnly) {
-                ContextMenuItem(
-                    icon = Icons.AutoMirrored.Rounded.Reply,
-                    text = labelReply,
-                    onClick = { onReply(message) }
-                )
-                if (isAuthor && !message.isContentCorrupted) {
-                    ContextMenuItem(
-                        icon = Icons.Rounded.Edit,
-                        text = labelEdit,
-                        onClick = { onEdit(message) }
-                    )
-                }
-                if (canDelete) {
-                    ContextMenuItem(
-                        icon = Icons.Rounded.Delete,
-                        text = labelDelete,
-                        onClick = { onDelete(message) },
-                        isError = true
-                    )
-                }
-            }
-        }
+                .matchParentSize()
+                .background(MaterialTheme.colorScheme.surfaceContainer, menuShape),
+        )
+        content()
     }
 }
 
-private val itemShape = RoundedCornerShape(12.dp)
-
 @Composable
-private fun ContextMenuItem(
+internal fun ChatStyleContextMenuItem(
     icon: ImageVector,
     text: String,
     onClick: () -> Unit,
     isError: Boolean = false,
-    modifier: Modifier = Modifier
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
 ) {
-    val textColor = if (isError) {
-        MaterialTheme.colorScheme.error
-    } else {
-        MaterialTheme.colorScheme.onSurface
+    val textColor = when {
+        !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+        isError -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurface
     }
-    val iconColor = if (isError) {
-        MaterialTheme.colorScheme.error
-    } else {
-        MaterialTheme.colorScheme.onSurface
-    }
+    val iconColor = textColor
     Box(
         modifier = modifier
             .fillMaxWidth()
             .padding(4.dp)
-            .clip(itemShape)
-            .scaleOnPress(
-                scale = 0.96f,
-                onClick = onClick,
-                indication = LocalIndication.current,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessMedium,
-                ),
+            .clip(chatStyleMenuItemShape)
+            .then(
+                if (enabled) {
+                    Modifier.scaleOnPress(
+                        scale = 0.96f,
+                        onClick = onClick,
+                        indication = LocalIndication.current,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessMedium,
+                        ),
+                    )
+                } else {
+                    Modifier
+                },
             )
             .padding(horizontal = 12.dp, vertical = 8.dp),
-        contentAlignment = Alignment.CenterStart
+        contentAlignment = Alignment.CenterStart,
     ) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = text,
                 tint = iconColor,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(20.dp),
             )
             Text(
                 text = text,
                 style = MaterialTheme.typography.bodyMedium,
-                color = textColor
+                color = textColor,
             )
         }
     }

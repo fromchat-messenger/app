@@ -72,6 +72,8 @@
     <!-- Main Screen -->
     <string name="chats">Chats</string>
     <string name="select_chat_placeholder">Select a chat to start messaging</string>
+    <string name="select_contact_placeholder">Select a contact to view</string>
+    <string name="select_settings_placeholder">Select a setting to view</string>
     <string name="contacts">Contacts</string>
     <string name="profile">Profile</string>
     <string name="dms">Private chats</string>
@@ -328,6 +330,8 @@
     <string name="logout">Log out</string>
     <string name="materialYou">Material You</string>
     <string name="materialYou_d">Match colors to your wallpaper. Works on Android 12 and up.</string>
+    <string name="enter_to_send">Send on Enter</string>
+    <string name="enter_to_send_d">Enter sends the message. Shift+Enter adds a new line.</string>
     <string name="theme">Look</string>
     <string name="as_system">Same as phone</string>
     <string name="light">Light</string>
@@ -402,6 +406,7 @@
     <string name="settings_security_step_confirm_body">Type your new password again to make sure it matches.</string>
     <string name="settings_next">Next</string>
     <string name="settings_hub_about_sub">Version, links, and more</string>
+    <string name="settings_hub_profile_sub">Your profile and public info</string>
     <string name="logs_title">Logs</string>
     <string name="settings_hub_logs_sub">View, share, and manage app logs</string>
     <string name="logs_empty">No log entries yet</string>

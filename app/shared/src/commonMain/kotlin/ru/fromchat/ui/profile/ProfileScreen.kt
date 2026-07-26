@@ -63,7 +63,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -192,6 +191,7 @@ import ru.fromchat.ui.components.ScreenSurface
 import ru.fromchat.ui.components.ShimmerBox
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.showReplacingSnackbar
+import ru.fromchat.ui.extraStatusBars
 import ru.fromchat.utils.RegistrationDateFormatStrings
 import ru.fromchat.utils.formatLastSeen
 import ru.fromchat.utils.formatProfileRegistrationDate
@@ -269,7 +269,7 @@ fun ProfileScreen(
     val navController = LocalNavController.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
-    val statusBarTopDp = with(density) { WindowInsets.statusBars.getTop(this).toDp() }
+    val statusBarTopDp = with(density) { WindowInsets.extraStatusBars.getTop(this).toDp() }
     val profileAvatarTop = statusBarTopDp + 24.dp
 
     val profileLoadFailed = stringResource(Res.string.profile_load_failed)
@@ -881,7 +881,7 @@ fun PublicChatProfileScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val density = LocalDensity.current
-    val statusBarTopDp = with(density) { WindowInsets.statusBars.getTop(this).toDp() }
+    val statusBarTopDp = with(density) { WindowInsets.extraStatusBars.getTop(this).toDp() }
     val profileAvatarTop = statusBarTopDp + 24.dp
     val profileLoadFailed = stringResource(Res.string.profile_load_failed)
     val profileNotFound = stringResource(Res.string.profile_not_found)
@@ -2058,7 +2058,7 @@ private fun ProfileFloatingBackBar(
             onClick = onBack,
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .windowInsetsPadding(WindowInsets.statusBars),
+                .windowInsetsPadding(WindowInsets.extraStatusBars),
             colors = IconButtonDefaults.iconButtonColors(
                 contentColor = MaterialTheme.colorScheme.onSurface,
             ),

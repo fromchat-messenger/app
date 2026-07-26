@@ -1075,13 +1075,18 @@ fun ChatScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .pointerInput(Unit) {
-                        detectTapGestures {
-                            if (contextMenuState.isOpen) {
-                                contextMenuState = contextMenuState.copy(isOpen = false)
+                    .then(
+                        if (contextMenuState.isOpen) {
+                            Modifier.pointerInput(Unit) {
+                                detectTapGestures {
+                                    contextMenuState =
+                                        contextMenuState.copy(isOpen = false)
+                                }
                             }
-                        }
-                    }
+                        } else {
+                            Modifier
+                        },
+                    ),
             ) {
                 if (panelState.isLoading && panelState.messages.isEmpty()) {
                     Box(
