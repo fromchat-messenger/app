@@ -634,10 +634,6 @@ fun ChatsTab(
             ChatContextMenuTarget.Public -> publicChatSelected = true
             ChatContextMenuTarget.Dm -> userId?.let { selectedOtherUserIds = setOf(it) }
         }
-        scope.launch {
-            selectionTransitionProgress.snapTo(0f)
-            selectionTransitionProgress.animateTo(1f, ChatSelectionTransitionSpring)
-        }
     }
 
     fun exitSelectionMode() {
@@ -653,6 +649,13 @@ fun ChatsTab(
         scope.launch {
             selectionTransitionProgress.animateTo(0f, ChatSelectionTransitionSpring)
             exitSelectionMode()
+        }
+    }
+
+    LaunchedEffect(listMode) {
+        if (listMode == ChatsListMode.Selecting) {
+            selectionTransitionProgress.snapTo(0f)
+            selectionTransitionProgress.animateTo(1f, ChatSelectionTransitionSpring)
         }
     }
 
@@ -1008,6 +1011,22 @@ fun ChatsTab(
                                 return@ChatConversationsList
                             }
                             haptic(HapticFeedbackEvent.ContextMenuOpened)
+                            chatContextMenuOverlay.overlayCloneReady = false
+                            contextMenuState = ChatContextMenuState(
+                                phase = ChatContextMenuPhase.Animating,
+                                target = target,
+                                otherUserId = userId,
+                                listIndex = lazyIndex,
+                                rowOffset = rowOffset,
+                                rowSize = rowSize,
+                                listItemPosition = position,
+                                groupItemCount = groupCount,
+                            )
+                        },
+                        onMouseRowContextMenu = { lazyIndex, target, userId, _, rowOffset, rowSize, position, groupCount ->
+                            if (suspensionState.isSuspended) return@ChatConversationsList
+                            haptic(HapticFeedbackEvent.ContextMenuOpened)
+                            avatarPressMark = null
                             chatContextMenuOverlay.overlayCloneReady = false
                             contextMenuState = ChatContextMenuState(
                                 phase = ChatContextMenuPhase.Animating,
@@ -1449,7 +1468,7 @@ private fun ChatContextMenuOverlay(
     LaunchedEffect(contextMenuState.phase, menuSize, layoutReady) {
         if (contextMenuState.phase != ChatContextMenuPhase.Open || !layoutReady) return@LaunchedEffect
         if (revealProgress.value < 1f) {
-            revealProgress.snapTo(1f)
+            revealProgress.animateTo(1f, ChatContextMenuRevealSpring)
         }
         if (menuOpenProgress < 1f) {
             animate(
