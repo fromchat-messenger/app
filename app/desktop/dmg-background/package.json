@@ -1,0 +1,9 @@
+{
+  "name": "fromchat-dmg-background-tools",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "playwright": "1.52.0"
+  }
+}
+

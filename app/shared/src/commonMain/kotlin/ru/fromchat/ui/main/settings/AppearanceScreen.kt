@@ -11,9 +11,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.KeyboardReturn
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Wallpaper
@@ -22,7 +22,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import ru.fromchat.ui.components.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -51,6 +50,7 @@ import ru.fromchat.materialYou_d
 import ru.fromchat.settings_category_appearance
 import ru.fromchat.theme
 import ru.fromchat.ui.Theme
+import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.dynamicThemeEnabled
 import ru.fromchat.ui.theme
 
@@ -114,7 +114,7 @@ fun AppearanceScreen(onBack: () -> Unit) {
                     },
                     divider = true,
                     leadingContent = {
-                        Icon(Icons.Filled.KeyboardReturn, null)
+                        Icon(Icons.AutoMirrored.Filled.KeyboardReturn, null)
                     }
                 )
                 ListItem(
