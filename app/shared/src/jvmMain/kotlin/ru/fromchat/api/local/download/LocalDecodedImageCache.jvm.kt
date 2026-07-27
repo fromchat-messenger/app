@@ -2,11 +2,11 @@ package ru.fromchat.api.local.download
 
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
-import java.io.File
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.ImageInfo
 import org.jetbrains.skia.SamplingMode
+import java.io.File
 
 actual object PlatformDecodedBitmapCache {
     private val cache = mutableMapOf<String, ImageBitmap>()
@@ -33,7 +33,7 @@ actual fun decodeLocalImageFile(absolutePath: String, reqWidthPx: Int, reqHeight
 
 actual fun decodeImageBytes(bytes: ByteArray, reqWidthPx: Int, reqHeightPx: Int): ImageBitmap? =
     runCatching {
-        val image = Image.makeFromEncoded(bytes) ?: return@runCatching null
+        val image = Image.makeFromEncoded(bytes)
         scaleSkiaImageToFitWithin(image, reqWidthPx, reqHeightPx)
     }.getOrNull()
 

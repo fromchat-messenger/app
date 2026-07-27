@@ -35,39 +35,12 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberTrayState
 import androidx.compose.ui.window.rememberWindowState
 import com.pr0gramm3r101.utils.UtilsLibrary
-import java.awt.Desktop
-import java.awt.Image
-import java.awt.KeyboardFocusManager
-import java.awt.RenderingHints
-import java.awt.Taskbar
-import java.awt.desktop.AppReopenedListener
-import java.awt.event.ActionEvent
-import java.awt.image.BufferedImage
-import java.io.BufferedReader
-import java.io.ByteArrayInputStream
-import java.io.File
-import java.io.InputStreamReader
-import java.io.OutputStreamWriter
-import java.net.InetAddress
-import java.net.ServerSocket
-import java.net.Socket
-import java.nio.charset.StandardCharsets
-import java.util.concurrent.atomic.AtomicBoolean
-import javax.imageio.ImageIO
-import javax.swing.JComponent
-import javax.swing.JRootPane
-import javax.swing.SwingUtilities
-import javax.swing.UIManager
-import javax.swing.plaf.ColorUIResource
-import javax.swing.text.DefaultEditorKit
-import kotlin.concurrent.thread
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
-import org.jetbrains.skia.Image as SkiaImage
 import ru.fromchat.AppBuildInfo
 import ru.fromchat.AppForeground
 import ru.fromchat.Logger
@@ -102,6 +75,34 @@ import ru.fromchat.status_disconnected
 import ru.fromchat.ui.App
 import ru.fromchat.ui.LocalExtraStatusBarTop
 import ru.fromchat.ui.Theme
+import java.awt.Desktop
+import java.awt.Image
+import java.awt.KeyboardFocusManager
+import java.awt.RenderingHints
+import java.awt.Taskbar
+import java.awt.desktop.AppReopenedListener
+import java.awt.event.ActionEvent
+import java.awt.image.BufferedImage
+import java.io.BufferedReader
+import java.io.ByteArrayInputStream
+import java.io.File
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.net.Socket
+import java.nio.charset.StandardCharsets
+import java.util.concurrent.atomic.AtomicBoolean
+import javax.imageio.ImageIO
+import javax.swing.JComponent
+import javax.swing.JRootPane
+import javax.swing.SwingUtilities
+import javax.swing.UIManager
+import javax.swing.plaf.ColorUIResource
+import javax.swing.text.DefaultEditorKit
+import kotlin.concurrent.thread
+import kotlin.time.Duration.Companion.milliseconds
+import org.jetbrains.skia.Image as SkiaImage
 
 private object DesktopApplicationBootstrap {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -173,7 +174,7 @@ private object DesktopSingleInstance {
 private object DesktopProtocolRegistration {
     private const val SCHEME = "fromchat"
 
-    fun registerBestEffort() {
+    fun register() {
         runCatching {
             when {
                 isMacOs() -> Unit // Packaged macOS builds declare CFBundleURLTypes in Info.plist.
@@ -211,24 +212,32 @@ private object DesktopProtocolRegistration {
     }
 
     private fun registerLinux() {
-        val appsDir = java.io.File(System.getProperty("user.home"), ".local/share/applications")
-        appsDir.mkdirs()
-        val desktop = java.io.File(appsDir, "fromchat-url-handler.desktop")
-        desktop.writeText(
-            """
-            |[Desktop Entry]
-            |Type=Application
-            |Name=FromChat URL Handler
-            |Exec=${javaLauncherCommand()} %u
-            |StartupNotify=false
-            |MimeType=x-scheme-handler/$SCHEME;
-            |NoDisplay=true
-            """.trimMargin(),
-        )
+        val appsDir = File(
+            System.getProperty("user.home"),
+            ".local/share/applications"
+        ).also {
+            it.mkdirs()
+        }
+
+        val desktop = File(appsDir, "fromchat-url-handler.desktop").also {
+            it.writeText(
+                """
+                |[Desktop Entry]
+                |Type=Application
+                |Name=FromChat URL Handler
+                |Exec=${javaLauncherCommand()} %u
+                |StartupNotify=false
+                |MimeType=x-scheme-handler/$SCHEME;
+                |NoDisplay=true
+                """.trimMargin(),
+            )
+        }
+
         ProcessBuilder("xdg-mime", "default", desktop.name, "x-scheme-handler/$SCHEME")
             .redirectErrorStream(true)
             .start()
             .waitFor()
+
         ProcessBuilder("update-desktop-database", appsDir.absolutePath)
             .redirectErrorStream(true)
             .start()
@@ -253,7 +262,7 @@ fun main(args: Array<String>) {
         System.setProperty("apple.awt.enableTemplateImages", "true")
     }
     if (!DesktopSingleInstance.acquireOrForward(args)) return
-    DesktopProtocolRegistration.registerBestEffort()
+    DesktopProtocolRegistration.register()
     // Close-to-tray keeps the process + tray; no SMAppService / Login Items registration.
     args.filter { DesktopDeepLinkBus.isFromChatUri(it) }
         .forEach { DesktopDeepLinkBus.handleUri(it) }
@@ -296,7 +305,7 @@ fun main(args: Array<String>) {
         LaunchedEffect(Unit) {
             while (true) {
                 wsLinked = WebSocketManager.isConnected
-                delay(400)
+                delay(400.milliseconds)
             }
         }
         // Mirror ConnectionStateStore + WebSocketManager.isConnected (+ logged-out → disconnected).
@@ -307,16 +316,17 @@ fun main(args: Array<String>) {
             ApiClient.token.isNullOrEmpty() -> stringResource(Res.string.status_disconnected)
             else -> stringResource(Res.string.status_connecting)
         }
+
         val windowChrome = remember { desktopThemeBackgroundCompose() }
 
         LaunchedEffect(Unit) {
             // Safety: never leave the window stuck hidden if bootstrap hangs.
-            delay(8_000)
+            delay(8_000.milliseconds)
             contentReady = true
         }
 
         LaunchedEffect(windowState.size, windowState.position) {
-            delay(3_000)
+            delay(3_000.milliseconds)
             DesktopWindowPrefs.save(windowState.size, windowState.position)
         }
 
@@ -448,18 +458,21 @@ fun main(args: Array<String>) {
         ) {
             LaunchedEffect(window, appName, windowChrome) {
                 window.title = appName
-                val awt = windowChrome.toAwtColor()
-                window.background = awt
-                window.contentPane.background = awt
+                windowChrome.toAwtColor().also {
+                    window.background = it
+                    window.contentPane.background = it
+                }
+
                 enableEdgeToEdgeTitleBar(window.rootPane)
                 dockIconImage?.let { image ->
                     window.iconImages = listOf(image)
                     applyDockIcon(image)
                 }
             }
+
             DisposableEffect(Unit) {
                 AppForeground.setForeground(true)
-                onDispose { }
+                onDispose {}
             }
 
             if (mac) {
@@ -537,54 +550,67 @@ private fun FrameWindowScope.FromChatMenuBar(
                 shortcut = KeyShortcut(Key.N, meta = true),
                 onClick = onNewChat,
             )
+
             Item(
                 searchConversations,
                 shortcut = KeyShortcut(Key.F, meta = true),
                 onClick = onSearchConversations,
             )
+
             Separator()
+
             Item(
                 quit,
                 shortcut = KeyShortcut(Key.Q, meta = true),
                 onClick = onQuit,
             )
         }
+
         Menu(edit, mnemonic = 'E') {
             Item(
                 cut,
                 shortcut = KeyShortcut(Key.X, meta = true),
                 onClick = { performAwtEditAction(DefaultEditorKit.cutAction) },
             )
+
             Item(
                 copy,
                 shortcut = KeyShortcut(Key.C, meta = true),
                 onClick = { performAwtEditAction(DefaultEditorKit.copyAction) },
             )
+
             Item(
                 paste,
                 shortcut = KeyShortcut(Key.V, meta = true),
                 onClick = { performAwtEditAction(DefaultEditorKit.pasteAction) },
             )
+
             Separator()
+
             Item(
                 selectAll,
                 shortcut = KeyShortcut(Key.A, meta = true),
                 onClick = { performAwtEditAction(DefaultEditorKit.selectAllAction) },
             )
+
             Item(
                 select,
                 shortcut = KeyShortcut(Key.S, meta = true, shift = true),
                 onClick = onSelectChats,
             )
         }
+
         Menu(windowMenu, mnemonic = 'W') {
             Item(
                 minimize,
                 shortcut = KeyShortcut(Key.M, meta = true),
                 onClick = onMinimize,
             )
+
             Item(zoom, onClick = onZoom)
+
             Separator()
+
             Item(
                 showApp,
                 shortcut = KeyShortcut(Key.N, meta = true, shift = true),
@@ -620,28 +646,30 @@ private fun applyDesktopWindowChromeBackground() {
     UIManager.put("control", ColorUIResource(desktopThemeBackgroundCompose().toAwtColor()))
 }
 
-private fun desktopThemeBackgroundCompose(): Color {
-    val dark = when (runCatching { Settings.theme }.getOrDefault(Theme.AsSystem)) {
-        Theme.Dark -> true
-        Theme.Light -> false
-        Theme.AsSystem -> isSystemAppearanceDark()
-    }
-    // M3 default scheme backgrounds (desktop module has no material3 dependency).
-    return if (dark) Color(0xFF1C1B1F) else Color(0xFFFFFBFE)
-}
+private fun desktopThemeBackgroundCompose() =
+    if (
+        when (runCatching { Settings.theme }.getOrDefault(Theme.AsSystem)) {
+            Theme.Dark -> true
+            Theme.Light -> false
+            Theme.AsSystem -> isSystemAppearanceDark()
+        }
+    ) Color(0xFF1C1B1F) else Color(0xFFFFFBFE)
 
-private fun Color.toAwtColor(): java.awt.Color =
+private fun Color.toAwtColor() =
     java.awt.Color(red, green, blue, alpha)
 
-private fun isSystemAppearanceDark(): Boolean {
-    if (!isMacOs()) return false
-    return runCatching {
-        val process = ProcessBuilder("defaults", "read", "-g", "AppleInterfaceStyle")
+private fun isSystemAppearanceDark() = runCatching {
+    if (isMacOs()) {
+        ProcessBuilder("defaults", "read", "-g", "AppleInterfaceStyle")
             .redirectErrorStream(true)
             .start()
-        process.inputStream.bufferedReader().readText().trim().equals("Dark", ignoreCase = true)
-    }.getOrDefault(false)
-}
+            .inputStream
+            .bufferedReader()
+            .readText()
+            .trim()
+            .equals("Dark", ignoreCase = true)
+    } else false
+}.getOrDefault(false)
 
 private fun enableEdgeToEdgeTitleBar(rootPane: JRootPane) {
     if (!isMacOs()) return
@@ -655,11 +683,13 @@ private fun applyDockIcon(image: BufferedImage?) {
         Logger.w("DesktopIcon", "applyDockIcon skipped — image is null")
         return
     }
+
     runCatching {
         if (!Taskbar.isTaskbarSupported()) {
             Logger.w("DesktopIcon", "Taskbar unsupported; dock icon not set")
             return
         }
+
         val taskbar = Taskbar.getTaskbar()
         if (taskbar.isSupported(Taskbar.Feature.ICON_IMAGE)) {
             taskbar.iconImage = image
@@ -692,10 +722,12 @@ private fun loadAppIconPainter(tray: Boolean): Painter {
         )
         return solidFallbackIcon().toPainter()
     }
+
     Logger.i(
         "DesktopIcon",
         "loadAppIconPainter ok tray=$tray size=${image.width}x${image.height} type=${image.type}",
     )
+
     return image.toPainter()
 }
 
@@ -705,28 +737,38 @@ private fun loadAppIconBufferedImage(tray: Boolean): BufferedImage? {
     } else {
         listOf("app_window_icon.png", "app_window_icon.webp", "app_icon.png", "app_icon.webp")
     }
-    val loaders = listOfNotNull(
-        DesktopApplicationBootstrap::class.java.classLoader,
-        Thread.currentThread().contextClassLoader,
-        ClassLoader.getSystemClassLoader(),
-    ).distinct()
 
     for (name in names) {
-        val bytes = readClasspathBytes(name, loaders)
-            ?: readFileFallbackBytes(name)
-            ?: continue
-        if (bytes.isEmpty()) continue
-        val decoded = decodeImageBytes(bytes, name) ?: continue
-        if (decoded.width < 16 || decoded.height < 16) {
-            Logger.w("DesktopIcon", "Skipping $name — decoded size ${decoded.width}x${decoded.height}")
-            continue
-        }
-        // Ensure TYPE_INT_ARGB so AWT Tray/Taskbar get a predictable raster.
-        val argb = ensureArgb(decoded)
-        val image = if (tray) scaleBufferedImage(argb, 64) else argb
-        Logger.i("DesktopIcon", "Loaded $name (${image.width}x${image.height}) tray=$tray")
-        return image
+        return ensureArgb(
+            (
+                decodeImageBytes(
+                    (readClasspathBytes(
+                        name,
+                        listOfNotNull(
+                            DesktopApplicationBootstrap::class.java.classLoader,
+                            Thread.currentThread().contextClassLoader,
+                            ClassLoader.getSystemClassLoader(),
+                        ).distinct()
+                    ) ?: readFileFallbackBytes(name) ?: continue)
+                        .also { if (it.isEmpty()) continue },
+                    name
+                ) ?: continue
+            ).also {
+                if (it.width < 16 || it.height < 16) {
+                    Logger.w(
+                        "DesktopIcon",
+                        "Skipping $name — decoded size ${it.width}x${it.height}"
+                    )
+                    continue
+                }
+            }
+        )
+            .let { if (tray) scaleBufferedImage(it, 64) else it }
+            .also {
+                Logger.i("DesktopIcon", "Loaded $name (${it.width}x${it.height}) tray=$tray")
+            }
     }
+
     Logger.e("DesktopIcon", "No icon resource found for tray=$tray (tried $names)")
     return null
 }
@@ -734,41 +776,49 @@ private fun loadAppIconBufferedImage(tray: Boolean): BufferedImage? {
 private fun readClasspathBytes(name: String, loaders: List<ClassLoader>): ByteArray? {
     val paths = listOf(name, "/$name")
     for (loader in loaders) {
-        for (path in paths) {
-            val stream = loader.getResourceAsStream(path) ?: continue
-            val bytes = runCatching { stream.use { it.readBytes() } }
-                .onFailure { error ->
-                    Logger.w("DesktopIcon", "Failed reading $path from $loader: ${error.message}")
-                }
-                .getOrNull()
-                ?: continue
+        loop@ for (path in paths) {
+            val bytes = runCatching {
+                (loader.getResourceAsStream(path) ?: continue@loop)
+                    .use { it.readBytes() }
+            }.onFailure { error ->
+                Logger.w("DesktopIcon", "Failed reading $path from $loader: ${error.message}")
+            }
+            .getOrNull()
+            ?: continue
+
             if (bytes.isNotEmpty()) {
                 Logger.i("DesktopIcon", "Classpath hit $path via $loader (${bytes.size} bytes)")
                 return bytes
             }
         }
     }
+
     // Explicit class resource (works when context CL is a filtered compose run CL).
-    for (path in paths) {
-        val stream = DesktopApplicationBootstrap::class.java.getResourceAsStream(path) ?: continue
-        val bytes = runCatching { stream.use { it.readBytes() } }.getOrNull() ?: continue
+    loop@ for (path in paths) {
+        val bytes = runCatching {
+            (DesktopApplicationBootstrap::class.java.getResourceAsStream(path) ?: continue@loop)
+                .use { it.readBytes() }
+        }.getOrNull() ?: continue
+
         if (bytes.isNotEmpty()) {
             Logger.i("DesktopIcon", "Class resource hit $path (${bytes.size} bytes)")
             return bytes
         }
     }
+
     return null
 }
 
 /** Last resort when classpath packaging under `:run` omits resources. */
 private fun readFileFallbackBytes(name: String): ByteArray? {
-    val candidates = listOf(
-        File("app/desktop/src/main/resources", name),
-        File("src/main/resources", name),
-        File(System.getProperty("user.dir"), "src/main/resources/$name"),
-        File(System.getProperty("user.dir"), "app/desktop/src/main/resources/$name"),
-    )
-    for (file in candidates) {
+    for (
+        file in listOf(
+            File("app/desktop/src/main/resources", name),
+            File("src/main/resources", name),
+            File(System.getProperty("user.dir"), "src/main/resources/$name"),
+            File(System.getProperty("user.dir"), "app/desktop/src/main/resources/$name"),
+        )
+    ) {
         if (!file.isFile) continue
         val bytes = runCatching { file.readBytes() }.getOrNull() ?: continue
         if (bytes.isNotEmpty()) {
@@ -776,6 +826,7 @@ private fun readFileFallbackBytes(name: String): ByteArray? {
             return bytes
         }
     }
+
     return null
 }
 
@@ -785,11 +836,11 @@ private fun decodeImageBytes(bytes: ByteArray, name: String): BufferedImage? {
     }.onFailure { error ->
         Logger.w("DesktopIcon", "ImageIO failed for $name: ${error.message}")
     }.getOrNull()
+
     if (viaImageIo != null) return viaImageIo
 
     return runCatching {
-        val skia = SkiaImage.makeFromEncoded(bytes)
-        bufferedImageFromComposeArgb(skia.toComposeImageBitmap())
+        bufferedImageFromComposeArgb(SkiaImage.makeFromEncoded(bytes).toComposeImageBitmap())
     }.onFailure { error ->
         Logger.w("DesktopIcon", "Skia decode failed for $name: ${error.message}")
     }.getOrNull()
@@ -797,10 +848,13 @@ private fun decodeImageBytes(bytes: ByteArray, name: String): BufferedImage? {
 
 private fun ensureArgb(source: BufferedImage): BufferedImage {
     if (source.type == BufferedImage.TYPE_INT_ARGB) return source
+
     val out = BufferedImage(source.width, source.height, BufferedImage.TYPE_INT_ARGB)
-    val graphics = out.createGraphics()
-    graphics.drawImage(source, 0, 0, null)
-    graphics.dispose()
+    out.createGraphics().apply {
+        drawImage(source, 0, 0, null)
+        dispose()
+    }
+
     return out
 }
 
@@ -811,34 +865,43 @@ private fun bufferedImageFromComposeArgb(
     val h = bitmap.height
     val pixels = IntArray(w * h)
     bitmap.readPixels(pixels)
+
     val out = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
     out.setRGB(0, 0, w, h, pixels, 0, w)
+
     return out
 }
 
 private fun scaleBufferedImage(source: BufferedImage, size: Int): BufferedImage {
     if (source.width == size && source.height == size) return source
     val out = BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB)
-    val graphics = out.createGraphics()
-    graphics.setRenderingHint(
-        RenderingHints.KEY_INTERPOLATION,
-        RenderingHints.VALUE_INTERPOLATION_BILINEAR,
-    )
-    graphics.setRenderingHint(
-        RenderingHints.KEY_RENDERING,
-        RenderingHints.VALUE_RENDER_QUALITY,
-    )
-    graphics.drawImage(source.getScaledInstance(size, size, Image.SCALE_SMOOTH), 0, 0, null)
-    graphics.dispose()
+
+    out.createGraphics().apply {
+        setRenderingHint(
+            RenderingHints.KEY_INTERPOLATION,
+            RenderingHints.VALUE_INTERPOLATION_BILINEAR,
+        )
+        setRenderingHint(
+            RenderingHints.KEY_RENDERING,
+            RenderingHints.VALUE_RENDER_QUALITY,
+        )
+        drawImage(source.getScaledInstance(size, size, Image.SCALE_SMOOTH), 0, 0, null)
+
+        dispose()
+    }
+
     return out
 }
 
 /** Opaque mark so Tray never substitutes the Compose default for a blank painter. */
 private fun solidFallbackIcon(): BufferedImage {
     val out = BufferedImage(32, 32, BufferedImage.TYPE_INT_ARGB)
-    val graphics = out.createGraphics()
-    graphics.color = java.awt.Color(0x1A, 0x73, 0xE8)
-    graphics.fillRoundRect(2, 2, 28, 28, 8, 8)
-    graphics.dispose()
+    out.createGraphics().apply {
+        color = java.awt.Color(0x1A, 0x73, 0xE8)
+        fillRoundRect(2, 2, 28, 28, 8, 8)
+
+        dispose()
+    }
+
     return out
 }
