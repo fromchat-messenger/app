@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FromChat — фон DMG</title>
+    <!-- Montserrat for brand wordmark; Google Sans kept for the rest (local fonts) -->
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!--
+      Icon slots (#slot-app, #slot-applications) mark create-dmg / appdmg drop targets.
+      Empty outlines only — Finder draws the real icons and labels.
+    -->
+
+    <div id="dmg" role="img" aria-label="Фон установки FromChat (DMG)">
+      <header class="brand">
+        <div class="brand__logo-wrap">
+          <div class="brand__logo" aria-hidden="true"></div>
+        </div>
+        <div class="brand__wordmark">FromChat</div>
+        <div class="brand__tagline">Перетащите в «Программы», чтобы установить</div>
+      </header>
+
+      <div class="install">
+        <div id="slot-app" class="slot" aria-hidden="true"></div>
+        <div class="slot__label" data-for="slot-app" aria-hidden="true">FromChat</div>
+        <div class="arrow" aria-hidden="true">
+          <!-- Material Symbols Rounded arrow_forward (Google Fonts / fonts.gstatic) -->
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" width="36" height="36" fill="currentColor">
+            <path d="M686-450H190q-13 0-21.5-8.5T160-480q0-13 8.5-21.5T190-510h496L459-737q-9-9-9-21t9-21q9-9 21-9t21 9l278 278q5 5 7 10t2 11q0 6-2 11t-7 10L501-181q-9 9-21 9t-21-9q-9-9-9-21t9-21l227-227Z"/>
+          </svg>
+        </div>
+        <div id="slot-applications" class="slot" aria-hidden="true"></div>
+        <div class="slot__label" data-for="slot-applications" aria-hidden="true">Программы</div>
+      </div>
+
+      <p class="notice">
+        Если macOS блокирует приложение, откройте
+        <strong>Системные настройки → Конфиденциальность и безопасность</strong>
+        и разрешите его — или нажмите
+        <strong>правой кнопкой → Открыть</strong>.
+      </p>
+    </div>
+  </body>
+</html>

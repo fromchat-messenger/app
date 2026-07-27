@@ -34,3 +34,6 @@ premortem-transcript-*.md
 premortem-report-*.html
 
 target/
+
+node_modules
+preview-dist
