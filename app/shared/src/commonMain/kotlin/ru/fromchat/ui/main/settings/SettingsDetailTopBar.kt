@@ -81,10 +81,10 @@ fun SettingsDetailTopBar(
             }
         }
     }
-    // Must match settings-detail Scaffold.containerColor and AppPanel
-    // (`surfaceContainerLowest`). Scaffold defaults to `background`, which is a
-    // different token (e.g. light Neutral98 vs Neutral100) — that was the stripe.
-    val paneColor = MaterialTheme.colorScheme.surfaceContainerLowest
+    // Match Profile / shell (`background`), not AppPanel's default
+    // `surfaceContainerLowest` — that token reads as a separate pane fill in
+    // two-pane against the list–detail shell.
+    val paneColor = MaterialTheme.colorScheme.background
     if (settingsDetailUseCollapsingTopBar()) {
         MediumTopAppBar(
             title = title,
