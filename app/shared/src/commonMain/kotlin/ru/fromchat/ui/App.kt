@@ -358,6 +358,7 @@ fun App(
             val widthSizeClass = currentWindowAdaptiveInfo().widthSizeClass
             val isDesktopListDetail = widthSizeClass != WindowWidthSizeClass.COMPACT
             var pendingMainTab by remember { mutableIntStateOf(MAIN_PAGE_CHATS) }
+            var pendingPreAuthSettingsDetailRoute by remember { mutableStateOf<String?>(null) }
 
             // Handle startup/deep-link navigation targets (profile links)
             LaunchedEffect(
@@ -505,15 +506,33 @@ fun App(
                             if (command != DesktopMenuCommand.OpenAbout) return@collect
                             pendingMainTab = MAIN_PAGE_SETTINGS
                             if (isDesktopListDetail) {
-                                settingsDetailNavController.navigateReplacingMainDetail(
-                                    route = SettingsRoutes.About,
-                                )
+                                if (ApiClient.token.isNullOrBlank()) {
+                                    // Pre-auth: the settings detail NavHost isn't mounted until the root
+                                    // shell is visible, so we defer settings navigation until `currentRoute`
+                                    // becomes `chat`.
+                                    pendingPreAuthSettingsDetailRoute = SettingsRoutes.About
+                                    navController.navigate("chat") {
+                                        launchSingleTop = true
+                                    }
+                                } else {
+                                    settingsDetailNavController.navigateReplacingMainDetail(
+                                        route = SettingsRoutes.About,
+                                    )
+                                }
                             } else {
                                 navController.navigateReplacingMainDetail(
                                     route = SettingsRoutes.About,
                                 )
                             }
                         }
+                    }
+
+                    LaunchedEffect(currentRoute, pendingPreAuthSettingsDetailRoute) {
+                        val route = pendingPreAuthSettingsDetailRoute ?: return@LaunchedEffect
+                        if (!isDesktopListDetail) return@LaunchedEffect
+                        if (currentRoute != "chat") return@LaunchedEffect
+                        settingsDetailNavController.navigateReplacingMainDetail(route = route)
+                        pendingPreAuthSettingsDetailRoute = null
                     }
 
                     ScreenSurface {
