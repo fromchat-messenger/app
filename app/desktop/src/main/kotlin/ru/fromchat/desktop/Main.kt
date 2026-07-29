@@ -246,9 +246,11 @@ private object DesktopProtocolRegistration {
 }
 
 fun main(args: Array<String>) {
-    // Separate AWT windows for Popup/Dialog so menus can draw past the app window edge
-    // (closer to Android Popup behavior). Must be set before any Compose UI runs.
-    System.setProperty("compose.layers.type", "WINDOW")
+    // Do NOT set compose.layers.type=WINDOW.
+    // On macOS Metal that mode creates a JWindow + MetalRedrawer per Popup/Dialog; native
+    // IOAccelerator surfaces are retained after dismiss and grew to multi-GB (Activity Monitor
+    // ~7–8 GB) while the Java heap stayed small. Default COMPONENT layers avoid that leak;
+    // context menus already use PopupProperties(clippingEnabled = false).
     if (isMacOs()) {
         // Must be set before AWT Toolkit init (do not call getString / Compose here).
         // Matches Res.string.app_name / app_name_beta.
@@ -302,9 +304,15 @@ fun main(args: Array<String>) {
         val quit = stringResource(Res.string.desktop_quit)
         val connectionStatus by ConnectionStateStore.status.collectAsState()
         var wsLinked by remember { mutableStateOf(WebSocketManager.isConnected) }
+        // ApiClient.token is not a Compose state; poll so menu items update on login/logout.
+        // Only write when the value changes — avoids MenuBar/Tray recomposition churn every tick.
+        var isLoggedIn by remember { mutableStateOf(!ApiClient.token.isNullOrBlank()) }
         LaunchedEffect(Unit) {
             while (true) {
-                wsLinked = WebSocketManager.isConnected
+                val linked = WebSocketManager.isConnected
+                if (wsLinked != linked) wsLinked = linked
+                val loggedIn = !ApiClient.token.isNullOrBlank()
+                if (isLoggedIn != loggedIn) isLoggedIn = loggedIn
                 delay(400.milliseconds)
             }
         }
@@ -422,11 +430,13 @@ fun main(args: Array<String>) {
                 }
                 when {
                     !event.isShiftPressed && event.key == Key.N -> {
+                        if (!isLoggedIn) return@Window false
                         showMainWindow()
                         DesktopMenuCommands.emit(DesktopMenuCommand.NewChat)
                         true
                     }
                     !event.isShiftPressed && event.key == Key.F -> {
+                        if (!isLoggedIn) return@Window false
                         showMainWindow()
                         DesktopMenuCommands.emit(DesktopMenuCommand.SearchConversations)
                         true
@@ -477,6 +487,7 @@ fun main(args: Array<String>) {
 
             if (mac) {
                 FromChatMenuBar(
+                    isLoggedIn = isLoggedIn,
                     onNewChat = {
                         showMainWindow()
                         DesktopMenuCommands.emit(DesktopMenuCommand.NewChat)
@@ -520,6 +531,7 @@ fun main(args: Array<String>) {
 
 @Composable
 private fun FrameWindowScope.FromChatMenuBar(
+    isLoggedIn: Boolean,
     onNewChat: () -> Unit,
     onSearchConversations: () -> Unit,
     onSelectChats: () -> Unit,
@@ -545,19 +557,21 @@ private fun FrameWindowScope.FromChatMenuBar(
 
     MenuBar {
         Menu(file, mnemonic = 'F') {
-            Item(
-                newChat,
-                shortcut = KeyShortcut(Key.N, meta = true),
-                onClick = onNewChat,
-            )
+            if (isLoggedIn) {
+                Item(
+                    newChat,
+                    shortcut = KeyShortcut(Key.N, meta = true),
+                    onClick = onNewChat,
+                )
 
-            Item(
-                searchConversations,
-                shortcut = KeyShortcut(Key.F, meta = true),
-                onClick = onSearchConversations,
-            )
+                Item(
+                    searchConversations,
+                    shortcut = KeyShortcut(Key.F, meta = true),
+                    onClick = onSearchConversations,
+                )
 
-            Separator()
+                Separator()
+            }
 
             Item(
                 quit,

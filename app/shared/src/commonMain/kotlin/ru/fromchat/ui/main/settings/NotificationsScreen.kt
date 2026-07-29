@@ -59,7 +59,7 @@ fun NotificationsScreen(onBack: () -> Unit) {
     val unexpectedErrorText = stringResource(Res.string.error_unexpected)
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+        containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { FromChatSnackbarHost(hostState = snackbarHostState) },
         topBar = {
             SettingsDetailTopBar(

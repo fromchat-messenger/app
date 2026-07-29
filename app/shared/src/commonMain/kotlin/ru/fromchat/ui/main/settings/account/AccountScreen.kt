@@ -75,8 +75,8 @@ fun AccountScreen(
     }
 
     Scaffold(
-        // Match AppPanel / SettingsDetailTopBar — default `background` is a darker stripe under the bar.
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+        // Match Profile / shell — `surfaceContainerLowest` mismatches the pane behind in two-pane.
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             SettingsDetailTopBar(
                 title = { Text(stringResource(Res.string.settings_account_title)) },

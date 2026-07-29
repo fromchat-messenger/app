@@ -23,7 +23,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
@@ -96,6 +96,7 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.back
+import ru.fromchat.ui.extraStatusBars
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 import kotlin.math.abs
 
@@ -550,6 +551,7 @@ fun ExpressiveStepFlowScaffold(
     fun HazeTopBar(hazeState: HazeState) {
         val topBarHazeStyle = HazeMaterials.thin()
         TopAppBar(
+            windowInsets = WindowInsets.extraStatusBars,
             title = {},
             navigationIcon = {
                 IconButton(onClick = navigateBack) {
@@ -583,7 +585,7 @@ fun ExpressiveStepFlowScaffold(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .statusBarsPadding()
+                .windowInsetsPadding(WindowInsets.extraStatusBars)
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

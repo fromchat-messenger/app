@@ -26,9 +26,8 @@ import netscape.javascript.JSObject
 import ru.fromchat.Logger
 import ru.fromchat.api.calls.CallStore
 import ru.fromchat.api.calls.LiveKitConnectSession
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
+import ru.fromchat.ui.jvm.ensureJavaFxStarted
+import ru.fromchat.ui.jvm.releaseJavaFxWebView
 import java.util.concurrent.atomic.AtomicReference
 import javax.swing.SwingUtilities
 
@@ -73,6 +72,7 @@ private fun LiveKitJavaFxCall(
 ) {
     var micOn by remember(session.roomName) { mutableStateOf(true) }
     var camOn by remember(session.roomName) { mutableStateOf(true) }
+    val panelRef = remember { AtomicReference<JFXPanel?>(null) }
     val engineRef = remember { AtomicReference<WebEngine?>(null) }
     val sessionState = rememberUpdatedState(session)
     val surface = MaterialTheme.colorScheme.surfaceContainerLowest
@@ -89,7 +89,7 @@ private fun LiveKitJavaFxCall(
     }
 
     DisposableEffect(session.roomName) {
-        ensureJavaFxStarted()
+        ensureJavaFxStarted(TAG)
         onDispose {
             val engine = engineRef.get()
             if (engine != null) {
@@ -97,7 +97,7 @@ private fun LiveKitJavaFxCall(
                     runCatching { engine.executeScript(LiveKitCallWebPage.disconnectScript()) }
                 }
             }
-            engineRef.set(null)
+            releaseJavaFxWebView(panelRef, engineRef)
         }
     }
 
@@ -105,6 +105,7 @@ private fun LiveKitJavaFxCall(
         SwingPanel(
             factory = {
                 JFXPanel().also { panel ->
+                    panelRef.set(panel)
                     panel.background = java.awt.Color(
                         surface.red,
                         surface.green,
@@ -222,25 +223,5 @@ private fun injectNativeBridge(engine: WebEngine, bridge: LiveKitCallJsBridge) {
         window.setMember("FromChatNative", bridge)
     }.onFailure {
         Logger.w(TAG, "inject FromChatNative failed: ${it.message}", it)
-    }
-}
-
-private val javaFxStarted = AtomicBoolean(false)
-
-private fun ensureJavaFxStarted() {
-    if (javaFxStarted.get()) return
-    synchronized(javaFxStarted) {
-        if (javaFxStarted.get()) return
-        runCatching {
-            Platform.setImplicitExit(false)
-            val latch = CountDownLatch(1)
-            Platform.startup { latch.countDown() }
-            if (!latch.await(5, TimeUnit.SECONDS)) {
-                Logger.w(TAG, "JavaFX Platform.startup timed out")
-            }
-        }.onFailure { error ->
-            Logger.d(TAG, "JavaFX startup: ${error.message}")
-        }
-        javaFxStarted.set(true)
     }
 }
