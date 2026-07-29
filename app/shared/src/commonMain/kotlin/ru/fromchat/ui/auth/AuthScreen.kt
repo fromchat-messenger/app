@@ -1,6 +1,11 @@
 package ru.fromchat.ui.auth
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.SnackbarHostState
@@ -13,7 +18,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.pr0gramm3r101.utils.crypto.deriveAuthSecret
 import io.ktor.client.call.body
 import io.ktor.client.plugins.ClientRequestException
@@ -77,6 +84,9 @@ internal sealed interface RegisterResult {
 }
 
 private const val AUTH_SERVER_PROBE_TIMEOUT_MS = 5_000L
+
+private val AUTH_CONTENT_MAX_WIDTH = 600.dp
+private val AUTH_CONTENT_MAX_HEIGHT = 800.dp
 
 internal suspend fun probeCurrentServer() = runCatching {
     withTimeout(AUTH_SERVER_PROBE_TIMEOUT_MS.milliseconds) {
@@ -433,108 +443,130 @@ fun AuthScreen(
     }
 
     val yandexStep = yandexParams
-    ExpressiveStepFlowScaffold(
-        flowState = flowState,
-        pages = listOf(
-            usernameStepPage(
-                username = username,
-                onUsernameChange = { username = it },
-                onContinue = {
-                    flowState.pagerState.animateScrollToPage(AuthFlowStep.Password.ordinal)
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val constrainWide = maxWidth > AUTH_CONTENT_MAX_WIDTH
+        Box(
+            modifier =
+                if (constrainWide) {
+                    Modifier
+                        .align(Alignment.Center)
+                        .widthIn(max = AUTH_CONTENT_MAX_WIDTH)
+                        .heightIn(max = AUTH_CONTENT_MAX_HEIGHT)
+                } else {
+                    Modifier.fillMaxSize()
                 },
-                onSnackbar = ::snackbar,
-            ),
-            passwordStepPage(
-                username = username,
-                password = password,
-                onPasswordChange = { password = it },
-                onLoginSuccess = wrappedAuthSuccess,
-                onNeedsRegister = { required, params, captchaReq, captcha ->
-                    Logger.i(
-                        SmartCaptchaLog.TAG,
-                        "onNeedsRegister yandexRequired=$required captchaRequired=$captchaReq " +
-                            "clientKey=${SmartCaptchaLog.redactKey(captcha?.client_key)}",
-                    )
-                    yandexRequired = required
-                    yandexParams = params
-                    captchaRequired = captchaReq
-                    captchaParams = captcha
-                    registrationProof = null
-                    captchaToken = null
-                    flowState.pagerState.animateScrollToPage(AuthFlowStep.ConfirmPassword.ordinal)
-                },
-                onSnackbar = ::snackbar,
-            ),
-            confirmPasswordStepPage(
-                confirmPassword = confirmPassword,
-                onConfirmPasswordChange = { confirmPassword = it },
-                password = password,
-                onContinue = {
-                    val captchaKey = captchaParams?.client_key?.trim().orEmpty()
-                    when {
-                        yandexRequired && yandexParams != null -> {
-                            Logger.i(SmartCaptchaLog.TAG, "confirm → YandexId (captcha skipped)")
-                            flowState.pagerState.animateScrollToPage(AuthFlowStep.YandexId.ordinal)
-                        }
-                        captchaRequired && captchaToken.isNullOrBlank() && captchaKey.isNotEmpty() -> {
-                            openCaptchaRoute(captchaKey)
-                        }
-                        else -> {
+        ) {
+            ExpressiveStepFlowScaffold(
+                flowState = flowState,
+                pages = listOf(
+                    usernameStepPage(
+                        username = username,
+                        onUsernameChange = { username = it },
+                        onContinue = {
+                            flowState.pagerState.animateScrollToPage(AuthFlowStep.Password.ordinal)
+                        },
+                        onSnackbar = ::snackbar,
+                    ),
+                    passwordStepPage(
+                        username = username,
+                        password = password,
+                        onPasswordChange = { password = it },
+                        onLoginSuccess = wrappedAuthSuccess,
+                        onNeedsRegister = { required, params, captchaReq, captcha ->
                             Logger.i(
                                 SmartCaptchaLog.TAG,
-                                "confirm → Profile captchaRequired=$captchaRequired " +
-                                    "hasToken=${!captchaToken.isNullOrBlank()}",
+                                "onNeedsRegister yandexRequired=$required captchaRequired=$captchaReq " +
+                                    "clientKey=${SmartCaptchaLog.redactKey(captcha?.client_key)}",
                             )
-                            flowState.pagerState.animateScrollToPage(AuthFlowStep.Profile.ordinal)
-                        }
-                    }
-                },
-                onSnackbar = ::snackbar,
-            ),
-            if (yandexStep != null) {
-                yandexIdStepPage(
-                    yandex = yandexStep,
-                    onProof = { proof ->
-                        registrationProof = proof
-                        flowState.pagerState.animateScrollToPage(AuthFlowStep.Profile.ordinal)
-                    },
-                    onSnackbar = ::snackbar,
-                )
-            } else {
-                confirmPasswordStepPage(
-                    confirmPassword = confirmPassword,
-                    onConfirmPasswordChange = { confirmPassword = it },
-                    password = password,
-                    onContinue = {
-                        val captchaKey = captchaParams?.client_key?.trim().orEmpty()
-                        when {
-                            captchaRequired && captchaToken.isNullOrBlank() && captchaKey.isNotEmpty() -> {
-                                openCaptchaRoute(captchaKey)
+                            yandexRequired = required
+                            yandexParams = params
+                            captchaRequired = captchaReq
+                            captchaParams = captcha
+                            registrationProof = null
+                            captchaToken = null
+                            flowState.pagerState.animateScrollToPage(AuthFlowStep.ConfirmPassword.ordinal)
+                        },
+                        onSnackbar = ::snackbar,
+                    ),
+                    confirmPasswordStepPage(
+                        confirmPassword = confirmPassword,
+                        onConfirmPasswordChange = { confirmPassword = it },
+                        password = password,
+                        onContinue = {
+                            val captchaKey = captchaParams?.client_key?.trim().orEmpty()
+                            when {
+                                yandexRequired && yandexParams != null -> {
+                                    Logger.i(SmartCaptchaLog.TAG, "confirm → YandexId (captcha skipped)")
+                                    flowState.pagerState.animateScrollToPage(AuthFlowStep.YandexId.ordinal)
+                                }
+                                captchaRequired &&
+                                    captchaToken.isNullOrBlank() &&
+                                    captchaKey.isNotEmpty() -> {
+                                    openCaptchaRoute(captchaKey)
+                                }
+                                else -> {
+                                    Logger.i(
+                                        SmartCaptchaLog.TAG,
+                                        "confirm → Profile captchaRequired=$captchaRequired " +
+                                            "hasToken=${!captchaToken.isNullOrBlank()}",
+                                    )
+                                    flowState.pagerState.animateScrollToPage(AuthFlowStep.Profile.ordinal)
+                                }
                             }
-                            else -> {
-                                Logger.i(SmartCaptchaLog.TAG, "yandex-placeholder confirm → Profile")
+                        },
+                        onSnackbar = ::snackbar,
+                    ),
+                    if (yandexStep != null) {
+                        yandexIdStepPage(
+                            yandex = yandexStep,
+                            onProof = { proof ->
+                                registrationProof = proof
                                 flowState.pagerState.animateScrollToPage(AuthFlowStep.Profile.ordinal)
-                            }
-                        }
+                            },
+                            onSnackbar = ::snackbar,
+                        )
+                    } else {
+                        confirmPasswordStepPage(
+                            confirmPassword = confirmPassword,
+                            onConfirmPasswordChange = { confirmPassword = it },
+                            password = password,
+                            onContinue = {
+                                val captchaKey = captchaParams?.client_key?.trim().orEmpty()
+                                when {
+                                    captchaRequired &&
+                                        captchaToken.isNullOrBlank() &&
+                                        captchaKey.isNotEmpty() -> {
+                                        openCaptchaRoute(captchaKey)
+                                    }
+                                    else -> {
+                                        Logger.i(
+                                            SmartCaptchaLog.TAG,
+                                            "yandex-placeholder confirm → Profile",
+                                        )
+                                        flowState.pagerState.animateScrollToPage(AuthFlowStep.Profile.ordinal)
+                                    }
+                                }
+                            },
+                            onSnackbar = ::snackbar,
+                        )
                     },
-                    onSnackbar = ::snackbar,
-                )
-            },
-            profileStepPage(
-                username = username,
-                displayName = displayName,
-                onDisplayNameChange = { displayName = it },
-                bio = bio,
-                onBioChange = { bio = it },
-                password = password,
-                registrationProof = registrationProof,
-                captchaToken = captchaToken,
-                onRegisterSuccess = wrappedAuthSuccess,
-                onUsernameTaken = resetToUsername,
-                onSnackbar = ::snackbar,
-            ),
-        ),
-        snackbarHostState = snackbarHostState,
-        onBackAtFirstPage = wrappedBackToWelcome,
-    )
+                    profileStepPage(
+                        username = username,
+                        displayName = displayName,
+                        onDisplayNameChange = { displayName = it },
+                        bio = bio,
+                        onBioChange = { bio = it },
+                        password = password,
+                        registrationProof = registrationProof,
+                        captchaToken = captchaToken,
+                        onRegisterSuccess = wrappedAuthSuccess,
+                        onUsernameTaken = resetToUsername,
+                        onSnackbar = ::snackbar,
+                    ),
+                ),
+                snackbarHostState = snackbarHostState,
+                onBackAtFirstPage = wrappedBackToWelcome,
+            )
+        }
+    }
 }

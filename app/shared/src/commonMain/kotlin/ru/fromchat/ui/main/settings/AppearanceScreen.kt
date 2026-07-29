@@ -67,7 +67,7 @@ fun AppearanceScreen(onBack: () -> Unit) {
     var themeChipIndex by remember { mutableIntStateOf(Settings.theme.ordinal) }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             SettingsDetailTopBar(
                 title = { Text(stringResource(Res.string.settings_category_appearance)) },

@@ -12,6 +12,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
@@ -100,8 +101,11 @@ fun DesktopSettingsDetailNavHost(
 
     Box(modifier.fillMaxSize()) {
         if (showPanel) {
+            // Match Profile / ConversationListDetailShell (`background`), not the
+            // default AppPanel `surfaceContainerLowest` (visible mismatch in two-pane).
             AppPanel(
                 Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background,
                 shape = RoundedCornerShape(24.dp),
             ) {}
         }
