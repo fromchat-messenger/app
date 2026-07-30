@@ -2,6 +2,8 @@ package ru.fromchat.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
@@ -20,6 +22,13 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -47,6 +56,21 @@ val LocalExpressiveStepFocusEnabled = compositionLocalOf { true }
 
 /** When true, the current step's primary field should request focus once. */
 val LocalExpressiveStepAutoFocusPrimary = compositionLocalOf { false }
+
+/** Desktop Enter / Android IME action for expressive step single-line fields. */
+fun Modifier.expressiveStepSubmitOnEnter(onSubmit: () -> Unit): Modifier = onPreviewKeyEvent { event ->
+    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+    if (event.key != Key.Enter && event.key != Key.NumPadEnter) return@onPreviewKeyEvent false
+    if (event.isShiftPressed) return@onPreviewKeyEvent false
+    onSubmit()
+    true
+}
+
+fun expressiveStepSingleLineKeyboardOptions(): KeyboardOptions =
+    KeyboardOptions(imeAction = ImeAction.Done)
+
+fun expressiveStepSubmitKeyboardActions(onSubmit: () -> Unit): KeyboardActions =
+    KeyboardActions(onDone = { onSubmit() })
 
 /** Requests focus for [focusRequester] when [LocalExpressiveStepAutoFocusPrimary] becomes true. */
 @Composable
