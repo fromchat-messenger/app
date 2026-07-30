@@ -343,6 +343,8 @@ fun ExpressiveStepFlowScaffold(
     onBackAtFirstPage: () -> Unit,
     trailingTopBarActions: @Composable (() -> Unit)? = null,
     hazeScaffold: Boolean = true,
+    contentBackground: Color = MaterialTheme.colorScheme.background,
+    topBarWindowInsets: WindowInsets = WindowInsets.extraStatusBars,
 ) {
     val pagerState = flowState.pagerState
     val scope = flowState.scope
@@ -551,7 +553,7 @@ fun ExpressiveStepFlowScaffold(
     fun HazeTopBar(hazeState: HazeState) {
         val topBarHazeStyle = HazeMaterials.thin()
         TopAppBar(
-            windowInsets = WindowInsets.extraStatusBars,
+            windowInsets = topBarWindowInsets,
             title = {},
             navigationIcon = {
                 IconButton(onClick = navigateBack) {
@@ -585,7 +587,7 @@ fun ExpressiveStepFlowScaffold(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.extraStatusBars)
+                .windowInsetsPadding(topBarWindowInsets)
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -648,7 +650,7 @@ fun ExpressiveStepFlowScaffold(
                             state = listState,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .background(scheme.background)
+                                .background(contentBackground)
                                 .hazeSource(hazeState)
                                 .onGloballyPositioned {
                                     listViewportBounds = it.boundsInWindow()

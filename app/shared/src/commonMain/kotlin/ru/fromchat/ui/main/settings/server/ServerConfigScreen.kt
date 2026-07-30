@@ -19,7 +19,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -108,6 +111,8 @@ import ru.fromchat.server_config_unsupported_no_instance_id
 import ru.fromchat.server_ip_hint
 import ru.fromchat.server_ip_label
 import ru.fromchat.ui.LocalNavController
+import ru.fromchat.ui.auth.AuthContentFrame
+import ru.fromchat.ui.extraStatusBars
 import ru.fromchat.ui.components.CtaShape
 import ru.fromchat.ui.components.DisabledBringIntoViewSpec
 import ru.fromchat.ui.components.ExpressiveIconFrame
@@ -231,7 +236,12 @@ fun ServerConfigScreen() {
         disabledContainerColor = Color.Transparent,
     )
 
-    Box(Modifier.fillMaxSize()) {
+    val preAuth = ApiClient.token.isNullOrBlank()
+
+    @Composable
+    fun ServerConfigContent() {
+        val listBackground = scheme.background
+
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             contentWindowInsets = WindowInsets.navigationBars,
@@ -333,31 +343,31 @@ fun ServerConfigScreen() {
             topBar = {
                 val topBarHazeStyle = HazeMaterials.thin()
                 TopAppBar(
-                    title = {},
-                    navigationIcon = {
-                        if (settingsDetailShowBackButton()) {
-                            IconButton(onClick = navController::navigateUp) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = stringResource(Res.string.back)
+                        title = {},
+                        navigationIcon = {
+                            if (settingsDetailShowBackButton()) {
+                                IconButton(onClick = navController::navigateUp) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = stringResource(Res.string.back)
+                                    )
+                                }
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent,
+                            scrolledContainerColor = Color.Transparent,
+                        ),
+                        modifier = Modifier.hazeEffect(state = actionHazeState) {
+                            blurEffect {
+                                style = topBarHazeStyle
+                                progressive = HazeProgressive.verticalGradient(
+                                    startIntensity = 1f,
+                                    endIntensity = 0f,
                                 )
                             }
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Transparent,
-                        scrolledContainerColor = Color.Transparent
-                    ),
-                    modifier = Modifier.hazeEffect(state = actionHazeState) {
-                        blurEffect {
-                            style = topBarHazeStyle
-                            progressive = HazeProgressive.verticalGradient(
-                                startIntensity = 1f,
-                                endIntensity = 0f,
-                            )
-                        }
-                    }
-                )
+                        },
+                    )
             }
         ) { innerPadding ->
             val floatingHeaderClearance = WindowInsets.statusBars.getTop(density).toDp(density) + 68.dp
@@ -379,7 +389,7 @@ fun ServerConfigScreen() {
                     modifier = Modifier
                         .fillMaxSize()
                         .consumeWindowInsets(innerPadding)
-                        .background(MaterialTheme.colorScheme.background)
+                        .background(listBackground)
                         .hazeSource(actionHazeState)
                         .onGloballyPositioned { listViewportBounds = it.boundsInWindow() },
                         contentPadding = PaddingValues(bottom = bottomInsetPadding),
@@ -422,6 +432,7 @@ fun ServerConfigScreen() {
                                         Text(
                                             text = stringResource(Res.string.server_config_title),
                                             style = MaterialTheme.typography.headlineMedium,
+                                            color = scheme.onSurface,
                                             modifier = Modifier.fillMaxWidth(),
                                             textAlign = TextAlign.Center,
                                         )
@@ -567,5 +578,19 @@ fun ServerConfigScreen() {
                 }
             }
         }
+    }
+
+    if (preAuth) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing.union(WindowInsets.extraStatusBars)),
+        ) {
+            AuthContentFrame { _ ->
+                ServerConfigContent()
+            }
+        }
+    } else {
+        ServerConfigContent()
     }
 }
