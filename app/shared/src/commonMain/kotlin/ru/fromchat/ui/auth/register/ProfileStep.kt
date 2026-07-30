@@ -40,6 +40,9 @@ import ru.fromchat.ui.components.ExpressiveStepPageHeader
 import ru.fromchat.ui.components.SettingsPasswordOutlineFieldShape
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.expressiveStepFieldColors
+import ru.fromchat.ui.components.expressiveStepSingleLineKeyboardOptions
+import ru.fromchat.ui.components.expressiveStepSubmitKeyboardActions
+import ru.fromchat.ui.components.expressiveStepSubmitOnEnter
 import ru.fromchat.ui.components.trackImeScrollTarget
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 
@@ -72,6 +75,53 @@ internal fun profileStepPage(
     val usernameTaken = stringResource(Res.string.auth_username_taken)
     val registerLabel = stringResource(Res.string.register_button)
 
+    fun attemptSubmit() {
+        if (busy) return
+
+        if (displayName.isBlank() || displayName.trim().length > DISPLAY_NAME_MAX) {
+            onSnackbar(displayNameError, null)
+            return
+        }
+
+        if (bio.trim().length > BIO_MAX) {
+            onSnackbar(unexpected, null)
+            return
+        }
+
+        scope.launch {
+            busy = true
+
+            try {
+                when (
+                    val result = register(
+                        username = username,
+                        displayName = displayName.trim(),
+                        password = password,
+                        bio = bio.trim(),
+                        registrationProof = registrationProof,
+                        captchaToken = captchaToken,
+                        unexpectedError = unexpected,
+                    )
+                ) {
+                    is RegisterResult.Success -> {
+                        onRegisterSuccess()
+                    }
+
+                    is RegisterResult.UsernameTaken -> {
+                        onSnackbar(usernameTaken, null)
+                        onUsernameTaken()
+                    }
+
+                    is RegisterResult.Error -> {
+                        onSnackbar(result.message, result.cause)
+                    }
+                }
+            } finally {
+                busy = false
+            }
+        }
+    }
+
     return ExpressiveStepPage(
         hero = ExpressiveHeroSpec(
             icon = Icons.Filled.Face,
@@ -92,9 +142,12 @@ internal fun profileStepPage(
                 modifier = Modifier
                     .fillMaxWidth()
                     .trackImeScrollTarget(imeScroll, ExpressiveStepLazyListIndices.STEPS_BODY)
+                    .expressiveStepSubmitOnEnter(::attemptSubmit)
                     .padding(horizontal = SettingsStepHorizontalPadding),
                 enabled = !busy,
                 singleLine = true,
+                keyboardOptions = expressiveStepSingleLineKeyboardOptions(),
+                keyboardActions = expressiveStepSubmitKeyboardActions(::attemptSubmit),
                 supportingText = {
                     Text(stringResource(Res.string.auth_char_count, displayName.length, DISPLAY_NAME_MAX))
                 },
@@ -126,52 +179,7 @@ internal fun profileStepPage(
         },
         button = {
             ActionButton(
-                onClick = {
-                    if (busy) return@ActionButton
-
-                    if (displayName.isBlank() || displayName.trim().length > DISPLAY_NAME_MAX) {
-                        onSnackbar(displayNameError, null)
-                        return@ActionButton
-                    }
-
-                    if (bio.trim().length > BIO_MAX) {
-                        onSnackbar(unexpected, null)
-                        return@ActionButton
-                    }
-
-                    scope.launch {
-                        busy = true
-
-                        try {
-                            when (
-                                val result = register(
-                                    username = username,
-                                    displayName = displayName.trim(),
-                                    password = password,
-                                    bio = bio.trim(),
-                                    registrationProof = registrationProof,
-                                    captchaToken = captchaToken,
-                                    unexpectedError = unexpected,
-                                )
-                            ) {
-                                is RegisterResult.Success -> {
-                                    onRegisterSuccess()
-                                }
-
-                                is RegisterResult.UsernameTaken -> {
-                                    onSnackbar(usernameTaken, null)
-                                    onUsernameTaken()
-                                }
-
-                                is RegisterResult.Error -> {
-                                    onSnackbar(result.message, result.cause)
-                                }
-                            }
-                        } finally {
-                            busy = false
-                        }
-                    }
-                },
+                onClick = ::attemptSubmit,
                 enabled = !busy,
                 loading = busy,
                 modifier = Modifier.fillMaxWidth(),
