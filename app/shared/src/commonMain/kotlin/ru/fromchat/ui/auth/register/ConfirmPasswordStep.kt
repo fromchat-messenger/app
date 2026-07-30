@@ -40,6 +40,9 @@ import ru.fromchat.ui.components.ExpressiveStepPageHeader
 import ru.fromchat.ui.components.SettingsPasswordOutlineFieldShape
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.expressiveStepFieldColors
+import ru.fromchat.ui.components.expressiveStepSingleLineKeyboardOptions
+import ru.fromchat.ui.components.expressiveStepSubmitKeyboardActions
+import ru.fromchat.ui.components.expressiveStepSubmitOnEnter
 import ru.fromchat.ui.components.trackImeScrollTarget
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 
@@ -58,6 +61,20 @@ internal fun confirmPasswordStepPage(
     val fillAll = stringResource(Res.string.fill_all_fields)
     val pwdMatch = stringResource(Res.string.passwords_dont_match)
     val nextLabel = stringResource(Res.string.settings_next)
+
+    fun attemptSubmit() {
+        if (confirmPassword.isBlank()) {
+            onSnackbar(fillAll, null)
+            return
+        }
+
+        if (confirmPassword != password) {
+            onSnackbar(pwdMatch, null)
+            return
+        }
+
+        scope.launch { onContinue() }
+    }
 
     return ExpressiveStepPage(
         hero = ExpressiveHeroSpec(
@@ -81,8 +98,11 @@ internal fun confirmPasswordStepPage(
                 modifier = Modifier
                     .fillMaxWidth()
                     .trackImeScrollTarget(imeScroll, ExpressiveStepLazyListIndices.STEPS_BODY)
+                    .expressiveStepSubmitOnEnter(::attemptSubmit)
                     .padding(horizontal = SettingsStepHorizontalPadding),
                 singleLine = true,
+                keyboardOptions = expressiveStepSingleLineKeyboardOptions(),
+                keyboardActions = expressiveStepSubmitKeyboardActions(::attemptSubmit),
                 visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
                     IconButton(onClick = { visible = !visible }) {
@@ -100,19 +120,7 @@ internal fun confirmPasswordStepPage(
         },
         button = {
             ActionButton(
-                onClick = {
-                    if (confirmPassword.isBlank()) {
-                        onSnackbar(fillAll, null)
-                        return@ActionButton
-                    }
-
-                    if (confirmPassword != password) {
-                        onSnackbar(pwdMatch, null)
-                        return@ActionButton
-                    }
-
-                    scope.launch { onContinue() }
-                },
+                onClick = ::attemptSubmit,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(nextLabel)
