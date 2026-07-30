@@ -1,13 +1,15 @@
 package ru.fromchat.ui.auth
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -18,7 +20,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.pr0gramm3r101.utils.crypto.deriveAuthSecret
@@ -53,6 +54,7 @@ import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.TextCta
 import ru.fromchat.ui.components.rememberExpressiveStepFlow
 import ru.fromchat.ui.components.showLoggedSnackbar
+import ru.fromchat.ui.extraStatusBars
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -84,9 +86,6 @@ internal sealed interface RegisterResult {
 }
 
 private const val AUTH_SERVER_PROBE_TIMEOUT_MS = 5_000L
-
-private val AUTH_CONTENT_MAX_WIDTH = 600.dp
-private val AUTH_CONTENT_MAX_HEIGHT = 800.dp
 
 internal suspend fun probeCurrentServer() = runCatching {
     withTimeout(AUTH_SERVER_PROBE_TIMEOUT_MS.milliseconds) {
@@ -443,19 +442,13 @@ fun AuthScreen(
     }
 
     val yandexStep = yandexParams
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val constrainWide = maxWidth > AUTH_CONTENT_MAX_WIDTH
-        Box(
-            modifier =
-                if (constrainWide) {
-                    Modifier
-                        .align(Alignment.Center)
-                        .widthIn(max = AUTH_CONTENT_MAX_WIDTH)
-                        .heightIn(max = AUTH_CONTENT_MAX_HEIGHT)
-                } else {
-                    Modifier.fillMaxSize()
-                },
-        ) {
+    // Clear title bar / system bars outside the rounded panel (same as WelcomeScreen).
+    Box(
+        Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing.union(WindowInsets.extraStatusBars)),
+    ) {
+        AuthContentFrame { _ ->
             ExpressiveStepFlowScaffold(
                 flowState = flowState,
                 pages = listOf(
@@ -566,6 +559,9 @@ fun AuthScreen(
                 ),
                 snackbarHostState = snackbarHostState,
                 onBackAtFirstPage = wrappedBackToWelcome,
+                trailingTopBarActions = { PreAuthOverflowMenu() },
+                contentBackground = MaterialTheme.colorScheme.background,
+                topBarWindowInsets = WindowInsets(0, 0, 0, 0),
             )
         }
     }
