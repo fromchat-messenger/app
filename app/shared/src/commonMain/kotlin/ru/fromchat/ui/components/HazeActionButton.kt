@@ -1,6 +1,8 @@
 package ru.fromchat.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.blur.HazeBlurStyle
@@ -25,6 +28,7 @@ fun HazeBottomBar(
     hazeState: HazeState,
     modifier: Modifier = Modifier,
     hazeStyle: HazeBlurStyle? = null,
+    baseColor: Color? = null,
     content: @Composable () -> Unit,
 ) {
     val resolvedStyle = hazeStyle ?: HazeMaterials.thin()
@@ -32,6 +36,10 @@ fun HazeBottomBar(
         Modifier.hazeEffect(state = hazeState) {
             blurEffect {
                 style = resolvedStyle
+                progressive = HazeProgressive.verticalGradient(
+                    startIntensity = 0f,
+                    endIntensity = 1f,
+                )
             }
         }
     } else {
@@ -49,17 +57,30 @@ fun HazeBottomBar(
         modifier = Modifier
             .windowInsetsPadding(WindowInsets.ime)
             .fillMaxWidth()
-            .then(effectModifier)
             .then(modifier),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = SettingsStepHorizontalPadding)
-                .padding(top = 0.dp, bottom = 16.dp),
-        ) {
-            content()
+        Box(Modifier.fillMaxWidth()) {
+            if (baseColor != null) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(baseColor),
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .then(effectModifier),
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = SettingsStepHorizontalPadding)
+                    .padding(top = 0.dp, bottom = 16.dp),
+            ) {
+                content()
+            }
         }
     }
 }
@@ -71,12 +92,18 @@ fun HazeActionButton(
     modifier: Modifier = Modifier,
     innerModifier: Modifier = Modifier,
     hazeStyle: HazeBlurStyle? = null,
+    baseColor: Color? = null,
     enabled: Boolean = true,
     loading: Boolean = false,
     interactionSource: MutableInteractionSource? = null,
     content: @Composable (RowScope.() -> Unit)
 ) {
-    HazeBottomBar(hazeState = hazeState, modifier = modifier, hazeStyle = hazeStyle) {
+    HazeBottomBar(
+        hazeState = hazeState,
+        modifier = modifier,
+        hazeStyle = hazeStyle,
+        baseColor = baseColor,
+    ) {
         ActionButton(
             onClick = onClick,
             modifier = innerModifier,

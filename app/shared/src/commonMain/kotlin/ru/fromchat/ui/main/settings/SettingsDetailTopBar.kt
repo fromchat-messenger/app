@@ -2,6 +2,7 @@ package ru.fromchat.ui.main.settings
 
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.animate
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,6 +33,8 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.back
+import ru.fromchat.ui.extraStatusBars
+import ru.fromchat.ui.main.LocalConversationListDetailActive
 import ru.fromchat.ui.main.detailPaneShowBackButton
 
 /** Idle gap after mouse-wheel / trackpad deltas before snapping the collapsing bar. */
@@ -85,11 +88,19 @@ fun SettingsDetailTopBar(
     // `surfaceContainerLowest` — that token reads as a separate pane fill in
     // two-pane against the list–detail shell.
     val paneColor = MaterialTheme.colorScheme.background
+    // List–detail shell already pads/consumes extraStatusBars; full-screen settings
+    // (e.g. logged-out About) need the desktop title-bar inset explicitly.
+    val topBarWindowInsets = if (LocalConversationListDetailActive.current) {
+        WindowInsets(0, 0, 0, 0)
+    } else {
+        WindowInsets.extraStatusBars
+    }
     if (settingsDetailUseCollapsingTopBar()) {
         MediumTopAppBar(
             title = title,
             navigationIcon = navigationIcon,
             scrollBehavior = scrollBehavior,
+            windowInsets = topBarWindowInsets,
             // Unscrolled: pane. Collapsed: default scrolledContainerColor (elevation).
             colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = paneColor,
@@ -100,6 +111,7 @@ fun SettingsDetailTopBar(
         TopAppBar(
             title = title,
             navigationIcon = navigationIcon,
+            windowInsets = topBarWindowInsets,
             colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = paneColor,
                 scrolledContainerColor = paneColor,
