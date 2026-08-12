@@ -45,7 +45,7 @@ sqldelight = "2.3.2"
 livekitAndroid = "2.27.0"
 livekitAndroidComposeComponents = "2.4.0"
 markdownRendererM3 = "0.43.0"
-bouncycastle = "1.85"
+bouncycastle = "1.85.2"
 webkit = "1.16.0"
 
 [libraries]
