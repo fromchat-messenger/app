@@ -37,17 +37,30 @@ object DmNav {
 /**
  * Opens a DM chat, replacing any prior conversation/profile above the main `chat` root
  * so large-screen switches do not stack previous chats.
+ *
+ * No-ops when that DM chat is already the top destination (avoids NavHost enter/exit
+ * for re-selecting the same conversation in list–detail).
  */
 fun NavController.navigateToDmChat(
     otherUserId: Int,
     sourceMessageId: Int? = null,
     builder: NavOptionsBuilder.() -> Unit = {},
 ) {
+    if (isCurrentDmChat(otherUserId)) return
+
     navigate(DmNav.chatRoute(otherUserId, sourceMessageId)) {
         popUpTo(graph.startDestinationId) { saveState = true }
         launchSingleTop = true
         builder()
     }
+}
+
+/** True when the back-stack top is already [DmNav.CHAT_ROUTE] for [otherUserId]. */
+fun NavController.isCurrentDmChat(otherUserId: Int): Boolean {
+    val entry = currentBackStackEntry ?: return false
+    if (entry.destination.route != DmNav.CHAT_ROUTE) return false
+    val currentId = entry.savedStateHandle.get<String>("otherUserId")?.toIntOrNull()
+    return currentId == otherUserId
 }
 
 private const val DM_AVATAR_KEY_PREFIX = "dm-avatar-"

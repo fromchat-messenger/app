@@ -110,6 +110,7 @@
     <string name="search_not_found">Ничего не найдено</string>
     <string name="search_not_found_message">Ничего не найдено. Попробуйте переформулировать запрос.</string>
     <string name="message_placeholder">Напишите сообщение…</string>
+    <string name="chat_drop_attachment_hint">Отпустите файл здесь</string>
     <string name="status_connecting">Соединение</string>
     <string name="status_connected">Подключено</string>
     <string name="status_disconnected">Отключено</string>

@@ -3,10 +3,14 @@ package ru.fromchat.ui.auth
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
@@ -30,6 +34,7 @@ import ru.fromchat.logs_title
 import ru.fromchat.more
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.components.Text
+import ru.fromchat.ui.extraStatusBars
 import ru.fromchat.ui.main.settings.SettingsRoutes
 
 /** Margin between the window edge and the wide [AuthContentFrame] panel. */
@@ -37,7 +42,8 @@ val AuthWidePanelOuterPadding = 32.dp
 
 /**
  * Centers auth content on wide layouts (max 600×800.dp, [AuthWidePanelOuterPadding] margin).
- * Narrow layouts fill the window ([widePanel] = false).
+ * Narrow layouts fill the window edge-to-edge ([widePanel] = false) so top-bar haze can
+ * draw under the status bar; wide layouts clear system bars outside the panel.
  */
 @Composable
 fun AuthContentFrame(
@@ -49,12 +55,18 @@ fun AuthContentFrame(
         if (widePanel) {
             Box(
                 Modifier
-                    .align(Alignment.Center)
-                    .padding(AuthWidePanelOuterPadding)
-                    .widthIn(max = 600.dp)
-                    .heightIn(max = 800.dp),
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.safeDrawing.union(WindowInsets.extraStatusBars)),
             ) {
-                content(true)
+                Box(
+                    Modifier
+                        .align(Alignment.Center)
+                        .padding(AuthWidePanelOuterPadding)
+                        .widthIn(max = 600.dp)
+                        .heightIn(max = 800.dp),
+                ) {
+                    content(true)
+                }
             }
         } else {
             Box(Modifier.fillMaxSize()) {

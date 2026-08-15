@@ -18,14 +18,14 @@ FromChat is a 100% free and open-source messenger. This repository is the cross-
 
 ## 📊 Client Comparison
 
-| Feature | Android | Desktop | Web | iOS |
-| --- | --- | --- | --- | --- |
-| **Messaging and profiles** | ✅ | ✅ | ✅ | ✅ |
-| **Voice/video calls** | ✅ | ✅ | ✅ | ✅ |
-| **Screen sharing** | ✅ | ❌ | ✅ | ❌ |
-| **Push when backgrounded** | ✅ (FCM) | ✅ (persistent WS + tray) | ✅ | ❌ (WS while open) |
-| **Message reactions** | ❌ | ❌ | ✅ | ❌ |
-| **Rich attachment support** | ✅ | ✅ | ❌ | ✅ |
+| Feature                     | Android | Desktop                  | Web | iOS               |
+|-----------------------------|---------|--------------------------|-----|-------------------|
+| **Messaging and profiles**  | ✅       | ✅                        | ✅   | ✅                 |
+| **Voice/video calls**       | ✅       | ✅                        | ✅   | ✅                 |
+| **Screen sharing**          | ✅       | ❌                        | ✅   | ❌                 |
+| **Push when backgrounded**  | ✅ (FCM) | ✅ (persistent WS + tray) | ✅   | ❌ (WS while open) |
+| **Message reactions**       | ❌       | ❌                        | ✅   | ❌                 |
+| **Rich attachment support** | ✅       | ✅                        | ❌   | ✅                 |
 
 Desktop replaces the former Electron client in the Web repo. Run with `./gradlew :app:desktop:run`.
 
@@ -70,22 +70,25 @@ Desktop replaces the former Electron client in the Web repo. Run with `./gradlew
 
    mkdir -p app/android/keys
 
+   # Quote passwords: characters like & * ? ! break unquoted shell args.
    keytool -genkey -v -keystore app/android/keys/debug.jks \
      -keyalg RSA -keysize 2048 -validity 10000 \
-     -alias key0 -storepass $DEBUG_STORE_PASS -keypass $DEBUG_KEY_PASS \
+     -alias key0 -storepass "$DEBUG_STORE_PASS" -keypass "$DEBUG_KEY_PASS" \
      -dname "CN=Debug, O=FromChat, C=RU"
 
    keytool -genkey -v -keystore app/android/keys/release.jks \
      -keyalg RSA -keysize 2048 -validity 10000 \
-     -alias key0 -storepass $RELEASE_STORE_PASS -keypass $RELEASE_KEY_PASS \
+     -alias key0 -storepass "$RELEASE_STORE_PASS" -keypass "$RELEASE_KEY_PASS" \
      -dname "CN=Release, O=FromChat, C=RU"
 
-   cat > app/android/keystore.properties << EOF
-   releaseStorePassword=$RELEASE_STORE_PASS
-   releaseKeyPassword=$RELEASE_KEY_PASS
-   debugStorePassword=$DEBUG_STORE_PASS
-   debugKeyPassword=$DEBUG_KEY_PASS
-   EOF
+   # Path must be app/android/keys/keystore.properties (matches build.gradle.kts).
+   # Outer "…" / '…' around values are optional; Gradle strips them.
+   cat > app/android/keys/keystore.properties << EOF
+releaseStorePassword=$RELEASE_STORE_PASS
+releaseKeyPassword=$RELEASE_KEY_PASS
+debugStorePassword=$DEBUG_STORE_PASS
+debugKeyPassword=$DEBUG_KEY_PASS
+EOF
    ```
 
 3. **Open in Android Studio:** `File → Open` → repo root. Gradle syncs dependencies automatically.

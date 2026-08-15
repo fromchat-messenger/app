@@ -88,6 +88,7 @@ import ru.fromchat.ui.calls.CallOverlay
 import ru.fromchat.ui.chat.panels.dm.navigateToDmChat
 import ru.fromchat.ui.chat.panels.publicchat.PublicChatNav
 import ru.fromchat.ui.chat.panels.publicchat.navigateToPublicChat
+import ru.fromchat.ui.chat.utils.appRootAttachmentDropTarget
 import ru.fromchat.ui.main.ConversationListDetailShell
 import ru.fromchat.ui.main.DesktopChatsDetailNavHost
 import ru.fromchat.ui.main.DesktopContactsDetailNavHost
@@ -242,6 +243,7 @@ fun App(
             runCatching { ensureFromChatCacheGeneration() }
             runCatching { NetworkConnectivity.ensureStarted() }
             runCatching { ApiClient.loadPersistedData() }
+            runCatching { UpdateSyncManager.initializeFromStorage(ApiClient.user?.id) }
             Logger.i("App", "FromChat started")
         }
 
@@ -264,10 +266,6 @@ fun App(
             else -> "welcome"
         }
         onContentReady()
-
-        runCatching {
-            UpdateSyncManager.initializeFromStorage(ApiClient.user?.id)
-        }
 
         DeferredStartupNetwork.scheduleAfterUiVisible()
 
@@ -525,7 +523,11 @@ fun App(
                     }
 
                     ScreenSurface {
-                        Box(Modifier.fillMaxSize()) {
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .appRootAttachmentDropTarget(),
+                        ) {
                             @Composable
                             fun AppNavHost(modifier: Modifier = Modifier) {
                                 NavHost(

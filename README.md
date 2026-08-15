@@ -18,14 +18,14 @@ FromChat — 100% бесплатный и открытый мессенджер.
 
 ## 📊 Сравнение клиентов
 
-| Возможность | Android | Desktop | Web | iOS |
-| --- | --- | --- | --- | --- |
-| **Обмен сообщениями и профили** | ✅ | ✅ | ✅ | ✅ |
-| **Голосовые/видеозвонки** | ✅ | ✅ | ✅ | ✅ |
-| **Демонстрация экрана** | ✅ | ❌ | ✅ | ❌ |
-| **Push в фоне** | ✅ (FCM) | ✅ (постоянный WS + tray) | ✅ | ❌ (WS пока открыто) |
-| **Реакции на сообщения** | ❌ | ❌ | ✅ | ❌ |
-| **Расширенная поддержка вложений** | ✅ | ✅ | ❌ | ✅ |
+| Возможность                        | Android | Desktop                  | Web | iOS                 |
+|------------------------------------|---------|--------------------------|-----|---------------------|
+| **Обмен сообщениями и профили**    | ✅       | ✅                        | ✅   | ✅                   |
+| **Голосовые/видеозвонки**          | ✅       | ✅                        | ✅   | ✅                   |
+| **Демонстрация экрана**            | ✅       | ❌                        | ✅   | ❌                   |
+| **Push в фоне**                    | ✅ (FCM) | ✅ (постоянный WS + tray) | ✅   | ❌ (WS пока открыто) |
+| **Реакции на сообщения**           | ❌       | ❌                        | ✅   | ❌                   |
+| **Расширенная поддержка вложений** | ✅       | ✅                        | ❌   | ✅                   |
 
 Desktop заменяет бывший Electron-клиент в репозитории Web. Запуск: `./gradlew :app:desktop:run`.
 
@@ -63,24 +63,24 @@ Desktop заменяет бывший Electron-клиент в репозито�
 2. **Сгенерируйте ключи (Debug & Release):**
 
    ```bash
-   DEBUG_STORE_PASS=CHANGEME
-   DEBUG_KEY_PASS=CHANGEME
-   RELEASE_STORE_PASS=CHANGEME
-   RELEASE_KEY_PASS=CHANGEME
+   DEBUG_STORE_PASS="CHANGEME"
+   DEBUG_KEY_PASS="CHANGEME"
+   RELEASE_STORE_PASS="CHANGEME"
+   RELEASE_KEY_PASS="CHANGEME"
 
    mkdir -p app/android/keys
 
    keytool -genkey -v -keystore app/android/keys/debug.jks \
      -keyalg RSA -keysize 2048 -validity 10000 \
-     -alias key0 -storepass $DEBUG_STORE_PASS -keypass $DEBUG_KEY_PASS \
+     -alias key0 -storepass "$DEBUG_STORE_PASS" -keypass "$DEBUG_KEY_PASS" \
      -dname "CN=Debug, O=FromChat, C=RU"
 
    keytool -genkey -v -keystore app/android/keys/release.jks \
      -keyalg RSA -keysize 2048 -validity 10000 \
-     -alias key0 -storepass $RELEASE_STORE_PASS -keypass $RELEASE_KEY_PASS \
+     -alias key0 -storepass "$RELEASE_STORE_PASS" -keypass "$RELEASE_KEY_PASS" \
      -dname "CN=Release, O=FromChat, C=RU"
 
-   cat > app/android/keystore.properties << EOF
+   cat > app/android/keys/keystore.properties << EOF
    releaseStorePassword=$RELEASE_STORE_PASS
    releaseKeyPassword=$RELEASE_KEY_PASS
    debugStorePassword=$DEBUG_STORE_PASS
