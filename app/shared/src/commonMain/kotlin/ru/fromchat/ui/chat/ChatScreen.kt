@@ -147,9 +147,12 @@ import ru.fromchat.status_connecting
 import ru.fromchat.status_updating
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.chat.utils.AttachmentDownloadVisibility
+import ru.fromchat.ui.chat.utils.PendingChatAttachmentDrops
+import ru.fromchat.ui.chat.utils.chatAttachmentDropTarget
 import ru.fromchat.ui.chat.utils.getImageAspectRatio
 import ru.fromchat.ui.chat.utils.getImageDimensions
 import ru.fromchat.ui.chat.utils.imageAttachmentKey
+import ru.fromchat.ui.chat.utils.rememberAttachmentDropBridge
 import ru.fromchat.ui.chat.utils.visibleMessageIdsInChatList
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.SuspendedAccountSupportSheet
@@ -443,6 +446,13 @@ fun ChatScreen(
     val online by NetworkConnectivity.isOnline.collectAsState(initial = true)
     val suspensionState by ApiClient.suspensionState.collectAsState()
     val isReadOnly = suspensionState.isSuspended
+    val attachmentDropBridge = rememberAttachmentDropBridge()
+    val attachmentDropEnabled = panel.supportsAttachments && !isReadOnly
+    val attachmentDropChatKey = panel.getRecipientId()?.let { PendingChatAttachmentDrops.dmKey(it) }
+        ?: PendingChatAttachmentDrops.publicKey()
+    val pendingDropUris = remember(attachmentDropChatKey) {
+        PendingChatAttachmentDrops.consume(attachmentDropChatKey)
+    }
     val dmRecipientId = panel.getRecipientId()
     var peerDeleted by remember(dmRecipientId) { mutableStateOf(false) }
     val deleteChatLabel = stringResource(Res.string.action_delete_chat)
@@ -875,6 +885,8 @@ fun ChatScreen(
                         text = inputText,
                         onTextChange = { inputText = it },
                         currentUserId = currentUserId,
+                        attachmentDropBridge = attachmentDropBridge,
+                        pendingDropUris = pendingDropUris,
                         onSend = { text, attachments ->
                             if (editingMessage != null) {
                                 scope.launch {
@@ -1086,6 +1098,10 @@ fun ChatScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .chatAttachmentDropTarget(
+                        enabled = attachmentDropEnabled,
+                        bridge = attachmentDropBridge,
+                    )
                     .then(
                         if (contextMenuState.isOpen) {
                             Modifier.pointerInput(Unit) {

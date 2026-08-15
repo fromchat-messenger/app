@@ -45,6 +45,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -76,6 +77,9 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastAll
 import kotlinx.coroutines.withTimeout
+import ru.fromchat.ui.chat.utils.AttachmentDropHighlightBox
+import ru.fromchat.ui.chat.utils.chatAttachmentDropTarget
+import ru.fromchat.ui.chat.utils.rememberAttachmentDropBridge
 import ru.fromchat.ui.components.SearchBar
 import ru.fromchat.ui.components.SearchBarSharedElement
 import com.pr0gramm3r101.components.Category
@@ -313,6 +317,9 @@ internal fun ChatConversationsList(
     ) -> Unit,
     onEnterSelectionMode: (lazyIndex: Int, target: ChatContextMenuTarget, userId: Int?) -> Unit,
     onRowPositioned: (lazyIndex: Int, offset: Offset, size: IntSize) -> Unit,
+    onDropAttachmentsOnPublic: (uris: List<String>) -> Unit = {},
+    onDropAttachmentsOnConversation: (userId: Int, uris: List<String>) -> Unit = { _, _ -> },
+    attachmentDropEnabled: Boolean = true,
 ) {
     val scrollBlocked = contextMenuState.isOverlayActive
     val showPublicChat = listFilter == ChatListFilter.Active && !publicChatTitle.isNullOrBlank()
@@ -435,6 +442,9 @@ internal fun ChatConversationsList(
                             onRowPositioned = { offset, size ->
                                 onRowPositioned(ChatListLayout.PUBLIC_CHAT_ROW, offset, size)
                             },
+                            attachmentDropEnabled = attachmentDropEnabled &&
+                                listMode == ChatsListMode.Normal,
+                            onAttachmentsDropped = onDropAttachmentsOnPublic,
                         )
                     }
                     if (conversations.isNotEmpty()) {
@@ -514,6 +524,11 @@ internal fun ChatConversationsList(
                                 onEnterSelectionMode(lazyIndex, ChatContextMenuTarget.Dm, conversation.otherUserId)
                             },
                             onRowPositioned = { offset, size -> onRowPositioned(lazyIndex, offset, size) },
+                            attachmentDropEnabled = attachmentDropEnabled &&
+                                listMode == ChatsListMode.Normal,
+                            onAttachmentsDropped = { uris ->
+                                onDropAttachmentsOnConversation(conversation.otherUserId, uris)
+                            },
                         )
                     }
                     if (index < conversations.lastIndex) {
@@ -827,12 +842,21 @@ internal fun PublicChatRow(
     onMouseContextMenu: (menuPosition: Offset, rowOffset: Offset, rowSize: IntSize) -> Unit,
     onBodyLongPress: () -> Unit,
     onRowPositioned: (offset: Offset, size: IntSize) -> Unit,
+    attachmentDropEnabled: Boolean = false,
+    onAttachmentsDropped: (List<String>) -> Unit = {},
 ) {
     var rowRootOffset by remember { mutableStateOf(Offset.Zero) }
     var rowSize by remember { mutableStateOf(IntSize.Zero) }
     val pressScaleAnim = remember { Animatable(1f) }
     val contextMenuScale = chatRowContextMenuScale(rowRevealProgress, contextMenuPressScaleActive)
     val rowInteractionSource = remember { MutableInteractionSource() }
+    val dropBridge = rememberAttachmentDropBridge()
+    val clipShape = listItemClipShape(listItemPosition, groupItemCount)
+
+    DisposableEffect(dropBridge, onAttachmentsDropped) {
+        dropBridge.consumer = onAttachmentsDropped
+        onDispose { dropBridge.consumer = null }
+    }
 
     LaunchedEffect(isPressingForContextMenu, isHiddenForOverlay, rowRevealProgress, contextMenuPressScaleActive) {
         when {
@@ -843,46 +867,57 @@ internal fun PublicChatRow(
         }
     }
 
-    ChatRowScaleContainer(
-        listItemPosition = listItemPosition,
-        groupItemCount = groupItemCount,
-        pressScale = pressScaleAnim.value,
+    AttachmentDropHighlightBox(
+        active = dropBridge.dropHighlightActive,
+        shape = clipShape,
         modifier = Modifier
-            .alpha(if (isHiddenForOverlay) 0f else 1f)
             .fillMaxWidth()
-            .onGloballyPositioned { coords ->
-                rowRootOffset = coords.positionInRoot()
-                rowSize = coords.size
-                onRowPositioned(rowRootOffset, rowSize)
-            },
-        interactionModifier = Modifier.chatRowOpenAndSelectGestures(
-            selectionEnabled = listMode == ChatsListMode.Normal,
-            interactionSource = rowInteractionSource,
-            onOpen = onOpenPublic,
-            onEnterSelection = onBodyLongPress,
-            onMouseContextMenu = { localOffset ->
-                onMouseContextMenu(rowRootOffset + localOffset, rowRootOffset, rowSize)
-            },
-        ),
+            .chatAttachmentDropTarget(
+                enabled = attachmentDropEnabled,
+                bridge = dropBridge,
+            ),
     ) {
-        PublicChatRowContent(
-            publicChatTitle = publicChatTitle,
-            publicChatPreviewState = publicChatPreviewState,
-            defaultLastMessage = defaultLastMessage,
-            listMode = listMode,
-            selectionTransitionProgress = selectionTransitionProgress,
-            isSelected = isSelected,
+        ChatRowScaleContainer(
             listItemPosition = listItemPosition,
             groupItemCount = groupItemCount,
-            avatarEnabled = listMode == ChatsListMode.Normal,
-            onOpenPublic = onOpenPublic,
-            onAvatarPressStart = { onAvatarPressStart(rowRootOffset, rowSize) },
-            onAvatarPressEnd = onAvatarPressEnd,
-            onAvatarLongPress = { localOffset ->
-                onAvatarLongPress(rowRootOffset + localOffset, rowRootOffset, rowSize)
-            },
-            onBodyLongPress = onBodyLongPress,
-        )
+            pressScale = pressScaleAnim.value,
+            modifier = Modifier
+                .alpha(if (isHiddenForOverlay) 0f else 1f)
+                .fillMaxWidth()
+                .onGloballyPositioned { coords ->
+                    rowRootOffset = coords.positionInRoot()
+                    rowSize = coords.size
+                    onRowPositioned(rowRootOffset, rowSize)
+                },
+            interactionModifier = Modifier.chatRowOpenAndSelectGestures(
+                selectionEnabled = listMode == ChatsListMode.Normal,
+                interactionSource = rowInteractionSource,
+                onOpen = onOpenPublic,
+                onEnterSelection = onBodyLongPress,
+                onMouseContextMenu = { localOffset ->
+                    onMouseContextMenu(rowRootOffset + localOffset, rowRootOffset, rowSize)
+                },
+            ),
+        ) {
+            PublicChatRowContent(
+                publicChatTitle = publicChatTitle,
+                publicChatPreviewState = publicChatPreviewState,
+                defaultLastMessage = defaultLastMessage,
+                listMode = listMode,
+                selectionTransitionProgress = selectionTransitionProgress,
+                isSelected = isSelected,
+                listItemPosition = listItemPosition,
+                groupItemCount = groupItemCount,
+                avatarEnabled = listMode == ChatsListMode.Normal,
+                onOpenPublic = onOpenPublic,
+                onAvatarPressStart = { onAvatarPressStart(rowRootOffset, rowSize) },
+                onAvatarPressEnd = onAvatarPressEnd,
+                onAvatarLongPress = { localOffset ->
+                    onAvatarLongPress(rowRootOffset + localOffset, rowRootOffset, rowSize)
+                },
+                onBodyLongPress = onBodyLongPress,
+            )
+        }
     }
 }
 
@@ -974,12 +1009,21 @@ internal fun DmConversationRow(
     onBodyLongPress: () -> Unit,
     onRowPositioned: (offset: Offset, size: IntSize) -> Unit,
     avatarEnabled: Boolean = listMode == ChatsListMode.Normal,
+    attachmentDropEnabled: Boolean = false,
+    onAttachmentsDropped: (List<String>) -> Unit = {},
 ) {
     var rowRootOffset by remember { mutableStateOf(Offset.Zero) }
     var rowSize by remember { mutableStateOf(IntSize.Zero) }
     val pressScaleAnim = remember { Animatable(1f) }
     val contextMenuScale = chatRowContextMenuScale(rowRevealProgress, contextMenuPressScaleActive)
     val rowInteractionSource = remember { MutableInteractionSource() }
+    val dropBridge = rememberAttachmentDropBridge()
+    val clipShape = listItemClipShape(listItemPosition, groupItemCount)
+
+    DisposableEffect(dropBridge, onAttachmentsDropped) {
+        dropBridge.consumer = onAttachmentsDropped
+        onDispose { dropBridge.consumer = null }
+    }
 
     LaunchedEffect(isPressingForContextMenu, isHiddenForOverlay, rowRevealProgress, contextMenuPressScaleActive) {
         when {
@@ -990,46 +1034,57 @@ internal fun DmConversationRow(
         }
     }
 
-    ChatRowScaleContainer(
-        listItemPosition = listItemPosition,
-        groupItemCount = groupItemCount,
-        pressScale = pressScaleAnim.value,
+    AttachmentDropHighlightBox(
+        active = dropBridge.dropHighlightActive,
+        shape = clipShape,
         modifier = Modifier
-            .alpha(if (isHiddenForOverlay) 0f else 1f)
             .fillMaxWidth()
-            .onGloballyPositioned { coords ->
-                rowRootOffset = coords.positionInRoot()
-                rowSize = coords.size
-                onRowPositioned(rowRootOffset, rowSize)
-            },
-        interactionModifier = Modifier.chatRowOpenAndSelectGestures(
-            selectionEnabled = listMode == ChatsListMode.Normal,
-            interactionSource = rowInteractionSource,
-            onOpen = onOpenConversation,
-            onEnterSelection = onBodyLongPress,
-            onMouseContextMenu = { localOffset ->
-                onMouseContextMenu(rowRootOffset + localOffset, rowRootOffset, rowSize)
-            },
-        ),
+            .chatAttachmentDropTarget(
+                enabled = attachmentDropEnabled,
+                bridge = dropBridge,
+            ),
     ) {
-        DmConversationRowContent(
-            conversation = conversation,
-            defaultLastMessage = defaultLastMessage,
-            statusMap = statusMap,
-            listMode = listMode,
-            selectionTransitionProgress = selectionTransitionProgress,
-            isSelected = isSelected,
+        ChatRowScaleContainer(
             listItemPosition = listItemPosition,
             groupItemCount = groupItemCount,
-            avatarEnabled = avatarEnabled,
-            onOpenConversation = onOpenConversation,
-            onAvatarPressStart = { onAvatarPressStart(rowRootOffset, rowSize) },
-            onAvatarPressEnd = onAvatarPressEnd,
-            onAvatarLongPress = { localOffset ->
-                onAvatarLongPress(rowRootOffset + localOffset, rowRootOffset, rowSize)
-            },
-            onBodyLongPress = onBodyLongPress,
-        )
+            pressScale = pressScaleAnim.value,
+            modifier = Modifier
+                .alpha(if (isHiddenForOverlay) 0f else 1f)
+                .fillMaxWidth()
+                .onGloballyPositioned { coords ->
+                    rowRootOffset = coords.positionInRoot()
+                    rowSize = coords.size
+                    onRowPositioned(rowRootOffset, rowSize)
+                },
+            interactionModifier = Modifier.chatRowOpenAndSelectGestures(
+                selectionEnabled = listMode == ChatsListMode.Normal,
+                interactionSource = rowInteractionSource,
+                onOpen = onOpenConversation,
+                onEnterSelection = onBodyLongPress,
+                onMouseContextMenu = { localOffset ->
+                    onMouseContextMenu(rowRootOffset + localOffset, rowRootOffset, rowSize)
+                },
+            ),
+        ) {
+            DmConversationRowContent(
+                conversation = conversation,
+                defaultLastMessage = defaultLastMessage,
+                statusMap = statusMap,
+                listMode = listMode,
+                selectionTransitionProgress = selectionTransitionProgress,
+                isSelected = isSelected,
+                listItemPosition = listItemPosition,
+                groupItemCount = groupItemCount,
+                avatarEnabled = avatarEnabled,
+                onOpenConversation = onOpenConversation,
+                onAvatarPressStart = { onAvatarPressStart(rowRootOffset, rowSize) },
+                onAvatarPressEnd = onAvatarPressEnd,
+                onAvatarLongPress = { localOffset ->
+                    onAvatarLongPress(rowRootOffset + localOffset, rowRootOffset, rowSize)
+                },
+                onBodyLongPress = onBodyLongPress,
+            )
+        }
     }
 }
 
