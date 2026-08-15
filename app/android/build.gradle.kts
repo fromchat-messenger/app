@@ -75,19 +75,25 @@ extensions.configure<ApplicationExtension> {
             load(file("keys/keystore.properties").inputStream())
         }
 
+        fun Properties.password(key: String): String {
+            val raw = getProperty(key)
+                ?: error("Missing $key in keys/keystore.properties")
+            return raw.trim().removeSurrounding("\"").removeSurrounding("'")
+        }
+
         create("release") {
             storeFile = file("keys/release.jks")
             keyAlias = "key0"
-            storePassword = keystoreProperties["releaseStorePassword"].toString()
-            keyPassword = keystoreProperties["releaseKeyPassword"].toString()
+            storePassword = keystoreProperties.password("releaseStorePassword")
+            keyPassword = keystoreProperties.password("releaseKeyPassword")
             enableV3Signing = true
         }
 
         getByName("debug") {
             storeFile = file("keys/debug.jks")
-            keyAlias = "debug"
-            storePassword = keystoreProperties["debugStorePassword"].toString()
-            keyPassword = keystoreProperties["debugKeyPassword"].toString()
+            keyAlias = "key0"
+            storePassword = keystoreProperties.password("debugStorePassword")
+            keyPassword = keystoreProperties.password("debugKeyPassword")
             enableV3Signing = true
         }
     }

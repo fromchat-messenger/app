@@ -72,6 +72,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastAll
 import kotlin.math.roundToInt
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Logger
@@ -246,24 +247,6 @@ fun MessageItem(
     val isCorrupted = remember(message.files, message.fileThumbnails, message.dmEnvelope) {
         isMessageCorrupted(message)
     }
-    val primaryIsImageMessage = remember(
-        message.pendingFileUri,
-        message.pendingFilename,
-        message.files,
-    ) {
-        val pendingIsImage = when {
-            message.pendingFileUri != null &&
-                DecryptedImageCache.isDecryptedImageCacheUri(message.pendingFileUri) -> true
-            message.pendingFilename?.isNotBlank() == true ->
-                isImageFilename(message.pendingFilename)
-            message.pendingFileUri != null -> isImageFilename(
-                message.pendingFileUri.substringAfterLast('/').substringBefore('?')
-            )
-            else -> false
-        }
-        pendingIsImage ||
-            message.files?.firstOrNull()?.let { isImageFilename(it.name) } == true
-    }
     val formattedTime = remember(message.timestamp) {
         formatMessageTimeLocal(message.timestamp)
     }
@@ -289,13 +272,16 @@ fun MessageItem(
     var rowLayoutCoords by remember(message.id) { mutableStateOf<LayoutCoordinates?>(null) }
     var bubbleContentCoords by remember(message.id) { mutableStateOf<LayoutCoordinates?>(null) }
     LaunchedEffect(isContextMenuForThisMessage) {
-        if (!isContextMenuForThisMessage) isPressed = false
+        if (isContextMenuForThisMessage) {
+            // Keep the press squash briefly so the bubble can animate down, then release
+            // so it springs back up as the menu opens.
+            delay(48)
+            isPressed = false
+        } else {
+            isPressed = false
+        }
     }
-    val scaleTarget = when {
-        isContextMenuForThisMessage -> 0.96f
-        isPressed && !isContextMenuOpen -> 0.96f
-        else -> 1f
-    }
+    val scaleTarget = if (isPressed) 0.96f else 1f
     val avatarScaleTarget = if (avatarPressed && !isContextMenuOpen) 0.96f else 1f
     val replyScaleTarget = if (replyPressed && !isContextMenuOpen) 0.96f else 1f
     val scale by animateFloatAsState(
@@ -371,22 +357,17 @@ fun MessageItem(
                 "enterFinished=$enterFinished scale=${enterScale.value}",
         )
     }
-    LaunchedEffect(enterIdentity, isNewEnterRole, primaryIsImageMessage) {
-        if (isNewEnterRole && primaryIsImageMessage) {
-            enterStarted = true
-            enterFinished = true
-            enterScale.snapTo(1f)
-        } else if (isNewEnterRole && !enterStarted) {
+    LaunchedEffect(enterIdentity, isNewEnterRole) {
+        if (isNewEnterRole && !enterStarted) {
             enterStarted = true
             enterFinished = false
             enterScale.snapTo(0f)
         }
     }
-    val runEnterAnimation =
-        enterStarted && !enterFinished && !isExiting && !primaryIsImageMessage
+    val runEnterAnimation = enterStarted && !enterFinished && !isExiting
     // Single effect: start the spring as soon as this bubble is marked for enter.
-    LaunchedEffect(enterIdentity, runEnterAnimation, primaryIsImageMessage) {
-        if (primaryIsImageMessage || !runEnterAnimation) return@LaunchedEffect
+    LaunchedEffect(enterIdentity, runEnterAnimation) {
+        if (!runEnterAnimation) return@LaunchedEffect
         Logger.d(
             "EnterAnim",
             "spring_start identity=${enterIdentity.take(12)} " +

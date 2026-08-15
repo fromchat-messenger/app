@@ -27,6 +27,7 @@ import ru.fromchat.api.schema.websocket.requests.AckUpdatesRequest
 import ru.fromchat.api.schema.websocket.requests.GetUpdatesRequest
 import ru.fromchat.api.schema.websocket.requests.GetUpdatesResponse
 import kotlin.concurrent.Volatile
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Per-device update cursor: advance + ack only after batches are applied successfully.
@@ -51,9 +52,10 @@ object UpdateSyncManager {
         val userId = currentUserId ?: return
         val key = KEY_UPDATES_LAST_SEQ_PREFIX + userId
         val stored = runCatching { settings.getInt(key, 0) }.getOrDefault(0)
-        Logger.d("UpdateSyncManager", "Loaded lastSeq=$stored for userId=$userId")
-        _lastSeq.value = stored
-        ConnectionStateStore.updateSeqAndMissed(lastSeq = stored, missedCount = null)
+        val next = maxOf(_lastSeq.value, stored)
+        Logger.d("UpdateSyncManager", "Loaded lastSeq=$stored for userId=$userId (inMemory=${_lastSeq.value} → $next)")
+        _lastSeq.value = next
+        ConnectionStateStore.updateSeqAndMissed(lastSeq = next, missedCount = _lastMissedCount.value)
     }
 
     /**
@@ -122,6 +124,7 @@ object UpdateSyncManager {
         ConnectionStateStore.onUpdating(start = true)
 
         try {
+            initializeFromStorage(ApiClient.user?.id)
             var rounds = 0
             var consecutiveFailures = 0
             while (rounds < 100) {
@@ -160,6 +163,16 @@ object UpdateSyncManager {
 
                 when (response.status) {
                     "tooLong" -> {
+                        initializeFromStorage(ApiClient.user?.id)
+                        if (_lastSeq.value >= response.lastSeq) {
+                            Logger.i(
+                                "UpdateSyncManager",
+                                "tooLong ignored — cursor already caught up " +
+                                    "lastSeq=${_lastSeq.value} serverSeq=${response.lastSeq}",
+                            )
+                            sendAckFireAndForget(response.lastSeq)
+                            break
+                        }
                         val ok = rebuildStateFromHistory()
                         if (ok) {
                             persistLastSeq(response.lastSeq)
@@ -207,6 +220,8 @@ object UpdateSyncManager {
                     }
                 }
             }
+        } catch (t: CancellationException) {
+            throw t
         } catch (t: Throwable) {
             Logger.w("UpdateSyncManager", "Gap detection failed: ${t.message}", t)
         } finally {

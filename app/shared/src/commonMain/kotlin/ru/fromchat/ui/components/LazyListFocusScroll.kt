@@ -14,11 +14,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.focus.FocusRequester
@@ -141,6 +141,27 @@ private fun effectiveImeBottomPx(
     return (reportedImeBottomPx * (1f - progress)).roundToInt()
 }
 
+/**
+ * True while IME / page predictive-back is still moving — dismiss-follow must stay latched
+ * so reverse gestures keep scrolling content back up.
+ */
+private fun imeDismissFollowActive(
+    phase: ImeKeyboardPhase,
+    imeAnimating: Boolean,
+    predictiveBackProgress: Float,
+    reportedImeBottomPx: Int,
+    settledImeBottomPx: Int,
+): Boolean {
+    if (phase == ImeKeyboardPhase.Hidden && !imeAnimating && predictiveBackProgress <= 0f) {
+        return false
+    }
+    return predictiveBackProgress > 0f ||
+        imeAnimating ||
+        phase == ImeKeyboardPhase.Closing ||
+        phase == ImeKeyboardPhase.ReopeningPartial ||
+        (settledImeBottomPx > 0 && reportedImeBottomPx in 1 until settledImeBottomPx)
+}
+
 /** Scrolls the list when the IME would cover the focused field; skips if already fully visible. */
 @Composable
 fun LazyListImeScrollEffect(
@@ -176,13 +197,14 @@ fun LazyListImeScrollEffect(
         }
     }
 
+    // Do not key on focusedBoundsInWindow: scrollBy updates those bounds and would restart
+    // this effect every frame (cancel/re-apply), which oscillates two scroll targets.
     LaunchedEffect(
         imeMotion.currentBottomPx,
         imeMotion.sourceBottomPx,
         imeMotion.targetBottomPx,
         predictiveBackProgress(),
         scrollState.focusedItemIndex,
-        scrollState.focusedBoundsInWindow,
         viewportBoundsInWindow,
         contentPaddingTop,
         contentPaddingBottom,
@@ -208,12 +230,18 @@ fun LazyListImeScrollEffect(
 
         val reportedImeBottomPx = imeMotion.currentBottomPx
         val previousReported = previousReportedImeBottom.intValue
+        val progress = currentPredictiveProgress.value().coerceIn(0f, 1f)
         val phase = imeMotion.keyboardPhase(
             settledImeBottomPx = settledImeBottom.intValue,
             previousReportedImeBottomPx = previousReported,
         )
 
-        if (!imeMotion.isAnimating) {
+        // Keep the last fully-open height while dismiss-follow is latched; predictive IME
+        // can report source==target at a partial inset and would otherwise overwrite this.
+        if (!imeMotion.isAnimating &&
+            !wasFollowingKeyboardDismiss.value &&
+            progress <= 0f
+        ) {
             settledImeBottom.intValue = reportedImeBottomPx
         }
 
@@ -225,7 +253,6 @@ fun LazyListImeScrollEffect(
             else -> Unit
         }
 
-        val progress = currentPredictiveProgress.value().coerceIn(0f, 1f)
         val followImeBottom = if (progress > 0f) {
             effectiveImeBottomPx(reportedImeBottomPx, progress)
         } else {
@@ -260,9 +287,27 @@ fun LazyListImeScrollEffect(
             wasFollowingKeyboardDismiss.value = true
             previousFollowImeBottom.intValue = followImeBottom
             previousReportedImeBottom.intValue = reportedImeBottomPx
-            if (phase == ImeKeyboardPhase.Open || phase == ImeKeyboardPhase.Hidden) {
+
+            val followStillActive = imeDismissFollowActive(
+                phase = phase,
+                imeAnimating = imeMotion.isAnimating,
+                predictiveBackProgress = progress,
+                reportedImeBottomPx = reportedImeBottomPx,
+                settledImeBottomPx = settledImeBottom.intValue,
+            )
+            if (!followStillActive &&
+                (phase == ImeKeyboardPhase.Open || phase == ImeKeyboardPhase.Hidden)
+            ) {
+                // Reverse/abort already kept the gap locked while the IME moved back.
+                // Do not animateScrollBy here — that fights bring-into-view and glitches.
                 wasFollowingKeyboardDismiss.value = false
                 dismissFollowKeyboardTopGap.value = null
+                if (phase == ImeKeyboardPhase.Open) {
+                    skipStableAnchorAfterReopen.value = true
+                }
+                if (!imeMotion.isAnimating) {
+                    settledImeBottom.intValue = reportedImeBottomPx
+                }
             }
             return@LaunchedEffect
         }

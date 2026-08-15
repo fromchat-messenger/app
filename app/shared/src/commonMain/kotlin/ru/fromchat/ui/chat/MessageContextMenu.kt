@@ -53,9 +53,7 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
-import androidx.compose.ui.window.PopupProperties
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.action_cancel_send
@@ -71,6 +69,14 @@ import ru.fromchat.api.local.messages.isQueuedOutbound
 import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.supportsMouseMessageInteraction
 import ru.fromchat.ui.components.Text
+
+/** Platform host for the message context menu (Popup on mobile, OS window on desktop). */
+@Composable
+internal expect fun MessageContextMenuPopup(
+    onDismissRequest: () -> Unit,
+    positionProvider: PopupPositionProvider,
+    content: @Composable () -> Unit,
+)
 
 data class ContextMenuState(
     val isOpen: Boolean = false,
@@ -102,8 +108,8 @@ internal fun messageContextMenuFingerprint(
 }
 
 private val contextMenuEnterSpec = spring<Float>(
-    dampingRatio = Spring.DampingRatioNoBouncy,
-    stiffness = Spring.StiffnessMedium,
+    dampingRatio = Spring.DampingRatioLowBouncy,
+    stiffness = Spring.StiffnessMediumLow,
 )
 
 private fun clampContextMenuOffset(
@@ -226,20 +232,17 @@ fun MessageContextMenu(
             }
         }
 
-        val scale = 0.8f + 0.2f * animationProgress.floatValue
-        val alpha = animationProgress.floatValue
+        // Match list-item menus (0.5→1) so spring overshoot past 1 is visible.
+        val scale = 0.5f + 0.5f * animationProgress.floatValue
+        val alpha = animationProgress.floatValue.coerceIn(0f, 1f)
 
         // [state.position] is window coordinates (see MessageItem localToWindow).
         // Alignment+offset would add the popup parent’s window origin again (double offset
         // in list–detail panes). Place with an absolute provider instead.
-        Popup(
+        // Desktop uses a real OS window so the menu can sit outside the app frame.
+        MessageContextMenuPopup(
             onDismissRequest = onDismiss,
-            popupPositionProvider = positionProvider,
-            properties = PopupProperties(
-                dismissOnBackPress = true,
-                dismissOnClickOutside = true,
-                clippingEnabled = false,
-            ),
+            positionProvider = positionProvider,
         ) {
             ContextMenuContent(
                 message = state.message,

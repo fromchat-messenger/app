@@ -411,10 +411,6 @@ fun ChatTopBar(
                         blurEffect {
                             blurEnabled = hazeBlurEnabled
                             style = hazeStyle
-                            progressive = HazeProgressive.verticalGradient(
-                                startIntensity = 1f,
-                                endIntensity = 0f,
-                            )
                         }
                     },
             )
@@ -453,10 +449,10 @@ private fun ChatTopBarPill(
     val pillShape = RoundedCornerShape(28.dp)
 
     Box(modifier = modifier.fillMaxWidth()) {
+        // Progressive blur only — not part of the pill chrome.
         Box(
             modifier = Modifier
                 .matchParentSize()
-                .background(chromeColor)
                 .hazeEffect(state = hazeState) {
                     blurEffect {
                         blurEnabled = hazeBlurEnabled
