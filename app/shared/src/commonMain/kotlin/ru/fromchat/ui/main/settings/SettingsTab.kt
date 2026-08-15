@@ -56,6 +56,7 @@ import ru.fromchat.settings_hub_profile_sub
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.extraStatusBars
+import ru.fromchat.ui.main.LocalConversationListDetailActive
 import ru.fromchat.ui.main.LocalDesktopSettingsNavController
 import ru.fromchat.ui.main.LocalMainChromeInsets
 import ru.fromchat.ui.main.mainPagerBottomInset
@@ -89,10 +90,13 @@ fun SettingsTab() {
                 title = {
                     Text(stringResource(Res.string.settings), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 },
-                // Match AppPanel / Chats unscrolled chrome — default `surface` reads as an
-                // elevated (scrolled) stripe over `surfaceContainerLowest`.
+                // Two-pane list sits on AppPanel (`surfaceContainerLowest`); compact uses `surface`.
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+                    containerColor = if (LocalConversationListDetailActive.current) {
+                        MaterialTheme.colorScheme.surfaceContainerLowest
+                    } else {
+                        MaterialTheme.colorScheme.surface
+                    },
                 ),
             )
         }

@@ -139,10 +139,12 @@ import ru.fromchat.status_connecting
 import ru.fromchat.status_updating
 import ru.fromchat.account_suspended
 import ru.fromchat.ui.LocalNavController
+import ru.fromchat.ui.main.LocalConversationListDetailActive
 import ru.fromchat.ui.main.LocalDesktopChatsNavController
 import ru.fromchat.ui.main.LocalMainChromeInsets
 import ru.fromchat.ui.chat.panels.dm.navigateToDmChat
 import ru.fromchat.ui.chat.panels.publicchat.navigateToPublicChat
+import ru.fromchat.ui.chat.utils.PendingChatAttachmentDrops
 import ru.fromchat.ui.components.BackHandler
 import ru.fromchat.ui.components.BrandTitle
 import ru.fromchat.ui.components.ConnectingEllipsis
@@ -338,9 +340,14 @@ private fun rememberSearchBarCollapseSnap(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun chatsTopAppBarColors(blurReveal: Float) = TopAppBarDefaults.topAppBarColors(
-    // Match AppPanel (`surfaceContainerLowest`) when unscrolled so the bar is not a separate stripe.
-    containerColor = MaterialTheme.colorScheme.surfaceContainerLowest
-        .copy(alpha = 1f - blurReveal.coerceIn(0f, 1f)),
+    // Two-pane list sits on AppPanel (`surfaceContainerLowest`); compact uses `surface`.
+    containerColor = (
+        if (LocalConversationListDetailActive.current) {
+            MaterialTheme.colorScheme.surfaceContainerLowest
+        } else {
+            MaterialTheme.colorScheme.surface
+        }
+        ).copy(alpha = 1f - blurReveal.coerceIn(0f, 1f)),
     scrolledContainerColor = Color.Transparent,
 )
 
@@ -1000,6 +1007,19 @@ fun ChatsTab(
 
                                 userId != 0 -> navController.navigateToDmChat(userId)
                             }
+                        },
+                        attachmentDropEnabled = !selectionMode && !suspensionState.isSuspended,
+                        onDropAttachmentsOnPublic = { uris ->
+                            if (uris.isEmpty() || suspensionState.isSuspended) return@ChatConversationsList
+                            PendingChatAttachmentDrops.offer(PendingChatAttachmentDrops.publicKey(), uris)
+                            navController.navigateToPublicChat()
+                        },
+                        onDropAttachmentsOnConversation = { userId, uris ->
+                            if (userId == 0 || uris.isEmpty() || suspensionState.isSuspended) {
+                                return@ChatConversationsList
+                            }
+                            PendingChatAttachmentDrops.offer(PendingChatAttachmentDrops.dmKey(userId), uris)
+                            navController.navigateToDmChat(userId)
                         },
                         onAvatarContextMenuPressStart = { lazyIndex, target, userId, rowOffset, rowSize, position, groupCount ->
                             if (suspensionState.isSuspended) return@ChatConversationsList

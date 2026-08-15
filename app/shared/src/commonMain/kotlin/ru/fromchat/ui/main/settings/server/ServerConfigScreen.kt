@@ -19,10 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.union
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -112,7 +109,6 @@ import ru.fromchat.server_ip_hint
 import ru.fromchat.server_ip_label
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.auth.AuthContentFrame
-import ru.fromchat.ui.extraStatusBars
 import ru.fromchat.ui.components.CtaShape
 import ru.fromchat.ui.components.DisabledBringIntoViewSpec
 import ru.fromchat.ui.components.ExpressiveIconFrame
@@ -581,14 +577,8 @@ fun ServerConfigScreen() {
     }
 
     if (preAuth) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing.union(WindowInsets.extraStatusBars)),
-        ) {
-            AuthContentFrame { _ ->
-                ServerConfigContent()
-            }
+        AuthContentFrame { _ ->
+            ServerConfigContent()
         }
     } else {
         ServerConfigContent()

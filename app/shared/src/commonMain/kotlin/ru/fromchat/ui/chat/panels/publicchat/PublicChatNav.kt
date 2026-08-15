@@ -26,10 +26,15 @@ object PublicChatNav {
 
 /**
  * Opens the public chat, replacing any prior conversation/profile above the main `chat` root.
+ *
+ * No-ops when public chat is already the top destination (avoids NavHost enter/exit
+ * for re-selecting the same conversation in list–detail).
  */
 fun NavController.navigateToPublicChat(
     builder: NavOptionsBuilder.() -> Unit = {},
 ) {
+    if (currentBackStackEntry?.destination?.route == PublicChatNav.CHAT_ROUTE) return
+
     navigate(PublicChatNav.CHAT_ROUTE) {
         popUpTo(graph.startDestinationId) { saveState = true }
         launchSingleTop = true
