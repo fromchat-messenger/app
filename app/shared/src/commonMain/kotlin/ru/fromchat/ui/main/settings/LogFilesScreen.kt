@@ -448,6 +448,7 @@ fun LogFilesScreen(
         topBar = {
             Box {
                 TopAppBar(
+                    windowInsets = settingsDetailWindowInsets(),
                     modifier = Modifier
                         .graphicsLayer { alpha = 1f - selectionProgress }
                         .background(MaterialTheme.colorScheme.surfaceContainer),
@@ -473,6 +474,7 @@ fun LogFilesScreen(
                 )
                 if (selectionMode || selectionProgress > 0f) {
                     TopAppBar(
+                        windowInsets = settingsDetailWindowInsets(),
                         modifier = Modifier.graphicsLayer { alpha = selectionProgress },
                         navigationIcon = {
                             IconButton(

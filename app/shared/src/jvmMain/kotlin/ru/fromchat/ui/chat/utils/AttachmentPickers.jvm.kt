@@ -2,14 +2,18 @@ package ru.fromchat.ui.chat.utils
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.awt.LocalAwtWindow
 import java.awt.FileDialog
 import java.awt.Frame
+import java.awt.Window
 import java.io.File
 import java.net.URI
 import javax.imageio.ImageIO
-import javax.swing.JFileChooser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import ru.fromchat.ui.applyMacOsAppAppearance
+import ru.fromchat.ui.isAppInDarkTheme
 
 actual fun getFilenameFromUri(uri: String): String {
     val path = when {
@@ -19,40 +23,65 @@ actual fun getFilenameFromUri(uri: String): String {
     return path.substringAfterLast('/').takeIf { it.isNotBlank() } ?: "file"
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 actual fun rememberImagePicker(onResult: (List<String>) -> Unit): () -> Unit {
-    return remember(onResult) {
+    val owner = LocalAwtWindow.current
+    val dark = isAppInDarkTheme()
+    return remember(onResult, owner, dark) {
         {
-            val dialog = FileDialog(null as Frame?, "Select images", FileDialog.LOAD).apply {
-                isMultipleMode = true
-                setFilenameFilter { _, name ->
-                    val lower = name.lowercase()
-                    lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") ||
-                        lower.endsWith(".gif") || lower.endsWith(".webp") || lower.endsWith(".bmp")
-                }
-            }
-            dialog.isVisible = true
-            val dir = dialog.directory
-            val files = dialog.files
-            if (dir != null && files != null && files.isNotEmpty()) {
-                onResult(files.map { File(dir, it.name).absolutePath })
-            }
+            showNativeFilePicker(
+                owner = owner,
+                dark = dark,
+                imagesOnly = true,
+                onResult = onResult,
+            )
         }
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 actual fun rememberFilePicker(onResult: (List<String>) -> Unit): () -> Unit {
-    return remember(onResult) {
+    val owner = LocalAwtWindow.current
+    val dark = isAppInDarkTheme()
+    return remember(onResult, owner, dark) {
         {
-            val chooser = JFileChooser().apply {
-                isMultiSelectionEnabled = true
-                fileSelectionMode = JFileChooser.FILES_ONLY
-            }
-            if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-                onResult(chooser.selectedFiles.map { it.absolutePath })
+            showNativeFilePicker(
+                owner = owner,
+                dark = dark,
+                imagesOnly = false,
+                onResult = onResult,
+            )
+        }
+    }
+}
+
+private fun showNativeFilePicker(
+    owner: Window?,
+    dark: Boolean,
+    imagesOnly: Boolean,
+    onResult: (List<String>) -> Unit,
+) {
+    applyMacOsAppAppearance(dark)
+    val dialog = when (owner) {
+        is Frame -> FileDialog(owner, if (imagesOnly) "Select images" else "Select files", FileDialog.LOAD)
+        else -> FileDialog(null as Frame?, if (imagesOnly) "Select images" else "Select files", FileDialog.LOAD)
+    }.apply {
+        isMultipleMode = true
+        if (imagesOnly) {
+            setFilenameFilter { _, name ->
+                val lower = name.lowercase()
+                lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") ||
+                    lower.endsWith(".gif") || lower.endsWith(".webp") || lower.endsWith(".bmp")
             }
         }
+    }
+    dialog.isVisible = true
+    val dir = dialog.directory
+    val files = dialog.files
+    if (dir != null && files != null && files.isNotEmpty()) {
+        onResult(files.map { File(dir, it.name).absolutePath })
     }
 }
 

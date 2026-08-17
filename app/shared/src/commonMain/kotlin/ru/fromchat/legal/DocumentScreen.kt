@@ -70,6 +70,7 @@ import ru.fromchat.ui.chat.rememberChatSurfaceContainerHazeStyle
 import ru.fromchat.ui.components.ActionButton
 import ru.fromchat.ui.components.ScreenSurface
 import ru.fromchat.ui.components.Text
+import ru.fromchat.ui.extraStatusBars
 
 private data class PendingDocument(
     val parsed: ParsedDocument,
@@ -119,6 +120,7 @@ fun DocumentScreen(
         topBar = {
             val topBarHazeStyle = rememberChatSurfaceContainerHazeStyle()
             MediumTopAppBar(
+                windowInsets = WindowInsets.extraStatusBars,
                 title = {
                     Text(
                         text = when (type) {

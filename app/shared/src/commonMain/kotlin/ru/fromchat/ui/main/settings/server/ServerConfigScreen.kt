@@ -121,6 +121,8 @@ import ru.fromchat.ui.components.rememberLazyListFocusScrollState
 import ru.fromchat.ui.components.trackLazyListFocus
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 import ru.fromchat.ui.main.settings.settingsDetailShowBackButton
+import ru.fromchat.ui.main.settings.settingsDetailWindowInsets
+import ru.fromchat.ui.extraStatusBars
 
 private object ServerConfigLazyListIndices {
     const val SERVER_IP_FIELD = 2
@@ -339,6 +341,7 @@ fun ServerConfigScreen() {
             topBar = {
                 val topBarHazeStyle = HazeMaterials.thin()
                 TopAppBar(
+                        windowInsets = settingsDetailWindowInsets(),
                         title = {},
                         navigationIcon = {
                             if (settingsDetailShowBackButton()) {
@@ -366,7 +369,7 @@ fun ServerConfigScreen() {
                     )
             }
         ) { innerPadding ->
-            val floatingHeaderClearance = WindowInsets.statusBars.getTop(density).toDp(density) + 68.dp
+            val floatingHeaderClearance = WindowInsets.extraStatusBars.getTop(density).toDp(density) + 68.dp
             val bottomInsetPadding = innerPadding.calculateBottomPadding()
             val serverConfigListState = rememberLazyListState()
             var listViewportBounds by remember { mutableStateOf<Rect?>(null) }

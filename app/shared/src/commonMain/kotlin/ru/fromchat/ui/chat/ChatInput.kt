@@ -117,12 +117,12 @@ import ru.fromchat.message_placeholder
 import ru.fromchat.message_replying_to
 import ru.fromchat.suspend_chat_banner_message
 import ru.fromchat.ui.chat.utils.SelectedAttachment
-import ru.fromchat.ui.chat.utils.AttachmentDragSession
 import ru.fromchat.ui.chat.utils.TypingHandler
 import ru.fromchat.ui.chat.utils.AttachmentDropBridge
 import ru.fromchat.ui.chat.utils.GlobalAttachmentDropRouter
 import ru.fromchat.ui.chat.utils.chatAttachmentDropTarget
 import ru.fromchat.ui.chat.utils.getFilenameFromUri
+import ru.fromchat.ui.chat.utils.isDropHighlightActive
 import ru.fromchat.ui.chat.utils.rememberFilePicker
 import ru.fromchat.ui.chat.utils.rememberImagePicker
 import ru.fromchat.ui.chat.utils.urisToSelectedAttachments
@@ -327,8 +327,7 @@ fun ChatInput(
     val dropScrimColor = lerp(MaterialTheme.colorScheme.primary, Color.Black, 0.62f)
     val attachmentDropEnabled = supportsAttachments && !isReadOnly
     val dropHighlightActive =
-        attachmentDropEnabled &&
-            (attachmentDropBridge.dropHighlightActive || AttachmentDragSession.isActive)
+        attachmentDropEnabled && attachmentDropBridge.isDropHighlightActive()
     val dropAnimMs = 220
     val dropScale by animateFloatAsState(
         targetValue = if (dropHighlightActive) 0.96f else 1f,
