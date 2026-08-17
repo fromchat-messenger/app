@@ -17,8 +17,10 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -36,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -75,6 +78,7 @@ import ru.fromchat.ui.components.Text
 internal expect fun MessageContextMenuPopup(
     onDismissRequest: () -> Unit,
     positionProvider: PopupPositionProvider,
+    reserveOvershoot: Boolean = false,
     content: @Composable () -> Unit,
 )
 
@@ -164,12 +168,15 @@ fun MessageContextMenu(
     }
     val animationProgress = remember { mutableFloatStateOf(0f) }
     var enterLaidOut by remember(state.message) { mutableStateOf(false) }
+    var reserveOvershoot by remember(state.message) { mutableStateOf(true) }
     var frozenOrigin by remember(state.message) {
         mutableStateOf(TransformOrigin(0f, 0f))
     }
+    var lockedMenuWidthPx by remember(state.message) { mutableIntStateOf(0) }
 
     LaunchedEffect(state.isOpen) {
         if (!state.isOpen) {
+            reserveOvershoot = true
             animate(
                 initialValue = animationProgress.floatValue,
                 targetValue = 0f,
@@ -188,9 +195,11 @@ fun MessageContextMenu(
             shouldShowPopup = true
             if (!enterLaidOut) {
                 animationProgress.floatValue = 0f
+                reserveOvershoot = true
                 return@LaunchedEffect
             }
             animationProgress.floatValue = 0f
+            reserveOvershoot = true
             animate(
                 initialValue = 0f,
                 targetValue = 1f,
@@ -198,6 +207,7 @@ fun MessageContextMenu(
             ) { value, _ ->
                 animationProgress.floatValue = value
             }
+            reserveOvershoot = false
         }
     }
 
@@ -239,10 +249,11 @@ fun MessageContextMenu(
         // [state.position] is window coordinates (see MessageItem localToWindow).
         // Alignment+offset would add the popup parent’s window origin again (double offset
         // in list–detail panes). Place with an absolute provider instead.
-        // Desktop uses a real OS window so the menu can sit outside the app frame.
+        // Desktop hosts this in a transparent OS window so the menu can leave the app frame.
         MessageContextMenuPopup(
             onDismissRequest = onDismiss,
             positionProvider = positionProvider,
+            reserveOvershoot = reserveOvershoot,
         ) {
             ContextMenuContent(
                 message = state.message,
@@ -276,24 +287,35 @@ fun MessageContextMenu(
                     onRetrySend(it)
                     onDismiss()
                 },
-                modifier = modifier.onSizeChanged { size ->
-                    if (size.width <= 0 || size.height <= 0 || enterLaidOut) return@onSizeChanged
-                    val adjusted = clampContextMenuOffset(
-                        position = state.position,
-                        popupSize = size,
-                        screenWidthPx = screenWidthPx,
-                        screenHeightPx = screenHeightPx,
-                        paddingPx = paddingPx,
-                        allowOutsideWindow = allowOutsideWindow,
+                modifier = modifier
+                    .then(
+                        if (lockedMenuWidthPx > 0) {
+                            Modifier.requiredWidth(with(density) { lockedMenuWidthPx.toDp() })
+                        } else {
+                            Modifier
+                        },
                     )
-                    frozenOrigin = TransformOrigin(
-                        pivotFractionX = ((state.position.x - adjusted.x).toFloat() / size.width)
-                            .coerceIn(0f, 1f),
-                        pivotFractionY = ((state.position.y - adjusted.y).toFloat() / size.height)
-                            .coerceIn(0f, 1f),
-                    )
-                    enterLaidOut = true
-                },
+                    .onSizeChanged { size ->
+                        if (size.width > 0 && size.width > lockedMenuWidthPx) {
+                            lockedMenuWidthPx = size.width
+                        }
+                        if (size.width <= 0 || size.height <= 0 || enterLaidOut) return@onSizeChanged
+                        val adjusted = clampContextMenuOffset(
+                            position = state.position,
+                            popupSize = size,
+                            screenWidthPx = screenWidthPx,
+                            screenHeightPx = screenHeightPx,
+                            paddingPx = paddingPx,
+                            allowOutsideWindow = allowOutsideWindow,
+                        )
+                        frozenOrigin = TransformOrigin(
+                            pivotFractionX = ((state.position.x - adjusted.x).toFloat() / size.width)
+                                .coerceIn(0f, 1f),
+                            pivotFractionY = ((state.position.y - adjusted.y).toFloat() / size.height)
+                                .coerceIn(0f, 1f),
+                        )
+                        enterLaidOut = true
+                    },
                 animated = true,
                 scale = scale,
                 alpha = alpha,
@@ -437,6 +459,7 @@ internal fun ChatStyleContextMenuFrame(
     // invalidation does not rebuild the elevated layer (avoids first-hover blink).
     Box(
         modifier = modifier
+            .wrapContentWidth(unbounded = true)
             .width(IntrinsicSize.Max)
             .graphicsLayer {
                 if (animated) {

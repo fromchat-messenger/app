@@ -169,6 +169,7 @@ kotlin {
         }
 
         jvmMain.dependencies {
+            implementation(compose.desktop.currentOs)
             implementation(libs.jetbrains.kotlinx.io.bytestring)
             implementation(libs.jetbrains.kotlinx.coroutines.core)
             implementation(libs.ktor.client.cio)

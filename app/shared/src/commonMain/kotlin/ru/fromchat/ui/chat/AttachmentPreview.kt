@@ -59,7 +59,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntSize
@@ -239,15 +239,8 @@ fun AttachmentPreview(
                     .then(
                         if (onImageBounds != null && showImageTile) {
                             Modifier.onGloballyPositioned { coords ->
-                                val pos = coords.positionInRoot()
-                                val size = coords.size
                                 onImageBounds(
-                                    Rect(
-                                        pos.x,
-                                        pos.y,
-                                        pos.x + size.width.toFloat(),
-                                        pos.y + size.height.toFloat()
-                                    )
+                                    coords.boundsInWindow()
                                 )
                             }
                         } else {

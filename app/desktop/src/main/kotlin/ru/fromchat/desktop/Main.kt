@@ -262,6 +262,12 @@ fun main(args: Array<String>) {
         // Treat TrayIcon images as NSImage templates so the menu bar tints them for light/dark.
         // Must be set before CTrayIcon loads (Compose Tray / SystemTray).
         System.setProperty("apple.awt.enableTemplateImages", "true")
+        val appearanceName = when (runCatching { Settings.theme }.getOrDefault(Theme.AsSystem)) {
+            Theme.Dark -> "NSAppearanceNameDarkAqua"
+            Theme.Light -> "NSAppearanceNameAqua"
+            Theme.AsSystem -> "system"
+        }
+        System.setProperty("apple.awt.application.appearance", appearanceName)
     }
     if (!DesktopSingleInstance.acquireOrForward(args)) return
     DesktopProtocolRegistration.register()

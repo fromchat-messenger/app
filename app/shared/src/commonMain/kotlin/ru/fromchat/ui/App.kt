@@ -84,6 +84,9 @@ import ru.fromchat.ui.auth.captcha.SmartCaptchaNav
 import ru.fromchat.ui.auth.captcha.SmartCaptchaScreen
 import ru.fromchat.ui.auth.yandex.YandexOAuthNav
 import ru.fromchat.ui.auth.yandex.YandexOAuthScreen
+import ru.fromchat.ui.chat.ChatFullscreenImageController
+import ru.fromchat.ui.chat.ChatFullscreenImageHost
+import ru.fromchat.ui.chat.LocalChatFullscreenImageController
 import ru.fromchat.ui.calls.CallOverlay
 import ru.fromchat.ui.chat.panels.dm.navigateToDmChat
 import ru.fromchat.ui.chat.panels.publicchat.PublicChatNav
@@ -471,13 +474,15 @@ fun App(
                 }
             }
 
+            val fullscreenImageController = remember { ChatFullscreenImageController() }
             CompositionLocalProvider(
                 LocalNavController provides navController,
                 LocalDesktopChatsNavController provides
                     if (isDesktopListDetail) chatsDetailNavController else null,
                 LocalDesktopSettingsNavController provides
                     if (isDesktopListDetail) settingsDetailNavController else null,
-                LocalSystemBarsVisibility provides rememberSystemBarsController()
+                LocalSystemBarsVisibility provides rememberSystemBarsController(),
+                LocalChatFullscreenImageController provides fullscreenImageController,
             ) {
                 if (startDestination != null) {
                     val currentEntry by navController.currentBackStackEntryAsState()
@@ -673,9 +678,6 @@ fun App(
                             AppNavHost(Modifier.fillMaxSize())
 
                             if (showConversationListDetail) {
-                                val detailEdgeToEdge =
-                                    pendingMainTab == MAIN_PAGE_CHATS ||
-                                        pendingMainTab == MAIN_PAGE_CONTACTS
                                 val listPaneHazeState = rememberHazeState()
                                 CompositionLocalProvider(
                                     LocalPaneHazeState provides listPaneHazeState,
@@ -683,7 +685,7 @@ fun App(
                                 ) {
                                     ConversationListDetailShell(
                                         detailInPanel = false,
-                                        detailEdgeToEdge = detailEdgeToEdge,
+                                        detailEdgeToEdge = true,
                                         listPane = {
                                             MainScreen(
                                                 sharedTransitionScope = this@SharedTransitionLayout,
@@ -732,6 +734,7 @@ fun App(
                                 }
                             }
 
+                            ChatFullscreenImageHost(Modifier.fillMaxSize())
                             CallOverlay(Modifier.fillMaxSize())
                         }
                     }

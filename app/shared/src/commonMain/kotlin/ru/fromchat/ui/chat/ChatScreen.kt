@@ -44,6 +44,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -1532,54 +1533,108 @@ fun ChatScreen(
             }
         }
 
-        expandedImage?.let { (msg, idx) ->
-            val key = imageAttachmentKey(msg, idx)
-            ImageFullscreenPreview(
+        val fullscreenHost = LocalChatFullscreenImageController.current
+        DisposableEffect(fullscreenHost) {
+            onDispose { fullscreenHost?.request = null }
+        }
+        val expandedImageSnapshot = expandedImage
+        SideEffect {
+            val host = fullscreenHost ?: return@SideEffect
+            val pair = expandedImageSnapshot
+            if (pair == null) {
+                if (host.request != null) host.request = null
+                return@SideEffect
+            }
+            val (msg, idx) = pair
+            host.onDismiss = {
+                isImageClosing = false
+                expandedImage = null
+            }
+            host.onClosingChange = { closing -> isImageClosing = closing }
+            host.onReply = { m ->
+                replyTo = m
+                if (editingMessage != null) {
+                    editingMessage = null
+                    inputText = ""
+                }
+                isImageClosing = false
+                expandedImage = null
+            }
+            host.onDelete = { m ->
+                scope.launch { panel.handleDeleteMessage(m.id) }
+            }
+            host.onSave = save@{ savedMsg, fileIndex ->
+                if (!isMessageImageFullyLoaded(savedMsg, fileIndex)) return@save
+                val file = savedMsg.files?.getOrNull(fileIndex) ?: return@save
+                resolveImageSourceUri(savedMsg, fileIndex)?.let { source ->
+                    saveMessageImage(
+                        SavableMessageImage(
+                            fileIndex = fileIndex,
+                            sourceUri = source,
+                            filename = file.name,
+                            mimeType = mimeTypeForImageFilename(file.name),
+                        ),
+                    )
+                }
+            }
+            val published = ChatFullscreenImageRequest(
                 message = msg,
                 fileIndex = idx,
                 currentUserId = currentUserId,
-                onDismiss = {
-                    isImageClosing = false
-                    expandedImage = null
-                },
-                onClosingChange = { isImageClosing = it },
-                onReply = { m ->
-                    replyTo = m
-                    if (editingMessage != null) {
-                        editingMessage = null
-                        inputText = ""
-                    }
-                    isImageClosing = false
-                    expandedImage = null
-                },
-                onDelete = { m ->
-                    scope.launch {
-                        panel.handleDeleteMessage(m.id)
-                    }
-                },
-                onSave = { msg, fileIndex ->
-                    if (!isMessageImageFullyLoaded(msg, fileIndex)) return@ImageFullscreenPreview
-                    val file = msg.files?.getOrNull(fileIndex) ?: return@ImageFullscreenPreview
-                    resolveImageSourceUri(msg, fileIndex)?.let { source ->
-                        saveMessageImage(
-                            SavableMessageImage(
-                                fileIndex = fileIndex,
-                                sourceUri = source,
-                                filename = file.name,
-                                mimeType = mimeTypeForImageFilename(file.name),
-                            ),
-                        )
-                    }
-                },
-                sharedTransitionScope = null,
-                animatedVisibilityScope = null,
-                sharedImageKey = null,
-                modifier = Modifier.fillMaxSize(),
-                thumbnailBounds = imageThumbBounds[key]
+                thumbnailBounds = imageThumbBounds[imageAttachmentKey(msg, idx)],
             )
+            if (host.request != published) host.request = published
+        }
+        if (fullscreenHost == null) {
+            expandedImage?.let { (msg, idx) ->
+                ImageFullscreenPreview(
+                    message = msg,
+                    fileIndex = idx,
+                    currentUserId = currentUserId,
+                    onDismiss = {
+                        isImageClosing = false
+                        expandedImage = null
+                    },
+                    onClosingChange = { isImageClosing = it },
+                    onReply = { m ->
+                        replyTo = m
+                        if (editingMessage != null) {
+                            editingMessage = null
+                            inputText = ""
+                        }
+                        isImageClosing = false
+                        expandedImage = null
+                    },
+                    onDelete = { m ->
+                        scope.launch {
+                            panel.handleDeleteMessage(m.id)
+                        }
+                    },
+                    onSave = { savedMsg, fileIndex ->
+                        if (!isMessageImageFullyLoaded(savedMsg, fileIndex)) {
+                            return@ImageFullscreenPreview
+                        }
+                        val file = savedMsg.files?.getOrNull(fileIndex) ?: return@ImageFullscreenPreview
+                        resolveImageSourceUri(savedMsg, fileIndex)?.let { source ->
+                            saveMessageImage(
+                                SavableMessageImage(
+                                    fileIndex = fileIndex,
+                                    sourceUri = source,
+                                    filename = file.name,
+                                    mimeType = mimeTypeForImageFilename(file.name),
+                                ),
+                            )
+                        }
+                    },
+                    sharedTransitionScope = null,
+                    animatedVisibilityScope = null,
+                    sharedImageKey = null,
+                    modifier = Modifier.fillMaxSize(),
+                    thumbnailBounds = imageThumbBounds[imageAttachmentKey(msg, idx)],
+                )
+            }
         }
     }
-
 }
 
 @Composable

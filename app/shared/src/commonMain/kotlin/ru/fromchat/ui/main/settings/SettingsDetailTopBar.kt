@@ -34,7 +34,6 @@ import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.back
 import ru.fromchat.ui.extraStatusBars
-import ru.fromchat.ui.main.LocalConversationListDetailActive
 import ru.fromchat.ui.main.detailPaneShowBackButton
 
 /** Idle gap after mouse-wheel / trackpad deltas before snapping the collapsing bar. */
@@ -43,6 +42,9 @@ private const val AppBarWheelSettleDelayMs = 64L
 /** @see detailPaneShowBackButton */
 @Composable
 fun settingsDetailShowBackButton(): Boolean = detailPaneShowBackButton()
+
+@Composable
+fun settingsDetailWindowInsets(): WindowInsets = WindowInsets.extraStatusBars
 
 @Composable
 fun settingsDetailUseCollapsingTopBar(): Boolean =
@@ -88,13 +90,7 @@ fun SettingsDetailTopBar(
     // `surfaceContainerLowest` — that token reads as a separate pane fill in
     // two-pane against the list–detail shell.
     val paneColor = MaterialTheme.colorScheme.background
-    // List–detail shell already pads/consumes extraStatusBars; full-screen settings
-    // (e.g. logged-out About) need the desktop title-bar inset explicitly.
-    val topBarWindowInsets = if (LocalConversationListDetailActive.current) {
-        WindowInsets(0, 0, 0, 0)
-    } else {
-        WindowInsets.extraStatusBars
-    }
+    val topBarWindowInsets = settingsDetailWindowInsets()
     if (settingsDetailUseCollapsingTopBar()) {
         MediumTopAppBar(
             title = title,

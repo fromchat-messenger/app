@@ -14,10 +14,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -26,10 +26,14 @@ import androidx.compose.ui.draganddrop.DragAndDropTarget
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlin.time.Clock
@@ -43,8 +47,72 @@ import com.pr0gramm3r101.utils.conditional
 /** True while a file drag that this process accepted is still in progress. */
 object AttachmentDragSession {
     var isActive by mutableStateOf(false)
-        internal set
+        private set
+
+    internal fun begin() {
+        isActive = true
+    }
+
+    /** Clears drag-session UI. Safe to call from any drop / end path. */
+    fun end() {
+        isActive = false
+        AttachmentDropHighlight.clear()
+    }
 }
+
+/**
+ * Exactly one drop target may show the blur/scrim at a time. Hover is resolved by
+ * hit-testing registered window bounds against the current pointer so nested AWT
+ * targets cannot leave a stale row blurred.
+ */
+object AttachmentDropHighlight {
+    var activeBridge by mutableStateOf<AttachmentDropBridge?>(null)
+        private set
+
+    private val boundsByBridge = mutableMapOf<AttachmentDropBridge, Rect>()
+
+    fun register(bridge: AttachmentDropBridge, bounds: Rect) {
+        boundsByBridge[bridge] = bounds
+    }
+
+    fun unregister(bridge: AttachmentDropBridge) {
+        boundsByBridge.remove(bridge)
+        if (activeBridge === bridge) activeBridge = null
+    }
+
+    fun syncFromPointer(windowPoint: Offset) {
+        activeBridge = hitTest(windowPoint)
+    }
+
+    fun clear() {
+        activeBridge = null
+    }
+
+    /** Delivers to the currently hovered target. Returns true if handled. */
+    fun deliverToOwner(uris: List<String>): Boolean {
+        if (uris.isEmpty()) return false
+        val bridge = activeBridge ?: return false
+        val consumer = bridge.consumer ?: return false
+        consumer(uris)
+        return true
+    }
+
+    private fun hitTest(windowPoint: Offset): AttachmentDropBridge? {
+        var best: AttachmentDropBridge? = null
+        var bestArea = Float.POSITIVE_INFINITY
+        boundsByBridge.forEach { (bridge, bounds) ->
+            if (!bounds.contains(windowPoint)) return@forEach
+            val area = bounds.width * bounds.height
+            if (area > 0f && area < bestArea) {
+                bestArea = area
+                best = bridge
+            }
+        }
+        return best
+    }
+}
+
+expect fun dragPointerInWindow(event: DragAndDropEvent): Offset?
 
 /**
  * Delivers drops from the always-mounted app-root target to the visible chat composer.
@@ -90,32 +158,18 @@ object PendingChatAttachmentDrops {
 class AttachmentDropBridge {
     internal var consumer: ((List<String>) -> Unit)? = null
 
-    private var dropHighlightDepth by mutableIntStateOf(0)
-    var dropHighlightActive by mutableStateOf(false)
-        private set
-
     fun deliver(uris: List<String>) {
         if (uris.isNotEmpty()) consumer?.invoke(uris)
-    }
-
-    internal fun enterDropHighlight() {
-        dropHighlightDepth++
-        dropHighlightActive = dropHighlightDepth > 0
-    }
-
-    internal fun exitDropHighlight() {
-        if (dropHighlightDepth > 0) dropHighlightDepth--
-        dropHighlightActive = dropHighlightDepth > 0
-    }
-
-    internal fun endDropHighlight() {
-        dropHighlightDepth = 0
-        dropHighlightActive = false
     }
 }
 
 @Composable
 fun rememberAttachmentDropBridge(): AttachmentDropBridge = remember { AttachmentDropBridge() }
+
+/** Whether [bridge] currently owns the exclusive drop highlight. */
+@Composable
+fun AttachmentDropBridge.isDropHighlightActive(): Boolean =
+    AttachmentDropHighlight.activeBridge === this
 
 fun urisToSelectedAttachments(
     uris: List<String>,
@@ -145,6 +199,23 @@ expect fun handleAttachmentDrop(
     onUris: (List<String>) -> Unit,
 ): Boolean
 
+private fun syncDropHighlight(event: DragAndDropEvent) {
+    val point = dragPointerInWindow(event) ?: return
+    AttachmentDropHighlight.syncFromPointer(point)
+}
+
+private fun dispatchDropUris(
+    bridge: AttachmentDropBridge?,
+    uris: List<String>,
+) {
+    if (AttachmentDropHighlight.deliverToOwner(uris)) return
+    if (bridge != null) {
+        bridge.deliver(uris)
+    } else {
+        GlobalAttachmentDropRouter.deliver(uris)
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 fun Modifier.chatAttachmentDropTarget(
     enabled: Boolean,
@@ -152,33 +223,45 @@ fun Modifier.chatAttachmentDropTarget(
 ): Modifier = composed {
     if (!enabled) return@composed Modifier
     val permissionsHost = rememberAttachmentDropPermissionsHost()
+    DisposableEffect(bridge) {
+        onDispose { AttachmentDropHighlight.unregister(bridge) }
+    }
     val target = remember(bridge, permissionsHost) {
         object : DragAndDropTarget {
             override fun onStarted(event: DragAndDropEvent) {
-                AttachmentDragSession.isActive = true
+                AttachmentDragSession.begin()
+                syncDropHighlight(event)
             }
 
             override fun onEntered(event: DragAndDropEvent) {
-                bridge.enterDropHighlight()
+                syncDropHighlight(event)
+            }
+
+            override fun onMoved(event: DragAndDropEvent) {
+                syncDropHighlight(event)
             }
 
             override fun onExited(event: DragAndDropEvent) {
-                bridge.exitDropHighlight()
+                syncDropHighlight(event)
             }
 
             override fun onEnded(event: DragAndDropEvent) {
-                bridge.endDropHighlight()
-                AttachmentDragSession.isActive = false
+                AttachmentDragSession.end()
             }
 
             override fun onDrop(event: DragAndDropEvent): Boolean {
-                bridge.endDropHighlight()
-                AttachmentDragSession.isActive = false
-                return handleAttachmentDrop(permissionsHost, event) { bridge.deliver(it) }
+                syncDropHighlight(event)
+                val accepted = handleAttachmentDrop(permissionsHost, event) { uris ->
+                    dispatchDropUris(bridge, uris)
+                }
+                AttachmentDragSession.end()
+                return accepted
             }
         }
     }
-    dragAndDropTarget(
+    onGloballyPositioned { coords ->
+        AttachmentDropHighlight.register(bridge, coords.boundsInWindow())
+    }.dragAndDropTarget(
         shouldStartDragAndDrop = { acceptsAttachmentDrop(it) },
         target = target,
     )
@@ -194,18 +277,33 @@ fun Modifier.appRootAttachmentDropTarget(): Modifier = composed {
     val target = remember(permissionsHost) {
         object : DragAndDropTarget {
             override fun onStarted(event: DragAndDropEvent) {
-                AttachmentDragSession.isActive = true
+                AttachmentDragSession.begin()
+                syncDropHighlight(event)
+            }
+
+            override fun onMoved(event: DragAndDropEvent) {
+                syncDropHighlight(event)
+            }
+
+            override fun onEntered(event: DragAndDropEvent) {
+                syncDropHighlight(event)
+            }
+
+            override fun onExited(event: DragAndDropEvent) {
+                syncDropHighlight(event)
             }
 
             override fun onEnded(event: DragAndDropEvent) {
-                AttachmentDragSession.isActive = false
+                AttachmentDragSession.end()
             }
 
             override fun onDrop(event: DragAndDropEvent): Boolean {
-                AttachmentDragSession.isActive = false
-                return handleAttachmentDrop(permissionsHost, event) {
-                    GlobalAttachmentDropRouter.deliver(it)
+                syncDropHighlight(event)
+                val accepted = handleAttachmentDrop(permissionsHost, event) { uris ->
+                    dispatchDropUris(bridge = null, uris = uris)
                 }
+                AttachmentDragSession.end()
+                return accepted
             }
         }
     }

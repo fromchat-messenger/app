@@ -45,6 +45,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -100,6 +101,46 @@ private data class InitialTransform(
     val cornerRadius: Float,
     val bgAlpha: Float
 )
+
+class ChatFullscreenImageController {
+    var request by mutableStateOf<ChatFullscreenImageRequest?>(null)
+    var onDismiss: () -> Unit = {}
+    var onClosingChange: (Boolean) -> Unit = {}
+    var onReply: (Message) -> Unit = {}
+    var onDelete: (Message) -> Unit = {}
+    var onSave: (Message, Int) -> Unit = { _, _ -> }
+}
+
+data class ChatFullscreenImageRequest(
+    val message: Message,
+    val fileIndex: Int,
+    val currentUserId: Int?,
+    val thumbnailBounds: Rect?,
+)
+
+val LocalChatFullscreenImageController =
+    staticCompositionLocalOf<ChatFullscreenImageController?> { null }
+
+@Composable
+fun ChatFullscreenImageHost(modifier: Modifier = Modifier) {
+    val controller = LocalChatFullscreenImageController.current ?: return
+    val request = controller.request ?: return
+    ImageFullscreenPreview(
+        message = request.message,
+        fileIndex = request.fileIndex,
+        currentUserId = request.currentUserId,
+        onDismiss = controller.onDismiss,
+        onClosingChange = controller.onClosingChange,
+        onReply = controller.onReply,
+        onDelete = controller.onDelete,
+        onSave = controller.onSave,
+        sharedTransitionScope = null,
+        animatedVisibilityScope = null,
+        sharedImageKey = null,
+        modifier = modifier.fillMaxSize(),
+        thumbnailBounds = request.thumbnailBounds,
+    )
+}
 
 @Composable
 fun ImageFullscreenPreview(

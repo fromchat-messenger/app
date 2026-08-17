@@ -9,6 +9,7 @@ import androidx.compose.ui.window.PopupProperties
 internal actual fun MessageContextMenuPopup(
     onDismissRequest: () -> Unit,
     positionProvider: PopupPositionProvider,
+    reserveOvershoot: Boolean,
     content: @Composable () -> Unit,
 ) {
     Popup(
@@ -18,7 +19,7 @@ internal actual fun MessageContextMenuPopup(
             focusable = true,
             dismissOnBackPress = true,
             dismissOnClickOutside = true,
-            clippingEnabled = true,
+            clippingEnabled = !reserveOvershoot,
         ),
         content = content,
     )
