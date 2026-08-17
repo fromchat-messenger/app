@@ -432,6 +432,7 @@ fun DevicesScreen(onBack: () -> Unit) {
         topBar = {
             val topBarHazeStyle = HazeMaterials.thin()
             TopAppBar(
+                windowInsets = settingsDetailWindowInsets(),
                 title = {},
                 navigationIcon = {
                     if (settingsDetailShowBackButton()) {

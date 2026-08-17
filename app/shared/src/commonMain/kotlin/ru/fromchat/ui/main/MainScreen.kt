@@ -1,7 +1,10 @@
 package ru.fromchat.ui.main
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -68,12 +71,15 @@ import ru.fromchat.profile
 import ru.fromchat.settings
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.chat.rememberChatSurfaceContainerHazeStyle
+import ru.fromchat.ui.chat.panels.dm.navigateToDmChat
+import ru.fromchat.ui.components.BackHandler
 import ru.fromchat.ui.components.FromChatSnackbarHost
 import ru.fromchat.ui.components.LocalPaneHazeState
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.extraStatusBars
 import ru.fromchat.ui.main.chats.ChatContextMenuOverlayController
 import ru.fromchat.ui.main.chats.ChatContextMenuOverlayHost
+import ru.fromchat.ui.main.chats.ChatsSearchScreen
 import ru.fromchat.ui.main.chats.ChatsTab
 import ru.fromchat.ui.main.settings.SettingsTab
 import ru.fromchat.ui.profile.ProfileScreen
@@ -175,6 +181,17 @@ fun MainScreen(
     val contextMenuHazeState = paneHazeState ?: rememberHazeState()
     val chatContextMenuOverlay = remember { ChatContextMenuOverlayController() }
     var chatListSelectionRequestId by remember { mutableStateOf(0L) }
+    var paneSearchOpen by remember { mutableStateOf(false) }
+
+    fun openConversationSearch() {
+        if (embeddedInListDetail) {
+            paneSearchOpen = true
+        } else {
+            navController.navigate("search/conversations") {
+                launchSingleTop = true
+            }
+        }
+    }
 
     val widthClass = currentWindowAdaptiveInfo().widthSizeClass
 
@@ -193,11 +210,12 @@ fun MainScreen(
                     if (pagerState.currentPage != PAGE_CHATS) {
                         pagerState.scrollToPage(PAGE_CHATS)
                     }
-                    navController.navigate("search/conversations") {
-                        launchSingleTop = true
-                    }
+                    openConversationSearch()
                 }
                 DesktopMenuCommand.EnterChatListSelection -> {
+                    if (paneSearchOpen) {
+                        paneSearchOpen = false
+                    }
                     if (navController.currentBackStackEntry?.destination?.route ==
                         "search/conversations"
                     ) {
@@ -282,9 +300,7 @@ fun MainScreen(
                             when (page) {
                                 PAGE_CHATS -> ChatsTab(
                                     isVisible = isChatsPage,
-                                    onOpenSearch = {
-                                        navController.navigate("search/conversations")
-                                    },
+                                    onOpenSearch = { openConversationSearch() },
                                     chatContextMenuOverlay = chatContextMenuOverlay,
                                     sharedTransitionScope = sharedTransitionScope,
                                     animatedVisibilityScope = animatedVisibilityScope,
@@ -429,6 +445,35 @@ fun MainScreen(
                 .fillMaxSize()
                 .zIndex(3f),
         )
+
+        if (embeddedInListDetail) {
+            BackHandler(paneSearchOpen) { paneSearchOpen = false }
+            AnimatedVisibility(
+                visible = paneSearchOpen,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(4f),
+            ) {
+                val chatsNav = LocalDesktopChatsNavController.current ?: navController
+                ChatsSearchScreen(
+                    onBack = { paneSearchOpen = false },
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = this,
+                    onOpenProfile = { userId: Int ->
+                        if (userId == 0) return@ChatsSearchScreen
+                        paneSearchOpen = false
+                        chatsNav.navigateReplacingMainDetail("profile/$userId")
+                    },
+                    onOpenConversation = { userId: Int ->
+                        if (userId == 0) return@ChatsSearchScreen
+                        paneSearchOpen = false
+                        chatsNav.navigateToDmChat(userId)
+                    },
+                )
+            }
+        }
     }
 }
 
