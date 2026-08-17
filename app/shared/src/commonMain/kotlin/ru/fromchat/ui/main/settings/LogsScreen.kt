@@ -770,6 +770,7 @@ fun LogsScreen() {
         topBar = {
             Box {
                 TopAppBar(
+                    windowInsets = settingsDetailWindowInsets(),
                     modifier = Modifier
                         .graphicsLayer {
                             alpha = (1f - selectionProgress) * (1f - searchProgress)
@@ -884,6 +885,7 @@ fun LogsScreen() {
                 )
                 if (searchMode) {
                     TopAppBar(
+                        windowInsets = settingsDetailWindowInsets(),
                         modifier = Modifier.graphicsLayer { alpha = searchProgress },
                         colors = logsTransparentTopAppBarColors(),
                         navigationIcon = {
@@ -944,6 +946,7 @@ fun LogsScreen() {
                 }
                 if (selectionMode) {
                     TopAppBar(
+                        windowInsets = settingsDetailWindowInsets(),
                         modifier = Modifier.graphicsLayer { alpha = selectionProgress },
                         navigationIcon = {
                             IconButton(

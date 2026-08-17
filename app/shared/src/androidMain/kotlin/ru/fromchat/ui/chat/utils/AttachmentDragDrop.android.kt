@@ -12,6 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.draganddrop.DragAndDropEvent
 import androidx.compose.ui.draganddrop.mimeTypes
 import androidx.compose.ui.draganddrop.toAndroidDragEvent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.ActivityCompat
 import androidx.core.net.toUri
@@ -32,6 +33,11 @@ actual fun rememberAttachmentDropPermissionsHost(): AttachmentDropPermissionsHos
             appContext = context.applicationContext,
         )
     }
+}
+
+actual fun dragPointerInWindow(event: DragAndDropEvent): Offset? {
+    val androidEvent = event.toAndroidDragEvent()
+    return Offset(androidEvent.x, androidEvent.y)
 }
 
 actual fun acceptsAttachmentDrop(event: DragAndDropEvent): Boolean {

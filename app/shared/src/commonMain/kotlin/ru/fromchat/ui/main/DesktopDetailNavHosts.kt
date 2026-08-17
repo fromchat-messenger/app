@@ -9,20 +9,18 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import ru.fromchat.ui.LocalNavController
-import ru.fromchat.ui.components.AppPanel
 
 private val detailNavTween = tween<Float>(durationMillis = 250, easing = FastOutSlowInEasing)
 
@@ -82,9 +80,8 @@ fun DesktopChatsDetailNavHost(
  * Independent Settings-tab detail [NavHost] for desktop list–detail
  * (settings screens, own profile, and edit profile on the same stack).
  *
- * [AppPanel] is drawn only behind non-empty destinations so the empty root stays
- * bare (no surface fill), matching the prior AnimatedContent empty vs panel split.
- * Panel is a sibling under the [NavHost] so the host is not remounted empty ↔ content.
+ * Settings detail is edge-to-edge on the pane background; empty root stays
+ * unpainted so the list–detail shell shows through.
  */
 @Composable
 fun DesktopSettingsDetailNavHost(
@@ -101,13 +98,11 @@ fun DesktopSettingsDetailNavHost(
 
     Box(modifier.fillMaxSize()) {
         if (showPanel) {
-            // Match Profile / ConversationListDetailShell (`background`), not the
-            // default AppPanel `surfaceContainerLowest` (visible mismatch in two-pane).
-            AppPanel(
-                Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.background,
-                shape = RoundedCornerShape(24.dp),
-            ) {}
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+            )
         }
         CompositionLocalProvider(LocalNavController provides navController) {
             NavHost(

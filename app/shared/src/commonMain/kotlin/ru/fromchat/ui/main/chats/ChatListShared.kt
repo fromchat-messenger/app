@@ -79,6 +79,7 @@ import androidx.compose.ui.util.fastAll
 import kotlinx.coroutines.withTimeout
 import ru.fromchat.ui.chat.utils.AttachmentDropHighlightBox
 import ru.fromchat.ui.chat.utils.chatAttachmentDropTarget
+import ru.fromchat.ui.chat.utils.isDropHighlightActive
 import ru.fromchat.ui.chat.utils.rememberAttachmentDropBridge
 import ru.fromchat.ui.components.SearchBar
 import ru.fromchat.ui.components.SearchBarSharedElement
@@ -868,7 +869,7 @@ internal fun PublicChatRow(
     }
 
     AttachmentDropHighlightBox(
-        active = dropBridge.dropHighlightActive,
+        active = dropBridge.isDropHighlightActive(),
         shape = clipShape,
         modifier = Modifier
             .fillMaxWidth()
@@ -1035,7 +1036,7 @@ internal fun DmConversationRow(
     }
 
     AttachmentDropHighlightBox(
-        active = dropBridge.dropHighlightActive,
+        active = dropBridge.isDropHighlightActive(),
         shape = clipShape,
         modifier = Modifier
             .fillMaxWidth()
