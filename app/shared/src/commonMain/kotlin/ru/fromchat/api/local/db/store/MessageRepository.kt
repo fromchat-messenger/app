@@ -2,6 +2,8 @@ package ru.fromchat.api.local.db.store
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.messages.ChatListPreviewState
 import ru.fromchat.api.local.messages.ChatListPreviewStrings
@@ -11,11 +13,16 @@ import ru.fromchat.api.local.messages.conversationIdForGroup
 import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.api.schema.messages.dm.DmConversation
 import ru.fromchat.api.local.cache.CacheContext
+import ru.fromchat.notifications.ChatNotificationDismissals
 
 /**
  * Instance-scoped message access for UI and send pipeline.
  */
 object MessageRepository {
+    private val visibleReadMutex = Mutex()
+    private val sentPublicReadIds = mutableSetOf<Int>()
+    private val sentDmReadIds = mutableSetOf<Int>()
+
     private fun activeInstance(): String = CacheContext.requireActiveInstanceId()
 
     fun observeMessages(conversationId: String): Flow<List<Message>> =
@@ -139,31 +146,84 @@ object MessageRepository {
     suspend fun patchDmConversationPeerProfile(otherUserId: Int) =
         MessageCacheStore.patchDmConversationPeerProfile(otherUserId)
 
-    suspend fun markDmConversationRead(otherUserId: Int, upToEnvelopeId: Int? = null) {
-        runCatching { ApiClient.markDmConversationRead(otherUserId, upToEnvelopeId) }
-        MessageCacheStore.markDmConversationReadLocally(otherUserId, upToEnvelopeId)
-        ru.fromchat.notifications.ChatNotificationDismissals.dismissAllMessageNotifications()
-    }
-
-    suspend fun markDmConversationReadUpTo(otherUserId: Int, upToEnvelopeId: Int) {
-        if (upToEnvelopeId <= 0) return
-        val convId = conversationIdForDm(otherUserId)
-        val alreadyRead = MessageCacheStore.isInboundDmMessageRead(otherUserId, upToEnvelopeId)
-        if (alreadyRead) return
-        markDmConversationRead(otherUserId, upToEnvelopeId)
+    suspend fun markDmConversationRead(otherUserId: Int, messageIds: List<Int>? = null) {
+        runCatching {
+            ApiClient.markDmConversationRead(
+                otherUserId,
+                messageIds = messageIds,
+                markAll = messageIds.isNullOrEmpty(),
+            )
+        }
+        MessageCacheStore.markDmConversationReadLocally(otherUserId, messageIds)
+        if (!messageIds.isNullOrEmpty()) {
+            sentDmReadIds.addAll(messageIds.filter { it > 0 })
+        }
+        ChatNotificationDismissals.dismissAllMessageNotifications()
     }
 
     suspend fun markPublicConversationRead() {
-        val localIds = MessageCacheStore.selectUnreadPublicMessageIds()
-        val serverIds = runCatching {
-            ApiClient.getNewMessages().messages.map { it.id }
-        }.getOrDefault(emptyList())
-        val ids = (localIds + serverIds).distinct()
-        if (ids.isNotEmpty()) {
-            runCatching { ApiClient.markMessagesRead(ids) }
-        }
+        runCatching { ApiClient.markMessagesRead(markAll = true) }
         MessageCacheStore.markPublicMessagesReadLocally()
-        ru.fromchat.notifications.ChatNotificationDismissals.dismissAllMessageNotifications()
+        ChatNotificationDismissals.dismissAllMessageNotifications()
+    }
+
+    /**
+     * Marks messages that are on-screen as read and reports those ids to the server once.
+     * Off-screen unread messages in the same conversation are left unread.
+     */
+    suspend fun markVisibleMessagesRead(
+        peerUserId: Int?,
+        visibleMessageIds: Set<Int>,
+        currentUserId: Int?,
+        messages: List<Message>,
+    ) {
+        if (visibleMessageIds.isEmpty()) return
+        visibleReadMutex.withLock {
+            val ownId = currentUserId
+            val visibleInboundIds = messages
+                .filter { message ->
+                    message.id > 0 &&
+                        message.id in visibleMessageIds &&
+                        (ownId == null || message.user_id != ownId) &&
+                        (peerUserId == null || message.user_id == peerUserId)
+                }
+                .map { it.id }
+            if (peerUserId != null && peerUserId > 0) {
+                markVisibleDmRead(peerUserId, visibleInboundIds)
+            } else {
+                markVisiblePublicRead(visibleInboundIds)
+            }
+        }
+    }
+
+    private suspend fun markVisibleDmRead(otherUserId: Int, messageIds: List<Int>) {
+        val toSend = messageIds.filter { it > 0 }.distinct().filter { id ->
+            id !in sentDmReadIds && !MessageCacheStore.isInboundDmMessageRead(otherUserId, id)
+        }
+        if (toSend.isEmpty()) return
+        sentDmReadIds.addAll(toSend)
+        runCatching { ApiClient.markDmConversationRead(otherUserId, messageIds = toSend) }
+            .onSuccess {
+                MessageCacheStore.markDmConversationReadLocally(otherUserId, toSend)
+                ChatNotificationDismissals.dismissDmIfMessageRead(otherUserId, toSend)
+            }
+            .onFailure { sentDmReadIds.removeAll(toSend.toSet()) }
+    }
+
+    private suspend fun markVisiblePublicRead(messageIds: List<Int>) {
+        val distinct = messageIds.filter { it > 0 }.distinct()
+        if (distinct.isEmpty()) return
+        val toSend = distinct.filter { id ->
+            id !in sentPublicReadIds && !MessageCacheStore.isPublicMessageRead(id)
+        }
+        if (toSend.isEmpty()) return
+        sentPublicReadIds.addAll(toSend)
+        runCatching { ApiClient.markMessagesRead(toSend) }
+            .onSuccess {
+                MessageCacheStore.markPublicMessagesReadLocally(toSend)
+                ChatNotificationDismissals.dismissPublicIfMessageRead(toSend)
+            }
+            .onFailure { sentPublicReadIds.removeAll(toSend.toSet()) }
     }
 
     suspend fun archiveDmConversation(otherUserId: Int) =
@@ -185,5 +245,7 @@ object MessageRepository {
 
     fun resetListPreviewStringsOnLogout() {
         MessageCacheStore.listPreviewStrings = null
+        sentPublicReadIds.clear()
+        sentDmReadIds.clear()
     }
 }

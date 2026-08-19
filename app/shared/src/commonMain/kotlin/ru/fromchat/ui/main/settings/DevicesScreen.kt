@@ -6,6 +6,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -63,7 +64,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
+import org.jetbrains.compose.resources.DrawableResource
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 import com.pr0gramm3r101.components.Category
 import com.pr0gramm3r101.components.ListItem
 import com.pr0gramm3r101.utils.currentDeviceInfo
@@ -81,8 +84,10 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
+import ru.fromchat.os_linux
+import ru.fromchat.os_macos
+import ru.fromchat.os_windows
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.WebSocketManager
 import ru.fromchat.api.schema.user.devices.DeviceSessionInfo
@@ -238,11 +243,11 @@ private fun deviceSessionOsLine(d: DeviceSessionInfo): String? {
     return if (version.isBlank()) os else "$os $version"
 }
 
-private fun deviceSessionLogoResource(d: DeviceSessionInfo): String? {
+private fun deviceSessionLogoResource(d: DeviceSessionInfo): DrawableResource? {
     return when (resolveDeviceOsName(d)?.lowercase()) {
-        "windows", "windows nt" -> "drawable/os_windows.svg"
-        "mac", "mac os", "macos" -> "drawable/os_macos.svg"
-        "linux" -> "drawable/os_linux.svg"
+        "windows", "windows nt" -> Res.drawable.os_windows
+        "mac", "mac os", "macos" -> Res.drawable.os_macos
+        "linux" -> Res.drawable.os_linux
         else -> null
     }
 }
@@ -537,8 +542,8 @@ fun DevicesScreen(onBack: () -> Unit) {
                     ),
                     leadingContent = {
                         if (osLogo != null) {
-                            AsyncImage(
-                                model = Res.getUri(osLogo),
+                            Image(
+                                painter = painterResource(osLogo),
                                 contentDescription = null,
                                 modifier = Modifier.size(24.dp),
                                 contentScale = ContentScale.Fit,

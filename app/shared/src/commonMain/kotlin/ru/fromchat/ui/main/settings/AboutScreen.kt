@@ -1,5 +1,6 @@
 package ru.fromchat.ui.main.settings
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,11 +27,11 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import com.pr0gramm3r101.components.Category
 import com.pr0gramm3r101.components.ListItem
 import com.pr0gramm3r101.ui.Website
 import com.pr0gramm3r101.utils.conditional
+import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
 import ru.fromchat.AppBuildInfo
@@ -43,6 +44,7 @@ import ru.fromchat.about_link_terms
 import ru.fromchat.about_link_website
 import ru.fromchat.about_version
 import ru.fromchat.app_desc
+import ru.fromchat.logo_square
 import ru.fromchat.legal.DocumentType
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.components.BrandTitle
@@ -91,13 +93,13 @@ fun AboutScreen() {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Box(Modifier.padding(bottom = 12.dp)) {
-                    AsyncImage(
-                        model = Res.getUri("drawable/logo_square.png"),
+                    Image(
+                        painter = painterResource(Res.drawable.logo_square),
                         contentDescription = null,
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .size(88.dp)
-                            .clip(RoundedCornerShape(28.dp))
+                            .clip(RoundedCornerShape(28.dp)),
                     )
                 }
 

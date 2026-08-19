@@ -8,7 +8,6 @@ import ru.fromchat.api.crypto.decryptEnvelope
 import ru.fromchat.api.local.db.parseDmMessageContent
 import ru.fromchat.api.local.db.store.MessageRepository
 import ru.fromchat.api.local.db.store.ProfileCache
-import ru.fromchat.api.local.messages.ActiveDmChatTracker
 import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.api.schema.messages.dm.DmEnvelope
 import ru.fromchat.api.schema.websocket.types.DmDeletedData
@@ -54,9 +53,7 @@ object DmInboundMessageProcessor {
           MessageRepository.upsertDmMessage(otherUserId, hydrated)
         }
       } else {
-        val isRead = ActiveDmChatTracker.isActive(otherUserId)
-        val inbound = hydrated.copy(is_read = isRead)
-        MessageRepository.upsertDmMessage(otherUserId, inbound)
+        MessageRepository.upsertDmMessage(otherUserId, hydrated)
       }
     }
   }
@@ -176,7 +173,7 @@ object DmInboundMessageProcessor {
       user_id = envelope.senderId,
       content = dec.text,
       timestamp = envelope.timestamp,
-      is_read = envelope.senderId == currentUserId,
+      is_read = envelope.isReadByViewer(currentUserId),
       is_edited = false,
       username = username,
       displayName = displayName,

@@ -1,5 +1,6 @@
 package ru.fromchat.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -26,13 +27,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
+import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
 import ru.fromchat.auth_get_started
 import ru.fromchat.auth_welcome_tagline
 import ru.fromchat.auth_welcome_title
+import ru.fromchat.logo_square
 import ru.fromchat.ui.auth.PreAuthOverflowMenu
 import ru.fromchat.ui.components.ActionButton
 import ru.fromchat.ui.components.Text
@@ -82,8 +84,8 @@ fun WelcomeScreen(
                     verticalArrangement = if (wide) Arrangement.Center else Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    AsyncImage(
-                        model = Res.getUri("drawable/logo_square.png"),
+                    Image(
+                        painter = painterResource(Res.drawable.logo_square),
                         contentDescription = null,
                         modifier = Modifier
                             .size(112.dp)

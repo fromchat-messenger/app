@@ -18,6 +18,7 @@ data class ChatListPreviewState(
     val text: String?,
     val pendingIndicator: ChatListPreviewPendingIndicator = ChatListPreviewPendingIndicator.None,
     val uploadProgress: Int? = null,
+    val unreadCount: Int = 0,
 ) {
     fun displayText(default: String): String =
         text?.trim()?.takeIf { it.isNotEmpty() } ?: default
