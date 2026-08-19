@@ -380,6 +380,15 @@
     <string name="settings_push_notifications">Push notifications</string>
     <string name="settings_push_notifications_d">These will let you know if you got a new message when the app is closed.</string>
     <string name="settings_push_notifications_unavailable">Not available on this platform. New messages are only visible while the app is open.</string>
+    <string name="settings_desktop_notifications">Message notifications</string>
+    <string name="settings_desktop_notifications_d">Show alerts in the system tray when the window is hidden or you are in another chat.</string>
+
+    <string name="notification_direct_message">Direct message</string>
+    <string name="notification_direct_message_from">Direct message from %1$s</string>
+    <string name="notification_new_messages">%1$d new messages</string>
+    <string name="notification_new_messages_in">%1$s: %2$s</string>
+    <string name="notification_reply">Reply</string>
+    <string name="notification_reply_hint">Reply to chat…</string>
 
     <string name="settings_devices_title">Devices</string>
     <string name="settings_devices_empty">No active sessions</string>

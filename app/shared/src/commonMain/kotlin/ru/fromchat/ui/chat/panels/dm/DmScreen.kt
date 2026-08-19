@@ -8,12 +8,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withContext
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.db.store.MessageRepository
@@ -23,7 +20,6 @@ import ru.fromchat.api.local.send.scheduleOutboxProcessing
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.ui.chat.AvatarInfo
 import ru.fromchat.ui.chat.ChatScreen
-import ru.fromchat.ui.chat.utils.AttachmentDownloadVisibility
 
 @Composable
 fun DmScreen(
@@ -73,33 +69,6 @@ fun DmScreen(
         MessageRepository.observeDmMessages(peerId).collect { rows ->
             panel.syncMessagesFromDatabase(rows)
         }
-    }
-
-    LaunchedEffect(panel, activeInstanceId, activePeerUserId, peerUserId) {
-        val peerId = activePeerUserId.takeIf { it > 0 } ?: peerUserId ?: return@LaunchedEffect
-        if (activeInstanceId.isBlank() || peerId <= 0) return@LaunchedEffect
-        combine(
-            AttachmentDownloadVisibility.visibleMessageIds,
-            snapshotFlow { panel.getState().messages },
-        ) { visibleIds, messages ->
-            visibleIds
-                .filter { id ->
-                    messages.find { it.id == id }?.user_id == peerId
-                }
-                .maxOrNull()
-        }
-            .distinctUntilChanged()
-            .collect { maxVisibleInboundId ->
-                if (
-                    maxVisibleInboundId != null &&
-                    maxVisibleInboundId > 0 &&
-                    ActiveDmChatTracker.isActive(peerId)
-                ) {
-                    withContext(Dispatchers.Default) {
-                        MessageRepository.markDmConversationReadUpTo(peerId, maxVisibleInboundId)
-                    }
-                }
-            }
     }
 
     ChatScreen(

@@ -4,5 +4,6 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class DmMarkReadRequest(
-    val upToEnvelopeId: Int? = null,
+    val messageIds: List<Int>? = null,
+    val markAll: Boolean = false,
 )

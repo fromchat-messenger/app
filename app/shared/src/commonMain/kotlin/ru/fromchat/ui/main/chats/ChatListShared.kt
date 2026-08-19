@@ -943,6 +943,7 @@ internal fun PublicChatRowContent(
     val preview = publicChatPreviewState?.displayText(defaultLastMessage) ?: defaultLastMessage
     val pendingIndicator = publicChatPreviewState?.pendingIndicator
         ?: ChatListPreviewPendingIndicator.None
+    val unreadCount = publicChatPreviewState?.unreadCount ?: 0
     val showPreview = preview.isNotBlank() || pendingIndicator != ChatListPreviewPendingIndicator.None
 
     ListItem(
@@ -978,7 +979,12 @@ internal fun PublicChatRowContent(
                 )
             }
         },
-        trailingContent = {},
+        trailingContent = {
+            ChatUnreadBadge(
+                count = unreadCount,
+                visible = unreadCount > 0 && listMode == ChatsListMode.Normal,
+            )
+        },
         bodyModifier = Modifier
             .fillMaxWidth()
             .fillMaxHeight(),

@@ -614,11 +614,11 @@ object ApiClient {
             }
             .body()
 
-    suspend fun markMessagesRead(messageIds: List<Int>) {
-        if (messageIds.isEmpty()) return
+    suspend fun markMessagesRead(messageIds: List<Int> = emptyList(), markAll: Boolean = false) {
+        if (!markAll && messageIds.isEmpty()) return
         http.post("${ServerConfig.apiBaseUrl}/messages/read") {
             contentType(ContentType.Application.Json)
-            setBody(MarkReadRequest(messageIds = messageIds))
+            setBody(MarkReadRequest(messageIds = messageIds, markAll = markAll))
         }
     }
 
@@ -751,10 +751,14 @@ object ApiClient {
             .body<DmConversationsResponse>()
             .conversations
 
-    suspend fun markDmConversationRead(otherUserId: Int, upToEnvelopeId: Int? = null) {
+    suspend fun markDmConversationRead(
+        otherUserId: Int,
+        messageIds: List<Int>? = null,
+        markAll: Boolean = false,
+    ) {
         http.post("${ServerConfig.apiBaseUrl}/dm/conversations/$otherUserId/read") {
             contentType(ContentType.Application.Json)
-            setBody(DmMarkReadRequest(upToEnvelopeId = upToEnvelopeId))
+            setBody(DmMarkReadRequest(messageIds = messageIds, markAll = markAll))
         }
     }
 

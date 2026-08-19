@@ -14,3 +14,11 @@ actual fun openAppNotificationSettings(): Boolean {
 actual fun areAppNotificationsEnabled(): Boolean = false
 
 actual fun arePushNotificationsSupported(): Boolean = false
+
+actual fun areDesktopMessageNotificationsSupported(): Boolean = false
+
+actual fun areDesktopMessageNotificationsEnabled(): Boolean = false
+
+actual fun setDesktopMessageNotificationsEnabled(enabled: Boolean) = Unit
+
+actual fun requestDesktopNotificationPermission(): Boolean = false
