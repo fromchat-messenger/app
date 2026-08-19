@@ -41,6 +41,8 @@ import ru.fromchat.settings_notifications_title
 import ru.fromchat.settings_push_notifications
 import ru.fromchat.settings_push_notifications_d
 import ru.fromchat.settings_push_notifications_unavailable
+import ru.fromchat.settings_desktop_notifications
+import ru.fromchat.settings_desktop_notifications_d
 import ru.fromchat.ui.components.FromChatSnackbarHost
 import ru.fromchat.ui.components.Text
 
@@ -53,7 +55,10 @@ fun NotificationsScreen(onBack: () -> Unit) {
     val snackbarHostState = remember { SnackbarHostState() }
     var notificationsEnabled by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        notificationsEnabled = areAppNotificationsEnabled() && isFcmPushRegisteredLocally()
+        notificationsEnabled = when {
+            areDesktopMessageNotificationsSupported() -> areDesktopMessageNotificationsEnabled()
+            else -> areAppNotificationsEnabled() && isFcmPushRegisteredLocally()
+        }
     }
     val notificationsPermissionText = stringResource(Res.string.settings_notifications_permission_required)
     val unexpectedErrorText = stringResource(Res.string.error_unexpected)
@@ -81,57 +86,101 @@ fun NotificationsScreen(onBack: () -> Unit) {
             Category(
                 modifier = Modifier.padding(top = 16.dp)
             ) {
-                if (arePushNotificationsSupported()) {
-                    SwitchListItem(
-                        headline = stringResource(Res.string.settings_push_notifications),
-                        supportingText = stringResource(Res.string.settings_push_notifications_d),
-                        leadingContent = {
-                            Icon(Icons.Filled.Notifications, null)
-                        },
-                        checked = notificationsEnabled,
-                        onCheckedChange = { enabled ->
-                            coroutineScope.launch {
-                                if (enabled) {
-                                    if (!areAppNotificationsEnabled()) {
-                                        if (!openAppNotificationSettings()) {
-                                            snackbarHostState.showSnackbar(message = unexpectedErrorText)
-                                        } else {
-                                            snackbarHostState.showSnackbar(message = notificationsPermissionText)
+                when {
+                    arePushNotificationsSupported() -> {
+                        SwitchListItem(
+                            headline = stringResource(Res.string.settings_push_notifications),
+                            supportingText = stringResource(Res.string.settings_push_notifications_d),
+                            leadingContent = {
+                                Icon(Icons.Filled.Notifications, null)
+                            },
+                            checked = notificationsEnabled,
+                            onCheckedChange = { enabled ->
+                                coroutineScope.launch {
+                                    if (enabled) {
+                                        if (!areAppNotificationsEnabled()) {
+                                            if (!openAppNotificationSettings()) {
+                                                snackbarHostState.showSnackbar(message = unexpectedErrorText)
+                                            } else {
+                                                snackbarHostState.showSnackbar(message = notificationsPermissionText)
+                                            }
+                                            return@launch
                                         }
-                                        return@launch
-                                    }
 
-                                    val registered = ensureFcmTokenRegistered()
-                                    if (registered) {
+                                        val registered = ensureFcmTokenRegistered()
+                                        if (registered) {
+                                            notificationsEnabled = true
+                                        } else {
+                                            snackbarHostState.showSnackbar(message = unexpectedErrorText)
+                                        }
+                                    } else {
+                                        unregisterFcmTokenFromServer()
+                                        notificationsEnabled = false
+                                    }
+                                }
+                            },
+                            divider = true
+                        )
+
+                        ListItem(
+                            headline = stringResource(Res.string.settings_notification_settings),
+                            supportingText = stringResource(Res.string.settings_notification_settings_d),
+                            leadingContent = {
+                                Icon(Icons.Filled.Settings, null)
+                            },
+                            onClick = { openAppNotificationSettings() }
+                        )
+                    }
+
+                    areDesktopMessageNotificationsSupported() -> {
+                        SwitchListItem(
+                            headline = stringResource(Res.string.settings_desktop_notifications),
+                            supportingText = stringResource(Res.string.settings_desktop_notifications_d),
+                            leadingContent = {
+                                Icon(Icons.Filled.Notifications, null)
+                            },
+                            checked = notificationsEnabled,
+                            onCheckedChange = { enabled ->
+                                coroutineScope.launch {
+                                    if (enabled) {
+                                        val granted = requestDesktopNotificationPermission()
+                                        if (!granted && !areAppNotificationsEnabled()) {
+                                            openAppNotificationSettings()
+                                            snackbarHostState.showSnackbar(
+                                                message = notificationsPermissionText,
+                                            )
+                                            return@launch
+                                        }
+                                        setDesktopMessageNotificationsEnabled(true)
                                         notificationsEnabled = true
                                     } else {
-                                        snackbarHostState.showSnackbar(message = unexpectedErrorText)
+                                        setDesktopMessageNotificationsEnabled(false)
+                                        notificationsEnabled = false
                                     }
-                                } else {
-                                    unregisterFcmTokenFromServer()
-                                    notificationsEnabled = false
                                 }
-                            }
-                        },
-                        divider = true
-                    )
+                            },
+                            divider = true,
+                        )
 
-                    ListItem(
-                        headline = stringResource(Res.string.settings_notification_settings),
-                        supportingText = stringResource(Res.string.settings_notification_settings_d),
-                        leadingContent = {
-                            Icon(Icons.Filled.Settings, null)
-                        },
-                        onClick = { openAppNotificationSettings() }
-                    )
-                } else {
-                    ListItem(
-                        headline = stringResource(Res.string.settings_push_notifications),
-                        supportingText = stringResource(Res.string.settings_push_notifications_unavailable),
-                        leadingContent = {
-                            Icon(Icons.Filled.Notifications, null)
-                        },
-                    )
+                        ListItem(
+                            headline = stringResource(Res.string.settings_notification_settings),
+                            supportingText = stringResource(Res.string.settings_notification_settings_d),
+                            leadingContent = {
+                                Icon(Icons.Filled.Settings, null)
+                            },
+                            onClick = { openAppNotificationSettings() },
+                        )
+                    }
+
+                    else -> {
+                        ListItem(
+                            headline = stringResource(Res.string.settings_push_notifications),
+                            supportingText = stringResource(Res.string.settings_push_notifications_unavailable),
+                            leadingContent = {
+                                Icon(Icons.Filled.Notifications, null)
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -151,3 +200,12 @@ expect fun areAppNotificationsEnabled(): Boolean
 
 /** False on platforms without push delivery (e.g. iOS without APNs). */
 expect fun arePushNotificationsSupported(): Boolean
+
+/** True on desktop (tray / notification center via persistent WebSocket). */
+expect fun areDesktopMessageNotificationsSupported(): Boolean
+
+expect fun areDesktopMessageNotificationsEnabled(): Boolean
+
+expect fun setDesktopMessageNotificationsEnabled(enabled: Boolean)
+
+expect fun requestDesktopNotificationPermission(): Boolean

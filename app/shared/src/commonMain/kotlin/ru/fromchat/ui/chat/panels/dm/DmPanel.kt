@@ -586,10 +586,7 @@ class DmPanel(
             user_id = envelope.senderId,
             content = dec.text,
             timestamp = envelope.timestamp,
-            is_read = when {
-                envelope.senderId == currentUserId -> true
-                else -> ActiveDmChatTracker.isActive(otherUserId)
-            },
+            is_read = envelope.isReadByViewer(currentUserId),
             is_edited = false,
             username = senderUsername,
             displayName = senderDisplayName,

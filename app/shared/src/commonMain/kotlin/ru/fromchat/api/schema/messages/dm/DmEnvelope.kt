@@ -16,5 +16,9 @@ data class DmEnvelope(
     val timestamp: String,
     @SerialName("client_message_id") val clientMessageId: String? = null,
     @SerialName("reply_to_id") val replyToId: Int? = null,
-    val files: List<DmFile>? = null
-)
+    val files: List<DmFile>? = null,
+    val isRead: Boolean? = null,
+) {
+    fun isReadByViewer(currentUserId: Int?): Boolean =
+        (currentUserId != null && senderId == currentUserId) || isRead == true
+}

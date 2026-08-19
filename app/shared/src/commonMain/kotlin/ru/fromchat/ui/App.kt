@@ -312,6 +312,16 @@ fun App(
                         }
                     }
                 }
+                Lifecycle.Event.ON_RESUME -> {
+                    if (!keepWebSocketAliveInBackground()) {
+                        AppForeground.setWindowFocused(true)
+                    }
+                }
+                Lifecycle.Event.ON_PAUSE -> {
+                    if (!keepWebSocketAliveInBackground()) {
+                        AppForeground.setWindowFocused(false)
+                    }
+                }
                 Lifecycle.Event.ON_STOP -> {
                     if (!keepWebSocketAliveInBackground()) {
                         AppForeground.setForeground(false)

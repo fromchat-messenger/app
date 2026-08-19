@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.navigation.NavController
 import androidx.navigation.NavOptionsBuilder
+import ru.fromchat.Logger
 import ru.fromchat.api.local.cache.CacheContext
 import androidx.compose.ui.Modifier
 import ru.fromchat.api.local.db.store.ProfileCache
@@ -20,15 +21,12 @@ import ru.fromchat.utils.haptic.rememberHapticFeedback
 
 /** Route patterns and builders for DM chat + in-DM profile (stacked for predictive / system back). */
 object DmNav {
-    const val CHAT_ROUTE = "dm/{otherUserId}/chat?sourceMessageId={sourceMessageId}"
+    const val CHAT_ROUTE = "dm/{otherUserId}/chat/{sourceMessageId}"
     const val PROFILE_ROUTE = "dm/{otherUserId}/profile"
 
     fun chatRoute(otherUserId: Int, sourceMessageId: Int? = null): String {
-        return if (sourceMessageId != null && sourceMessageId > 0) {
-            "dm/$otherUserId/chat?sourceMessageId=$sourceMessageId"
-        } else {
-            "dm/$otherUserId/chat"
-        }
+        val source = sourceMessageId?.takeIf { it > 0 } ?: 0
+        return "dm/$otherUserId/chat/$source"
     }
 
     fun profileRoute(otherUserId: Int) = "dm/$otherUserId/profile"
@@ -46,20 +44,28 @@ fun NavController.navigateToDmChat(
     sourceMessageId: Int? = null,
     builder: NavOptionsBuilder.() -> Unit = {},
 ) {
-    if (isCurrentDmChat(otherUserId)) return
+    if (sourceMessageId == null && isCurrentDmChat(otherUserId)) return
 
-    navigate(DmNav.chatRoute(otherUserId, sourceMessageId)) {
-        popUpTo(graph.startDestinationId) { saveState = true }
-        launchSingleTop = true
-        builder()
-    }
+    val route = DmNav.chatRoute(otherUserId, sourceMessageId)
+    runCatching {
+        navigate(route) {
+            popUpTo(graph.startDestinationId) { saveState = true }
+            launchSingleTop = true
+            builder()
+        }
+    }.onFailure { Logger.e("DmNav", "navigateToDmChat failed route=$route", it) }
 }
 
 /** True when the back-stack top is already [DmNav.CHAT_ROUTE] for [otherUserId]. */
 fun NavController.isCurrentDmChat(otherUserId: Int): Boolean {
     val entry = currentBackStackEntry ?: return false
     if (entry.destination.route != DmNav.CHAT_ROUTE) return false
-    val currentId = entry.savedStateHandle.get<String>("otherUserId")?.toIntOrNull()
+    val currentId = when (val raw = entry.savedStateHandle.get<Any?>("otherUserId")) {
+        is Int -> raw
+        is Long -> raw.toInt()
+        is String -> raw.toIntOrNull()
+        else -> null
+    }
     return currentId == otherUserId
 }
 

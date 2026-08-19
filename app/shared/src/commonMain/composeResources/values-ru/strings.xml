@@ -349,6 +349,15 @@
     <string name="settings_push_notifications">Push-уведомления</string>
     <string name="settings_push_notifications_d">Они помогут вам узнать, если появилось новое сообщение пока приложение закрыто.</string>
     <string name="settings_push_notifications_unavailable">Недоступны на этой платформе. Новые сообщения видны только пока приложение открыто.</string>
+    <string name="settings_desktop_notifications">Уведомления о сообщениях</string>
+    <string name="settings_desktop_notifications_d">Показывать оповещения в системном трее, когда окно скрыто или вы в другом чате.</string>
+
+    <string name="notification_direct_message">Личное сообщение</string>
+    <string name="notification_direct_message_from">Личное сообщение от %1$s</string>
+    <string name="notification_new_messages">%1$d новых сообщений</string>
+    <string name="notification_new_messages_in">%1$s: %2$s</string>
+    <string name="notification_reply">Ответить</string>
+    <string name="notification_reply_hint">Ответ в чат…</string>
 
     <string name="settings_devices_title">Устройства</string>
     <string name="settings_devices_empty">Нет активных сессий</string>

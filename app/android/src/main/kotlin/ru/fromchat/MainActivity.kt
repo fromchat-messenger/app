@@ -15,18 +15,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
-import io.ktor.client.call.body
-import io.ktor.client.request.get
-import io.ktor.client.request.post
-import io.ktor.client.request.setBody
-import io.ktor.http.ContentType
-import io.ktor.http.contentType
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
-import ru.fromchat.api.ApiClient
-import ru.fromchat.api.schema.messages.MessagesResponse
-import ru.fromchat.config.ServerConfig
 import ru.fromchat.notifications.NotificationLaunchCoordinator
 import ru.fromchat.notifications.NotificationLaunchTarget
 import ru.fromchat.ui.App
@@ -34,7 +23,6 @@ import ru.fromchat.ui.chat.panels.publicchat.isPublicChatVisible
 
 private const val EXTRA_NOTIFICATION_CHAT_TYPE = "notification_chat_type"
 private const val EXTRA_OPEN_DM_USER_ID = "open_dm_user_id"
-private const val EXTRA_MARK_MESSAGE_READ = "mark_message_read"
 private const val EXTRA_MESSAGE_ID = "scroll_to_message_id"
 private const val CHAT_TYPE_PUBLIC = "public"
 private const val CHAT_TYPE_DM = "dm"
@@ -80,10 +68,6 @@ class MainActivity : ComponentActivity() {
             "ProfileDeepLink",
             "handleIntent parsedProfileTarget: userId=${profileTarget?.userId}, username=${profileTarget?.username}, parseError=${profileTarget?.parseError}"
         )
-
-        if (intent?.getBooleanExtra(EXTRA_MARK_MESSAGE_READ, false) == true) {
-            markMessagesAsRead()
-        }
 
         val baseState = ProfileDeepLinkResolution(
             scrollToMessageId = if (messageId != -1) messageId else null,
@@ -180,30 +164,6 @@ class MainActivity : ComponentActivity() {
         } ?: run {
             Logger.d("ProfileDeepLink", "parseProfileDeepLink resolved as username=$trimmed")
             ProfileDeepLinkTarget(username = trimmed)
-        }
-    }
-
-    @OptIn(DelicateCoroutinesApi::class)
-    private fun markMessagesAsRead() {
-        GlobalScope.launch {
-            try {
-                // Get all unread messages and mark them as read
-                val messageIds = ApiClient.http
-                    .get("${ServerConfig.apiBaseUrl}/messages/new")
-                    .body<MessagesResponse>()
-                    .messages
-                    .map { it.id }
-
-                if (messageIds.isNotEmpty()) {
-                    ApiClient.http.post("${ServerConfig.apiBaseUrl}/messages/read") {
-                        contentType(ContentType.Application.Json)
-                        setBody(mapOf("messageIds" to messageIds))
-                    }
-                    Logger.i("MainActivity", "Marked ${messageIds.size} messages as read")
-                }
-            } catch (e: Exception) {
-                Logger.e("MainActivity", "Failed to mark messages as read", e)
-            }
         }
     }
 

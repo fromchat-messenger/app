@@ -39,3 +39,30 @@ fun visibleMessageIdsInChatList(
     }
     return ids
 }
+
+/**
+ * Message ids whose rows intersect the chat viewport after excluding the floating
+ * header ([topClearancePx]) and input bar ([bottomClearancePx]).
+ *
+ * Reverse-layout offsets grow from the visual bottom (start).
+ */
+fun unobstructedVisibleMessageIdsInChatList(
+    listState: LazyListState,
+    messages: List<Message>,
+    topClearancePx: Int,
+    bottomClearancePx: Int,
+): Set<Int> {
+    val layoutInfo = listState.layoutInfo
+    val unobstructedStart = layoutInfo.viewportStartOffset + bottomClearancePx.coerceAtLeast(0)
+    val unobstructedEnd = (layoutInfo.viewportEndOffset - topClearancePx.coerceAtLeast(0))
+        .coerceAtLeast(unobstructedStart)
+    if (unobstructedEnd <= unobstructedStart) return emptySet()
+    val reversed = messages.asReversed()
+    return layoutInfo.visibleItemsInfo.mapNotNull { info ->
+        if (info.index <= 0) return@mapNotNull null
+        val itemStart = info.offset
+        val itemEnd = info.offset + info.size
+        if (itemEnd <= unobstructedStart || itemStart >= unobstructedEnd) return@mapNotNull null
+        reversed.getOrNull(info.index - 1)?.id?.takeIf { it > 0 }
+    }.toSet()
+}

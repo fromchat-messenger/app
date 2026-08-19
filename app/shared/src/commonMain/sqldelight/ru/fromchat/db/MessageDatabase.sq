@@ -201,20 +201,30 @@ SELECT id
 FROM message
 WHERE instanceId = ? AND conversationId = ? AND isRead = 0 AND id > 0 AND deletedFlag = 0;
 
+countUnreadPublicInboundMessages:
+SELECT COUNT(*)
+FROM message
+WHERE instanceId = ? AND conversationId = ? AND isRead = 0 AND id > 0 AND deletedFlag = 0 AND userId != ?;
+
+countInboundDmMessages:
+SELECT COUNT(*)
+FROM message
+WHERE instanceId = ? AND conversationId = ? AND userId = ? AND id > 0 AND deletedFlag = 0;
+
 markPublicMessagesRead:
 UPDATE message
 SET isRead = 1
 WHERE instanceId = ? AND conversationId = ? AND isRead = 0 AND deletedFlag = 0;
 
+markPublicMessageRead:
+UPDATE message
+SET isRead = 1
+WHERE instanceId = ? AND conversationId = ? AND id = ? AND isRead = 0 AND deletedFlag = 0;
+
 countUnreadInboundDmMessages:
 SELECT COUNT(*)
 FROM message
 WHERE instanceId = ? AND conversationId = ? AND userId = ? AND isRead = 0 AND id > 0 AND deletedFlag = 0;
-
-markInboundDmMessagesReadUpTo:
-UPDATE message
-SET isRead = 1
-WHERE instanceId = ? AND conversationId = ? AND userId = ? AND id <= ? AND isRead = 0 AND id > 0 AND deletedFlag = 0;
 
 markAllInboundDmMessagesRead:
 UPDATE message
