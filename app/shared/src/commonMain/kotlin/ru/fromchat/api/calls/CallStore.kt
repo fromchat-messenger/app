@@ -19,6 +19,7 @@ import ru.fromchat.api.local.db.store.visibleDisplayName
 import ru.fromchat.api.schema.websocket.WebSocketMessage
 import ru.fromchat.Logger
 import ru.fromchat.config.ServerConfig
+import ru.fromchat.notifications.notifyIncomingCallIfBackground
 
 private const val TAG = "CallStore"
 
@@ -115,6 +116,8 @@ object CallStore {
             fromUsername = fromUsername,
             roomName = roomName,
         )
+        val callerLabel = peerLabel(fromUserId).ifBlank { fromUsername }
+        notifyIncomingCallIfBackground(callerLabel)
     }
 
     fun startOutgoingCall(peerUserId: Int) {

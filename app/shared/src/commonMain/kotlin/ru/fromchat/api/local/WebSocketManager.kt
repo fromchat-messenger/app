@@ -65,23 +65,26 @@ object WebSocketManager {
     private val _messages = MutableSharedFlow<WebSocketMessage>(replay = 0, extraBufferCapacity = 64)
     val messages = _messages.asSharedFlow()
 
-    private val globalHandlers = mutableListOf<((WebSocketMessage) -> Unit)>()
-    private val sessionReadyHandlers = mutableListOf<suspend () -> Unit>()
+    @Volatile
+    private var globalHandlers: List<((WebSocketMessage) -> Unit)> = emptyList()
+
+    @Volatile
+    private var sessionReadyHandlers: List<suspend () -> Unit> = emptyList()
 
     fun addGlobalMessageHandler(handler: ((WebSocketMessage) -> Unit)) {
-        globalHandlers += handler
+        globalHandlers = globalHandlers + handler
     }
 
     fun removeGlobalMessageHandler(handler: ((WebSocketMessage) -> Unit)) {
-        globalHandlers -= handler
+        globalHandlers = globalHandlers - handler
     }
 
     fun addSessionReadyHandler(handler: suspend () -> Unit) {
-        sessionReadyHandlers += handler
+        sessionReadyHandlers = sessionReadyHandlers + handler
     }
 
     fun removeSessionReadyHandler(handler: suspend () -> Unit) {
-        sessionReadyHandlers -= handler
+        sessionReadyHandlers = sessionReadyHandlers - handler
     }
 
     private fun notifySessionReady() {
@@ -258,7 +261,11 @@ object WebSocketManager {
                                     }
                                 }
 
-                                globalHandlers.forEach { it(msg) }
+                                globalHandlers.forEach { handler ->
+                                    runCatching { handler(msg) }.onFailure {
+                                        logW("Global handler failed: ${it.message}", it)
+                                    }
+                                }
                                 _messages.emit(msg)
                             } catch (e: Throwable) {
                                 logW("Received malformed payload: ${e.message}", e)

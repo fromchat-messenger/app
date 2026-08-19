@@ -1224,7 +1224,7 @@ fun ChatsTab(
                 selectedOtherUserIds = selectedOtherUserIds,
                 isReadOnly = suspensionState.isSuspended,
                 callsEnabled = callsEnabled,
-                publicHasUnread = false,
+                publicHasUnread = (publicChatPreviewState?.unreadCount ?: 0) > 0,
             )
         } else {
             null

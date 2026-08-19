@@ -71,6 +71,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import kotlinx.datetime.LocalDate
@@ -89,6 +90,7 @@ import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
@@ -100,6 +102,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Logger
+import ru.fromchat.AppForeground
 import ru.fromchat.ui.main.ConversationDetailContentPadding
 import ru.fromchat.ui.main.LocalConversationListDetailActive
 import ru.fromchat.ui.main.detailPaneShowBackButton
@@ -155,6 +158,7 @@ import ru.fromchat.ui.chat.utils.getImageDimensions
 import ru.fromchat.ui.chat.utils.imageAttachmentKey
 import ru.fromchat.ui.chat.utils.rememberAttachmentDropBridge
 import ru.fromchat.ui.chat.utils.visibleMessageIdsInChatList
+import ru.fromchat.ui.chat.utils.unobstructedVisibleMessageIdsInChatList
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.SuspendedAccountSupportSheet
 import ru.fromchat.ui.extraStatusBars
@@ -581,9 +585,42 @@ fun ChatScreen(
         }
     }
 
+    val appWindowFocused by AppForeground.isWindowFocused.collectAsState()
+    val windowFocused = LocalWindowInfo.current.isWindowFocused && appWindowFocused
+    LaunchedEffect(listState, panel, windowFocused, currentUserId) {
+        if (!windowFocused) return@LaunchedEffect
+        var pending: Job? = null
+        snapshotFlow {
+            val (topClearancePx, bottomClearancePx) = chatScrollClearancePx.value
+            unobstructedVisibleMessageIdsInChatList(
+                listState = listState,
+                messages = panelState.messages,
+                topClearancePx = topClearancePx,
+                bottomClearancePx = bottomClearancePx,
+            )
+        }
+            .distinctUntilChanged()
+            .collect { ids ->
+                pending?.cancel()
+                if (ids.isEmpty()) return@collect
+                pending = launch {
+                    delay(150)
+                    withContext(Dispatchers.Default) {
+                        MessageRepository.markVisibleMessagesRead(
+                            peerUserId = panel.getRecipientId(),
+                            visibleMessageIds = ids,
+                            currentUserId = currentUserId,
+                            messages = panel.getState().messages,
+                        )
+                    }
+                }
+            }
+    }
+
     // Collect WebSocket messages
     LaunchedEffect(Unit) {
         WebSocketManager.messages.collect { message ->
+            try {
             Logger.d("ChatScreen", "Received WebSocket message: type=${message.type}, data=${message.data != null}")
             when (message.type) {
                 "updates" -> {
@@ -621,15 +658,14 @@ fun ChatScreen(
                                     Logger.d("ChatScreen", "handleWebSocketMessage for ${update.type}")
                                     try {
                                         panel.handleWebSocketMessage(wsMessage)
-                                    } catch (e: Exception) {
+                                    } catch (e: Throwable) {
                                         Logger.e("ChatScreen", "Error handling WebSocket message: ${e.message}", e)
                                     }
                                 }
                             }
                         }
-                    } catch (e: Exception) {
+                    } catch (e: Throwable) {
                         Logger.e("ChatScreen", "Error parsing updates message: ${e.message}", e)
-                        e.printStackTrace()
                     }
                 }
                 "statusUpdate" -> message.data?.jsonObject?.let { data ->
@@ -642,12 +678,14 @@ fun ChatScreen(
                 "dmTyping", "stopDmTyping", "typing", "stopTyping", "reactionUpdate",
                 "registeredUserCount" -> {
                     scope.launch {
-                        panel.handleWebSocketMessage(message)
+                        runCatching { panel.handleWebSocketMessage(message) }
+                            .onFailure { Logger.e("ChatScreen", "Error handling WebSocket message: ${it.message}", it) }
                     }
                 }
                 "sendMessage" -> {
                     scope.launch {
-                        panel.handleWebSocketMessage(message)
+                        runCatching { panel.handleWebSocketMessage(message) }
+                            .onFailure { Logger.e("ChatScreen", "Error handling sendMessage: ${it.message}", it) }
                     }
                 }
                 "call_signaling" -> {
@@ -659,6 +697,9 @@ fun ChatScreen(
                 else -> {
                     Logger.w("ChatScreen", "Unhandled top-level WebSocket message type: ${message.type}")
                 }
+            }
+            } catch (e: Throwable) {
+                Logger.e("ChatScreen", "WebSocket collect failed type=${message.type}", e)
             }
         }
     }

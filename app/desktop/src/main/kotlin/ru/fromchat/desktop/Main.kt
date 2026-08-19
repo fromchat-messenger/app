@@ -7,11 +7,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
@@ -30,6 +32,7 @@ import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Notification
 import androidx.compose.ui.window.Tray
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowExceptionHandler
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberTrayState
@@ -72,6 +75,12 @@ import ru.fromchat.desktop_zoom
 import ru.fromchat.status_connected
 import ru.fromchat.status_connecting
 import ru.fromchat.status_disconnected
+import ru.fromchat.desktop.DesktopAppVisibility
+import ru.fromchat.desktop.DesktopNotificationSettings
+import ru.fromchat.desktop.DesktopNotifier
+import ru.fromchat.desktop.DesktopTaskbarBadge
+import ru.fromchat.desktop.MacNotificationCenter
+import ru.fromchat.notifications.MessageNotificationCoordinator
 import ru.fromchat.ui.App
 import ru.fromchat.ui.LocalExtraStatusBarTop
 import ru.fromchat.ui.Theme
@@ -285,6 +294,9 @@ fun main(args: Array<String>) {
 
     application {
         UtilsLibrary.init()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            Logger.e("Desktop", "uncaught on ${thread.name}", throwable)
+        }
         DesktopApplicationBootstrap.launchOnApplicationStart()
 
         val windowState = rememberWindowState(
@@ -345,20 +357,72 @@ fun main(args: Array<String>) {
         }
 
         DisposableEffect(trayState) {
-            DesktopNotifier.sink = { title, body ->
-                trayState.sendNotification(
-                    Notification(title = title, message = body),
+            DesktopNotifier.sink = { payload ->
+                val native = mac &&
+                    MacNotificationCenter.deliver(
+                        title = payload.title,
+                        body = payload.body,
+                        subtitle = payload.subtitle,
+                    )
+                Logger.i(
+                    "DesktopNotifier",
+                    "sink mac=$mac nativeDelivered=$native titleLen=${payload.title.length} " +
+                        "subtitleLen=${payload.subtitle.length}",
                 )
+                if (!native) {
+                    Logger.i("DesktopNotifier", "sink fallback trayState.sendNotification")
+                    trayState.sendNotification(
+                        Notification(title = payload.title, message = payload.displayBody()),
+                    )
+                }
             }
             onDispose {
                 DesktopNotifier.sink = null
+                MessageNotificationCoordinator.uninstall()
                 DesktopSingleInstance.release()
             }
         }
 
-        fun showMainWindow() {
+        LaunchedEffect(isLoggedIn) {
+            if (isLoggedIn) {
+                MessageNotificationCoordinator.install()
+                MessageNotificationCoordinator.refreshChrome()
+            } else {
+                MessageNotificationCoordinator.uninstall()
+                DesktopTaskbarBadge.setUnreadCount(0)
+            }
+        }
+
+        SideEffect {
+            DesktopAppVisibility.isWindowVisible = windowVisible
+            if (!windowVisible) {
+                DesktopAppVisibility.isWindowFocused = false
+                AppForeground.setWindowFocused(false)
+            }
+        }
+
+        fun showMainWindow(notificationIdentifier: String? = null) {
             windowVisible = true
             AppForeground.setForeground(true)
+            DesktopNotifier.deliverPendingLaunch(notificationIdentifier)
+        }
+
+        LaunchedEffect(mac, windowVisible) {
+            if (!mac) return@LaunchedEffect
+            MacNotificationCenter.onActivated = { identifier ->
+                SwingUtilities.invokeLater { showMainWindow(identifier) }
+            }
+            if (!windowVisible || !DesktopNotificationSettings.enabled) {
+                Logger.i(
+                    "MacNotificationCenter",
+                    "startup skip requestAuthorization windowVisible=$windowVisible " +
+                        "enabled=${DesktopNotificationSettings.enabled}",
+                )
+                return@LaunchedEffect
+            }
+            delay(400.milliseconds)
+            Logger.i("MacNotificationCenter", "startup requestAuthorization")
+            MacNotificationCenter.registerAndRequestAuthorization()
         }
 
         fun openAbout() {
@@ -486,9 +550,46 @@ fun main(args: Array<String>) {
                 }
             }
 
-            DisposableEffect(Unit) {
+            DisposableEffect(window) {
+                installLoggedWindowExceptionHandler(window)
                 AppForeground.setForeground(true)
-                onDispose {}
+                fun syncWindowFocus(focused: Boolean) {
+                    DesktopAppVisibility.isWindowFocused = focused
+                    AppForeground.setWindowFocused(focused)
+                    if (!focused) MacNotificationCenter.resignActive()
+                    Logger.i(
+                        "DesktopAppVisibility",
+                        "focus=$focused active=${window.isActive} awtFocused=${window.isFocused}",
+                    )
+                }
+                val listener = object : java.awt.event.WindowAdapter() {
+                    override fun windowActivated(e: java.awt.event.WindowEvent?) {
+                        syncWindowFocus(true)
+                    }
+
+                    override fun windowDeactivated(e: java.awt.event.WindowEvent?) {
+                        syncWindowFocus(false)
+                    }
+
+                    override fun windowGainedFocus(e: java.awt.event.WindowEvent?) {
+                        syncWindowFocus(true)
+                    }
+
+                    override fun windowLostFocus(e: java.awt.event.WindowEvent?) {
+                        syncWindowFocus(false)
+                    }
+
+                    override fun windowIconified(e: java.awt.event.WindowEvent?) {
+                        syncWindowFocus(false)
+                    }
+                }
+                syncWindowFocus(window.isActive && window.isFocused)
+                window.addWindowListener(listener)
+                window.addWindowFocusListener(listener)
+                onDispose {
+                    window.removeWindowListener(listener)
+                    window.removeWindowFocusListener(listener)
+                }
             }
 
             if (mac) {
@@ -911,6 +1012,13 @@ private fun scaleBufferedImage(source: BufferedImage, size: Int): BufferedImage 
     }
 
     return out
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+private fun installLoggedWindowExceptionHandler(window: androidx.compose.ui.awt.ComposeWindow) {
+    window.exceptionHandler = WindowExceptionHandler { throwable ->
+        Logger.e("DesktopWindow", "uncaught in composition", throwable)
+    }
 }
 
 /** Opaque mark so Tray never substitutes the Compose default for a blank painter. */

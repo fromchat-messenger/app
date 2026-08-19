@@ -1,6 +1,7 @@
 package ru.fromchat.ui.main
 
 import androidx.compose.animation.SharedTransitionScope
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavType
@@ -66,15 +67,15 @@ fun NavGraphBuilder.conversationDetailDestinations(
         route = DmNav.CHAT_ROUTE,
         arguments = listOf(
             navArgument("otherUserId") { type = NavType.StringType },
-            navArgument("sourceMessageId") { type = NavType.IntType; defaultValue = -1 },
+            navArgument("sourceMessageId") { type = NavType.StringType; defaultValue = "0" },
         ),
     ) { entry ->
-        val otherUserId = entry.savedStateHandle.get<String>("otherUserId")?.toIntOrNull() ?: 0
-        val sourceMessageId = entry.savedStateHandle.get<Int>("sourceMessageId") ?: -1
+        val otherUserId = entry.pathInt("otherUserId")
+        val sourceMessageId = entry.pathInt("sourceMessageId")
         if (otherUserId <= 0) return@composable
         DmChatRoute(
             otherUserId = otherUserId,
-            scrollToMessageId = if (sourceMessageId > 0) sourceMessageId else null,
+            scrollToMessageId = sourceMessageId.takeIf { it > 0 },
             navController = navController,
             sharedTransitionScope = sharedTransitionScope,
             animatedVisibilityScope = this,
@@ -85,7 +86,7 @@ fun NavGraphBuilder.conversationDetailDestinations(
         route = DmNav.PROFILE_ROUTE,
         arguments = listOf(navArgument("otherUserId") { type = NavType.StringType }),
     ) { entry ->
-        val otherUserId = entry.savedStateHandle.get<String>("otherUserId")?.toIntOrNull() ?: 0
+        val otherUserId = entry.pathInt("otherUserId")
         if (otherUserId <= 0) return@composable
         DmProfileRoute(
             otherUserId = otherUserId,
@@ -288,3 +289,11 @@ fun NavGraphBuilder.settingsDetailDestinations(
         ServerConfigScreen()
     }
 }
+
+private fun NavBackStackEntry.pathInt(name: String): Int =
+    when (val raw = savedStateHandle.get<Any?>(name)) {
+        is Int -> raw
+        is Long -> raw.toInt()
+        is String -> raw.toIntOrNull() ?: 0
+        else -> 0
+    }

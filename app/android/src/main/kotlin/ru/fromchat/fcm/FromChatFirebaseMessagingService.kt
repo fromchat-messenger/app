@@ -10,7 +10,7 @@ import kotlinx.coroutines.launch
 import ru.fromchat.Logger
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.uploadPendingFcmTokenIfAvailable
-import ru.fromchat.notifications.NotificationHelper
+import ru.fromchat.notifications.MessageNotificationCoordinator
 
 @OptIn(DelicateCoroutinesApi::class)
 class FromChatFirebaseMessagingService : FirebaseMessagingService() {
@@ -27,20 +27,11 @@ class FromChatFirebaseMessagingService : FirebaseMessagingService() {
                 val fallbackMessageId = pushData["message_id"]?.toIntOrNull()
                     ?: pushData["dm_id"]?.toIntOrNull()
                 val senderId = pushData["sender_id"]?.toIntOrNull()
-                val sender = pushData["sender_display_name"]
-                    ?.takeIf { it.isNotBlank() }
-                    ?: pushData["sender_username"]
-                    ?: pushData["senderUsername"]
-                    ?: pushData["senderDisplayName"]
                 val messageType = pushData["type"] ?: "public_message"
                 val isDirectMessage = messageType.equals("dm", ignoreCase = true)
                 if (ApiClient.token.isNullOrBlank()) {
                     Logger.w("FromChatFCM", "No auth token in memory; loading persisted data before handling push")
                     ApiClient.loadPersistedData()
-                    Logger.d(
-                        "FromChatFCM",
-                        "Token loaded from storage for push sync: hasToken=${ApiClient.token?.isNotBlank() ?: false}",
-                    )
                 }
                 val currentUserId = settings.getInt("current_user_id", -1)
                 if (senderId != null && senderId == currentUserId) {
@@ -48,16 +39,12 @@ class FromChatFirebaseMessagingService : FirebaseMessagingService() {
                     return@launch
                 }
                 if (isDirectMessage) {
-                    NotificationHelper.fetchAndNotify(
-                        applicationContext,
+                    MessageNotificationCoordinator.fetchAndNotify(
                         includeDmMessages = true,
                         dmMessageId = fallbackMessageId,
-                        dmSenderName = sender,
                     )
                 } else {
-                    // Public: one debounced /messages/new → MessagingStyle. Never post a
-                    // per-message fallback (that duplicated FCM tray entries with different labels).
-                    NotificationHelper.schedulePublicFetchAndNotify(applicationContext)
+                    MessageNotificationCoordinator.schedulePublicFetchAndNotify()
                 }
             } catch (e: Exception) {
                 Logger.e("FromChatFCM", "onMessageReceived error: ${e.message}", e)
