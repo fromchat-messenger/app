@@ -74,18 +74,16 @@ body {
   --surface: rgb(21, 18, 24);
   --on-surface: rgba(230, 224, 233, 0.92);
   --on-surface-muted: rgba(230, 224, 233, 0.72);
-  /* Slightly smaller slots and outlines so they fit naturally with labels */
+  /* Extra strip at the bottom; Finder clips it so the visible area lines up with the title bar. */
+  --window-chrome-bottom: 22px;
+  --content-height: 380px;
   --slot-size: 96px;
-  --slot-size: 88px;
-  --slot-radius: 14px;
-  --outline: rgba(230, 224, 233, 0.30);
 }
 
 #dmg {
   position: relative;
   width: 540px;
-  /* increase artboard height to avoid bottom cropping on Retina displays and room for title bar */
-  height: 380px;
+  height: calc(var(--content-height) + var(--window-chrome-bottom));
   overflow: hidden;
   color: var(--on-surface);
   font-family: "Google Sans", system-ui, sans-serif;
@@ -93,17 +91,27 @@ body {
   isolation: isolate;
 }
 
+/* Clipped by Finder at the bottom — keeps the designed content aligned under the title bar. */
+.window-chrome-bleed {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--window-chrome-bottom);
+  background-color: var(--surface);
+  z-index: 0;
+}
+
 .brand {
   position: absolute;
-  /* move brand further down to avoid title-bar overlap in Finder window */
-  top: 44px;
+  top: 28px;
   left: 0;
   right: 0;
   z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .brand__logo-wrap {
@@ -120,7 +128,6 @@ body {
   position: absolute;
   width: 1200px;
   height: 1200px;
-  /* move radial blur down slightly to reduce pattern frequency near center */
   bottom: -180px;
   opacity: 0.48;
   left: calc(50% - 600px);
@@ -131,13 +138,13 @@ body {
 }
 
 .brand__logo {
-  width: 52px;
-  height: 52px;
+  width: 68px;
+  height: 68px;
   background-image: url("assets/logo_square.png");
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  border-radius: 13px;
+  border-radius: 17px;
   position: relative;
   z-index: 1;
 }
@@ -145,8 +152,7 @@ body {
 .brand__wordmark {
   font-family: "Montserrat", "Google Sans", sans-serif;
   font-weight: 700;
-  /* slightly larger for Retina */
-  font-size: 24px;
+  font-size: 30px;
   letter-spacing: -0.03em;
   line-height: 1;
   background: var(--brand-gradient);
@@ -161,42 +167,37 @@ body {
 .brand__tagline {
   font-family: "Google Sans", sans-serif;
   font-weight: 500;
-  font-size: 11px;
+  font-size: 13px;
   letter-spacing: 0.01em;
-  /* ensure legible light text on dark background (avoid fallback black) */
-  color: rgba(230,224,233,0.9);
+  color: rgba(230, 224, 233, 0.9);
   position: relative;
   z-index: 1;
 }
 
 .install {
   position: absolute;
-  /* move install row a bit lower to balance larger artboard */
-  top: 170px;
+  /* Vertically centered in the gap between brand block (~151px) and notice (~292px). */
+  top: 174px;
   left: 0;
   right: 0;
   z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 18px;
+  gap: 20px;
 }
 
 .slot {
   width: var(--slot-size);
   height: var(--slot-size);
-  border-radius: var(--slot-radius);
-  /* subtle solid outline plus a gentle reduced-frequency dot pattern */
-  border: 1px solid rgba(230,224,233,0.12);
-  background-color: transparent;
-  background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
-  background-size: 32px 32px;
+  border: none;
+  background: transparent;
   flex-shrink: 0;
 }
 
 .arrow {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   flex-shrink: 0;
   color: rgba(230, 224, 233, 0.88);
   display: flex;
@@ -206,21 +207,20 @@ body {
 
 .arrow svg {
   display: block;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
 }
 
 .notice {
   position: absolute;
   left: 20px;
   right: 20px;
-  /* increase bottom padding to avoid cropping */
-  bottom: 20px;
+  bottom: calc(var(--window-chrome-bottom) + 16px);
   z-index: 1;
   text-align: center;
   font-family: "Google Sans", sans-serif;
   font-weight: 400;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.4;
   color: var(--on-surface-muted);
   text-wrap: balance;
@@ -231,39 +231,31 @@ body {
   color: var(--on-surface);
 }
 
-/* Preview-only slot labels (white text). Finder will draw real labels; these are used for the exported preview. */
 .slot__label {
   position: absolute;
-  margin-top: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-family: "Google Sans", system-ui, sans-serif;
-  font-size: 12px;
-  color: white; /* white app names as requested */
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  color: var(--primary-pill, #7e22ce);
   text-align: center;
-  width: auto;
+  white-space: nowrap;
   z-index: 3;
   pointer-events: none;
-}
-.slot__label[data-for="slot-app"],
-.slot__label[data-for="slot-applications"] {
-  /* positioning is set dynamically by the export script */
+  box-sizing: border-box;
+  min-height: 26px;
+  padding: 5px 12px;
 }
 
-/* pill background behind label using ::before */
-.slot__label {
-  position: absolute;
-  display: inline-block;
-  line-height: 1;
-}
 .slot__label::before {
   content: "";
   position: absolute;
   inset: 0;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  height: 28px;
   border-radius: 9999px;
   background: var(--primary-pill, #7e22ce);
-  z-index: 2;
-  display: block;
+  z-index: -1;
 }

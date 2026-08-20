@@ -71,6 +71,8 @@ kotlin {
         compileSdk = 37
     }
 
+    jvmToolchain(17)
+
     compilerOptions {
         freeCompilerArgs.addAll("-Xexpect-actual-classes")
     }
