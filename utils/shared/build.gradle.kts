@@ -6,6 +6,8 @@ plugins {
 }
 
 kotlin {
+    jvmToolchain(17)
+
     compilerOptions {
         freeCompilerArgs.addAll("-Xexpect-actual-classes")
     }

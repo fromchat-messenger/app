@@ -1,6 +1,8 @@
 {
   "appLabel": "FromChat",
   "applicationsLabel": "Программы",
-  "primaryColor": "#dabaf9"
+  "primaryColor": "#dabaf9",
+  "titleBarInset": 22,
+  "windowChromeBottom": 22
 }
 

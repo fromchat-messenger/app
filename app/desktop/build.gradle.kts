@@ -25,16 +25,43 @@ dependencies {
 
 val desktopWindowIconPng = layout.projectDirectory.file("src/main/resources/app_window_icon.png")
 val desktopWindowIconIcns = layout.projectDirectory.file("icons/app_window_icon.icns")
+val dmgBackgroundDir = layout.projectDirectory.dir("dmg-background")
+val dmgStageDir = layout.buildDirectory.dir("dmg-background/stage")
+val dmgDistDir = layout.buildDirectory.dir("dmg-background/dist")
+val debugAppBundle = layout.buildDirectory.dir("compose/binaries/main/app/FromChat.app")
+val releaseAppBundle = layout.buildDirectory.dir("compose/binaries/main-release/app/FromChat.app")
+val testDmgOutput = layout.buildDirectory.file("distributions/FromChat-test.dmg")
+val releaseDmgOutput = layout.buildDirectory.file("distributions/FromChat.dmg")
+
+fun resolvePackagingJdkHome(): String {
+    System.getenv("FROMCHAT_PACKAGING_JDK")?.takeIf { it.isNotBlank() }?.let { return it }
+    val candidates = listOf(
+        "${System.getProperty("user.home")}/.gradle/jdks/eclipse_adoptium-17-aarch64-os_x.2/jdk-17.0.19+10/Contents/Home",
+        "/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home",
+        "/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home",
+        "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home",
+    )
+    return candidates.firstOrNull { File(it, "bin/jpackage").isFile }
+        ?: error(
+            "No JDK with jpackage found. Install Temurin 17+ or set FROMCHAT_PACKAGING_JDK.",
+        )
+}
 
 compose.desktop {
     application {
         mainClass = "ru.fromchat.desktop.MainKt"
+        javaHome = resolvePackagingJdkHome()
+
+        buildTypes.release.proguard {
+            configurationFiles.from(project.file("proguard-rules.pro"))
+        }
 
         nativeDistributions {
             packageName = "FromChat"
             packageVersion = "1.0.0"
             description = "FromChat desktop"
             copyright = "© FromChat"
+            includeAllModules = true
 
             modules(
                 "javafx.base",
@@ -306,4 +333,152 @@ private fun openjfxClassifier(): String {
         isArm -> "linux-aarch64"
         else -> "linux"
     }
+}
+
+val runningOnMacOs = System.getProperty("os.name").orEmpty().lowercase().contains("mac")
+
+val installDmgBackgroundTools = tasks.register<Exec>("installDmgBackgroundTools") {
+    onlyIf { runningOnMacOs }
+    workingDir = dmgBackgroundDir.asFile
+    inputs.file(dmgBackgroundDir.file("package.json"))
+    inputs.file(dmgBackgroundDir.file("package-lock.json"))
+    outputs.dir(dmgBackgroundDir.dir("node_modules/playwright"))
+    commandLine(
+        "bash",
+        "-lc",
+        """
+        if [ ! -f node_modules/playwright/package.json ]; then
+          npm install --no-fund --no-audit
+          npx playwright install chromium
+        fi
+        """.trimIndent(),
+    )
+}
+
+val stageDmgBackground = tasks.register<Copy>("stageDmgBackground") {
+    onlyIf { runningOnMacOs }
+    dependsOn(":app:shared:prepareComposeResourcesTaskForCommonMain")
+    mustRunAfter(installDmgBackgroundTools)
+    from(dmgBackgroundDir) {
+        exclude("node_modules/**")
+    }
+    into(dmgStageDir)
+    doLast {
+        val sharedLogo = rootProject.project(":app:shared").layout.buildDirectory
+            .file("generated/compose/resourceGenerator/preparedResources/commonMain/composeResources/drawable/logo_square.png")
+            .get().asFile
+        if (sharedLogo.isFile) {
+            val target = dmgStageDir.get().asFile.resolve("assets/logo_square.png")
+            target.parentFile.mkdirs()
+            sharedLogo.copyTo(target, overwrite = true)
+        } else {
+            logger.lifecycle("Compose logo not generated; using bundled dmg-background/assets/logo_square.png")
+        }
+    }
+}
+
+val exportDmgBackground = tasks.register<Exec>("exportDmgBackground") {
+    onlyIf { runningOnMacOs }
+    dependsOn(stageDmgBackground, installDmgBackgroundTools)
+    workingDir = dmgBackgroundDir.asFile
+    val stage = dmgStageDir.get().asFile.absolutePath
+    val dist = dmgDistDir.get().asFile.absolutePath
+    inputs.dir(dmgStageDir)
+    outputs.dir(dmgDistDir)
+    commandLine(
+        "bash",
+        "-lc",
+        "node export.mjs '${stage}' '${dist}'",
+    )
+}
+
+fun org.gradle.api.tasks.TaskContainer.registerPackageDmgTask(
+    name: String,
+    appBundle: Provider<Directory>,
+    dmgOutput: Provider<RegularFile>,
+    distributableTask: String,
+    scriptName: String,
+) = register<Exec>(name) {
+    onlyIf { runningOnMacOs }
+    group = "compose desktop"
+    dependsOn(distributableTask, exportDmgBackground)
+    val positionsFile = dmgDistDir.map { it.file("icon-positions.json") }
+    val dmgScript = layout.buildDirectory.file("dmg-background/$scriptName")
+    inputs.dir(appBundle)
+    inputs.dir(dmgDistDir)
+    inputs.file(positionsFile)
+    outputs.file(dmgOutput)
+    doFirst {
+        val app = appBundle.get().asFile
+        check(app.isDirectory) {
+            "Missing ${app.absolutePath}. Run :app:desktop:$distributableTask first."
+        }
+        val positions = positionsFile.get().asFile
+        check(positions.isFile) { "Missing ${positions.absolutePath}" }
+        val script = dmgScript.get().asFile
+        script.parentFile.mkdirs()
+        script.writeText(
+            """
+            #!/usr/bin/env bash
+            set -euo pipefail
+            POSITIONS='${positions.absolutePath}'
+            APP='${app.absolutePath}'
+            OUT='${dmgOutput.get().asFile.absolutePath}'
+            DIST='${dmgDistDir.get().asFile.absolutePath}'
+            STAGING="${'$'}{TMPDIR:-/tmp}/fromchat-dmg-staging-${'$'}RANDOM"
+            rm -rf "${'$'}OUT" "${'$'}STAGING"
+            mkdir -p "${'$'}STAGING"
+            cp -R "${'$'}APP" "${'$'}STAGING/"
+            WINDOW_SIZE=($(node -e "const c=require('${'$'}POSITIONS').createDmg; console.log(c.windowSize.join(' '))"))
+            ICON_SIZE=$(node -e "console.log(require('${'$'}POSITIONS').createDmg.iconSize)")
+            APP_POS=($(node -e "const i=require('${'$'}POSITIONS').createDmg.icons.find(x=>x[0]==='FromChat.app'); console.log(i[1], i[2])"))
+            APPS_POS=($(node -e "const i=require('${'$'}POSITIONS').createDmg.icons.find(x=>x[0]==='Applications'); console.log(i[1], i[2])"))
+            (
+              cd "${'$'}DIST"
+              create-dmg \
+                --volname "FromChat" \
+                --window-size "${'$'}{WINDOW_SIZE[0]}" "${'$'}{WINDOW_SIZE[1]}" \
+                --icon-size "${'$'}ICON_SIZE" \
+                --icon "FromChat.app" "${'$'}{APP_POS[0]}" "${'$'}{APP_POS[1]}" \
+                --hide-extension "FromChat.app" \
+                --app-drop-link "${'$'}{APPS_POS[0]}" "${'$'}{APPS_POS[1]}" \
+                --app-drop-link-name "Программы" \
+                --text-size 14 \
+                --background "dmg-background@2x.png" \
+                "${'$'}OUT" \
+                "${'$'}STAGING"
+            )
+            rm -rf "${'$'}STAGING"
+            """.trimIndent() + "\n",
+        )
+        script.setExecutable(true)
+        commandLine(script.absolutePath)
+    }
+}
+
+tasks.registerPackageDmgTask(
+    name = "packageTestDmg",
+    appBundle = debugAppBundle,
+    dmgOutput = testDmgOutput,
+    distributableTask = "createDistributable",
+    scriptName = "package-test-dmg.sh",
+).configure {
+    description = "Build debug app bundle, export DMG background, and package FromChat-test.dmg."
+}
+
+tasks.registerPackageDmgTask(
+    name = "packageReleaseDmg",
+    appBundle = releaseAppBundle,
+    dmgOutput = releaseDmgOutput,
+    distributableTask = "createReleaseDistributable",
+    scriptName = "package-release-dmg.sh",
+).configure {
+    description =
+        "Build release app (ProGuard + jpackage), export DMG background, and package FromChat.dmg. ProGuard may take 10–20 minutes."
+}
+
+tasks.register("packageDmg") {
+    group = "compose desktop"
+    description = "Alias for packageReleaseDmg (full release DMG pipeline)."
+    dependsOn("packageReleaseDmg")
 }

@@ -147,7 +147,7 @@ function buildPositionsJson(measured) {
     },
     createDmg: {
       windowSize: [round(artboard.width), round(artboard.height)],
-      iconSize: Math.round(Math.min(app.width, app.height) * 0.86),
+      iconSize: Math.round(Math.min(app.width, app.height) * 0.88),
       icons: [
         ["FromChat.app", round(app.centerX), round(app.centerY)],
         ["Applications", round(applications.centerX), round(applications.centerY)],
@@ -155,6 +155,20 @@ function buildPositionsJson(measured) {
       ],
     },
   };
+}
+
+async function applyConfig(page, config) {
+  const windowChromeBottom = config.windowChromeBottom ?? config.titleBarInset ?? 22;
+  await page.evaluate(
+    ({ bottom, primaryColor }) => {
+      document.documentElement.style.setProperty("--window-chrome-bottom", `${bottom}px`);
+      if (primaryColor) {
+        document.documentElement.style.setProperty("--primary-pill", primaryColor);
+      }
+    },
+    { bottom: windowChromeBottom, primaryColor: config.primaryColor },
+  );
+  return windowChromeBottom;
 }
 
 async function applyLabelsAndMeasure(page, config, measured) {
@@ -188,43 +202,23 @@ async function applyLabelsAndMeasure(page, config, measured) {
         return w;
       };
 
-      const horizPad = 18;
+      const horizPad = 24;
       const appW = measureTextWidth(appLabel);
       const appsW = measureTextWidth(appsLabel);
+      // Finder draws labels below icons; placeholders stay invisible in the PNG.
+      const labelGapBelowSlot = -1;
 
-      if (appLabel) {
-        appLabel.style.width = (appW + horizPad) + "px";
-        appLabel.style.padding = "4px 9px";
-      }
-      if (appsLabel) {
-        appsLabel.style.width = (appsW + horizPad) + "px";
-        appsLabel.style.padding = "4px 9px";
-      }
-
-      // Position labels using translate-based offsets from 50% (keeps consistent centering and avoids
-      // coordinate-space mismatches). Compute translateX so that the pill is centered at slot.centerX.
-      const artboard = document.querySelector("#dmg");
-      const artWidth = measured?.artboard?.width || artboard.clientWidth;
-      const verticalOffset = 54; // px, matches previous visual placement
-
-      const computeTranslateX = (slotCenterX, labelWidth) => {
-        // desiredLeft = slotCenterX - labelWidth/2
-        // with left:50% the origin is artWidth/2, so translateX = desiredLeft - artWidth/2
-        return Math.round(slotCenterX - labelWidth / 2 - artWidth / 2);
+      const placeLabel = (el, slot, textWidth) => {
+        if (!el || !slot) return;
+        const width = textWidth + horizPad;
+        el.style.width = `${width}px`;
+        el.style.left = `${Math.round(slot.centerX)}px`;
+        el.style.top = `${Math.round(slot.centerY + slot.height / 2 + labelGapBelowSlot)}px`;
+        el.style.transform = "translateX(-50%)";
       };
 
-      if (appLabel && measured?.slots?.app) {
-        const s = measured.slots.app;
-        const tx = computeTranslateX(s.centerX, appW + horizPad);
-        appLabel.style.left = "50%";
-        appLabel.style.transform = `translate(${tx}px, ${verticalOffset}px)`;
-      }
-      if (appsLabel && measured?.slots?.applications) {
-        const s = measured.slots.applications;
-        const tx = computeTranslateX(s.centerX, appsW + horizPad);
-        appsLabel.style.left = "50%";
-        appsLabel.style.transform = `translate(${tx}px, ${verticalOffset}px)`;
-      }
+      placeLabel(appLabel, measured?.slots?.app, appW);
+      placeLabel(appsLabel, measured?.slots?.applications, appsW);
 
       const rectFor = (el) => {
         if (!el) return null;
@@ -259,6 +253,34 @@ async function screenshotArtboard(page, outPath, deviceScaleFactor) {
   });
 }
 
+async function loadConfig() {
+  try {
+    const cfgText = await readFileSync(CONFIG_PATH, "utf8");
+    return JSON.parse(cfgText);
+  } catch {
+    return {};
+  }
+}
+
+async function exportAtScale(browser, baseUrl, cfg, scale) {
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 900 },
+    deviceScaleFactor: scale,
+  });
+  const page = await context.newPage();
+  await page.goto(baseUrl, { waitUntil: "networkidle" });
+  await page.evaluate(async () => {
+    if (document.fonts?.ready) await document.fonts.ready;
+  });
+  await applyConfig(page, cfg);
+  const measured = await measureSlots(page);
+  const labelMetrics = await applyLabelsAndMeasure(page, cfg, measured);
+  const suffix = scale === 2 ? "@2x" : "";
+  await screenshotArtboard(page, path.join(DIST, `dmg-background${suffix}.png`), scale);
+  await context.close();
+  return { measured, labelMetrics };
+}
+
 async function main() {
   await mkdir(DIST, { recursive: true });
   const { server, port } = await startStaticServer();
@@ -266,56 +288,20 @@ async function main() {
   let browser;
   try {
     browser = await chromium.launch({ headless: true });
+    const cfg = await loadConfig();
 
-    {
-      const context = await browser.newContext({
-        viewport: { width: 1280, height: 900 },
-        deviceScaleFactor: 1,
-      });
-      const page = await context.newPage();
-      await page.goto(baseUrl, { waitUntil: "networkidle" });
-      await page.evaluate(async () => {
-        if (document.fonts?.ready) await document.fonts.ready;
-      });
-      // load config
-      let cfg = {};
-      try {
-        const cfgText = await readFileSync(CONFIG_PATH, "utf8");
-        cfg = JSON.parse(cfgText);
-      } catch (e) {
-        cfg = {};
-      }
-      // measure slots first
-      const measured = await measureSlots(page);
-      // apply labels/pill widths and position them based on measured slot coordinates
-      const labelMetrics = await applyLabelsAndMeasure(page, cfg, measured);
-      console.log("label metrics:", JSON.stringify(labelMetrics));
-      const positions = buildPositionsJson(measured);
-      // attach label metrics to the output so build tasks can pre-calc sizes
-      positions.labels = labelMetrics.labels;
-      await writeFile(
-        path.join(DIST, "icon-positions.json"),
-        `${JSON.stringify(positions, null, 2)}\n`,
-        "utf8",
-      );
-      await screenshotArtboard(page, path.join(DIST, "dmg-background.png"), 1);
-      await context.close();
-      console.log(`canvas ${positions.canvas.width}×${positions.canvas.height}`);
-    }
+    const { measured, labelMetrics } = await exportAtScale(browser, baseUrl, cfg, 1);
+    console.log("label metrics:", JSON.stringify(labelMetrics));
+    const positions = buildPositionsJson(measured);
+    positions.labels = labelMetrics.labels;
+    await writeFile(
+      path.join(DIST, "icon-positions.json"),
+      `${JSON.stringify(positions, null, 2)}\n`,
+      "utf8",
+    );
+    console.log(`canvas ${positions.canvas.width}×${positions.canvas.height}`);
 
-    {
-      const context = await browser.newContext({
-        viewport: { width: 1280, height: 900 },
-        deviceScaleFactor: 2,
-      });
-      const page = await context.newPage();
-      await page.goto(baseUrl, { waitUntil: "networkidle" });
-      await page.evaluate(async () => {
-        if (document.fonts?.ready) await document.fonts.ready;
-      });
-      await screenshotArtboard(page, path.join(DIST, "dmg-background@2x.png"), 2);
-      await context.close();
-    }
+    await exportAtScale(browser, baseUrl, cfg, 2);
 
     console.log(`wrote ${path.join(DIST, "dmg-background.png")}`);
     console.log(`wrote ${path.join(DIST, "dmg-background@2x.png")}`);
