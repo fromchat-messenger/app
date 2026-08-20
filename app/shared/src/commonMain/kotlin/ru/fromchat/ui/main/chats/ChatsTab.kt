@@ -13,6 +13,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -96,16 +97,17 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import com.pr0gramm3r101.utils.supportClipboardManagerImpl
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.action_delete
 import ru.fromchat.action_mark_read
+import ru.fromchat.logo_square
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.ChatListSync
 import ru.fromchat.api.StatusSubscriptionCoordinator
@@ -398,8 +400,8 @@ private fun ChatsNormalTopBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Start,
             ) {
-                AsyncImage(
-                    model = Res.getUri("drawable/logo_square.png"),
+                Image(
+                    painter = painterResource(Res.drawable.logo_square),
                     contentDescription = null,
                     contentScale = ContentScale.Fit,
                     modifier = Modifier
