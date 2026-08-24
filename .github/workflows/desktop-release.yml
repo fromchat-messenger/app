@@ -1,0 +1,148 @@
+name: Desktop release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (e.g. 1.1.4). Overrides tag when set."
+        required: true
+        type: string
+
+concurrency:
+  group: desktop-release-${{ github.ref }}-${{ inputs.version || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  resolve-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      tag: ${{ steps.ver.outputs.tag }}
+    steps:
+      - id: ver
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            V="${{ inputs.version }}"
+          else
+            V="${GITHUB_REF_NAME#v}"
+          fi
+          if [[ ! "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]]; then
+            echo "Invalid version: $V" >&2
+            exit 1
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "tag=v$V" >> "$GITHUB_OUTPUT"
+
+  macos:
+    needs: resolve-version
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set versionName
+        run: |
+          sed -i.bak 's/extra\["versionName"\] = "[^"]*"/extra["versionName"] = "${{ needs.resolve-version.outputs.version }}"/' build.gradle.kts
+      - name: Install create-dmg
+        run: brew install create-dmg
+      - name: Package macOS DMG
+        run: |
+          export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
+          ./gradlew :app:desktop:packageReleaseMac --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos
+          path: app/desktop/build/distributions/release/*.dmg
+          if-no-files-found: error
+
+  linux:
+    needs: resolve-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fakeroot rpm binutils libfuse2 wget
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O /tmp/appimagetool
+          chmod +x /tmp/appimagetool
+          echo "APPIMAGETOOL=/tmp/appimagetool" >> "$GITHUB_ENV"
+      - name: Set versionName
+        run: |
+          sed -i 's/extra\["versionName"\] = "[^"]*"/extra["versionName"] = "${{ needs.resolve-version.outputs.version }}"/' build.gradle.kts
+      - name: Package Linux
+        run: |
+          export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
+          ./gradlew :app:desktop:packageReleaseLinux --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-linux
+          path: |
+            app/desktop/build/distributions/release/*.deb
+            app/desktop/build/distributions/release/*.rpm
+            app/desktop/build/distributions/release/*.AppImage
+          if-no-files-found: error
+
+  windows:
+    needs: resolve-version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Set versionName
+        shell: bash
+        run: |
+          sed -i 's/extra\["versionName"\] = "[^"]*"/extra["versionName"] = "${{ needs.resolve-version.outputs.version }}"/' build.gradle.kts
+      - name: Package Windows
+        shell: bash
+        run: |
+          export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
+          ./gradlew :app:desktop:packageReleaseWindows --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows
+          path: |
+            app/desktop/build/distributions/release/*.exe
+          if-no-files-found: error
+
+  publish:
+    needs: [resolve-version, macos, linux, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Collect assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f \( -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' -o -name '*.exe' \) -exec cp {} release-assets/ \;
+          ls -la release-assets
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.resolve-version.outputs.tag }}
+          name: Desktop ${{ needs.resolve-version.outputs.version }}
+          draft: false
+          generate_release_notes: true
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

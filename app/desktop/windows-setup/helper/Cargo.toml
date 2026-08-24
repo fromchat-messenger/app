@@ -1,0 +1,22 @@
+[package]
+name = "fromchat-setup-helper"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "fromchat-setup-helper"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+fromchat-setup-common.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = ["Win32_System_Com"] }
+
+[build-dependencies]
+winres = "0.1"
+image = { version = "0.25", default-features = false, features = ["png"] }
+ico = "0.4"

@@ -1,0 +1,17 @@
+[package]
+name = "fromchat-portable-launcher"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "fromchat-portable-launcher"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+fromchat-setup-common.workspace = true
+
+[build-dependencies]
+winres = "0.1"
+image = { version = "0.25", default-features = false, features = ["png"] }
+ico = "0.4"
