@@ -1,0 +1,31 @@
+[workspace]
+resolver = "2"
+members = [
+    "common",
+    "setup",
+    "helper",
+    "portable-launcher",
+    "pack",
+]
+
+[workspace.package]
+version = "1.0.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+fromchat-setup-common = { path = "common" }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+zstd = "0.13"
+tar = "0.4"
+clap = { version = "4", features = ["derive"] }
+eframe = { version = "0.29", default-features = false, features = ["default_fonts", "glow", "wgpu"] }
+egui = "0.29"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = "s"
+strip = true

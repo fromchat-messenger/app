@@ -1,0 +1,34 @@
+[package]
+name = "fromchat-setup"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "fromchat-setup"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+eframe.workspace = true
+egui.workspace = true
+fromchat-setup-common.workspace = true
+serde_json.workspace = true
+image = { version = "0.25", default-features = false, features = ["png"] }
+earcutr = "0.4"
+raw-window-handle = "0.6"
+
+[build-dependencies]
+winres = "0.1"
+image = { version = "0.25", default-features = false, features = ["png"] }
+ico = "0.4"
+
+[target.'cfg(windows)'.dependencies]
+rfd = "0.15"
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_System_Console",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_EventLog",
+    "Win32_UI_WindowsAndMessaging",
+] }

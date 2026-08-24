@@ -1,17 +1,11 @@
 package ru.fromchat.api.local.cache
 
+import com.pr0gramm3r101.utils.files.PlatformFileSystem
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-private fun cacheRoot(): File {
-    val home = System.getProperty("user.home")
-    return if (!home.isNullOrBlank()) {
-        File(home, ".fromchat/cache")
-    } else {
-        File(System.getProperty("java.io.tmpdir"), "fromchat")
-    }
-}
+private fun cacheRoot(): File = File(PlatformFileSystem.getAppCacheDirectory())
 
 actual suspend fun wipeFromChatCacheDirectory() {
     withContext(Dispatchers.IO) {
