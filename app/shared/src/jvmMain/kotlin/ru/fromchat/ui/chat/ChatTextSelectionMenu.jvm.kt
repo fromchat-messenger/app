@@ -28,17 +28,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
-import androidx.compose.ui.window.PopupProperties
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.action_copy
+import ru.fromchat.ui.MacOsContextMenuPopupWindow
 import androidx.compose.foundation.ContextMenuState as FoundationContextMenuState
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -71,7 +71,6 @@ private class ChatStyleTextContextMenu(
                 )
             },
             state = state,
-            // Empty selection: let secondary click reach the message menu handler.
             enabled = textManager.selectedText.isNotEmpty(),
             content = content,
         )
@@ -99,8 +98,11 @@ private object ChatStyleTextContextMenuRepresentation : ContextMenuRepresentatio
         )
         val animationProgress = remember { mutableFloatStateOf(0f) }
         var enterLaidOut by remember { mutableStateOf(false) }
+        val offscreenMacMenu = usesMacOsOffscreenContextMenu()
+        val density = LocalDensity.current
+        val paddingPx = with(density) { 16.dp.toPx().toInt() }
 
-        LaunchedEffect(enterLaidOut) {
+        LaunchedEffect(status.rect, enterLaidOut) {
             if (!enterLaidOut) {
                 animationProgress.floatValue = 0f
                 return@LaunchedEffect
@@ -118,36 +120,36 @@ private object ChatStyleTextContextMenuRepresentation : ContextMenuRepresentatio
             }
         }
 
-        val positionProvider = remember(anchor) {
+        val positionProvider = remember(anchor, paddingPx, offscreenMacMenu) {
             object : PopupPositionProvider {
                 override fun calculatePosition(
                     anchorBounds: IntRect,
                     windowSize: IntSize,
                     layoutDirection: LayoutDirection,
                     popupContentSize: IntSize,
-                ): IntOffset = anchor
+                ): IntOffset = if (offscreenMacMenu) {
+                    anchor
+                } else {
+                    clampContextMenuOffset(
+                        position = anchor,
+                        popupSize = popupContentSize,
+                        screenWidthPx = windowSize.width,
+                        screenHeightPx = windowSize.height,
+                        paddingPx = paddingPx,
+                        allowOutsideWindow = false,
+                    )
+                }
             }
         }
 
-        Popup(
-            popupPositionProvider = positionProvider,
-            onDismissRequest = {
-                state.status = FoundationContextMenuState.Status.Closed
-            },
-            properties = PopupProperties(
-                focusable = true,
-                dismissOnBackPress = true,
-                dismissOnClickOutside = true,
-                clippingEnabled = false,
-            ),
-        ) {
+        val menuContent: @Composable () -> Unit = {
             ChatStyleContextMenuFrame(
                 modifier = Modifier.onSizeChanged { size ->
                     if (size.width > 0 && size.height > 0) enterLaidOut = true
                 },
                 animated = true,
-                scale = 0.8f + 0.2f * animationProgress.floatValue,
-                alpha = animationProgress.floatValue,
+                scale = 0.5f + 0.5f * animationProgress.floatValue,
+                alpha = animationProgress.floatValue.coerceIn(0f, 1f),
                 transformOriginX = 0f,
                 transformOriginY = 0f,
             ) {
@@ -170,6 +172,26 @@ private object ChatStyleTextContextMenuRepresentation : ContextMenuRepresentatio
                     }
                 }
             }
+        }
+
+        if (offscreenMacMenu) {
+            MacOsContextMenuPopupWindow(
+                onDismissRequest = {
+                    state.status = FoundationContextMenuState.Status.Closed
+                },
+                positionProvider = positionProvider,
+                revealWindow = enterLaidOut,
+                content = menuContent,
+            )
+        } else {
+            InAppContextMenuPopup(
+                onDismissRequest = {
+                    state.status = FoundationContextMenuState.Status.Closed
+                },
+                positionProvider = positionProvider,
+                reserveOvershoot = false,
+                content = menuContent,
+            )
         }
     }
 }

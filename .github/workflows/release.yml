@@ -542,6 +542,41 @@ jobs:
           path: release-staging/*.apk
           if-no-files-found: error
 
+  ios:
+    name: iOS
+    needs: [resolve-version, check-build]
+    if: needs.check-build.outputs.should_build == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/restore-git-mtimes
+      - uses: ./.github/actions/set-version
+        with:
+          version: ${{ needs.resolve-version.outputs.version }}
+      - uses: ./.github/actions/setup-java-gradle
+        with:
+          cache-read-only: "true"
+      - uses: ./.github/actions/cache-gradle-build
+        id: gradle-build-cache
+        with:
+          scope: ios
+      - name: Package unsigned iOS IPA
+        run: |
+          mkdir -p release-staging
+          bash scripts/package-ios-ipa.sh \
+            "${{ needs.resolve-version.outputs.version }}" \
+            release-staging
+      - uses: actions/upload-artifact@v5
+        with:
+          name: ios
+          path: release-staging/*.ipa
+          if-no-files-found: error
+      - uses: ./.github/actions/save-gradle-build-cache
+        if: always()
+        with:
+          scope: ${{ steps.gradle-build-cache.outputs.cache-save-scope }}
+
   record-build:
     name: Record successful build
     needs:
@@ -553,6 +588,7 @@ jobs:
       - macos
       - linux
       - android
+      - ios
     if: needs.check-build.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -579,6 +615,7 @@ jobs:
       - macos
       - linux
       - android
+      - ios
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -604,6 +641,11 @@ jobs:
         if: needs.check-build.outputs.should_build == 'true'
         with:
           name: android
+          path: artifacts
+      - uses: actions/download-artifact@v5
+        if: needs.check-build.outputs.should_build == 'true'
+        with:
+          name: ios
           path: artifacts
       - name: Collect release assets
         if: needs.check-build.outputs.should_build == 'true'
@@ -640,6 +682,7 @@ jobs:
           pick_one "*-linux-x64.AppImage" "FromChat-${LABEL}-x64.AppImage"
           pick_one "*-linux-arm64.AppImage" "FromChat-${LABEL}-arm.AppImage"
           pick_one "*.apk" "FromChat-${LABEL}.apk"
+          pick_one "*.ipa" "FromChat-${LABEL}.ipa"
 
           if find release-assets -type f -name '*.zip' | grep -q .; then
             echo "Release assets must not be zip archives" >&2
@@ -659,6 +702,7 @@ jobs:
           overwrite_existing: ${{ needs.resolve-version.outputs.force_update_release == 'true' }}
           files: |
             release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}.apk
+            release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}.ipa
             release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}-x64.exe
             release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}-arm.exe
             release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}-apple.dmg

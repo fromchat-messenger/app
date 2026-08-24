@@ -29,6 +29,25 @@ FromChat — 100% бесплатный и открытый мессенджер.
 
 Desktop заменяет бывший Electron-клиент в репозитории Web. Запуск: `./gradlew :app:desktop:run`.
 
+### Сборка Desktop
+
+Релизные пакеты собираются на соответствующей ОС (или в CI):
+
+| Задача | Хост | Артефакты |
+|--------|------|-----------|
+| `./gradlew :app:desktop:packageReleaseMac` | macOS | `FromChat-<ver>-macOS.dmg` |
+| `./gradlew :app:desktop:packageReleaseLinux` | Linux | `.deb`, `.rpm`, `.AppImage` (нужен `appimagetool`) |
+| `./gradlew :app:desktop:packageReleaseWindows` | Windows | `FromChat-Setup-<ver>.exe`, `FromChat-Portable-<ver>.exe` (нужен Rust) |
+| `./gradlew :app:desktop:packageReleaseDesktop` | текущая ОС | делегирует в задачу выше |
+
+Результаты: `app/desktop/build/distributions/release/`.
+
+**CI:** `.github/workflows/desktop-release.yml` на тегах `v*` и `workflow_dispatch` (обязательный input `version`), затем загрузка в GitHub Release.
+
+**Windows portable:** в папке виден только `FromChat Portable.exe`; остальной runtime — Hidden. Данные в Hidden `fromchat-data/` рядом с EXE.
+
+**Установка:** Windows `%LOCALAPPDATA%\FromChat`, macOS `~/Library/Application Support/FromChat`, Linux `~/.local/share/FromChat` (миграция с `~/.fromchat/cache` при наличии).
+
 ---
 
 ## 🏗️ Технологический стек

@@ -1,5 +1,6 @@
 package ru.fromchat.api.local.cache
 
+import com.pr0gramm3r101.utils.files.PlatformFileSystem
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -8,14 +9,7 @@ import java.net.URI
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-private fun cacheRoot(): File {
-    val home = System.getProperty("user.home")
-    return if (!home.isNullOrBlank()) {
-        File(home, ".fromchat/cache")
-    } else {
-        File(System.getProperty("java.io.tmpdir"), "fromchat")
-    }
-}
+private fun cacheRoot(): File = File(PlatformFileSystem.getAppCacheDirectory())
 
 private fun uploadDir(instanceId: String): File {
     val safe = instanceId.replace(Regex("[^a-zA-Z0-9._-]"), "_")

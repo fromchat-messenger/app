@@ -32,7 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -62,7 +62,7 @@ object AttachmentDragSession {
 
 /**
  * Exactly one drop target may show the blur/scrim at a time. Hover is resolved by
- * hit-testing registered window bounds against the current pointer so nested AWT
+ * hit-testing registered root bounds against the current pointer so nested AWT
  * targets cannot leave a stale row blurred.
  */
 object AttachmentDropHighlight {
@@ -260,7 +260,7 @@ fun Modifier.chatAttachmentDropTarget(
         }
     }
     onGloballyPositioned { coords ->
-        AttachmentDropHighlight.register(bridge, coords.boundsInWindow())
+        AttachmentDropHighlight.register(bridge, coords.boundsInRoot())
     }.dragAndDropTarget(
         shouldStartDragAndDrop = { acceptsAttachmentDrop(it) },
         target = target,
