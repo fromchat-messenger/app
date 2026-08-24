@@ -35,16 +35,42 @@ val releaseDmgOutput = layout.buildDirectory.file("distributions/FromChat.dmg")
 
 fun resolvePackagingJdkHome(): String {
     System.getenv("FROMCHAT_PACKAGING_JDK")?.takeIf { it.isNotBlank() }?.let { return it }
-    val candidates = listOf(
-        "${System.getProperty("user.home")}/.gradle/jdks/eclipse_adoptium-17-aarch64-os_x.2/jdk-17.0.19+10/Contents/Home",
-        "/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home",
-        "/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home",
-        "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home",
+    System.getenv("JAVA_HOME")?.takeIf { it.isNotBlank() }?.let { home ->
+        if (File(home, "bin/jpackage").isFile || File(home, "bin/jpackage.exe").isFile) {
+            return home
+        }
+    }
+    val userHome = System.getProperty("user.home")
+    val os = System.getProperty("os.name").orEmpty().lowercase()
+    val candidates = buildList {
+        if (os.contains("mac")) {
+            add("$userHome/.gradle/jdks/eclipse_adoptium-17-aarch64-os_x.2/jdk-17.0.19+10/Contents/Home")
+            add("/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home")
+            add("/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home")
+            add("/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home")
+            add("/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home")
+        }
+        if (os.contains("win")) {
+            add("C:/Program Files/Eclipse Adoptium/jdk-17")
+            add("C:/Program Files/Eclipse Adoptium/jdk-21")
+            add("C:/Program Files/Java/jdk-17")
+            add("C:/Program Files/Microsoft/jdk-17")
+        }
+        if (os.contains("linux")) {
+            add("/usr/lib/jvm/temurin-17-jdk-amd64")
+            add("/usr/lib/jvm/temurin-21-jdk-amd64")
+            add("/usr/lib/jvm/java-17-openjdk-amd64")
+            add("/usr/lib/jvm/java-21-openjdk-amd64")
+            add("/usr/lib/jvm/java-17-openjdk")
+            add("/usr/lib/jvm/java-21-openjdk")
+        }
+        System.getProperty("java.home")?.let { add(it) }
+    }
+    return candidates.firstOrNull {
+        File(it, "bin/jpackage").isFile || File(it, "bin/jpackage.exe").isFile
+    } ?: error(
+        "No JDK with jpackage found. Install Temurin 17+ or set FROMCHAT_PACKAGING_JDK.",
     )
-    return candidates.firstOrNull { File(it, "bin/jpackage").isFile }
-        ?: error(
-            "No JDK with jpackage found. Install Temurin 17+ or set FROMCHAT_PACKAGING_JDK.",
-        )
 }
 
 compose.desktop {
@@ -58,10 +84,28 @@ compose.desktop {
 
         nativeDistributions {
             packageName = "FromChat"
-            packageVersion = "1.0.0"
+            packageVersion = rootProject.extra["versionName"] as String
             description = "FromChat desktop"
             copyright = "© FromChat"
             includeAllModules = true
+
+            // macOS DMG uses the custom create-dmg pipeline (packageReleaseDmg), not jpackage.
+            // Linux .AppImage is built via appimagetool (packageLinuxAppImage), not TargetFormat.AppImage.
+            val osName = System.getProperty("os.name").orEmpty().lowercase()
+            when {
+                osName.contains("linux") -> {
+                    targetFormats(
+                        org.jetbrains.compose.desktop.application.dsl.TargetFormat.Deb,
+                        org.jetbrains.compose.desktop.application.dsl.TargetFormat.Rpm,
+                    )
+                }
+                osName.contains("win") -> {
+                    // App-image via createReleaseDistributable; custom Rust setup wraps it.
+                    targetFormats(
+                        org.jetbrains.compose.desktop.application.dsl.TargetFormat.Exe,
+                    )
+                }
+            }
 
             modules(
                 "javafx.base",
@@ -482,3 +526,209 @@ tasks.register("packageDmg") {
     description = "Alias for packageReleaseDmg (full release DMG pipeline)."
     dependsOn("packageReleaseDmg")
 }
+
+val desktopVersionName = rootProject.extra["versionName"] as String
+val desktopDistDir = layout.buildDirectory.dir("distributions/release")
+val runningOnLinux = System.getProperty("os.name").orEmpty().lowercase().contains("linux")
+val runningOnWindows = System.getProperty("os.name").orEmpty().lowercase().contains("win")
+
+val releaseAppImageDir = layout.buildDirectory.dir("compose/binaries/main-release/app/FromChat")
+val linuxAppImageOutput = desktopDistDir.map { it.file("FromChat-$desktopVersionName-linux.AppImage") }
+val windowsSetupOutput = desktopDistDir.map { it.file("FromChat-Setup-$desktopVersionName.exe") }
+val macDmgReleaseOutput = desktopDistDir.map { it.file("FromChat-$desktopVersionName-macOS.dmg") }
+
+tasks.register("packageReleaseMac") {
+    group = "compose desktop"
+    description = "Build release macOS DMG and copy to distributions/release."
+    onlyIf { runningOnMacOs }
+    dependsOn("packageReleaseDmg")
+    outputs.file(macDmgReleaseOutput)
+    doLast {
+        val outDir = desktopDistDir.get().asFile
+        outDir.mkdirs()
+        val src = releaseDmgOutput.get().asFile
+        check(src.isFile) { "Missing ${src.absolutePath}" }
+        src.copyTo(macDmgReleaseOutput.get().asFile, overwrite = true)
+    }
+}
+
+val packageLinuxAppImage = tasks.register<Exec>("packageLinuxAppImage") {
+    group = "compose desktop"
+    description = "Build a Linux .AppImage from the release app-image using appimagetool."
+    onlyIf { runningOnLinux }
+    dependsOn("createReleaseDistributable")
+    inputs.dir(releaseAppImageDir)
+    outputs.file(linuxAppImageOutput)
+    doFirst {
+        val appDir = releaseAppImageDir.get().asFile
+        check(appDir.isDirectory) { "Missing ${appDir.absolutePath}" }
+        val out = linuxAppImageOutput.get().asFile
+        out.parentFile.mkdirs()
+        val stage = layout.buildDirectory.get().asFile.resolve("appimage-stage/FromChat.AppDir")
+        stage.deleteRecursively()
+        stage.mkdirs()
+        appDir.copyRecursively(stage, overwrite = true)
+        val nestedExe = sequenceOf(
+            stage.resolve("FromChat"),
+            stage.resolve("bin/FromChat"),
+        ).firstOrNull { it.isFile }
+            ?: stage.walkTopDown().firstOrNull { it.isFile && it.name == "FromChat" && !it.path.contains("/runtime/") }
+            ?: error("FromChat executable not found under ${appDir.absolutePath}")
+        val appRun = stage.resolve("AppRun")
+        val rel = stage.toPath().relativize(nestedExe.toPath()).toString()
+        appRun.writeText(
+            """
+            #!/bin/sh
+            SELF="${'$'}(dirname "${'$'}(readlink -f "${'$'}0")")"
+            exec "${'$'}SELF/$rel" "${'$'}@"
+            """.trimIndent() + "\n",
+        )
+        appRun.setExecutable(true)
+        nestedExe.setExecutable(true)
+        stage.resolve("fromchat.desktop").writeText(
+            """
+            [Desktop Entry]
+            Name=FromChat
+            Exec=AppRun
+            Icon=fromchat
+            Type=Application
+            Categories=Network;InstantMessaging;
+            """.trimIndent() + "\n",
+        )
+        val iconSrc = desktopWindowIconPng.asFile
+        if (iconSrc.isFile) {
+            iconSrc.copyTo(stage.resolve("fromchat.png"), overwrite = true)
+        }
+        commandLine(
+            "bash",
+            "-lc",
+            """
+            set -euo pipefail
+            TOOL="${'$'}{APPIMAGETOOL:-appimagetool}"
+            if ! command -v "${'$'}TOOL" >/dev/null 2>&1; then
+              echo "appimagetool not found. Install it or set APPIMAGETOOL." >&2
+              exit 1
+            fi
+            ARCH="${'$'}(uname -m)"
+            export ARCH
+            "${'$'}TOOL" "${stage.absolutePath}" "${out.absolutePath}"
+            """.trimIndent(),
+        )
+    }
+}
+
+tasks.register("packageReleaseLinux") {
+    group = "compose desktop"
+    description = "Build release Linux deb, rpm, and AppImage."
+    onlyIf { runningOnLinux }
+    if (runningOnLinux) {
+        dependsOn("packageReleaseDeb", "packageReleaseRpm", packageLinuxAppImage)
+    }
+    doLast {
+        val outDir = desktopDistDir.get().asFile
+        outDir.mkdirs()
+        val binaries = layout.buildDirectory.get().asFile.resolve("compose/binaries/main-release")
+        binaries.walkTopDown()
+            .filter { it.isFile && (it.extension == "deb" || it.extension == "rpm") }
+            .forEach { file ->
+                val renamed = "FromChat-$desktopVersionName-linux.${file.extension}"
+                file.copyTo(outDir.resolve(renamed), overwrite = true)
+            }
+    }
+}
+
+val windowsSetupDir = layout.projectDirectory.dir("windows-setup")
+val windowsRustReleaseDir = windowsSetupDir.dir("target/release")
+val windowsRustBinaryNames = listOf(
+    "fromchat-setup.exe",
+    "fromchat-setup-helper.exe",
+    "fromchat-portable-launcher.exe",
+    "fromchat-pack.exe",
+)
+
+val buildWindowsSetupRust = tasks.register<Exec>("buildWindowsSetupRust") {
+    group = "compose desktop"
+    description = "Build Rust setup, helper, and portable launcher (Windows only)."
+    onlyIf { runningOnWindows }
+    workingDir = windowsSetupDir.asFile
+    commandLine("cargo", "build", "--release", "--workspace")
+    inputs.dir(windowsSetupDir.dir("setup"))
+    inputs.dir(windowsSetupDir.dir("helper"))
+    inputs.dir(windowsSetupDir.dir("portable-launcher"))
+    inputs.dir(windowsSetupDir.dir("common"))
+    inputs.dir(windowsSetupDir.dir("pack"))
+    inputs.dir(windowsSetupDir.dir("assets"))
+    inputs.file(windowsSetupDir.file("Cargo.toml"))
+    windowsRustBinaryNames.forEach { name ->
+        outputs.file(windowsRustReleaseDir.file(name))
+    }
+}
+
+fun Exec.configureWindowsPackTask() {
+    inputs.dir(releaseAppImageDir).withPropertyName("appImage")
+    inputs.dir(windowsRustReleaseDir).withPropertyName("windowsSetupRust")
+    inputs.property("packVersion", desktopVersionName)
+    outputs.file(windowsSetupOutput)
+    doFirst {
+        val appDir = releaseAppImageDir.get().asFile
+        check(appDir.isDirectory) { "Missing ${appDir.absolutePath}" }
+        val outDir = desktopDistDir.get().asFile
+        outDir.mkdirs()
+        val releaseDir = windowsRustReleaseDir.asFile
+        val packer = listOf("fromchat-pack.exe", "fromchat-pack")
+            .map { releaseDir.resolve(it) }
+            .firstOrNull { it.isFile }
+            ?: error("Missing fromchat-pack. Build windows-setup workspace first.")
+        val setupBin = releaseDir.resolve("fromchat-setup.exe").takeIf { it.isFile }
+            ?: releaseDir.resolve("fromchat-setup")
+        val helperBin = releaseDir.resolve("fromchat-setup-helper.exe").takeIf { it.isFile }
+            ?: releaseDir.resolve("fromchat-setup-helper")
+        val launcherBin = releaseDir.resolve("fromchat-portable-launcher.exe").takeIf { it.isFile }
+            ?: releaseDir.resolve("fromchat-portable-launcher")
+        commandLine(
+            packer.absolutePath,
+            "--app-image",
+            appDir.absolutePath,
+            "--version",
+            desktopVersionName,
+            "--setup-out",
+            windowsSetupOutput.get().asFile.absolutePath,
+            "--setup-bin",
+            setupBin.absolutePath,
+            "--helper-bin",
+            helperBin.absolutePath,
+            "--launcher-bin",
+            launcherBin.absolutePath,
+        )
+    }
+}
+
+tasks.register<Exec>("packSetupOnly") {
+    group = "compose desktop"
+    description = "Repack setup EXE from existing app-image + Rust (skips ProGuard)."
+    onlyIf { runningOnWindows }
+    dependsOn(buildWindowsSetupRust)
+    configureWindowsPackTask()
+}
+
+tasks.register<Exec>("packageReleaseWindows") {
+    group = "compose desktop"
+    description = "Build release Windows app-image, then setup EXE."
+    onlyIf { runningOnWindows }
+    if (runningOnWindows) {
+        dependsOn("createReleaseDistributable", buildWindowsSetupRust)
+    }
+    configureWindowsPackTask()
+}
+
+tasks.register("packageReleaseDesktop") {
+    group = "compose desktop"
+    description = "Build the release desktop package for the current OS."
+    when {
+        runningOnMacOs -> dependsOn("packageReleaseMac")
+        runningOnLinux -> dependsOn("packageReleaseLinux")
+        runningOnWindows -> dependsOn("packageReleaseWindows")
+        else -> doFirst { error("Unsupported OS for packageReleaseDesktop") }
+    }
+}
+

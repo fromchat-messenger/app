@@ -2,16 +2,12 @@ package ru.fromchat.api.local.db.store
 
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import com.pr0gramm3r101.utils.files.PlatformFileSystem
 import java.io.File
 import ru.fromchat.db.MessageDatabase
 
 actual fun provideMessageDatabaseDriver(): SqlDriver {
-    val home = System.getProperty("user.home")
-    val dir = if (!home.isNullOrBlank()) {
-        File(home, ".fromchat/cache/fromchat")
-    } else {
-        File(System.getProperty("java.io.tmpdir"), "fromchat")
-    }
+    val dir = File(PlatformFileSystem.getAppCacheDirectory(), "fromchat")
     dir.mkdirs()
     val dbFile = File(dir, "message_database.db")
     val needsCreate = !dbFile.exists()

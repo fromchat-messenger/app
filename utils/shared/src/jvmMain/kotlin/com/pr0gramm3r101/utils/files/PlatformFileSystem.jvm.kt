@@ -49,14 +49,8 @@ internal actual fun expectListFileNamesInDirectory(dirPath: String): List<String
     return dir.list()?.toList().orEmpty()
 }
 
-internal actual fun expectGetAppCacheDirectory(): String {
-    val home = System.getProperty("user.home")
-    return if (!home.isNullOrBlank()) {
-        File(home, ".fromchat/cache").absolutePath
-    } else {
-        File(System.getProperty("java.io.tmpdir"), "fromchat").absolutePath
-    }
-}
+internal actual fun expectGetAppCacheDirectory(): String =
+    AppDataRoot.resolve().absolutePath
 
 internal actual fun expectEnsureDirectory(path: String) {
     File(path).mkdirs()

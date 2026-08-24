@@ -29,6 +29,25 @@ FromChat is a 100% free and open-source messenger. This repository is the cross-
 
 Desktop replaces the former Electron client in the Web repo. Run with `./gradlew :app:desktop:run`.
 
+### Desktop packaging
+
+Build release packages on the matching OS (or via CI):
+
+| Task | Host | Artifacts |
+|------|------|-----------|
+| `./gradlew :app:desktop:packageReleaseMac` | macOS | `FromChat-<ver>-macOS.dmg` |
+| `./gradlew :app:desktop:packageReleaseLinux` | Linux | `.deb`, `.rpm`, `.AppImage` (needs `appimagetool`) |
+| `./gradlew :app:desktop:packageReleaseWindows` | Windows | `FromChat-Setup-<ver>.exe`, `FromChat-Portable-<ver>.exe` (Rust toolchain required) |
+| `./gradlew :app:desktop:packageReleaseDesktop` | current OS | delegates to the task above |
+
+Outputs land under `app/desktop/build/distributions/release/`.
+
+**CI:** `.github/workflows/desktop-release.yml` runs on `v*` tags and `workflow_dispatch` (required `version` input), then uploads assets to a GitHub Release.
+
+**Windows portable:** extracts into a folder where only `FromChat Portable.exe` is visible; other runtime files are Hidden. Data is stored in a Hidden `fromchat-data/` next to that EXE (`-Dfromchat.portable=true`).
+
+**Installed data:** Windows `%LOCALAPPDATA%\FromChat`, macOS `~/Library/Application Support/FromChat`, Linux `~/.local/share/FromChat` (migrates from legacy `~/.fromchat/cache` when present).
+
 ---
 
 ## 🏗️ Tech Stack
