@@ -1,7 +1,7 @@
 [versions]
 agp = "9.3.1"
 androidx-activityCompose = "1.13.0"
-androidx-appcompat = "1.7.1"
+androidx-appcompat = "1.8.0"
 androidx-core-ktx = "1.19.0"
 androidx-exifinterface = "1.4.2"
 coilCompose = "3.5.0"
