@@ -1,5 +1,5 @@
 [package]
-name = "fromchat-setup-common"
+name = "fromchat-installer-common"
 version.workspace = true
 edition.workspace = true
 
@@ -11,6 +11,7 @@ zstd.workspace = true
 tar.workspace = true
 image = { version = "0.25", default-features = false, features = ["png"] }
 ico = "0.4"
+editpe = { version = "0.2", default-features = false, features = ["std", "images"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [

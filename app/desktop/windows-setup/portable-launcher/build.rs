@@ -13,6 +13,9 @@ fn embed_windows_icon(png_relative: &str) {
     png_to_ico(&png_path, &ico_path);
     let mut res = winres::WindowsResource::new();
     res.set_icon(ico_path.to_str().expect("ico path utf-8"));
+    res.set("FileDescription", "FromChat Beta");
+    res.set("ProductName", "FromChat Beta");
+    res.set("OriginalFilename", "FromChat Beta.exe");
     if let Err(error) = res.compile() {
         panic!("winres compile failed: {error}");
     }

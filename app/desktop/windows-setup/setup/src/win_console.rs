@@ -7,7 +7,9 @@ pub fn configure() {
     let cli_mode = std::env::args().any(|arg| {
         matches!(
             arg.as_str(),
-            fromchat_setup_common::UPGRADE_ARG | fromchat_setup_common::UNINSTALL_ARG
+            fromchat_installer_common::UPGRADE_ARG
+                | fromchat_installer_common::UNINSTALL_ARG
+                | fromchat_installer_common::LAUNCH_ARG
         )
     });
 

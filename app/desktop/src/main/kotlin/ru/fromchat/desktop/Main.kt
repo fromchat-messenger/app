@@ -1,8 +1,10 @@
 package ru.fromchat.desktop
 
 import androidx.compose.foundation.background
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -14,7 +16,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.toComposeImageBitmap
@@ -84,6 +88,7 @@ import ru.fromchat.notifications.MessageNotificationCoordinator
 import ru.fromchat.ui.App
 import ru.fromchat.ui.LocalExtraStatusBarTop
 import ru.fromchat.ui.Theme
+import ru.fromchat.ui.getColorScheme
 import java.awt.Desktop
 import java.awt.Image
 import java.awt.KeyboardFocusManager
@@ -280,6 +285,19 @@ fun main(args: Array<String>) {
     }
     if (!DesktopSingleInstance.acquireOrForward(args)) return
     DesktopProtocolRegistration.register()
+    if (isWindowsOs()) {
+        if (isWindowsArm64()) {
+            System.setProperty("skiko.rendering.angle.enabled", "true")
+        } else {
+            System.setProperty("skiko.renderApi", "OPENGL")
+        }
+        if (AppBuildInfo.isDebug && System.getProperty("fromchat.app.data.name").isNullOrBlank()) {
+            System.setProperty("fromchat.app.data.name", "FromChatBeta")
+        }
+        setWindowsDesktopAppUserModelId(
+            if (AppBuildInfo.isDebug) "FromChat Beta" else "FromChat",
+        )
+    }
     // Close-to-tray keeps the process + tray; no SMAppService / Login Items registration.
     args.filter { DesktopDeepLinkBus.isFromChatUri(it) }
         .forEach { DesktopDeepLinkBus.handleUri(it) }
@@ -307,13 +325,17 @@ fun main(args: Array<String>) {
         var contentReady by remember { mutableStateOf(false) }
         var windowVisible by remember { mutableStateOf(true) }
         val trayState = rememberTrayState()
-        // BufferedImage.toPainter() keeps the AWT pixels (avoids blank BitmapPainter round-trip).
-        val trayIcon = remember { loadAppIconPainter(tray = true) }
+        val mac = remember { isMacOs() }
+        val windows = remember { isWindowsOs() }
+        val useTemplateTrayIcon = mac
+        val trayIconImage = remember { loadAppIconBufferedImage(tray = useTemplateTrayIcon) }
+        val trayIcon = remember(trayIconImage) {
+            trayIconImage?.toPainter() ?: loadAppIconPainter(tray = useTemplateTrayIcon)
+        }
         val windowIcon = remember {
             dockIconImage?.toPainter() ?: loadAppIconPainter(tray = false)
         }
         val traySupported = remember { java.awt.SystemTray.isSupported() }
-        val mac = remember { isMacOs() }
         val appName = stringResource(
             if (AppBuildInfo.isDebug) Res.string.app_name_beta else Res.string.app_name,
         )
@@ -370,10 +392,15 @@ fun main(args: Array<String>) {
                         "subtitleLen=${payload.subtitle.length}",
                 )
                 if (!native) {
-                    Logger.i("DesktopNotifier", "sink fallback trayState.sendNotification")
-                    trayState.sendNotification(
-                        Notification(title = payload.title, message = payload.displayBody()),
-                    )
+                    if (mac) {
+                        Logger.i("DesktopNotifier", "sink fallback trayState.sendNotification")
+                        trayState.sendNotification(
+                            Notification(title = payload.title, message = payload.displayBody()),
+                        )
+                    } else {
+                        Logger.i("DesktopNotifier", "sink fallback AWT balloon")
+                        DesktopNotifier.showAwtFallback(payload.title, payload.displayBody())
+                    }
                 }
             }
             onDispose {
@@ -471,20 +498,40 @@ fun main(args: Array<String>) {
         }
 
         if (traySupported) {
-            Tray(
-                icon = trayIcon,
-                state = trayState,
-                tooltip = appName,
-                onAction = { showMainWindow() },
-                menu = {
-                    Item(wsStatusLabel, enabled = false) {}
-                    Separator()
-                    Item(trayShow) { showMainWindow() }
-                    Item(aboutApp) { openAbout() }
-                    Separator()
-                    Item(quit) { exitApplication() }
-                },
-            )
+            val darkTheme = when (runCatching { Settings.theme }.getOrDefault(Theme.AsSystem)) {
+                Theme.Dark -> true
+                Theme.Light -> false
+                Theme.AsSystem -> isSystemAppearanceDark()
+            }
+            if (mac) {
+                Tray(
+                    icon = trayIcon,
+                    state = trayState,
+                    tooltip = appName,
+                    onAction = { showMainWindow() },
+                    menu = {
+                        Item(wsStatusLabel, enabled = false) {}
+                        Separator()
+                        Item(trayShow) { showMainWindow() }
+                        Item(aboutApp) { openAbout() }
+                        Separator()
+                        Item(quit) { exitApplication() }
+                    },
+                )
+            } else if (trayIconImage != null) {
+                DesktopTrayHost(
+                    trayImage = trayIconImage,
+                    tooltip = appName,
+                    statusLabel = wsStatusLabel,
+                    showLabel = trayShow,
+                    aboutLabel = aboutApp,
+                    quitLabel = quit,
+                    darkTheme = darkTheme,
+                    onShow = { showMainWindow() },
+                    onAbout = { openAbout() },
+                    onQuit = { exitApplication() },
+                )
+            }
         }
 
         Window(
@@ -493,6 +540,7 @@ fun main(args: Array<String>) {
             state = windowState,
             visible = contentReady && (windowVisible || !traySupported),
             icon = windowIcon,
+            undecorated = windows,
             onPreviewKeyEvent = { event ->
                 // macOS: MenuBar KeyShortcuts handle these. Win/Linux: no menu bar.
                 if (mac || event.type != KeyEventType.KeyDown || !event.isCtrlPressed) {
@@ -541,9 +589,16 @@ fun main(args: Array<String>) {
                 windowChrome.toAwtColor().also {
                     window.background = it
                     window.contentPane.background = it
+                    if (windows) {
+                        updateWindowsNativeCaptionBackground(window, it)
+                    }
                 }
 
-                enableEdgeToEdgeTitleBar(window.rootPane)
+                if (windows) {
+                    installWindowsNativeCaptionChrome(window)
+                    applyWindowsRoundedCorners(window)
+                }
+                applyDesktopEdgeToEdgeChrome(window.rootPane)
                 dockIconImage?.let { image ->
                     window.iconImages = listOf(image)
                     applyDockIcon(image)
@@ -622,7 +677,11 @@ fun main(args: Array<String>) {
             }
 
             CompositionLocalProvider(
-                LocalExtraStatusBarTop provides if (mac) 28.dp else 0.dp,
+                LocalExtraStatusBarTop provides when {
+                    mac -> 28.dp
+                    windows -> WindowsTitleBarHeight
+                    else -> 0.dp
+                },
             ) {
                 Box(
                     Modifier
@@ -630,6 +689,26 @@ fun main(args: Array<String>) {
                         .background(windowChrome),
                 ) {
                     App(onContentReady = { contentReady = true })
+                    if (windows) {
+                        val darkTheme = when (runCatching { Settings.theme }.getOrDefault(Theme.AsSystem)) {
+                            Theme.Dark -> true
+                            Theme.Light -> false
+                            Theme.AsSystem -> isSystemAppearanceDark()
+                        }
+                        MaterialTheme(colorScheme = getColorScheme(darkTheme, dynamicColor = false)) {
+                            WindowsDesktopTitleBar(
+                                title = appName,
+                                windowIcon = windowIcon,
+                                window = window,
+                                windowState = windowState,
+                                onCloseRequest = { requestCloseToBackgroundOrQuit() },
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .fillMaxWidth()
+                                    .zIndex(10_000f),
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -748,12 +827,6 @@ private fun performAwtEditAction(actionName: String) {
     action.actionPerformed(ActionEvent(focusOwner, ActionEvent.ACTION_PERFORMED, actionName))
 }
 
-private fun isMacOs(): Boolean =
-    System.getProperty("os.name").orEmpty().lowercase().contains("mac")
-
-private fun isWindowsOs(): Boolean =
-    System.getProperty("os.name").orEmpty().lowercase().contains("win")
-
 private fun isLinuxOs(): Boolean =
     System.getProperty("os.name").orEmpty().lowercase().contains("linux")
 
@@ -791,13 +864,6 @@ private fun isSystemAppearanceDark() = runCatching {
             .equals("Dark", ignoreCase = true)
     } else false
 }.getOrDefault(false)
-
-private fun enableEdgeToEdgeTitleBar(rootPane: JRootPane) {
-    if (!isMacOs()) return
-    rootPane.putClientProperty("apple.awt.fullWindowContent", true)
-    rootPane.putClientProperty("apple.awt.transparentTitleBar", true)
-    rootPane.putClientProperty("apple.awt.windowTitleVisible", false)
-}
 
 private fun applyDockIcon(image: BufferedImage?) {
     if (image == null) {

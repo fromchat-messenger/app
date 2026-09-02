@@ -171,7 +171,16 @@ kotlin {
         }
 
         jvmMain.dependencies {
-            implementation(compose.desktop.currentOs)
+            if (System.getProperty("os.name").orEmpty().lowercase().contains("win") &&
+                (project.findProperty("windowsArm64") != null || hostCpuArch() == "aarch64")
+            ) {
+                val composeDesktopVersion = libs.versions.compose.multiplatform.get()
+                implementation(
+                    "org.jetbrains.compose.desktop:desktop-jvm-windows-arm64:$composeDesktopVersion",
+                )
+            } else {
+                implementation(compose.desktop.currentOs)
+            }
             implementation(libs.jetbrains.kotlinx.io.bytestring)
             implementation(libs.jetbrains.kotlinx.coroutines.core)
             implementation(libs.ktor.client.cio)
@@ -187,14 +196,26 @@ kotlin {
                     exclude(group = "org.openjfx")
                 }
             }
+            implementation("net.java.dev.jna:jna-platform:5.15.0")
         }
+    }
+}
+
+private fun hostCpuArch(): String {
+    val arch = System.getProperty("os.arch").orEmpty().lowercase()
+    if (arch.contains("aarch64") || arch == "arm64") return "aarch64"
+    val nativeArch = System.getenv("PROCESSOR_ARCHITEW6432")?.uppercase()
+        ?: System.getenv("PROCESSOR_ARCHITECTURE")?.uppercase()
+    if (nativeArch == "ARM64") return "aarch64"
+    return when {
+        arch.contains("amd64") || arch == "x86_64" -> "x86_64"
+        else -> arch
     }
 }
 
 private fun openjfxClassifier(): String {
     val os = System.getProperty("os.name").lowercase()
-    val arch = System.getProperty("os.arch").lowercase()
-    val isArm = arch == "aarch64" || arch == "arm64"
+    val isArm = hostCpuArch() == "aarch64"
     return when {
         os.contains("mac") && isArm -> "mac-aarch64"
         os.contains("mac") -> "mac"

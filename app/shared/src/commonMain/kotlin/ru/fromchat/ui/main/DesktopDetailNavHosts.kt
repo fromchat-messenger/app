@@ -91,19 +91,7 @@ fun DesktopSettingsDetailNavHost(
     onOpenChatFromProfile: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val detailRoute =
-        navController.currentBackStackEntryAsState().value?.destination?.route
-    val showPanel =
-        detailRoute != null && detailRoute != DesktopDetailNav.SETTINGS_ROOT
-
     Box(modifier.fillMaxSize()) {
-        if (showPanel) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background),
-            )
-        }
         CompositionLocalProvider(LocalNavController provides navController) {
             NavHost(
                 navController = navController,
@@ -127,6 +115,17 @@ fun DesktopSettingsDetailNavHost(
                     onOpenChat = onOpenChatFromProfile,
                 )
             }
+        }
+        val detailRoute =
+            navController.currentBackStackEntryAsState().value?.destination?.route
+        val showPanel =
+            detailRoute != null && detailRoute != DesktopDetailNav.SETTINGS_ROOT
+        if (showPanel) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+            )
         }
     }
 }
