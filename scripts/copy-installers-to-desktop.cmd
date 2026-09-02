@@ -3,10 +3,13 @@ setlocal EnableExtensions EnableDelayedExpansion
 
 rem Copy packaged Windows installer to the logged-in user's Desktop.
 rem prlctl exec runs as SYSTEM, so do not rely on %%USERPROFILE%%.
+rem
+rem   copy-installers-to-desktop.cmd         — release setup only
+rem   copy-installers-to-desktop.cmd beta    — beta2 setup only (cleans desktop)
 
 set "DIST=C:\FromChat\app\app\desktop\build\distributions\release"
 set "WIN_DESKTOP="
-set "COPIED=0"
+set "MODE=%~1"
 
 if not exist "%DIST%\" (
   echo WARNING: Release output folder missing: %DIST%
@@ -34,6 +37,23 @@ if not defined WIN_DESKTOP (
 
 call :kill_running_installers
 
+if /I "%MODE%"=="beta" (
+  call :clean_desktop_installers
+  set "COPIED=0"
+  for %%F in ("%DIST%\FromChat-Setup-*-beta2.exe") do (
+    if exist "%%F" (
+      call :copy_installer "%%~fF" "%WIN_DESKTOP%"
+      if errorlevel 1 exit /b 1
+      set "COPIED=1"
+    )
+  )
+  if "!COPIED!"=="0" (
+    echo ERROR: No FromChat-Setup-*-beta2.exe found in %DIST%
+    exit /b 1
+  )
+  exit /b 0
+)
+
 for %%F in ("%DIST%\FromChat-Portable-*.exe") do (
   if exist "%%F" (
     del /F /Q "%%F" >nul 2>&1
@@ -48,24 +68,44 @@ for %%F in ("%WIN_DESKTOP%\FromChat-Portable-*.exe") do (
   )
 )
 
+set "COPIED=0"
 for %%F in ("%DIST%\FromChat-Setup-*.exe") do (
-  if exist "%%F" (
-    call :copy_installer "%%~fF" "%WIN_DESKTOP%"
-    if errorlevel 1 exit /b 1
-    set "COPIED=1"
+  echo %%~nxF | findstr /i /c:"beta" >nul
+  if errorlevel 1 (
+    if exist "%%F" (
+      call :copy_installer "%%~fF" "%WIN_DESKTOP%"
+      if errorlevel 1 exit /b 1
+      set "COPIED=1"
+    )
   )
 )
 
 if "!COPIED!"=="0" (
-  echo WARNING: No FromChat-Setup-*.exe found in %DIST%
+  echo WARNING: No release FromChat-Setup-*.exe found in %DIST%
 )
 
+exit /b 0
+
+:clean_desktop_installers
+echo Cleaning Desktop installer clutter...
+for %%F in ("%WIN_DESKTOP%\FromChat-Setup*.exe") do (
+  if exist "%%F" (
+    del /F /Q "%%F" >nul 2>&1
+    echo Removed %%~nxF
+  )
+)
+for %%F in ("%WIN_DESKTOP%\FromChat-Portable*.exe") do (
+  if exist "%%F" (
+    del /F /Q "%%F" >nul 2>&1
+    echo Removed %%~nxF
+  )
+)
 exit /b 0
 
 :kill_running_installers
 echo Stopping running FromChat installer processes...
 powershell -NoProfile -Command ^
-  "$names = @('fromchat-setup','FromChat-Setup*','FromChat-Portable*');" ^
+  "$names = @('fromchat-setup','FromChat-Installer','FromChat-Setup*','FromChat-Portable*');" ^
   "foreach ($n in $names) { Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }" ^
   2>nul
 ping -n 2 127.0.0.1 >nul

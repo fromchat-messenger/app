@@ -1,4 +1,4 @@
-use fromchat_setup_common::{find_installed_by_registration_id, UNINSTALL_ARG, UPGRADE_ARG};
+use fromchat_installer_common::{find_installed_by_registration_id, LAUNCH_ARG, UNINSTALL_ARG, UPGRADE_ARG};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SetupMode {
@@ -11,12 +11,15 @@ pub enum SetupMode {
 #[derive(Debug, Clone)]
 pub struct SetupOptions {
     pub mode: SetupMode,
+    /// When true, spawn the installed app and close without the Done screen.
+    pub launch_after: bool,
 }
 
 impl Default for SetupOptions {
     fn default() -> Self {
         Self {
             mode: SetupMode::Install,
+            launch_after: false,
         }
     }
 }
@@ -49,6 +52,7 @@ pub fn parse_setup_args(registration_id: &str) -> Result<SetupOptions, SetupLaun
     let args: Vec<String> = std::env::args().collect();
     let uninstall = args.iter().any(|arg| arg == UNINSTALL_ARG);
     let upgrade = args.iter().any(|arg| arg == UPGRADE_ARG);
+    let launch_after = args.iter().any(|arg| arg == LAUNCH_ARG);
 
     if uninstall && upgrade {
         return Err(SetupLaunchError::ConflictingFlags);
@@ -68,6 +72,7 @@ pub fn parse_setup_args(registration_id: &str) -> Result<SetupOptions, SetupLaun
         } else {
             SetupMode::Install
         },
+        launch_after,
     })
 }
 

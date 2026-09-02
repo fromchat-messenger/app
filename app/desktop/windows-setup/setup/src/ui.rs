@@ -1,3 +1,4 @@
+use anyhow::Context;
 use crate::anim::{Lerped, ScreenTransition};
 use crate::args::{SetupMode, SetupOptions};
 use crate::fonts::{self, body, body_medium, wordmark_brand, title_large};
@@ -6,11 +7,13 @@ use crate::icons::{self, CLOSE, DELETE, DOWNLOAD, FOLDER, DONE_ALL, MINIMIZE, OP
 use crate::theme::{self, ON_SURFACE, ON_SURFACE_VARIANT, ON_ERROR_FILLED, PRIMARY, SURFACE, TITLE_BAR_HEIGHT, TITLE_BAR_INACTIVE};
 use crate::widgets::{self, H_PADDING};
 use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, TextureHandle, Ui, Vec2};
-use fromchat_setup_common::{
+use fromchat_installer_common::{
     copy_uninstall_setup, extract_zstd_tar, find_installed_by_registration_id,
     load_install_display_icon, read_bundle_from_exe, uninstall_fromchat, wipe_install_dir,
-    write_install_icon, FromChatEdition, HelperCommand, InstalledFromChat, ProgressEvent,
-    BRANDING_PNG, SETUP_MAGIC, UNINSTALL_SETUP_EXE, VISIBLE_PORTABLE_EXE,
+    write_install_icon, finalize_install_launcher, find_jpackage_app_exe, FromChatEdition,
+    patch_jpackage_exe_icon,
+    HelperCommand, InstalledFromChat, ProgressEvent,
+    BRANDING_PNG, SETUP_HELPER_EXE, SETUP_INSTALLER_EXE, SETUP_MAGIC, UNINSTALL_SETUP_EXE, VISIBLE_PORTABLE_EXE,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -31,13 +34,12 @@ enum Screen {
 
 #[cfg(windows)]
 struct ElevatedInstallSession {
-    pipe: fromchat_setup_common::NamedPipeServer,
+    pipe: fromchat_installer_common::NamedPipeServer,
     cmd_json: String,
 }
 
 pub struct SetupApp {
     mode: SetupMode,
-    window_title: &'static str,
     screen: Screen,
     transition: Option<ScreenTransition<Screen>>,
     time: f32,
@@ -62,10 +64,13 @@ pub struct SetupApp {
     installed: Option<InstalledFromChat>,
     preserve_user_data: bool,
     silent_upgrade: bool,
+    launch_after: bool,
     pending_auto_upgrade: bool,
     is_uninstalling: bool,
     is_upgrading: bool,
     version: String,
+    edition: FromChatEdition,
+    synced_native_window_title: Option<&'static str>,
     logged_first_frame: bool,
     applied_window_chrome: bool,
 }
@@ -103,8 +108,10 @@ impl SetupApp {
             .as_ref()
             .map(|b| b.meta.registration_id.clone())
             .unwrap_or_else(|_| "FromChat".to_owned());
+        let edition = FromChatEdition::from_registry_key(&registration_id)
+            .unwrap_or(FromChatEdition::Release);
 
-        let install_path = default_install_path(false);
+        let install_path = default_install_path(false, edition);
         let portable_path = std::env::current_dir()
             .map(|p| p.join("FromChat").to_string_lossy().into_owned())
             .unwrap_or_else(|_| r".\FromChat".into());
@@ -121,9 +128,8 @@ impl SetupApp {
             None
         };
 
-        let window_title = crate::args::window_title_for_mode(options.mode);
-
         let silent_upgrade = matches!(options.mode, SetupMode::Upgrade);
+        let launch_after = options.launch_after;
         let pending_auto_upgrade = silent_upgrade;
 
         let screen = match options.mode {
@@ -134,7 +140,6 @@ impl SetupApp {
 
         Self {
             mode: options.mode,
-            window_title,
             screen,
             transition: None,
             time: 0.0,
@@ -159,13 +164,32 @@ impl SetupApp {
             installed,
             preserve_user_data: true,
             silent_upgrade,
+            launch_after,
             pending_auto_upgrade,
             is_uninstalling: matches!(options.mode, SetupMode::Uninstall),
             is_upgrading: silent_upgrade,
             version,
+            edition,
+            synced_native_window_title: None,
             logged_first_frame: false,
             applied_window_chrome: false,
         }
+    }
+
+    fn effective_window_title(&self) -> &'static str {
+        crate::args::window_title_for_mode(self.mode)
+    }
+
+    fn sync_native_window_title(&mut self, ctx: &egui::Context, frame: &eframe::Frame) {
+        if self.synced_native_window_title.is_some() {
+            return;
+        }
+        self.synced_native_window_title = Some(i18n::INSTALLER_DISPLAY_NAME);
+        ctx.send_viewport_cmd(egui::ViewportCommand::Title(
+            i18n::INSTALLER_DISPLAY_NAME.into(),
+        ));
+        #[cfg(windows)]
+        crate::win_chrome::set_window_title(frame, i18n::INSTALLER_DISPLAY_NAME);
     }
 
     fn should_confirm_close(&self) -> bool {
@@ -258,7 +282,10 @@ impl eframe::App for SetupApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         if !self.applied_window_chrome {
             self.applied_window_chrome = true;
-            crate::win_chrome::apply(frame);
+            crate::win_chrome::apply(frame, i18n::INSTALLER_DISPLAY_NAME);
+            self.synced_native_window_title = Some(i18n::INSTALLER_DISPLAY_NAME);
+        } else {
+            self.sync_native_window_title(ctx, frame);
         }
         if !self.logged_first_frame {
             self.logged_first_frame = true;
@@ -334,7 +361,10 @@ impl eframe::App for SetupApp {
                         self.progress.set_target(fraction.clamp(0.0, 1.0));
                     }
                     ProgressEvent::Done { launch_path } => {
-                        if self.silent_upgrade {
+                        if self.launch_after {
+                            let _ = std::process::Command::new(&launch_path).spawn();
+                        }
+                        if self.silent_upgrade || self.launch_after {
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                         } else {
                             self.launch_path = Some(PathBuf::from(launch_path));
@@ -403,7 +433,7 @@ impl eframe::App for SetupApp {
                     welcome_visible,
                     &self.logo,
                     ctx.input(|i| i.focused),
-                    self.window_title,
+                    self.effective_window_title(),
                     &mut || close_requested = true,
                     &mut || minimize_requested = true,
                 );
@@ -583,7 +613,8 @@ impl SetupApp {
                             let was_all_users = self.all_users;
                             widgets::checkbox(ui, &mut self.all_users, i18n::ALL_USERS, hover_enabled);
                             if self.all_users != was_all_users {
-                                self.install_path = default_install_path(self.all_users);
+                                self.install_path =
+                                    default_install_path(self.all_users, self.edition);
                             }
                             widgets::checkbox(
                                 ui,
@@ -1199,7 +1230,7 @@ impl SetupApp {
         self.is_upgrading = false;
 
         #[cfg(windows)]
-        if !portable && self.all_users && !fromchat_setup_common::is_elevated() {
+        if !portable && self.all_users && !fromchat_installer_common::is_elevated() {
             let install_path = PathBuf::from(&self.install_path);
             let desktop_shortcut = self.desktop_shortcut;
             let (tx, rx) = mpsc::channel();
@@ -1268,7 +1299,7 @@ impl SetupApp {
         let preserve_user_data = self.preserve_user_data;
 
         #[cfg(windows)]
-        if installed.all_users && !fromchat_setup_common::is_elevated() {
+        if installed.all_users && !fromchat_installer_common::is_elevated() {
             let (tx, rx) = mpsc::channel();
             self.elevation_rx = Some(rx);
             thread::spawn(move || {
@@ -1298,7 +1329,7 @@ impl SetupApp {
         };
 
         #[cfg(windows)]
-        if installed.all_users && !fromchat_setup_common::is_elevated() {
+        if installed.all_users && !fromchat_installer_common::is_elevated() {
             let (tx, rx) = mpsc::channel();
             self.elevation_rx = Some(rx);
             thread::spawn(move || {
@@ -1375,7 +1406,7 @@ fn run_portable(tx: Sender<ProgressEvent>, dest: PathBuf) -> anyhow::Result<()> 
     let _ = tx.send(ProgressEvent::Status {
         message: i18n::EXTRACTING.into(),
     });
-    extract_zstd_tar(&bundle.payload_zstd, &dest)?;
+    extract_zstd_tar(bundle.payload_zstd()?, &dest)?;
     let _ = tx.send(ProgressEvent::Progress { fraction: 0.7 });
     let launcher_path = dest.join(VISIBLE_PORTABLE_EXE);
     std::fs::write(&launcher_path, &bundle.launcher)?;
@@ -1384,10 +1415,10 @@ fn run_portable(tx: Sender<ProgressEvent>, dest: PathBuf) -> anyhow::Result<()> 
     });
     #[cfg(windows)]
     {
-        fromchat_setup_common::hide_all_except(&dest, VISIBLE_PORTABLE_EXE)?;
+        fromchat_installer_common::hide_all_except(&dest, VISIBLE_PORTABLE_EXE)?;
         let data = dest.join("fromchat-data");
         std::fs::create_dir_all(&data)?;
-        fromchat_setup_common::set_hidden(&data, true)?;
+        fromchat_installer_common::set_hidden(&data, true)?;
     }
     let _ = tx.send(ProgressEvent::Progress { fraction: 1.0 });
     let _ = tx.send(ProgressEvent::Done {
@@ -1416,9 +1447,12 @@ fn run_full_install(
     });
     let _ = tx.send(ProgressEvent::Progress { fraction: 0.2 });
     std::fs::create_dir_all(&dest)?;
-    extract_zstd_tar(&bundle.payload_zstd, &dest)?;
+    extract_zstd_tar(bundle.payload_zstd()?, &dest)?;
     let _ = tx.send(ProgressEvent::Progress { fraction: 0.75 });
-    let app_exe = find_app_exe(&dest)?;
+    let app_exe = find_jpackage_app_exe(&dest)?;
+    patch_jpackage_exe_icon(&app_exe)
+        .with_context(|| format!("patch icon on {}", app_exe.display()))?;
+    let launch_exe = finalize_install_launcher(&dest, edition, &bundle.launcher)?;
     #[cfg(windows)]
     {
         let _ = tx.send(ProgressEvent::Status {
@@ -1426,7 +1460,7 @@ fn run_full_install(
         });
         let icon = write_install_icon(&dest)?;
         let uninstaller = copy_uninstall_setup(&exe, &dest)?;
-        fromchat_setup_common::write_uninstall_registry(
+        fromchat_installer_common::write_uninstall_registry(
             all_users,
             edition,
             &version,
@@ -1435,29 +1469,30 @@ fn run_full_install(
             &icon,
         )?;
         if desktop_shortcut {
-            let desk = fromchat_setup_common::desktop_folder()?;
+            let desk = fromchat_installer_common::desktop_folder()?;
             let link = desk.join(format!("{}.lnk", edition.shortcut_name()));
-            fromchat_setup_common::create_shortcut(
+            fromchat_installer_common::create_shortcut(
                 &link,
-                &app_exe,
+                &launch_exe,
                 &dest,
                 edition.display_name(),
                 &icon,
             )?;
         }
-        let programs = fromchat_setup_common::programs_folder(all_users)?;
+        let programs = fromchat_installer_common::programs_folder(all_users)?;
         let link = programs.join(format!("{}.lnk", edition.shortcut_name()));
-        fromchat_setup_common::create_shortcut(
+        fromchat_installer_common::create_shortcut(
             &link,
-            &app_exe,
+            &launch_exe,
             &dest,
             edition.display_name(),
             &icon,
         )?;
     }
+    let _ = app_exe;
     let _ = tx.send(ProgressEvent::Progress { fraction: 1.0 });
     let _ = tx.send(ProgressEvent::Done {
-        launch_path: app_exe.to_string_lossy().into_owned(),
+        launch_path: launch_exe.to_string_lossy().into_owned(),
     });
     Ok(())
 }
@@ -1471,14 +1506,16 @@ fn begin_elevated_install(
     let bundle = read_bundle_from_exe(&exe, SETUP_MAGIC)?;
     let edition = FromChatEdition::from_registry_key(&bundle.meta.registration_id)
         .unwrap_or(FromChatEdition::Release);
-    let temp = std::env::temp_dir().join("fromchat-setup-payload");
+    let temp = std::env::temp_dir().join("FromChat-Installer-payload");
     let _ = std::fs::remove_dir_all(&temp);
     std::fs::create_dir_all(&temp)?;
     let payload_path = temp.join("payload.zst");
-    std::fs::write(&payload_path, &bundle.payload_zstd)?;
-    let helper_path = temp.join("fromchat-setup-helper.exe");
+    std::fs::write(&payload_path, bundle.payload_zstd()?)?;
+    let launcher_path = temp.join("fromchat-launcher.exe");
+    std::fs::write(&launcher_path, &bundle.launcher)?;
+    let helper_path = temp.join(SETUP_HELPER_EXE);
     std::fs::write(&helper_path, &bundle.helper)?;
-    let setup_copy = temp.join("fromchat-setup.exe");
+    let setup_copy = temp.join(SETUP_INSTALLER_EXE);
     std::fs::copy(&exe, &setup_copy)?;
     let uninstaller = dest.join(UNINSTALL_SETUP_EXE);
     let cmd = HelperCommand::Install {
@@ -1489,14 +1526,15 @@ fn begin_elevated_install(
         start_menu: true,
         desktop: desktop_shortcut,
         payload_path: payload_path.to_string_lossy().into_owned(),
+        launcher_path: launcher_path.to_string_lossy().into_owned(),
         uninstaller_path: uninstaller.to_string_lossy().into_owned(),
         setup_exe_path: setup_copy.to_string_lossy().into_owned(),
     };
     let cmd_json = serde_json::to_string(&cmd)?;
-    let pipe = fromchat_setup_common::NamedPipeServer::create(fromchat_setup_common::PIPE_NAME)?;
-    fromchat_setup_common::elevate_helper(
+    let pipe = fromchat_installer_common::NamedPipeServer::create(fromchat_installer_common::PIPE_NAME)?;
+    fromchat_installer_common::elevate_helper(
         &helper_path,
-        &format!("--pipe {}", fromchat_setup_common::PIPE_NAME),
+        &format!("--pipe {}", fromchat_installer_common::PIPE_NAME),
     )?;
     pipe.accept()?;
     Ok(ElevatedInstallSession { pipe, cmd_json })
@@ -1509,10 +1547,10 @@ fn begin_elevated_uninstall(
 ) -> anyhow::Result<ElevatedInstallSession> {
     let exe = std::env::current_exe()?;
     let bundle = read_bundle_from_exe(&exe, SETUP_MAGIC)?;
-    let temp = std::env::temp_dir().join("fromchat-setup-payload");
+    let temp = std::env::temp_dir().join("FromChat-Installer-payload");
     let _ = std::fs::remove_dir_all(&temp);
     std::fs::create_dir_all(&temp)?;
-    let helper_path = temp.join("fromchat-setup-helper.exe");
+    let helper_path = temp.join(SETUP_HELPER_EXE);
     std::fs::write(&helper_path, &bundle.helper)?;
     let cmd = HelperCommand::Uninstall {
         install_dir: installed.install_dir.to_string_lossy().into_owned(),
@@ -1524,10 +1562,10 @@ fn begin_elevated_uninstall(
         preserve_user_data,
     };
     let cmd_json = serde_json::to_string(&cmd)?;
-    let pipe = fromchat_setup_common::NamedPipeServer::create(fromchat_setup_common::PIPE_NAME)?;
-    fromchat_setup_common::elevate_helper(
+    let pipe = fromchat_installer_common::NamedPipeServer::create(fromchat_installer_common::PIPE_NAME)?;
+    fromchat_installer_common::elevate_helper(
         &helper_path,
-        &format!("--pipe {}", fromchat_setup_common::PIPE_NAME),
+        &format!("--pipe {}", fromchat_installer_common::PIPE_NAME),
     )?;
     pipe.accept()?;
     Ok(ElevatedInstallSession { pipe, cmd_json })
@@ -1537,14 +1575,16 @@ fn begin_elevated_uninstall(
 fn begin_elevated_upgrade(installed: &InstalledFromChat) -> anyhow::Result<ElevatedInstallSession> {
     let exe = std::env::current_exe()?;
     let bundle = read_bundle_from_exe(&exe, SETUP_MAGIC)?;
-    let temp = std::env::temp_dir().join("fromchat-setup-payload");
+    let temp = std::env::temp_dir().join("FromChat-Installer-payload");
     let _ = std::fs::remove_dir_all(&temp);
     std::fs::create_dir_all(&temp)?;
     let payload_path = temp.join("payload.zst");
-    std::fs::write(&payload_path, &bundle.payload_zstd)?;
-    let helper_path = temp.join("fromchat-setup-helper.exe");
+    std::fs::write(&payload_path, bundle.payload_zstd()?)?;
+    let launcher_path = temp.join("fromchat-launcher.exe");
+    std::fs::write(&launcher_path, &bundle.launcher)?;
+    let helper_path = temp.join(SETUP_HELPER_EXE);
     std::fs::write(&helper_path, &bundle.helper)?;
-    let setup_copy = temp.join("fromchat-setup.exe");
+    let setup_copy = temp.join(SETUP_INSTALLER_EXE);
     std::fs::copy(&exe, &setup_copy)?;
     let cmd = HelperCommand::Upgrade {
         dest: installed.install_dir.to_string_lossy().into_owned(),
@@ -1552,14 +1592,15 @@ fn begin_elevated_upgrade(installed: &InstalledFromChat) -> anyhow::Result<Eleva
         all_users: installed.all_users,
         edition: edition_tag(installed.edition).into(),
         payload_path: payload_path.to_string_lossy().into_owned(),
+        launcher_path: launcher_path.to_string_lossy().into_owned(),
         setup_exe_path: setup_copy.to_string_lossy().into_owned(),
         desktop_shortcut: desktop_shortcut_exists(installed),
     };
     let cmd_json = serde_json::to_string(&cmd)?;
-    let pipe = fromchat_setup_common::NamedPipeServer::create(fromchat_setup_common::PIPE_NAME)?;
-    fromchat_setup_common::elevate_helper(
+    let pipe = fromchat_installer_common::NamedPipeServer::create(fromchat_installer_common::PIPE_NAME)?;
+    fromchat_installer_common::elevate_helper(
         &helper_path,
-        &format!("--pipe {}", fromchat_setup_common::PIPE_NAME),
+        &format!("--pipe {}", fromchat_installer_common::PIPE_NAME),
     )?;
     pipe.accept()?;
     Ok(ElevatedInstallSession { pipe, cmd_json })
@@ -1602,9 +1643,12 @@ fn run_upgrade(
     let _ = tx.send(ProgressEvent::Progress { fraction: 0.2 });
     wipe_install_dir(&dest, None)?;
     std::fs::create_dir_all(&dest)?;
-    extract_zstd_tar(&bundle.payload_zstd, &dest)?;
+    extract_zstd_tar(bundle.payload_zstd()?, &dest)?;
     let _ = tx.send(ProgressEvent::Progress { fraction: 0.75 });
-    let app_exe = find_app_exe(&dest)?;
+    let app_exe = find_jpackage_app_exe(&dest)?;
+    patch_jpackage_exe_icon(&app_exe)
+        .with_context(|| format!("patch icon on {}", app_exe.display()))?;
+    let launch_exe = finalize_install_launcher(&dest, installed.edition, &bundle.launcher)?;
     #[cfg(windows)]
     {
         let _ = tx.send(ProgressEvent::Status {
@@ -1612,7 +1656,7 @@ fn run_upgrade(
         });
         let icon = write_install_icon(&dest)?;
         let uninstaller = copy_uninstall_setup(&exe, &dest)?;
-        fromchat_setup_common::write_uninstall_registry(
+        fromchat_installer_common::write_uninstall_registry(
             installed.all_users,
             installed.edition,
             &version,
@@ -1621,28 +1665,29 @@ fn run_upgrade(
             &icon,
         )?;
         let shortcut = format!("{}.lnk", installed.edition.shortcut_name());
-        let programs = fromchat_setup_common::programs_folder(installed.all_users)?;
-        fromchat_setup_common::create_shortcut(
+        let programs = fromchat_installer_common::programs_folder(installed.all_users)?;
+        fromchat_installer_common::create_shortcut(
             &programs.join(&shortcut),
-            &app_exe,
+            &launch_exe,
             &dest,
             installed.edition.display_name(),
             &icon,
         )?;
         if desktop_shortcut {
-            let desk = fromchat_setup_common::desktop_folder()?;
-            fromchat_setup_common::create_shortcut(
+            let desk = fromchat_installer_common::desktop_folder()?;
+            fromchat_installer_common::create_shortcut(
                 &desk.join(&shortcut),
-                &app_exe,
+                &launch_exe,
                 &dest,
                 installed.edition.display_name(),
                 &icon,
             )?;
         }
     }
+    let _ = app_exe;
     let _ = tx.send(ProgressEvent::Progress { fraction: 1.0 });
     let _ = tx.send(ProgressEvent::Done {
-        launch_path: app_exe.to_string_lossy().into_owned(),
+        launch_path: launch_exe.to_string_lossy().into_owned(),
     });
     Ok(())
 }
@@ -1657,7 +1702,7 @@ fn edition_tag(edition: FromChatEdition) -> &'static str {
 fn desktop_shortcut_exists(installed: &InstalledFromChat) -> bool {
     #[cfg(windows)]
     {
-        fromchat_setup_common::desktop_folder()
+        fromchat_installer_common::desktop_folder()
             .ok()
             .is_some_and(|desk| {
                 desk.join(format!("{}.lnk", installed.edition.shortcut_name()))
@@ -1676,10 +1721,10 @@ fn run_elevated_install(
     session: ElevatedInstallSession,
     tx: Sender<ProgressEvent>,
 ) -> anyhow::Result<()> {
-    fromchat_setup_common::pipe_write_line(session.pipe.handle(), &session.cmd_json)?;
+    fromchat_installer_common::pipe_write_line(session.pipe.handle(), &session.cmd_json)?;
     let mut got_terminal = false;
     loop {
-        let resp = match fromchat_setup_common::pipe_read_line(session.pipe.handle()) {
+        let resp = match fromchat_installer_common::pipe_read_line(session.pipe.handle()) {
             Ok(resp) => resp,
             Err(_error) if got_terminal => return Ok(()),
             Err(error) => return Err(error.into()),
@@ -1705,24 +1750,7 @@ fn run_elevated_install(
 }
 
 fn find_app_exe(dest: &PathBuf) -> anyhow::Result<PathBuf> {
-    let candidates = [
-        dest.join("FromChat.exe"),
-        dest.join("bin").join("FromChat.exe"),
-    ];
-    for c in candidates {
-        if c.is_file() {
-            return Ok(c);
-        }
-    }
-    for entry in walkdir_files(dest)? {
-        if entry
-            .file_name()
-            .is_some_and(|n| n.eq_ignore_ascii_case("FromChat.exe"))
-        {
-            return Ok(entry);
-        }
-    }
-    anyhow::bail!("FromChat.exe not found after extract");
+    find_jpackage_app_exe(dest).map_err(Into::into)
 }
 
 fn walkdir_files(root: &PathBuf) -> anyhow::Result<Vec<PathBuf>> {
@@ -1743,17 +1771,18 @@ fn walkdir_files(root: &PathBuf) -> anyhow::Result<Vec<PathBuf>> {
     Ok(out)
 }
 
-fn default_install_path(all_users: bool) -> String {
+fn default_install_path(all_users: bool, edition: FromChatEdition) -> String {
     #[cfg(windows)]
     {
-        fromchat_setup_common::default_install_dir(all_users)
+        let folder = edition.install_folder_name();
+        fromchat_installer_common::default_install_dir(all_users, edition)
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_else(|_| {
                 if all_users {
-                    r"C:\Program Files\FromChat".into()
+                    format!(r"C:\Program Files\{folder}")
                 } else {
                     format!(
-                        r"{}\Programs\FromChat",
+                        r"{}\Programs\{folder}",
                         std::env::var("LOCALAPPDATA").unwrap_or_else(|_| r"C:\Users\Public".into())
                     )
                 }
@@ -1762,7 +1791,7 @@ fn default_install_path(all_users: bool) -> String {
     #[cfg(not(windows))]
     {
         let _ = all_users;
-        "/tmp/FromChat".into()
+        format!("/tmp/{}", edition.install_folder_name())
     }
 }
 

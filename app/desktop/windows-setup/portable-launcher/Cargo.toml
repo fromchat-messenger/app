@@ -9,7 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
-fromchat-setup-common.workspace = true
+fromchat-installer-common.workspace = true
 
 [build-dependencies]
 winres = "0.1"

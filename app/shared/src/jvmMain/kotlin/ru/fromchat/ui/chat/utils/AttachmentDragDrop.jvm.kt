@@ -8,10 +8,15 @@ import androidx.compose.ui.draganddrop.DragData
 import androidx.compose.ui.draganddrop.awtTransferable
 import androidx.compose.ui.draganddrop.dragData
 import androidx.compose.ui.geometry.Offset
-import java.awt.MouseInfo
+import java.awt.Point
 import java.awt.datatransfer.DataFlavor
+import java.awt.dnd.DropTargetDragEvent
+import java.awt.dnd.DropTargetDropEvent
+import java.awt.dnd.DropTargetEvent
 import java.io.File
 import java.net.URI
+import javax.swing.RootPaneContainer
+import javax.swing.SwingUtilities
 
 actual class AttachmentDropPermissionsHost
 
@@ -20,12 +25,40 @@ actual fun rememberAttachmentDropPermissionsHost(): AttachmentDropPermissionsHos
     AttachmentDropPermissionsHost()
 
 actual fun dragPointerInWindow(event: DragAndDropEvent): Offset? {
-    val pointer = MouseInfo.getPointerInfo()?.location ?: return null
-    val window = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().activeWindow
-        ?: java.awt.Window.getWindows().firstOrNull { it.isShowing }
-        ?: return null
-    val origin = runCatching { window.locationOnScreen }.getOrNull() ?: return null
-    return Offset((pointer.x - origin.x).toFloat(), (pointer.y - origin.y).toFloat())
+    readComposePositionInRoot(event)?.let { return it }
+
+    val awtEvent = event.nativeEvent as? DropTargetEvent ?: return null
+    val location = when (awtEvent) {
+        is DropTargetDragEvent -> awtEvent.location
+        is DropTargetDropEvent -> awtEvent.location
+        else -> return null
+    }
+    val component = awtEvent.dropTargetContext?.component ?: return null
+    val window = SwingUtilities.getWindowAncestor(component) ?: return null
+    val root = (window as? RootPaneContainer)?.contentPane ?: component
+    val point = Point(location)
+    SwingUtilities.convertPoint(component, point, root)
+    return awtClientPointToComposeRoot(window, point)
+}
+
+private fun readComposePositionInRoot(event: DragAndDropEvent): Offset? {
+    return runCatching {
+        val field = DragAndDropEvent::class.java.getDeclaredField("positionInRootImpl")
+        field.isAccessible = true
+        val offset = field.get(event) as Offset
+        if (offset.x.isFinite() && offset.y.isFinite()) offset else null
+    }.getOrNull()
+}
+
+/**
+ * AWT client coordinates on HiDPI displays are often in user space while
+ * [androidx.compose.ui.layout.boundsInRoot] uses Compose layout pixels.
+ */
+private fun awtClientPointToComposeRoot(window: java.awt.Window, point: Point): Offset {
+    val transform = window.graphicsConfiguration.defaultTransform
+    val scaleX = transform.scaleX.toFloat().coerceAtLeast(1f)
+    val scaleY = transform.scaleY.toFloat().coerceAtLeast(1f)
+    return Offset(point.x * scaleX, point.y * scaleY)
 }
 
 actual fun acceptsAttachmentDrop(event: DragAndDropEvent): Boolean {
@@ -60,7 +93,6 @@ actual fun handleAttachmentDrop(
 }
 
 private fun extractAttachmentDropUris(event: DragAndDropEvent): List<String> {
-    // Prefer Compose's AWT helper — returns file:// URIs for javaFileListFlavor.
     when (val data = event.dragData()) {
         is DragData.FilesList -> {
             val paths = data.readFiles().mapNotNull { uriStringToLocalPath(it) }.distinct()

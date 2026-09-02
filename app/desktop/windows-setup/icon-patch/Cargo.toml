@@ -1,0 +1,12 @@
+[package]
+name = "fromchat-icon-patch"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "fromchat-icon-patch"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+fromchat-installer-common = { path = "../common" }

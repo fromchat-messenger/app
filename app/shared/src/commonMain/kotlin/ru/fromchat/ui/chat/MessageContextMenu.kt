@@ -70,17 +70,7 @@ import ru.fromchat.api.local.download.resolveSavableMessageFile
 import ru.fromchat.api.local.download.resolveSavableMessageImage
 import ru.fromchat.api.local.messages.isQueuedOutbound
 import ru.fromchat.api.schema.messages.Message
-import ru.fromchat.supportsMouseMessageInteraction
 import ru.fromchat.ui.components.Text
-
-/** Platform host for the message context menu (Popup on mobile, OS window on desktop). */
-@Composable
-internal expect fun MessageContextMenuPopup(
-    onDismissRequest: () -> Unit,
-    positionProvider: PopupPositionProvider,
-    reserveOvershoot: Boolean = false,
-    content: @Composable () -> Unit,
-)
 
 data class ContextMenuState(
     val isOpen: Boolean = false,
@@ -116,7 +106,7 @@ private val contextMenuEnterSpec = spring<Float>(
     stiffness = Spring.StiffnessMediumLow,
 )
 
-private fun clampContextMenuOffset(
+internal fun clampContextMenuOffset(
     position: IntOffset,
     popupSize: IntSize,
     screenWidthPx: Int,
@@ -173,6 +163,7 @@ fun MessageContextMenu(
         mutableStateOf(TransformOrigin(0f, 0f))
     }
     var lockedMenuWidthPx by remember(state.message) { mutableIntStateOf(0) }
+    val offscreenMacMenu = usesMacOsOffscreenContextMenu()
 
     LaunchedEffect(state.isOpen) {
         if (!state.isOpen) {
@@ -214,7 +205,6 @@ fun MessageContextMenu(
     if (shouldShowPopup && state.message != null) {
         val density = LocalDensity.current
         val paddingPx = with(density) { 16.dp.toPx().toInt() }
-        val allowOutsideWindow = supportsMouseMessageInteraction()
 
         // Clamp with popupContentSize — do not SubcomposeLayout-measure under
         // SharedTransitionLayout (writes state during LookaheadMeasuring).
@@ -223,7 +213,6 @@ fun MessageContextMenu(
             screenWidthPx,
             screenHeightPx,
             paddingPx,
-            allowOutsideWindow,
         ) {
             object : PopupPositionProvider {
                 override fun calculatePosition(
@@ -237,23 +226,22 @@ fun MessageContextMenu(
                     screenWidthPx = screenWidthPx,
                     screenHeightPx = screenHeightPx,
                     paddingPx = paddingPx,
-                    allowOutsideWindow = allowOutsideWindow,
+                    allowOutsideWindow = offscreenMacMenu,
                 )
             }
         }
 
-        // Match list-item menus (0.5→1) so spring overshoot past 1 is visible.
         val scale = 0.5f + 0.5f * animationProgress.floatValue
         val alpha = animationProgress.floatValue.coerceIn(0f, 1f)
 
         // [state.position] is window coordinates (see MessageItem localToWindow).
         // Alignment+offset would add the popup parent’s window origin again (double offset
         // in list–detail panes). Place with an absolute provider instead.
-        // Desktop hosts this in a transparent OS window so the menu can leave the app frame.
         MessageContextMenuPopup(
             onDismissRequest = onDismiss,
             positionProvider = positionProvider,
             reserveOvershoot = reserveOvershoot,
+            deferReveal = !offscreenMacMenu || enterLaidOut,
         ) {
             ContextMenuContent(
                 message = state.message,
@@ -306,7 +294,7 @@ fun MessageContextMenu(
                             screenWidthPx = screenWidthPx,
                             screenHeightPx = screenHeightPx,
                             paddingPx = paddingPx,
-                            allowOutsideWindow = allowOutsideWindow,
+                            allowOutsideWindow = offscreenMacMenu,
                         )
                         frozenOrigin = TransformOrigin(
                             pivotFractionX = ((state.position.x - adjusted.x).toFloat() / size.width)

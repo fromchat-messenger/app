@@ -6,7 +6,7 @@ import java.io.File
  * Resolves the FromChat desktop data/cache root on the JVM.
  *
  * - Portable (`-Dfromchat.portable=true`): `<exeDir>/fromchat-data`
- * - Windows installed: `%LOCALAPPDATA%\FromChat`
+ * - Windows installed: `%LOCALAPPDATA%\FromChat` (or `FromChat Beta` when `-Dfromchat.app.data.name` is set)
  * - macOS: `~/Library/Application Support/FromChat`
  * - Linux: `${XDG_DATA_HOME:-~/.local/share}/FromChat`
  *
@@ -63,24 +63,34 @@ internal object AppDataRoot {
         return File(System.getProperty("user.dir") ?: ".").absoluteFile
     }
 
+    private fun installedAppDirName(): String {
+        val raw = System.getProperty("fromchat.app.data.name")?.trim()?.takeIf { it.isNotEmpty() }
+        return when (raw) {
+            "FromChatBeta" -> "FromChat Beta"
+            else -> raw ?: APP_DIR_NAME
+        }
+    }
+
     private fun windowsInstalledRoot(): File {
+        val dirName = installedAppDirName()
         val localAppData = System.getenv("LOCALAPPDATA")?.takeIf { it.isNotBlank() }
         return if (localAppData != null) {
-            File(localAppData, APP_DIR_NAME)
+            File(localAppData, dirName)
         } else {
-            File(requireHome(), APP_DIR_NAME)
+            File(requireHome(), dirName)
         }
     }
 
     private fun macInstalledRoot(): File =
-        File(requireHome(), "Library/Application Support/$APP_DIR_NAME")
+        File(requireHome(), "Library/Application Support/${installedAppDirName()}")
 
     private fun linuxInstalledRoot(): File {
+        val dirName = installedAppDirName()
         val xdg = System.getenv("XDG_DATA_HOME")?.takeIf { it.isNotBlank() }
         return if (xdg != null) {
-            File(xdg, APP_DIR_NAME)
+            File(xdg, dirName)
         } else {
-            File(requireHome(), ".local/share/$APP_DIR_NAME")
+            File(requireHome(), ".local/share/$dirName")
         }
     }
 

@@ -18,6 +18,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +29,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -495,24 +497,6 @@ fun App(
                 LocalChatFullscreenImageController provides fullscreenImageController,
             ) {
                 if (startDestination != null) {
-                    val currentEntry by navController.currentBackStackEntryAsState()
-                    val currentRoute = currentEntry?.destination?.route
-                    val settingsEntry by settingsDetailNavController.currentBackStackEntryAsState()
-                    val settingsRoute = settingsEntry?.destination?.route
-                    val settingsProfileUserId = standaloneProfileUserId(settingsEntry)
-                    val ownUserId = ApiClient.user?.id
-                    val showConversationListDetail =
-                        isDesktopListDetail && currentRoute == "chat"
-                    val forceSettingsListTab =
-                        showConversationListDetail && (
-                            isEditProfileRoute(settingsRoute) ||
-                                (
-                                    isStandaloneProfileRoute(settingsRoute) &&
-                                        settingsProfileUserId != null &&
-                                        settingsProfileUserId == ownUserId
-                                    )
-                            )
-
                     LaunchedEffect(Unit) {
                         DesktopMenuCommands.commands.collect { command ->
                             if (command != DesktopMenuCommand.OpenAbout) return@collect
@@ -604,7 +588,7 @@ fun App(
                                         // empty placeholders live in Desktop*DetailNavHost only.
                                         // Drawing EmptyConversationPlaceholder here ghosts a
                                         // second copy through the transparent chats detail pane.
-                                        if (!showConversationListDetail) {
+                                        if (!isDesktopListDetail) {
                                             MainScreen(
                                                 sharedTransitionScope = this@SharedTransitionLayout,
                                                 animatedVisibilityScope = this,
@@ -687,7 +671,34 @@ fun App(
 
                             AppNavHost(Modifier.fillMaxSize())
 
+                            // Observe back stack only after [AppNavHost] has set the graph.
+                            val currentEntry by navController.currentBackStackEntryAsState()
+                            val currentRoute = currentEntry?.destination?.route
+                            val showConversationListDetail =
+                                isDesktopListDetail && currentRoute == "chat"
+
                             if (showConversationListDetail) {
+                                var detailNavGraphsReady by remember { mutableStateOf(false) }
+                                var settingsRoute by remember { mutableStateOf<String?>(null) }
+                                var settingsProfileUserId by remember { mutableStateOf<Int?>(null) }
+                                if (detailNavGraphsReady) {
+                                    SettingsDetailBackStackObserver(
+                                        navController = settingsDetailNavController,
+                                        onChanged = { entry ->
+                                            settingsRoute = entry?.destination?.route
+                                            settingsProfileUserId = standaloneProfileUserId(entry)
+                                        },
+                                    )
+                                }
+                                val ownUserId = ApiClient.user?.id
+                                val forceSettingsListTab =
+                                    isEditProfileRoute(settingsRoute) ||
+                                        (
+                                            isStandaloneProfileRoute(settingsRoute) &&
+                                                settingsProfileUserId != null &&
+                                                settingsProfileUserId == ownUserId
+                                            )
+
                                 val listPaneHazeState = rememberHazeState()
                                 CompositionLocalProvider(
                                     LocalPaneHazeState provides listPaneHazeState,
@@ -739,6 +750,7 @@ fun App(
                                                     )
                                                 },
                                             )
+                                            SideEffect { detailNavGraphsReady = true }
                                         },
                                     )
                                 }
@@ -752,4 +764,13 @@ fun App(
             }
         }
     }
+}
+
+@Composable
+private fun SettingsDetailBackStackObserver(
+    navController: NavHostController,
+    onChanged: (NavBackStackEntry?) -> Unit,
+) {
+    val entry by navController.currentBackStackEntryAsState()
+    SideEffect { onChanged(entry) }
 }

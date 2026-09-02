@@ -48,6 +48,9 @@ pub const UNINSTALL_ARG: &str = "--uninstall";
 /// CLI flag: silently upgrade the installed copy for this installer's registration id.
 pub const UPGRADE_ARG: &str = "--upgrade";
 
+/// CLI flag: launch the app when setup finishes (skips the final screen).
+pub const LAUNCH_ARG: &str = "--launch";
+
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
@@ -73,6 +76,11 @@ impl FromChatEdition {
     }
 
     pub fn shortcut_name(&self) -> &'static str {
+        self.display_name()
+    }
+
+    /// Default install directory leaf (`FromChat` or `FromChat Beta`).
+    pub fn install_folder_name(&self) -> &'static str {
         self.display_name()
     }
 
@@ -234,9 +242,11 @@ pub fn clear_user_data(install_dir: &Path) -> Result<()> {
         let _ = fs::remove_dir_all(&portable_data);
     }
     if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
-        let app_data = PathBuf::from(local_app_data).join("FromChat");
-        if app_data.is_dir() {
-            let _ = fs::remove_dir_all(&app_data);
+        for name in ["FromChat", "FromChat Beta"] {
+            let app_data = PathBuf::from(&local_app_data).join(name);
+            if app_data.is_dir() {
+                let _ = fs::remove_dir_all(&app_data);
+            }
         }
     }
     clear_java_prefs_node(r"Software\JavaSoft\Prefs\ru\fromchat\settings")?;
@@ -580,14 +590,15 @@ pub fn elevate_helper(helper_path: &Path, args: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn default_install_dir(all_users: bool) -> Result<PathBuf> {
+pub fn default_install_dir(all_users: bool, edition: FromChatEdition) -> Result<PathBuf> {
+    let folder = edition.install_folder_name();
     if all_users {
         let program_files =
             std::env::var("ProgramFiles").unwrap_or_else(|_| r"C:\Program Files".into());
-        Ok(PathBuf::from(program_files).join("FromChat"))
+        Ok(PathBuf::from(program_files).join(folder))
     } else {
         let local = std::env::var("LOCALAPPDATA").context("LOCALAPPDATA")?;
-        Ok(PathBuf::from(local).join("Programs").join("FromChat"))
+        Ok(PathBuf::from(local).join("Programs").join(folder))
     }
 }
 
