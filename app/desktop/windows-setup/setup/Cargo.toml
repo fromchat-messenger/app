@@ -1,17 +1,26 @@
 [package]
-name = "fromchat-setup"
+name = "fromchat-installer"
 version.workspace = true
 edition.workspace = true
+description = "Установщик FromChat"
 
 [[bin]]
-name = "fromchat-setup"
+name = "FromChat-Installer"
 path = "src/main.rs"
+
+[package.metadata.winres]
+FileDescription = "Установщик FromChat"
+ProductName = "Установщик FromChat"
+InternalName = "Установщик FromChat"
+OriginalFilename = "FromChat-Setup.exe"
+LegalCopyright = "© FromChat, 2026"
+CompanyName = "denis0001-dev"
 
 [dependencies]
 anyhow.workspace = true
 eframe.workspace = true
 egui.workspace = true
-fromchat-setup-common.workspace = true
+fromchat-installer-common.workspace = true
 serde_json.workspace = true
 image = { version = "0.25", default-features = false, features = ["png"] }
 earcutr = "0.4"
@@ -30,5 +39,6 @@ windows = { version = "0.58", features = [
     "Win32_System_Console",
     "Win32_System_Diagnostics_Debug",
     "Win32_System_EventLog",
+    "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }

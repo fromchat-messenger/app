@@ -19,11 +19,14 @@ mod win_log;
 
 use anyhow::Result;
 use eframe::egui;
-use fromchat_setup_common::{read_bundle_from_exe, BRANDING_PNG, SETUP_MAGIC};
+use fromchat_installer_common::{read_bundle_from_exe, BRANDING_PNG, SETUP_MAGIC};
 
 fn main() {
     #[cfg(windows)]
     win_console::configure();
+
+    #[cfg(windows)]
+    win_chrome::set_process_app_user_model_id();
 
     win_log::init();
 
@@ -107,7 +110,7 @@ fn run() -> Result<()> {
 
         let setup_options = options.clone();
         let result = eframe::run_native(
-            &window_title,
+            i18n::INSTALLER_DISPLAY_NAME,
             options_native,
             Box::new(move |cc| {
                 win_log::info("eframe creation callback");

@@ -33,12 +33,12 @@ Desktop replaces the former Electron client in the Web repo. Run with `./gradlew
 
 Build release packages on the matching OS (or via CI):
 
-| Task | Host | Artifacts |
-|------|------|-----------|
-| `./gradlew :app:desktop:packageReleaseMac` | macOS | `FromChat-<ver>-macOS.dmg` |
-| `./gradlew :app:desktop:packageReleaseLinux` | Linux | `.deb`, `.rpm`, `.AppImage` (needs `appimagetool`) |
-| `./gradlew :app:desktop:packageReleaseWindows` | Windows | `FromChat-Setup-<ver>.exe`, `FromChat-Portable-<ver>.exe` (Rust toolchain required) |
-| `./gradlew :app:desktop:packageReleaseDesktop` | current OS | delegates to the task above |
+| Task                                           | Host       | Artifacts                                                                           |
+|------------------------------------------------|------------|-------------------------------------------------------------------------------------|
+| `./gradlew :app:desktop:packageReleaseMac`     | macOS      | `FromChat-<ver>-macOS.dmg`                                                          |
+| `./gradlew :app:desktop:packageReleaseLinux`   | Linux      | `.deb`, `.rpm`, `.AppImage` (needs `appimagetool`)                                  |
+| `./gradlew :app:desktop:packageReleaseWindows` | Windows    | `FromChat-Setup-<ver>.exe`, `FromChat-Portable-<ver>.exe` (Rust toolchain required) |
+| `./gradlew :app:desktop:packageReleaseDesktop` | current OS | delegates to the task above                                                         |
 
 Outputs land under `app/desktop/build/distributions/release/`.
 

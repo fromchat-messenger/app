@@ -1,5 +1,8 @@
 //! Russian installer copy (primary locale for Windows setup).
 
+/// PE metadata + Task Manager / winit application id.
+pub const INSTALLER_DISPLAY_NAME: &str = "Установщик FromChat";
+
 pub const WINDOW_TITLE: &str = "Установка FromChat";
 pub const WINDOW_TITLE_UNINSTALL: &str = "Удаление FromChat";
 pub const WINDOW_TITLE_UPGRADE: &str = "Обновление FromChat";

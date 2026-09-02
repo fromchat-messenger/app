@@ -1,16 +1,16 @@
 [package]
-name = "fromchat-setup-helper"
+name = "fromchat-installer-helper"
 version.workspace = true
 edition.workspace = true
 
 [[bin]]
-name = "fromchat-setup-helper"
+name = "FromChat-Installer-Helper"
 path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
-fromchat-setup-common.workspace = true
+fromchat-installer-common.workspace = true
 serde_json.workspace = true
 
 [target.'cfg(windows)'.dependencies]

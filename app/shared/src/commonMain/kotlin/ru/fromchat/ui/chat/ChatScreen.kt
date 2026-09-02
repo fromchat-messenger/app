@@ -103,6 +103,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Logger
 import ru.fromchat.AppForeground
+import ru.fromchat.supportsMouseMessageInteraction
 import ru.fromchat.ui.main.ConversationDetailContentPadding
 import ru.fromchat.ui.main.LocalConversationListDetailActive
 import ru.fromchat.ui.main.detailPaneShowBackButton
@@ -1145,7 +1146,7 @@ fun ChatScreen(
                         bridge = attachmentDropBridge,
                     )
                     .then(
-                        if (contextMenuState.isOpen) {
+                        if (contextMenuState.isOpen && !supportsMouseMessageInteraction()) {
                             Modifier.pointerInput(Unit) {
                                 detectTapGestures {
                                     contextMenuState =
