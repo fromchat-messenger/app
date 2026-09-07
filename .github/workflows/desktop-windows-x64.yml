@@ -1,0 +1,51 @@
+name: Windows x64 installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "App version (e.g. 1.1.4)"
+        required: false
+        default: "1.1.4"
+  push:
+    tags:
+      - "win-x64-*"
+
+concurrency:
+  group: desktop-windows-x64-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx6g -Dkotlin.daemon.jvm.options=-Xmx6g
+
+jobs:
+  windows-x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Set version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            V="${{ inputs.version }}"
+          else
+            V="${GITHUB_REF_NAME#win-x64-}"
+          fi
+          bash scripts/ci-set-version.sh "$V"
+      - name: Package Windows x64 installer
+        shell: bash
+        run: |
+          export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
+          ./gradlew :app:desktop:packageReleaseWindows -PdesktopArch=x64 --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-installer
+          path: app/desktop/build/distributions/release/*-windows-x64.exe
+          if-no-files-found: error
