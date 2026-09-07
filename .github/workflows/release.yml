@@ -12,7 +12,7 @@ on:
         type: string
 
 concurrency:
-  group: release-${{ github.ref }}-${{ inputs.version || github.ref_name }}
+  group: release-${{ github.ref }}
   cancel-in-progress: true
 
 env:
