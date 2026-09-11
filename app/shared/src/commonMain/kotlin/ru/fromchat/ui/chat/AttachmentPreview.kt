@@ -66,9 +66,9 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.pr0gramm3r101.utils.crypto.Base64
-import dev.chrisbanes.haze.blur.blurEffect
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.blur.materials.HazeMaterials
-import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.Dispatchers
@@ -784,11 +784,10 @@ private fun ChatImageTileContent(
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .hazeEffect(state = thumbHazeState) {
-                                                blurEffect {
-                                                    style = thumbOverlayHazeStyle
-                                                }
-                                            },
+                                            .hazeBlur(
+                                                input = HazeInput.Backdrop(thumbHazeState),
+                                                style = thumbOverlayHazeStyle,
+                                            ),
                                     )
                                 }
                             }
@@ -917,14 +916,9 @@ private fun DownloadCancelledImageOverlay(
     modifier: Modifier = Modifier,
 ) {
     val scrim = MaterialTheme.colorScheme.scrim.copy(alpha = 0.38f)
-    val overlayHazeStyle = HazeMaterials.thin()
     Box(
         modifier = modifier
-            .hazeEffect {
-                blurEffect {
-                    style = overlayHazeStyle
-                }
-            }
+            .hazeBlur(input = HazeInput.Content, style = HazeMaterials.thin())
             .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.12f)),
         contentAlignment = Alignment.Center,
     ) {
@@ -964,17 +958,12 @@ private fun UploadingImageOverlay(
     onCancelUpload: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    val overlayHazeStyle = HazeMaterials.thin()
     Box(modifier = modifier) {
         Box(
             modifier = Modifier
                 .matchParentSize()
                 .clip(clipShape)
-                .hazeEffect {
-                    blurEffect {
-                        style = overlayHazeStyle
-                    }
-                }
+                .hazeBlur(input = HazeInput.Content, style = HazeMaterials.thin())
         ) {
             when {
                 previewBitmap != null -> {
@@ -1259,15 +1248,10 @@ private fun CorruptedImagePlaceholder(
     modifier: Modifier = Modifier,
     clipShape: RoundedCornerShape = attachmentImageCornerShape(isAuthor = false),
 ) {
-    val overlayHazeStyle = HazeMaterials.thin()
     Box(
         modifier = modifier
             .clip(clipShape)
-            .hazeEffect {
-                blurEffect {
-                    style = overlayHazeStyle
-                }
-            },
+            .hazeBlur(input = HazeInput.Content, style = HazeMaterials.thin()),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

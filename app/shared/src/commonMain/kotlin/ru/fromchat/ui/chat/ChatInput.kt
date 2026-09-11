@@ -93,9 +93,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.pr0gramm3r101.utils.conditional
+import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.blur.blurEffect
-import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.blur.hazeBlur
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -323,7 +323,7 @@ fun ChatInput(
     attachmentDropBridge: AttachmentDropBridge,
     pendingDropUris: List<String> = emptyList(),
 ) {
-    val composerHazeStyle = rememberChatSurfaceContainerHazeStyle()
+    val composerHazeStyle = rememberChatSurfaceContainerHazeStyle().then { blurEnabled(hazeBlurEnabled) }
     val dropScrimColor = lerp(MaterialTheme.colorScheme.primary, Color.Black, 0.62f)
     val attachmentDropEnabled = supportsAttachments && !isReadOnly
     val dropHighlightActive =
@@ -450,12 +450,7 @@ fun ChatInput(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(pillShape)
-                    .hazeEffect(state = hazeState) {
-                        blurEffect {
-                            blurEnabled = hazeBlurEnabled
-                            style = composerHazeStyle
-                        }
-                    }
+                    .hazeBlur(input = HazeInput.Backdrop(hazeState), style = composerHazeStyle)
                     .clickable(enabled = true) { onReadOnlyMessageClick() },
             ) {
                 Text(
@@ -499,12 +494,7 @@ fun ChatInput(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(MaterialTheme.colorScheme.surfaceContainer, pillShape)
-                                .hazeEffect(state = hazeState) {
-                                    blurEffect {
-                                        blurEnabled = hazeBlurEnabled
-                                        style = composerHazeStyle
-                                    }
-                                }
+                                .hazeBlur(input = HazeInput.Backdrop(hazeState), style = composerHazeStyle)
                                 .conditional(dropBlurRadius > 0.dp) {
                                     blur(dropBlurRadius, BlurredEdgeTreatment.Unbounded)
                                 },
@@ -753,15 +743,12 @@ fun ChatInput(
                         modifier = Modifier
                             .fillMaxSize()
                             .background(actionBackground)
-                            .hazeEffect(state = hazeState) {
-                                blurEffect {
-                                    // Keep the node in the tree in both directions; fading alpha avoids the
-                                    // frosted layer popping on over the color when send -> voice.
-                                    blurEnabled = hazeBlurEnabled
-                                    style = composerHazeStyle
-                                    alpha = hazeOverlayAlpha
-                                }
-                            },
+                            .hazeBlur(
+                                input = HazeInput.Backdrop(hazeState),
+                                // Keep the node in the tree in both directions; fading alpha avoids the
+                                // frosted layer popping on over the color when send -> voice.
+                                style = composerHazeStyle.then { alpha(hazeOverlayAlpha) },
+                            ),
                     )
                     AnimatedContent(
                         targetState = canSend,
