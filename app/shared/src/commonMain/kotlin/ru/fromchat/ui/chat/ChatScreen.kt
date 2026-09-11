@@ -81,11 +81,11 @@ import ru.fromchat.chat_date_yesterday
 import ru.fromchat.utils.rememberRegistrationDateFormatStrings
 import com.pr0gramm3r101.utils.resetFocus
 import com.pr0gramm3r101.utils.supportClipboardManagerImpl
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.blur.HazeProgressive
-import dev.chrisbanes.haze.blur.blurEffect
+import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.blur.materials.HazeMaterials
-import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlin.math.roundToInt
@@ -876,22 +876,23 @@ fun ChatScreen(
             // floating header Box only; avoids extra top inset on the fade / list and duplicate “padding”.
             contentWindowInsets = WindowInsets.navigationBars,
             bottomBar = {
-                val bottomBarHazeStyle = HazeMaterials.thin()
                 Column(
                     modifier = Modifier
                         .windowInsetsPadding(WindowInsets.ime)
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.surfaceContainer)
-                        .hazeEffect(state = hazeState) {
-                            blurEffect {
-                                blurEnabled = hazeBlurEnabled
-                                style = bottomBarHazeStyle
-                                progressive = HazeProgressive.verticalGradient(
-                                    startIntensity = 0f,
-                                    endIntensity = 1f,
+                        .hazeBlur(
+                            input = HazeInput.Backdrop(hazeState),
+                            style = HazeMaterials.thin().then {
+                                blurEnabled(hazeBlurEnabled)
+                                progressive(
+                                    HazeProgressive.verticalGradient(
+                                        startIntensity = 0f,
+                                        endIntensity = 1f,
+                                    ),
                                 )
-                            }
-                        }
+                            },
+                        )
                 ) {
                     if (peerDeleted && dmRecipientId != null) {
                         Box(
@@ -1726,7 +1727,6 @@ private fun ChatScrollToBottomButton(
     modifier: Modifier = Modifier,
     hazeBlurEnabled: Boolean = true,
 ) {
-    val hazeStyle = rememberChatSurfaceContainerHazeStyle()
     Box(
         modifier = modifier
             .size(ChatScrollToBottomButtonSize)
@@ -1740,12 +1740,10 @@ private fun ChatScrollToBottomButton(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.91f))
-                .hazeEffect(state = hazeState) {
-                    blurEffect {
-                        blurEnabled = hazeBlurEnabled
-                        style = hazeStyle
-                    }
-                },
+                .hazeBlur(
+                    input = HazeInput.Backdrop(hazeState),
+                    style = rememberChatSurfaceContainerHazeStyle().then { blurEnabled(hazeBlurEnabled) },
+                ),
         )
         Icon(
             imageVector = Icons.Rounded.KeyboardArrowDown,

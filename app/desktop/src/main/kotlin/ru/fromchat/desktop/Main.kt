@@ -357,12 +357,17 @@ fun main(args: Array<String>) {
             }
         }
         // Mirror ConnectionStateStore + WebSocketManager.isConnected (+ logged-out → disconnected).
-        val wsStatusLabel = when {
+        val trayConnectionStatus = when {
             connectionStatus == ConnectionStatus.CONNECTED ||
                 connectionStatus == ConnectionStatus.UPDATING ||
-                wsLinked -> stringResource(Res.string.status_connected)
-            ApiClient.token.isNullOrEmpty() -> stringResource(Res.string.status_disconnected)
-            else -> stringResource(Res.string.status_connecting)
+                wsLinked -> TrayConnectionStatus.Connected
+            ApiClient.token.isNullOrEmpty() -> TrayConnectionStatus.Disconnected
+            else -> TrayConnectionStatus.Connecting
+        }
+        val wsStatusLabel = when (trayConnectionStatus) {
+            TrayConnectionStatus.Connected -> stringResource(Res.string.status_connected)
+            TrayConnectionStatus.Disconnected -> stringResource(Res.string.status_disconnected)
+            TrayConnectionStatus.Connecting -> stringResource(Res.string.status_connecting)
         }
 
         val windowChrome = remember { desktopThemeBackgroundCompose() }
@@ -498,11 +503,6 @@ fun main(args: Array<String>) {
         }
 
         if (traySupported) {
-            val darkTheme = when (runCatching { Settings.theme }.getOrDefault(Theme.AsSystem)) {
-                Theme.Dark -> true
-                Theme.Light -> false
-                Theme.AsSystem -> isSystemAppearanceDark()
-            }
             if (mac) {
                 Tray(
                     icon = trayIcon,
@@ -523,10 +523,10 @@ fun main(args: Array<String>) {
                     trayImage = trayIconImage,
                     tooltip = appName,
                     statusLabel = wsStatusLabel,
+                    connectionStatus = trayConnectionStatus,
                     showLabel = trayShow,
                     aboutLabel = aboutApp,
                     quitLabel = quit,
-                    darkTheme = darkTheme,
                     onShow = { showMainWindow() },
                     onAbout = { openAbout() },
                     onQuit = { exitApplication() },
@@ -690,12 +690,7 @@ fun main(args: Array<String>) {
                 ) {
                     App(onContentReady = { contentReady = true })
                     if (windows) {
-                        val darkTheme = when (runCatching { Settings.theme }.getOrDefault(Theme.AsSystem)) {
-                            Theme.Dark -> true
-                            Theme.Light -> false
-                            Theme.AsSystem -> isSystemAppearanceDark()
-                        }
-                        MaterialTheme(colorScheme = getColorScheme(darkTheme, dynamicColor = false)) {
+                        MaterialTheme(colorScheme = getColorScheme(desktopAppDarkTheme(), dynamicColor = false)) {
                             WindowsDesktopTitleBar(
                                 title = appName,
                                 windowIcon = windowIcon,
@@ -841,29 +836,12 @@ private fun applyDesktopWindowChromeBackground() {
 }
 
 private fun desktopThemeBackgroundCompose() =
-    if (
-        when (runCatching { Settings.theme }.getOrDefault(Theme.AsSystem)) {
-            Theme.Dark -> true
-            Theme.Light -> false
-            Theme.AsSystem -> isSystemAppearanceDark()
-        }
-    ) Color(0xFF1C1B1F) else Color(0xFFFFFBFE)
+    if (desktopAppDarkTheme()) Color(0xFF1C1B1F) else Color(0xFFFFFBFE)
 
 private fun Color.toAwtColor() =
     java.awt.Color(red, green, blue, alpha)
 
-private fun isSystemAppearanceDark() = runCatching {
-    if (isMacOs()) {
-        ProcessBuilder("defaults", "read", "-g", "AppleInterfaceStyle")
-            .redirectErrorStream(true)
-            .start()
-            .inputStream
-            .bufferedReader()
-            .readText()
-            .trim()
-            .equals("Dark", ignoreCase = true)
-    } else false
-}.getOrDefault(false)
+private fun isSystemAppearanceDark() = desktopSystemDarkTheme()
 
 private fun applyDockIcon(image: BufferedImage?) {
     if (image == null) {

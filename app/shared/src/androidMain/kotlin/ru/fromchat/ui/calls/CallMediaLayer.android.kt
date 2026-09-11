@@ -92,10 +92,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.blur.blurEffect
+import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.blur.materials.HazeMaterials
-import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import io.livekit.android.RoomOptions
@@ -1221,16 +1221,11 @@ private fun PreviewTile(
                 innerClipShape = tileShape,
             )
         } else {
-            val placeholderHazeStyle = HazeMaterials.thick()
             Box(
                 Modifier
                     .fillMaxSize()
                     // Placeholder blur only for missing/disabled track.
-                    .hazeEffect(state = hazeState) {
-                        blurEffect {
-                            style = placeholderHazeStyle
-                        }
-                    }
+                    .hazeBlur(input = HazeInput.Backdrop(hazeState), style = HazeMaterials.thick())
                     .background(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.55f)),
             )
         }
@@ -1329,16 +1324,11 @@ private fun CallInlineControlBar(
         modifier = modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center,
     ) {
-        val controlsHazeStyle = HazeMaterials.thick()
         Box(
             modifier = Modifier
                 .fillMaxWidth(0.86f)
                 .clip(RoundedCornerShape(28.dp))
-                .hazeEffect(state = hazeState) {
-                    blurEffect {
-                        style = controlsHazeStyle
-                    }
-                }
+                .hazeBlur(input = HazeInput.Backdrop(hazeState), style = HazeMaterials.thick())
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.48f)),
         ) {
         Row(

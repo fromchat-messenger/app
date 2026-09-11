@@ -70,10 +70,10 @@ import org.jetbrains.compose.resources.stringResource
 import com.pr0gramm3r101.components.Category
 import com.pr0gramm3r101.components.ListItem
 import com.pr0gramm3r101.utils.currentDeviceInfo
-import dev.chrisbanes.haze.blur.HazeProgressive
-import dev.chrisbanes.haze.blur.blurEffect
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.HazeProgressive
+import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.blur.materials.HazeMaterials
-import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import io.ktor.client.network.sockets.ConnectTimeoutException
@@ -435,7 +435,6 @@ fun DevicesScreen(onBack: () -> Unit) {
         contentWindowInsets = WindowInsets.navigationBars,
         snackbarHost = { FromChatSnackbarHost(hostState = snackbarHostState) },
         topBar = {
-            val topBarHazeStyle = HazeMaterials.thin()
             TopAppBar(
                 windowInsets = settingsDetailWindowInsets(),
                 title = {},
@@ -450,15 +449,17 @@ fun DevicesScreen(onBack: () -> Unit) {
                     containerColor = Color.Transparent,
                     scrolledContainerColor = Color.Transparent
                 ),
-                modifier = Modifier.hazeEffect(state = hazeState) {
-                    blurEffect {
-                        style = topBarHazeStyle
-                        progressive = HazeProgressive.verticalGradient(
-                            startIntensity = 1f,
-                            endIntensity = 0f,
+                modifier = Modifier.hazeBlur(
+                    input = HazeInput.Backdrop(hazeState),
+                    style = HazeMaterials.thin().then {
+                        progressive(
+                            HazeProgressive.verticalGradient(
+                                startIntensity = 1f,
+                                endIntensity = 0f,
+                            ),
                         )
-                    }
-                }
+                    },
+                ),
             )
         },
         bottomBar = {

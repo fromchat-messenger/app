@@ -62,13 +62,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.pr0gramm3r101.utils.conditional
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.blur.HazeBlurStyle
 import dev.chrisbanes.haze.blur.HazeColorEffect
-import dev.chrisbanes.haze.blur.HazeProgressive
-import dev.chrisbanes.haze.blur.blurEffect
+import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.blur.materials.HazeMaterials
-import dev.chrisbanes.haze.hazeEffect
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.chat_members_count
@@ -397,7 +397,6 @@ fun ChatTopBar(
         val layoutHeight = topBarPlaceable.height + arcExtentPx
 
         val bgPlaceable = subcompose("background") {
-            val hazeStyle = rememberChatSurfaceContainerHazeStyle()
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -407,12 +406,10 @@ fun ChatTopBar(
                         }
                     )
                     .background(MaterialTheme.colorScheme.surfaceContainer)
-                    .hazeEffect(state = hazeState) {
-                        blurEffect {
-                            blurEnabled = hazeBlurEnabled
-                            style = hazeStyle
-                        }
-                    },
+                    .hazeBlur(
+                        input = HazeInput.Backdrop(hazeState),
+                        style = rememberChatSurfaceContainerHazeStyle().then { blurEnabled(hazeBlurEnabled) },
+                    ),
             )
         }.first().measure(Constraints.fixed(layoutWidth, layoutHeight))
 
@@ -443,8 +440,7 @@ private fun ChatTopBarPill(
     hazeBlurEnabled: Boolean = true,
     showBackButton: Boolean = true,
 ) {
-    val hazeStyle = rememberChatSurfaceContainerHazeStyle()
-    val progressiveStripHazeStyle = HazeMaterials.thin()
+    val hazeStyle = rememberChatSurfaceContainerHazeStyle().then { blurEnabled(hazeBlurEnabled) }
     val chromeColor = MaterialTheme.colorScheme.surfaceContainer
     val pillShape = RoundedCornerShape(28.dp)
 
@@ -453,16 +449,18 @@ private fun ChatTopBarPill(
         Box(
             modifier = Modifier
                 .matchParentSize()
-                .hazeEffect(state = hazeState) {
-                    blurEffect {
-                        blurEnabled = hazeBlurEnabled
-                        style = progressiveStripHazeStyle
-                        progressive = HazeProgressive.verticalGradient(
-                            startIntensity = 1f,
-                            endIntensity = 0f,
+                .hazeBlur(
+                    input = HazeInput.Backdrop(hazeState),
+                    style = HazeMaterials.thin().then {
+                        blurEnabled(hazeBlurEnabled)
+                        progressive(
+                            HazeProgressive.verticalGradient(
+                                startIntensity = 1f,
+                                endIntensity = 0f,
+                            ),
                         )
-                    }
-                },
+                    },
+                ),
         )
         Row(
             modifier = Modifier
@@ -478,12 +476,7 @@ private fun ChatTopBarPill(
                         .size(48.dp)
                         .clip(CircleShape)
                         .background(chromeColor)
-                        .hazeEffect(state = hazeState) {
-                            blurEffect {
-                                blurEnabled = hazeBlurEnabled
-                                style = hazeStyle
-                            }
-                        },
+                        .hazeBlur(input = HazeInput.Backdrop(hazeState), style = hazeStyle),
                     contentAlignment = Alignment.Center,
                 ) {
                     IconButton(onClick = onBack) {
@@ -499,12 +492,7 @@ private fun ChatTopBarPill(
                     .weight(1f)
                     .background(chromeColor, pillShape)
                     .clip(pillShape)
-                    .hazeEffect(state = hazeState) {
-                        blurEffect {
-                            blurEnabled = hazeBlurEnabled
-                            style = hazeStyle
-                        }
-                    }
+                    .hazeBlur(input = HazeInput.Backdrop(hazeState), style = hazeStyle)
                     .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -592,13 +580,17 @@ fun rememberChatSurfaceContainerHazeStyle(): HazeBlurStyle {
     val surface = MaterialTheme.colorScheme.surfaceContainer
 
     return remember(surface) {
-        HazeBlurStyle(
-            blurRadius = 24.dp,
-            backgroundColor = surface,
-            colorEffect = HazeColorEffect.tint(
-                surface.copy(alpha = if (surface.luminance() >= 0.5f) 0.74f else 0.79f),
-            ),
-        )
+        HazeBlurStyle {
+            blurRadius(24.dp)
+            backgroundColor(surface)
+            colorEffects(
+                listOf(
+                    HazeColorEffect.tint(
+                        surface.copy(alpha = if (surface.luminance() >= 0.5f) 0.74f else 0.79f),
+                    ),
+                ),
+            )
+        }
     }
 }
 

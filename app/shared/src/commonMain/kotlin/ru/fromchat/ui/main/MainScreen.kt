@@ -51,11 +51,11 @@ import androidx.navigation.NavController
 import com.pr0gramm3r101.utils.WindowWidthSizeClass
 import com.pr0gramm3r101.utils.currentWindowAdaptiveInfo
 import com.pr0gramm3r101.utils.widthSizeClass
+import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.blur.HazeBlurStyle
 import dev.chrisbanes.haze.blur.HazeColorEffect
-import dev.chrisbanes.haze.blur.blurEffect
-import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.CoroutineScope
@@ -343,11 +343,7 @@ fun MainScreen(
                         }
                     }
                     .background(MaterialTheme.colorScheme.surfaceContainer)
-                    .hazeEffect(state = navBarHazeState) {
-                        blurEffect {
-                            style = navBarHazeStyle
-                        }
-                    },
+                    .hazeBlur(input = HazeInput.Backdrop(navBarHazeState), style = navBarHazeStyle),
             ) {
                 NavigationBar(
                     modifier = Modifier.fillMaxWidth(),
@@ -492,21 +488,19 @@ private fun ChatContextMenuBlurLayer(
     // In-tree under the overlay (zIndex). Never use a Popup here: platform popups stack above
     // the sharp row/menu, blur them, and intercept dismiss taps.
     val surface = MaterialTheme.colorScheme.surfaceContainerLowest
+    val tint = HazeColorEffect.tint(surface.copy(alpha = 0.4f * progress))
     Box(
         modifier = modifier
             .fillMaxSize()
-            .hazeEffect(state = hazeState) {
-                blurEffect {
-                    style = HazeBlurStyle(
-                        blurRadius = blurRadius,
-                        backgroundColor = surface,
-                        colorEffects = listOf(
-                            HazeColorEffect.tint(surface.copy(alpha = 0.4f * progress)),
-                        ),
-                        noiseFactor = 0f,
-                        fallbackColorEffect = HazeColorEffect.tint(surface.copy(alpha = 0.4f * progress)),
-                    )
-                }
-            },
+            .hazeBlur(
+                input = HazeInput.Backdrop(hazeState),
+                style = HazeBlurStyle {
+                    blurRadius(blurRadius)
+                    backgroundColor(surface)
+                    colorEffects(listOf(tint))
+                    noiseFactor(0f)
+                    fallbackColorEffect(tint)
+                },
+            ),
     )
 }

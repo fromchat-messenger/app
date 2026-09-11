@@ -54,8 +54,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.pr0gramm3r101.utils.ToggleNavScrimEffect
-import dev.chrisbanes.haze.blur.blurEffect
-import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import org.jetbrains.compose.resources.stringResource
@@ -118,7 +118,6 @@ fun DocumentScreen(
         contentColor = MaterialTheme.colorScheme.onSurface,
         contentWindowInsets = WindowInsets.navigationBars,
         topBar = {
-            val topBarHazeStyle = rememberChatSurfaceContainerHazeStyle()
             MediumTopAppBar(
                 windowInsets = WindowInsets.extraStatusBars,
                 title = {
@@ -145,11 +144,10 @@ fun DocumentScreen(
                 ),
                 modifier = Modifier
                     .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.91f))
-                    .hazeEffect(state = hazeState) {
-                        blurEffect {
-                            style = topBarHazeStyle
-                        }
-                    },
+                    .hazeBlur(
+                        input = HazeInput.Backdrop(hazeState),
+                        style = rememberChatSurfaceContainerHazeStyle(),
+                    ),
             )
         },
     ) { innerPadding ->

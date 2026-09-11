@@ -51,6 +51,36 @@ internal fun updateWindowsNativeCaptionBackground(window: Window, background: Co
     (frame.rootPane.getClientProperty(ChromeKey) as? WindowsCaptionWndProc)?.background = background
 }
 
+private const val GwlExStyle = -20
+private const val WsExToolWindow = 0x00000080
+private const val WsExAppWindow = 0x00040000
+
+/** Keeps transient popups (tray menu, etc.) out of the Windows taskbar and Alt+Tab. */
+internal fun excludeFromWindowsTaskbar(window: Window) {
+    if (!isWindowsOs()) return
+    val hwnd = window.windowsHwnd()
+    if (hwnd.pointer == null) return
+    val exStyle = User32.INSTANCE.GetWindowLong(hwnd, GwlExStyle)
+    User32.INSTANCE.SetWindowLong(
+        hwnd,
+        GwlExStyle,
+        (exStyle or WsExToolWindow) and WsExAppWindow.inv(),
+    )
+    User32.INSTANCE.SetWindowPos(
+        hwnd,
+        null,
+        0,
+        0,
+        0,
+        0,
+        WinUser.SWP_NOMOVE or
+            WinUser.SWP_NOSIZE or
+            WinUser.SWP_NOZORDER or
+            WinUser.SWP_NOACTIVATE or
+            WinUser.SWP_FRAMECHANGED,
+    )
+}
+
 internal fun Window.windowsHwnd(): HWND {
     val handle = (this as? ComposeWindow)?.windowHandle ?: 0L
     return if (handle != 0L) {
