@@ -47,10 +47,10 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import dev.chrisbanes.haze.blur.HazeProgressive
-import dev.chrisbanes.haze.blur.blurEffect
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.HazeProgressive
+import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.blur.materials.HazeMaterials
-import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import io.ktor.client.call.body
@@ -339,7 +339,6 @@ fun EditProfileScreen(
             }
         },
         topBar = {
-            val topBarHazeStyle = HazeMaterials.thin()
             TopAppBar(
                 title = { Text(stringResource(Res.string.profile_edit_title)) },
                 navigationIcon = {
@@ -367,15 +366,17 @@ fun EditProfileScreen(
                     containerColor = Color.Transparent,
                     scrolledContainerColor = Color.Transparent,
                 ),
-                modifier = Modifier.hazeEffect(state = hazeState) {
-                    blurEffect {
-                        style = topBarHazeStyle
-                        progressive = HazeProgressive.verticalGradient(
-                            startIntensity = 1f,
-                            endIntensity = 0f,
+                modifier = Modifier.hazeBlur(
+                    input = HazeInput.Backdrop(hazeState),
+                    style = HazeMaterials.thin().then {
+                        progressive(
+                            HazeProgressive.verticalGradient(
+                                startIntensity = 1f,
+                                endIntensity = 0f,
+                            ),
                         )
-                    }
-                },
+                    },
+                ),
             )
         },
     ) { innerPadding ->

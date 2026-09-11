@@ -15,12 +15,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.blur.HazeBlurStyle
-import dev.chrisbanes.haze.blur.HazeProgressive
-import dev.chrisbanes.haze.blur.blurEffect
+import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.blur.materials.HazeMaterials
-import dev.chrisbanes.haze.hazeEffect
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 
 @Composable
@@ -31,28 +31,17 @@ fun HazeBottomBar(
     baseColor: Color? = null,
     content: @Composable () -> Unit,
 ) {
-    val resolvedStyle = hazeStyle ?: HazeMaterials.thin()
-    val effectModifier = if (hazeStyle != null) {
-        Modifier.hazeEffect(state = hazeState) {
-            blurEffect {
-                style = resolvedStyle
-                progressive = HazeProgressive.verticalGradient(
+    val effectModifier = Modifier.hazeBlur(
+        input = HazeInput.Backdrop(hazeState),
+        style = (hazeStyle ?: HazeMaterials.thin()).then {
+            progressive(
+                HazeProgressive.verticalGradient(
                     startIntensity = 0f,
                     endIntensity = 1f,
-                )
-            }
-        }
-    } else {
-        Modifier.hazeEffect(state = hazeState) {
-            blurEffect {
-                style = resolvedStyle
-                progressive = HazeProgressive.verticalGradient(
-                    startIntensity = 0f,
-                    endIntensity = 1f,
-                )
-            }
-        }
-    }
+                ),
+            )
+        },
+    )
     Column(
         modifier = Modifier
             .windowInsetsPadding(WindowInsets.ime)

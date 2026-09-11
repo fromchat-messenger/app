@@ -14,7 +14,11 @@ kotlin {
 
     android {
         namespace = "com.pr0gramm3r101.utils"
-        compileSdk = 37
+        compileSdk {
+            version = release(37) {
+                minorApiLevel = 2
+            }
+        }
         minSdk = 24
     }
 

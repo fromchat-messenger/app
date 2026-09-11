@@ -1,12 +1,12 @@
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.util.zip.ZipFile
+
 plugins {
     kotlin("jvm")
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.compose.compiler)
 }
-
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.util.zip.ZipFile
 
 val javafxVersion = libs.versions.openjfx.get()
 val javafxClassifier = openjfxClassifier()
@@ -21,13 +21,13 @@ dependencies {
     } else {
         implementation(compose.desktop.currentOs)
     }
-    implementation(compose.material3)
-    implementation(compose.materialIconsExtended)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.materialIconsExtended)
     implementation(libs.compose.components.resources)
     implementation(project(":app:shared"))
     implementation(project(":utils:shared"))
     implementation(libs.kotlinx.coroutines.swing)
-    implementation("net.java.dev.jna:jna-platform:5.15.0")
+    implementation(libs.jna.platform)
     // OpenJFX publishes empty jars without a classifier; declare every module
     // with the host classifier and exclude transitive stubs.
     javafxModules.forEach { module ->
@@ -618,7 +618,7 @@ val exportDmgBackground = tasks.register<Exec>("exportDmgBackground") {
     )
 }
 
-fun org.gradle.api.tasks.TaskContainer.registerPackageDmgTask(
+fun TaskContainer.registerPackageDmgTask(
     name: String,
     appBundle: Provider<Directory>,
     dmgOutput: Provider<RegularFile>,
@@ -644,37 +644,37 @@ fun org.gradle.api.tasks.TaskContainer.registerPackageDmgTask(
         val script = dmgScript.get().asFile
         script.parentFile.mkdirs()
         script.writeText(
-            """
+            $$"""
             #!/usr/bin/env bash
             set -euo pipefail
-            POSITIONS='${positions.absolutePath}'
-            APP='${app.absolutePath}'
-            OUT='${dmgOutput.get().asFile.absolutePath}'
-            DIST='${dmgDistDir.get().asFile.absolutePath}'
-            STAGING="${'$'}{TMPDIR:-/tmp}/fromchat-dmg-staging-${'$'}RANDOM"
-            rm -rf "${'$'}OUT" "${'$'}STAGING"
-            mkdir -p "${'$'}STAGING"
-            cp -R "${'$'}APP" "${'$'}STAGING/"
-            WINDOW_SIZE=($(node -e "const c=require('${'$'}POSITIONS').createDmg; console.log(c.windowSize.join(' '))"))
-            ICON_SIZE=$(node -e "console.log(require('${'$'}POSITIONS').createDmg.iconSize)")
-            APP_POS=($(node -e "const i=require('${'$'}POSITIONS').createDmg.icons.find(x=>x[0]==='FromChat.app'); console.log(i[1], i[2])"))
-            APPS_POS=($(node -e "const i=require('${'$'}POSITIONS').createDmg.icons.find(x=>x[0]==='Applications'); console.log(i[1], i[2])"))
+            POSITIONS='$${positions.absolutePath}'
+            APP='$${app.absolutePath}'
+            OUT='$${dmgOutput.get().asFile.absolutePath}'
+            DIST='$${dmgDistDir.get().asFile.absolutePath}'
+            STAGING="${TMPDIR:-/tmp}/fromchat-dmg-staging-$RANDOM"
+            rm -rf "$OUT" "$STAGING"
+            mkdir -p "$STAGING"
+            cp -R "$APP" "$STAGING/"
+            WINDOW_SIZE=($(node -e "const c=require('$POSITIONS').createDmg; console.log(c.windowSize.join(' '))"))
+            ICON_SIZE=$(node -e "console.log(require('$POSITIONS').createDmg.iconSize)")
+            APP_POS=($(node -e "const i=require('$POSITIONS').createDmg.icons.find(x=>x[0]==='FromChat.app'); console.log(i[1], i[2])"))
+            APPS_POS=($(node -e "const i=require('$POSITIONS').createDmg.icons.find(x=>x[0]==='Applications'); console.log(i[1], i[2])"))
             (
-              cd "${'$'}DIST"
+              cd "$DIST"
               create-dmg \
                 --volname "FromChat" \
-                --window-size "${'$'}{WINDOW_SIZE[0]}" "${'$'}{WINDOW_SIZE[1]}" \
-                --icon-size "${'$'}ICON_SIZE" \
-                --icon "FromChat.app" "${'$'}{APP_POS[0]}" "${'$'}{APP_POS[1]}" \
+                --window-size "${WINDOW_SIZE[0]}" "${WINDOW_SIZE[1]}" \
+                --icon-size "$ICON_SIZE" \
+                --icon "FromChat.app" "${APP_POS[0]}" "${APP_POS[1]}" \
                 --hide-extension "FromChat.app" \
-                --app-drop-link "${'$'}{APPS_POS[0]}" "${'$'}{APPS_POS[1]}" \
+                --app-drop-link "${APPS_POS[0]}" "${APPS_POS[1]}" \
                 --app-drop-link-name "Программы" \
                 --text-size 14 \
                 --background "dmg-background@2x.png" \
-                "${'$'}OUT" \
-                "${'$'}STAGING"
+                "$OUT" \
+                "$STAGING"
             )
-            rm -rf "${'$'}STAGING"
+            rm -rf "$STAGING"
             """.trimIndent() + "\n",
         )
         script.setExecutable(true)
@@ -770,10 +770,10 @@ val packageLinuxAppImage = tasks.register<Exec>("packageLinuxAppImage") {
         val appRun = stage.resolve("AppRun")
         val rel = stage.toPath().relativize(nestedExe.toPath()).toString()
         appRun.writeText(
-            """
+            $$"""
             #!/bin/sh
-            SELF="${'$'}(dirname "${'$'}(readlink -f "${'$'}0")")"
-            exec "${'$'}SELF/$rel" "${'$'}@"
+            SELF="$(dirname "$(readlink -f "$0")")"
+            exec "$SELF/$$rel" "$@"
             """.trimIndent() + "\n",
         )
         appRun.setExecutable(true)
@@ -795,16 +795,16 @@ val packageLinuxAppImage = tasks.register<Exec>("packageLinuxAppImage") {
         commandLine(
             "bash",
             "-lc",
-            """
+            $$"""
             set -euo pipefail
-            TOOL="${'$'}{APPIMAGETOOL:-appimagetool}"
-            if ! command -v "${'$'}TOOL" >/dev/null 2>&1; then
+            TOOL="${APPIMAGETOOL:-appimagetool}"
+            if ! command -v "$TOOL" >/dev/null 2>&1; then
               echo "appimagetool not found. Install it or set APPIMAGETOOL." >&2
               exit 1
             fi
-            ARCH="${'$'}(uname -m)"
+            ARCH="$(uname -m)"
             export ARCH
-            "${'$'}TOOL" "${stage.absolutePath}" "${out.absolutePath}"
+            "$TOOL" "$${stage.absolutePath}" "$${out.absolutePath}"
             """.trimIndent(),
         )
     }
@@ -925,8 +925,8 @@ val windowsPrebuiltX64AppImage = layout.buildDirectory.dir("prebuilt/windows-x64
 val windowsPrebuiltArm64AppImage = layout.buildDirectory.dir("prebuilt/windows-arm64/app/FromChat")
 
 fun Exec.configureWindowsPackTask(
-    appImageDir: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>?,
-    setupOutput: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
+    appImageDir: Provider<Directory>?,
+    setupOutput: Provider<RegularFile>,
     registrationId: String = "FromChat",
     prebuiltOnly: Boolean = false,
 ) {

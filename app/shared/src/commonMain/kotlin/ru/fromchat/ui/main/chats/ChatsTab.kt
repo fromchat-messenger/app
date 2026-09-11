@@ -58,10 +58,10 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.graphics.Color
+import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.blur.blurEffect
+import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.blur.materials.HazeMaterials
-import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import androidx.compose.runtime.DisposableEffect
@@ -360,16 +360,13 @@ private fun ChatsTopBarHazeBackdrop(
     blurEnabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val topBarHazeStyle = HazeMaterials.thin()
     Box(
         modifier = modifier
             .graphicsLayer { alpha = blurReveal.coerceIn(0f, 1f) }
-            .hazeEffect(state = hazeState) {
-                blurEffect {
-                    this.blurEnabled = blurEnabled
-                    style = topBarHazeStyle
-                }
-            },
+            .hazeBlur(
+                input = HazeInput.Backdrop(hazeState),
+                style = HazeMaterials.thin().then { blurEnabled(blurEnabled) },
+            ),
     )
 }
 

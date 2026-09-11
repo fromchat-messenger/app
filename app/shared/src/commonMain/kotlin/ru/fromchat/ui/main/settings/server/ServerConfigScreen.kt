@@ -67,10 +67,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.pr0gramm3r101.utils.navigateAndWipeBackStack
 import com.pr0gramm3r101.utils.toDp
-import dev.chrisbanes.haze.blur.HazeProgressive
-import dev.chrisbanes.haze.blur.blurEffect
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.HazeProgressive
+import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.blur.materials.HazeMaterials
-import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.Dispatchers
@@ -339,7 +339,6 @@ fun ServerConfigScreen() {
                 }
             },
             topBar = {
-                val topBarHazeStyle = HazeMaterials.thin()
                 TopAppBar(
                         windowInsets = settingsDetailWindowInsets(),
                         title = {},
@@ -357,15 +356,17 @@ fun ServerConfigScreen() {
                             containerColor = Color.Transparent,
                             scrolledContainerColor = Color.Transparent,
                         ),
-                        modifier = Modifier.hazeEffect(state = actionHazeState) {
-                            blurEffect {
-                                style = topBarHazeStyle
-                                progressive = HazeProgressive.verticalGradient(
-                                    startIntensity = 1f,
-                                    endIntensity = 0f,
+                        modifier = Modifier.hazeBlur(
+                            input = HazeInput.Backdrop(actionHazeState),
+                            style = HazeMaterials.thin().then {
+                                progressive(
+                                    HazeProgressive.verticalGradient(
+                                        startIntensity = 1f,
+                                        endIntensity = 0f,
+                                    ),
                                 )
-                            }
-                        },
+                            },
+                        ),
                     )
             }
         ) { innerPadding ->

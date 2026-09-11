@@ -83,11 +83,11 @@ import androidx.compose.ui.zIndex
 import androidx.graphics.shapes.Morph
 import androidx.graphics.shapes.RoundedPolygon
 import com.pr0gramm3r101.utils.LastAnchoredBottomArrangement
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.blur.HazeProgressive
-import dev.chrisbanes.haze.blur.blurEffect
+import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.blur.materials.HazeMaterials
-import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.CoroutineScope
@@ -551,7 +551,6 @@ fun ExpressiveStepFlowScaffold(
 
     @Composable
     fun HazeTopBar(hazeState: HazeState) {
-        val topBarHazeStyle = HazeMaterials.thin()
         TopAppBar(
             windowInsets = topBarWindowInsets,
             title = {},
@@ -570,15 +569,17 @@ fun ExpressiveStepFlowScaffold(
                 containerColor = Color.Transparent,
                 scrolledContainerColor = Color.Transparent,
             ),
-            modifier = Modifier.hazeEffect(state = hazeState) {
-                blurEffect {
-                    style = topBarHazeStyle
-                    progressive = HazeProgressive.verticalGradient(
-                        startIntensity = 1f,
-                        endIntensity = 0f,
+            modifier = Modifier.hazeBlur(
+                input = HazeInput.Backdrop(hazeState),
+                style = HazeMaterials.thin().then {
+                    progressive(
+                        HazeProgressive.verticalGradient(
+                            startIntensity = 1f,
+                            endIntensity = 0f,
+                        ),
                     )
-                }
-            },
+                },
+            ),
         )
     }
 
