@@ -69,23 +69,39 @@ object AttachmentDropHighlight {
     var activeBridge by mutableStateOf<AttachmentDropBridge?>(null)
         private set
 
-    private val boundsByBridge = mutableMapOf<AttachmentDropBridge, Rect>()
+    private val boundsByKey = mutableMapOf<Any, Pair<AttachmentDropBridge, Rect>>()
+    private var lastPointer by mutableStateOf<Offset?>(null)
 
-    fun register(bridge: AttachmentDropBridge, bounds: Rect) {
-        boundsByBridge[bridge] = bounds
+    fun register(key: Any, bridge: AttachmentDropBridge, bounds: Rect) {
+        boundsByKey[key] = bridge to bounds
     }
 
-    fun unregister(bridge: AttachmentDropBridge) {
-        boundsByBridge.remove(bridge)
-        if (activeBridge === bridge) activeBridge = null
+    fun unregister(key: Any) {
+        boundsByKey.remove(key)
+        if (activeBridge != null && boundsByKey.values.none { it.first === activeBridge }) {
+            activeBridge = hitTest(lastPointer)
+        }
     }
 
     fun syncFromPointer(windowPoint: Offset) {
+        lastPointer = windowPoint
         activeBridge = hitTest(windowPoint)
     }
 
     fun clear() {
         activeBridge = null
+        lastPointer = null
+    }
+
+    fun isHighlightActive(bridge: AttachmentDropBridge): Boolean {
+        if (!AttachmentDragSession.isActive) return false
+        val point = lastPointer
+        if (point != null) {
+            return boundsByKey.values.any { (owner, bounds) ->
+                owner === bridge && bounds.contains(point)
+            }
+        }
+        return activeBridge === bridge
     }
 
     /** Delivers to the currently hovered target. Returns true if handled. */
@@ -97,10 +113,11 @@ object AttachmentDropHighlight {
         return true
     }
 
-    private fun hitTest(windowPoint: Offset): AttachmentDropBridge? {
+    private fun hitTest(windowPoint: Offset?): AttachmentDropBridge? {
+        if (windowPoint == null) return null
         var best: AttachmentDropBridge? = null
         var bestArea = Float.POSITIVE_INFINITY
-        boundsByBridge.forEach { (bridge, bounds) ->
+        boundsByKey.values.forEach { (bridge, bounds) ->
             if (!bounds.contains(windowPoint)) return@forEach
             val area = bounds.width * bounds.height
             if (area > 0f && area < bestArea) {
@@ -169,7 +186,7 @@ fun rememberAttachmentDropBridge(): AttachmentDropBridge = remember { Attachment
 /** Whether [bridge] currently owns the exclusive drop highlight. */
 @Composable
 fun AttachmentDropBridge.isDropHighlightActive(): Boolean =
-    AttachmentDropHighlight.activeBridge === this
+    AttachmentDropHighlight.isHighlightActive(this)
 
 fun urisToSelectedAttachments(
     uris: List<String>,
@@ -223,8 +240,9 @@ fun Modifier.chatAttachmentDropTarget(
 ): Modifier = composed {
     if (!enabled) return@composed Modifier
     val permissionsHost = rememberAttachmentDropPermissionsHost()
-    DisposableEffect(bridge) {
-        onDispose { AttachmentDropHighlight.unregister(bridge) }
+    val registrationKey = remember { Any() }
+    DisposableEffect(registrationKey) {
+        onDispose { AttachmentDropHighlight.unregister(registrationKey) }
     }
     val target = remember(bridge, permissionsHost) {
         object : DragAndDropTarget {
@@ -260,7 +278,7 @@ fun Modifier.chatAttachmentDropTarget(
         }
     }
     onGloballyPositioned { coords ->
-        AttachmentDropHighlight.register(bridge, coords.boundsInRoot())
+        AttachmentDropHighlight.register(registrationKey, bridge, coords.boundsInRoot())
     }.dragAndDropTarget(
         shouldStartDragAndDrop = { acceptsAttachmentDrop(it) },
         target = target,
