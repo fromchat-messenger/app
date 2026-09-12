@@ -56,6 +56,7 @@ import ru.fromchat.action_copy
 import ru.fromchat.action_select
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.WebSocketManager
+import ru.fromchat.api.local.db.isSqliteBusy
 import ru.fromchat.api.local.db.store.ConnectionStateStore
 import ru.fromchat.api.local.db.store.ConnectionStatus
 import ru.fromchat.api.local.workers.AttachmentTransferBootstrap
@@ -260,6 +261,7 @@ private object DesktopProtocolRegistration {
 }
 
 fun main(args: Array<String>) {
+    configureDesktopAppDataName()
     // Do NOT set compose.layers.type=WINDOW.
     // On macOS Metal that mode creates a JWindow + MetalRedrawer per Popup/Dialog; native
     // IOAccelerator surfaces are retained after dismiss and grew to multi-GB (Activity Monitor
@@ -291,9 +293,6 @@ fun main(args: Array<String>) {
         } else {
             System.setProperty("skiko.renderApi", "OPENGL")
         }
-        if (AppBuildInfo.isDebug && System.getProperty("fromchat.app.data.name").isNullOrBlank()) {
-            System.setProperty("fromchat.app.data.name", "FromChatBeta")
-        }
         setWindowsDesktopAppUserModelId(
             if (AppBuildInfo.isDebug) "FromChat Beta" else "FromChat",
         )
@@ -313,9 +312,36 @@ fun main(args: Array<String>) {
     application {
         UtilsLibrary.init()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            Logger.e("Desktop", "uncaught on ${thread.name}", throwable)
+            if (isSqliteBusy(throwable)) {
+                Logger.w(
+                    "Desktop",
+                    "SQLite busy on ${thread.name}; database will retry on the next access",
+                    throwable,
+                )
+            } else {
+                Logger.e("Desktop", "uncaught on ${thread.name}", throwable)
+            }
         }
-        DesktopApplicationBootstrap.launchOnApplicationStart()
+        var bootstrapStarted by remember { mutableStateOf(false) }
+        val databaseBlocked by DatabaseLockGate.blocked.collectAsState()
+        val lockingProcesses by DatabaseLockGate.processes.collectAsState()
+
+        LaunchedEffect(Unit) {
+            DatabaseLockGate.startMonitoring(this) {
+                if (!bootstrapStarted) {
+                    bootstrapStarted = true
+                    DesktopApplicationBootstrap.launchOnApplicationStart()
+                }
+            }
+        }
+
+        if (databaseBlocked) {
+            DatabaseLockWindow(
+                processes = lockingProcesses,
+                onKillProcess = { DatabaseLockGate.killProcess(it) },
+                onQuit = { exitApplication() },
+            )
+        }
 
         val windowState = rememberWindowState(
             size = remember { DesktopWindowPrefs.loadSize() },
@@ -538,7 +564,7 @@ fun main(args: Array<String>) {
             onCloseRequest = { requestCloseToBackgroundOrQuit() },
             title = appName,
             state = windowState,
-            visible = contentReady && (windowVisible || !traySupported),
+            visible = contentReady && (windowVisible || !traySupported) && !databaseBlocked,
             icon = windowIcon,
             undecorated = windows,
             onPreviewKeyEvent = { event ->
@@ -688,7 +714,9 @@ fun main(args: Array<String>) {
                         .fillMaxSize()
                         .background(windowChrome),
                 ) {
-                    App(onContentReady = { contentReady = true })
+                    if (!databaseBlocked) {
+                        App(onContentReady = { contentReady = true })
+                    }
                     if (windows) {
                         MaterialTheme(colorScheme = getColorScheme(desktopAppDarkTheme(), dynamicColor = false)) {
                             WindowsDesktopTitleBar(
@@ -822,8 +850,13 @@ private fun performAwtEditAction(actionName: String) {
     action.actionPerformed(ActionEvent(focusOwner, ActionEvent.ACTION_PERFORMED, actionName))
 }
 
-private fun isLinuxOs(): Boolean =
-    System.getProperty("os.name").orEmpty().lowercase().contains("linux")
+/** Beta and release builds must not share the same on-disk data directory. */
+private fun configureDesktopAppDataName() {
+    if (!System.getProperty("fromchat.app.data.name").isNullOrBlank()) return
+    if (AppBuildInfo.isDebug) {
+        System.setProperty("fromchat.app.data.name", "FromChatBeta")
+    }
+}
 
 /**
  * JFrame uses UIManager "control" as its default background before Compose draws.

@@ -33,6 +33,12 @@
     <string name="desktop_select_all">Выделить всё</string>
     <string name="desktop_minimize">Свернуть</string>
     <string name="desktop_zoom">Масштабировать</string>
+    <string name="desktop_database_locked_title">База данных заблокирована</string>
+    <string name="desktop_database_locked_message">FromChat не может получить доступ к базе данных — её использует другой процесс.</string>
+    <string name="desktop_database_locked_kill">Завершить процесс</string>
+    <string name="desktop_database_locked_waiting">Ожидание освобождения базы данных…</string>
+    <string name="desktop_database_locked_unknown_process">Неизвестный процесс</string>
+    <string name="desktop_database_locked_pid">PID %1$d</string>
     <string name="welcome">Добро пожаловать!</string>
     <string name="login">Войти</string>
     <string name="login_d">Войдите в свой аккаунт</string>

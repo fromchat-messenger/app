@@ -392,6 +392,19 @@ tasks.named<Copy>("processResources") {
  * (`bundleProxyForCurrentProcess is nil`). :run is therefore launched from a
  * FromChat.app wrapper so Notification Center sees `ru.fromchat.desktop`.
  */
+private fun Project.fromChatGradleDevDataDir(): String {
+    val variant = if (
+        gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
+    ) {
+        "release"
+    } else {
+        "beta"
+    }
+    return rootProject.layout.buildDirectory.get().asFile
+        .resolve("dev-data/$variant")
+        .absolutePath
+}
+
 fun JavaExec.configureFromChatDesktopJvm() {
     val javafxJars = classpath.files.filter { file ->
         javafxModules.any { module -> file.name.startsWith("javafx-$module-") }
@@ -416,6 +429,7 @@ fun JavaExec.configureFromChatDesktopJvm() {
             }
             addAll(
                 listOf(
+                    "-Dfromchat.dev.data.dir=${project.fromChatGradleDevDataDir()}",
                     "-Dapple.awt.enableTemplateImages=true",
                     "--module-path",
                     javafxJars.joinToString(File.pathSeparator) { it.absolutePath },
