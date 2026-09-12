@@ -38,6 +38,12 @@
     <string name="desktop_select_all">Select All</string>
     <string name="desktop_minimize">Minimize</string>
     <string name="desktop_zoom">Zoom</string>
+    <string name="desktop_database_locked_title">Database locked</string>
+    <string name="desktop_database_locked_message">FromChat cannot access its database because another process is using it.</string>
+    <string name="desktop_database_locked_kill">End process</string>
+    <string name="desktop_database_locked_waiting">Waiting for the database to become available…</string>
+    <string name="desktop_database_locked_unknown_process">Unknown process</string>
+    <string name="desktop_database_locked_pid">PID %1$d</string>
 
     <!-- Authentication -->
     <string name="welcome">Welcome!</string>

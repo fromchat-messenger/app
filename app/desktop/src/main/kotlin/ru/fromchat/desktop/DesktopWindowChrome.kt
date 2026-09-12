@@ -10,6 +10,9 @@ internal fun isMacOs(): Boolean =
 internal fun isWindowsOs(): Boolean =
     System.getProperty("os.name").orEmpty().lowercase().contains("win")
 
+internal fun isLinuxOs(): Boolean =
+    System.getProperty("os.name").orEmpty().lowercase().contains("linux")
+
 internal fun isWindowsArm64(): Boolean {
     if (!isWindowsOs()) return false
     val arch = System.getProperty("os.arch").orEmpty().lowercase()

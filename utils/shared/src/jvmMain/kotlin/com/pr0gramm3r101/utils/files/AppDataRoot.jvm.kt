@@ -5,17 +5,22 @@ import java.io.File
 /**
  * Resolves the FromChat desktop data/cache root on the JVM.
  *
- * - Portable (`-Dfromchat.portable=true`): `<exeDir>/fromchat-data`
- * - Windows installed: `%LOCALAPPDATA%\FromChat` (or `FromChat Beta` when `-Dfromchat.app.data.name` is set)
- * - macOS: `~/Library/Application Support/FromChat`
- * - Linux: `${XDG_DATA_HOME:-~/.local/share}/FromChat`
+ * - Custom data root (`-Dfromchat.dev.data.dir=…`): use only when set explicitly (e.g. IDE run config)
+ * - Portable (`-Dfromchat.portable=true`): `<exeDir>/fromchat-data` or `fromchat-data-beta`
+ * - Windows: `%LOCALAPPDATA%\FromChat` or `%LOCALAPPDATA%\FromChat Beta`
+ * - macOS: `~/Library/Application Support/FromChat` or `…/FromChat Beta`
+ * - Linux: `~/.local/share/FromChat` or `…/FromChat Beta`
+ *
+ * Variant is selected via `-Dfromchat.app.data.name` (`FromChatBeta` → `FromChat Beta`; default `FromChat`).
  *
  * Migrates once from the legacy `~/.fromchat/cache` directory when present.
  */
 internal object AppDataRoot {
     private const val LEGACY_RELATIVE = ".fromchat/cache"
     private const val PORTABLE_DIR_NAME = "fromchat-data"
+    private const val PORTABLE_BETA_DIR_NAME = "fromchat-data-beta"
     private const val APP_DIR_NAME = "FromChat"
+    private const val APP_BETA_DIR_NAME = "FromChat Beta"
 
     @Volatile
     private var cached: File? = null
@@ -32,8 +37,9 @@ internal object AppDataRoot {
     }
 
     private fun resolveUncached(): File {
+        devDataRoot()?.let { return it }
         if (isPortable()) {
-            return File(executableDirectory(), PORTABLE_DIR_NAME)
+            return File(executableDirectory(), portableDirName())
         }
         val os = System.getProperty("os.name").orEmpty().lowercase()
         return when {
@@ -41,6 +47,11 @@ internal object AppDataRoot {
             os.contains("mac") -> macInstalledRoot()
             else -> linuxInstalledRoot()
         }
+    }
+
+    private fun devDataRoot(): File? {
+        val explicit = System.getProperty("fromchat.dev.data.dir")?.trim()?.takeIf { it.isNotEmpty() }
+        return explicit?.let { File(it).absoluteFile }
     }
 
     private fun isPortable(): Boolean =
@@ -66,10 +77,13 @@ internal object AppDataRoot {
     private fun installedAppDirName(): String {
         val raw = System.getProperty("fromchat.app.data.name")?.trim()?.takeIf { it.isNotEmpty() }
         return when (raw) {
-            "FromChatBeta" -> "FromChat Beta"
+            "FromChatBeta", APP_BETA_DIR_NAME -> APP_BETA_DIR_NAME
             else -> raw ?: APP_DIR_NAME
         }
     }
+
+    private fun portableDirName(): String =
+        if (installedAppDirName() == APP_BETA_DIR_NAME) PORTABLE_BETA_DIR_NAME else PORTABLE_DIR_NAME
 
     private fun windowsInstalledRoot(): File {
         val dirName = installedAppDirName()

@@ -815,7 +815,15 @@ fun MessageItem(
                                 }
 
                                 Box(modifier = Modifier.fillMaxWidth()) {
-                                    Column {
+                                    Column(
+                                        verticalArrangement = if (
+                                            replyRef != null && primaryIsImageContent
+                                        ) {
+                                            Arrangement.spacedBy(6.dp)
+                                        } else {
+                                            Arrangement.Top
+                                        },
+                                    ) {
                                         replyRef?.let { replyToMsg ->
                                             MessageReplyQuote(
                                                 replyTo = replyToMsg,
@@ -827,6 +835,8 @@ fun MessageItem(
                                                 isContextMenuOpen = isContextMenuOpen,
                                                 onReplyClick = onReplyClick,
                                                 onReplyPressedChange = { replyPressed = it },
+                                                inImageBubble = primaryIsImageContent,
+                                                hasAttachmentBelow = primaryIsImageContent,
                                             )
                                         }
 
@@ -1256,6 +1266,8 @@ private fun MessageReplyQuote(
     isContextMenuOpen: Boolean,
     onReplyClick: ((Int) -> Unit)?,
     onReplyPressedChange: (Boolean) -> Unit,
+    inImageBubble: Boolean = false,
+    hasAttachmentBelow: Boolean = false,
 ) {
     val replyName = messageDisplayUsername(replyTo, currentUserId)
     val replyTapEnabled = onReplyClick != null && replyTo.id > 0
@@ -1300,7 +1312,12 @@ private fun MessageReplyQuote(
 
     Box(
         Modifier
-            .padding(bottom = 4.dp, start = 6.dp, end = 6.dp)
+            .padding(
+                top = if (inImageBubble) 6.dp else 0.dp,
+                bottom = if (hasAttachmentBelow) 0.dp else 4.dp,
+                start = 6.dp,
+                end = 6.dp,
+            )
             .graphicsLayer(
                 scaleX = replyScale,
                 scaleY = replyScale,
