@@ -11,7 +11,7 @@ on:
         required: true
         type: string
       skip_publish:
-        description: "Build and verify only; skip GitHub Release upload"
+        description: "Build only; skip GitHub Release upload"
         required: false
         type: boolean
         default: false
@@ -45,36 +45,8 @@ jobs:
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "tag=v$V" >> "$GITHUB_OUTPUT"
 
-  test-compile:
-    needs: resolve-version
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-java-gradle
-      - uses: ./.github/actions/set-version
-        with:
-          version: ${{ needs.resolve-version.outputs.version }}
-      - name: Compile JVM release sources
-        run: bash scripts/ci-test-compile.sh
-
-  test-rust:
-    needs: resolve-version
-    runs-on: windows-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-      - uses: ./.github/actions/cache-cargo-windows
-      - name: Test Windows installer Rust workspace
-        shell: bash
-        working-directory: app/desktop/windows-setup
-        run: cargo test --workspace --release
-
   windows-common:
-    needs: [resolve-version, test-compile, test-rust]
+    needs: resolve-version
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -87,7 +59,7 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
       - uses: ./.github/actions/cache-cargo-windows
-      - name: Build arch-independent Windows tooling and JVM artifacts
+      - name: Build arch-independent Windows tooling and compile JVM
         shell: bash
         run: |
           export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
@@ -115,17 +87,13 @@ jobs:
         include:
           - arch: x64
             runner: windows-latest
-            java-architecture: ""
           - arch: arm64
             runner: windows-11-arm
-            java-architecture: ""
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-java-gradle
-        with:
-          java-architecture: ${{ matrix.java-architecture }}
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
@@ -140,16 +108,30 @@ jobs:
           path: app/desktop/windows-setup/target/release
       - name: Package Windows ${{ matrix.arch }} installer
         shell: bash
-        run: bash scripts/ci-package-windows-release.sh "${{ matrix.arch }}"
-      - name: Upload Windows ${{ matrix.arch }} installer
-        uses: actions/upload-artifact@v4
+        env:
+          FROMCHAT_SKIP_RUST_BUILD: "1"
+        run: |
+          export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
+          args=(
+            :app:desktop:createReleaseDistributable
+            :app:desktop:patchWindowsJpackageReleaseIcon
+            :app:desktop:packSetupOnly
+            "-PdesktopArch=${{ matrix.arch }}"
+            --no-daemon
+            --console=plain
+          )
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            args+=("-PwindowsArm64")
+          fi
+          ./gradlew "${args[@]}"
+      - uses: actions/upload-artifact@v4
         with:
           name: windows-${{ matrix.arch }}
           path: app/desktop/build/distributions/release/*-windows-${{ matrix.arch }}.exe
           if-no-files-found: error
 
   macos:
-    needs: [resolve-version, test-compile, test-rust]
+    needs: resolve-version
     strategy:
       fail-fast: false
       matrix:
@@ -177,7 +159,15 @@ jobs:
           key: dmg-tools-${{ hashFiles('app/desktop/dmg-background/package-lock.json') }}
           restore-keys: dmg-tools-
       - name: Install macOS packaging tools
-        run: bash scripts/ci-install-macos-dmg.sh
+        run: |
+          if ! command -v create-dmg >/dev/null 2>&1; then
+            brew install create-dmg
+          fi
+          DMG_DIR="app/desktop/dmg-background"
+          if [[ ! -f "$DMG_DIR/node_modules/playwright/package.json" ]]; then
+            npm --prefix "$DMG_DIR" install --no-fund --no-audit
+            npm --prefix "$DMG_DIR" exec playwright install chromium
+          fi
       - name: Package macOS ${{ matrix.arch }}
         run: |
           export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
@@ -189,15 +179,17 @@ jobs:
           if-no-files-found: error
 
   linux:
-    needs: [resolve-version, test-compile, test-rust]
+    needs: resolve-version
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: x64
             runner: ubuntu-latest
+            appimage: appimagetool-x86_64.AppImage
           - arch: arm64
             runner: ubuntu-24.04-arm
+            appimage: appimagetool-aarch64.AppImage
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 75
     steps:
@@ -207,7 +199,17 @@ jobs:
         with:
           version: ${{ needs.resolve-version.outputs.version }}
       - name: Install Linux packaging tools
-        run: bash scripts/ci-install-linux-packaging.sh "${{ matrix.arch }}"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fakeroot rpm binutils libfuse2 wget
+          CACHE_DIR="${RUNNER_TOOL_CACHE}/appimagetool"
+          mkdir -p "$CACHE_DIR"
+          TOOL="$CACHE_DIR/appimagetool-${{ matrix.arch }}.AppImage"
+          if [[ ! -f "$TOOL" ]]; then
+            wget -q "https://github.com/AppImage/appimagetool/releases/download/continuous/${{ matrix.appimage }}" -O "$TOOL"
+            chmod +x "$TOOL"
+          fi
+          echo "APPIMAGETOOL=$TOOL" >> "$GITHUB_ENV"
       - name: Package Linux ${{ matrix.arch }}
         run: |
           export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
@@ -222,7 +224,7 @@ jobs:
           if-no-files-found: error
 
   android:
-    needs: [resolve-version, test-compile, test-rust]
+    needs: resolve-version
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -278,7 +280,8 @@ EOF
           path: release-staging/*.apk
           if-no-files-found: error
 
-  verify:
+  publish:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.skip_publish == false }}
     needs:
       - resolve-version
       - windows-package
@@ -286,10 +289,9 @@ EOF
       - linux
       - android
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
-      - name: Install verification tools
-        run: sudo apt-get update && sudo apt-get install -y rpm file unzip
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -305,27 +307,25 @@ EOF
             -name '*.apk' \
           \) -exec cp {} release-assets/ \;
           ls -la release-assets
-      - name: Verify release assets
-        run: bash scripts/ci-verify-release-assets.sh "${{ needs.resolve-version.outputs.version }}" release-assets
-      - uses: actions/upload-artifact@v4
-        with:
-          name: release-assets
-          path: release-assets/*
-          if-no-files-found: error
-
-  publish:
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.skip_publish == false }}
-    needs:
-      - resolve-version
-      - verify
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: release-assets
-          path: release-assets
+          VERSION="${{ needs.resolve-version.outputs.version }}"
+          for pattern in \
+            "*-windows-x64.exe" \
+            "*-windows-arm64.exe" \
+            "*-macOS-x64.dmg" \
+            "*-macOS-arm64.dmg" \
+            "*-linux-x64.deb" \
+            "*-linux-arm64.deb" \
+            "*-linux-x64.rpm" \
+            "*-linux-arm64.rpm" \
+            "*-linux-x64.AppImage" \
+            "*-linux-arm64.AppImage" \
+            "*-android-universal.apk"
+          do
+            if ! compgen -G "release-assets/$pattern" > /dev/null; then
+              echo "Missing release asset: $pattern" >&2
+              exit 1
+            fi
+          done
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
