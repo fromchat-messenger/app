@@ -867,10 +867,20 @@ fun findJpackageAppExe(appImageDir: File): File {
         }
 }
 
+fun windowsRustBinariesReady(): Boolean =
+    windowsRustBinaryNames.all { name ->
+        windowsRustReleaseDir.asFile.resolve(name).isFile
+    }
+
+fun shouldBuildWindowsSetupRust(): Boolean =
+    runningOnWindows && (
+        System.getenv("FROMCHAT_SKIP_RUST_BUILD") != "1" || !windowsRustBinariesReady()
+    )
+
 val buildWindowsSetupRust = tasks.register<Exec>("buildWindowsSetupRust") {
     group = "compose desktop"
     description = "Build Rust setup, helper, and portable launcher (Windows only)."
-    onlyIf { runningOnWindows }
+    onlyIf { shouldBuildWindowsSetupRust() }
     workingDir = windowsSetupDir.asFile
     commandLine("cargo", "build", "--release", "--workspace")
     environment("FROMCHAT_SETUP_VERSION", desktopVersionName)
@@ -903,11 +913,27 @@ val buildWindowsSetupRust = tasks.register<Exec>("buildWindowsSetupRust") {
     }
 }
 
+val ensureWindowsRustBinaries = tasks.register("ensureWindowsRustBinaries") {
+    group = "compose desktop"
+    description = "Build or verify pre-staged Windows Rust installer tooling."
+    onlyIf { runningOnWindows }
+    if (shouldBuildWindowsSetupRust()) {
+        dependsOn(buildWindowsSetupRust)
+    } else {
+        doLast {
+            check(windowsRustBinariesReady()) {
+                "Missing Windows Rust binaries under ${windowsRustReleaseDir.asFile}. " +
+                    "Run buildWindowsSetupRust or restore CI artifacts."
+            }
+        }
+    }
+}
+
 val patchWindowsJpackageIcon = tasks.register<Exec>("patchWindowsJpackageIcon") {
     group = "compose desktop"
     description = "Embed branded icon into jpackage FromChat.exe (Task Manager)."
     onlyIf { runningOnWindows }
-    dependsOn(buildWindowsSetupRust)
+    dependsOn(ensureWindowsRustBinaries)
     mustRunAfter("createDistributable")
     doFirst {
         val appImageDir = debugAppImageDir.get().asFile
@@ -923,7 +949,7 @@ val patchWindowsJpackageReleaseIcon = tasks.register<Exec>("patchWindowsJpackage
     group = "compose desktop"
     description = "Embed branded icon into release jpackage FromChat.exe."
     onlyIf { runningOnWindows }
-    dependsOn(buildWindowsSetupRust)
+    dependsOn(ensureWindowsRustBinaries)
     mustRunAfter("createReleaseDistributable")
     doFirst {
         val appImageDir = releaseAppImageDir.get().asFile
@@ -1016,7 +1042,7 @@ tasks.register<Exec>("packUniversalWindows") {
     group = "compose desktop"
     description = "Pack a universal Windows setup EXE from prebuilt x64 + arm64 app images."
     onlyIf { runningOnWindows }
-    dependsOn(buildWindowsSetupRust)
+    dependsOn(ensureWindowsRustBinaries)
     configureWindowsPackTask(
         appImageDir = null,
         setupOutput = windowsUniversalSetupOutput,
@@ -1028,7 +1054,7 @@ tasks.register<Exec>("packSetupOnly") {
     group = "compose desktop"
     description = "Repack setup EXE from existing app-image + Rust (skips ProGuard)."
     onlyIf { runningOnWindows }
-    dependsOn(buildWindowsSetupRust)
+    dependsOn(ensureWindowsRustBinaries)
     configureWindowsPackTask(
         appImageDir = releaseAppImageDir,
         setupOutput = windowsSetupOutput,
@@ -1039,7 +1065,7 @@ tasks.register<Exec>("packageBetaWindows") {
     group = "compose desktop"
     description = "Build debug Windows app-image (no ProGuard) and beta setup EXE."
     onlyIf { runningOnWindows }
-    dependsOn("createDistributable", buildWindowsSetupRust, patchWindowsJpackageIcon)
+    dependsOn("createDistributable", ensureWindowsRustBinaries, patchWindowsJpackageIcon)
     configureWindowsPackTask(
         appImageDir = debugAppImageDir,
         setupOutput = windowsBetaSetupOutput,
@@ -1128,12 +1154,19 @@ tasks.register<Exec>("packageReleaseWindows") {
     description = "Build release Windows app-image, then setup EXE."
     onlyIf { runningOnWindows }
     if (runningOnWindows) {
-        dependsOn("createReleaseDistributable", buildWindowsSetupRust, patchWindowsJpackageReleaseIcon)
+        dependsOn("createReleaseDistributable", ensureWindowsRustBinaries, patchWindowsJpackageReleaseIcon)
     }
     configureWindowsPackTask(
         appImageDir = releaseAppImageDir,
         setupOutput = windowsSetupOutput,
     )
+}
+
+tasks.register("packageReleaseWindowsAppImage") {
+    group = "compose desktop"
+    description = "Build release Windows app-image and patch launcher icon (no setup EXE)."
+    onlyIf { runningOnWindows }
+    dependsOn("createReleaseDistributable", patchWindowsJpackageReleaseIcon)
 }
 
 tasks.register("packageReleaseDesktop") {

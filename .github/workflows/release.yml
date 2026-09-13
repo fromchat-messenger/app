@@ -10,6 +10,11 @@ on:
         description: "Version to build (e.g. 1.1.4). Overrides tag when set."
         required: true
         type: string
+      skip_publish:
+        description: "Build and verify only; skip GitHub Release upload"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: release-${{ github.ref }}
@@ -40,187 +45,202 @@ jobs:
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "tag=v$V" >> "$GITHUB_OUTPUT"
 
-  macos-arm64:
-    needs: resolve-version
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-      - name: Set version
-        run: bash scripts/ci-set-version.sh "${{ needs.resolve-version.outputs.version }}"
-      - name: Install create-dmg
-        run: brew install create-dmg
-      - name: Package macOS Apple Silicon
-        run: |
-          export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
-          ./gradlew :app:desktop:packageReleaseMac -PdesktopArch=arm64 --no-daemon
-      - uses: actions/upload-artifact@v4
-        with:
-          name: macos-arm64
-          path: app/desktop/build/distributions/release/*-macOS-arm64.dmg
-          if-no-files-found: error
-
-  macos-x64:
-    needs: resolve-version
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-          architecture: x64
-      - name: Set version
-        run: bash scripts/ci-set-version.sh "${{ needs.resolve-version.outputs.version }}"
-      - name: Install create-dmg
-        run: brew install create-dmg
-      - name: Package macOS Intel
-        run: |
-          export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
-          ./gradlew :app:desktop:packageReleaseMac -PdesktopArch=x64 --no-daemon
-      - uses: actions/upload-artifact@v4
-        with:
-          name: macos-x64
-          path: app/desktop/build/distributions/release/*-macOS-x64.dmg
-          if-no-files-found: error
-
-  linux-x64:
+  test-compile:
     needs: resolve-version
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: ./.github/actions/setup-java-gradle
+      - uses: android-actions/setup-android@v3
+      - uses: ./.github/actions/set-version
         with:
-          distribution: temurin
-          java-version: "17"
-      - name: Install packaging tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y fakeroot rpm binutils libfuse2 wget
-          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O /tmp/appimagetool
-          chmod +x /tmp/appimagetool
-          echo "APPIMAGETOOL=/tmp/appimagetool" >> "$GITHUB_ENV"
-      - name: Set version
-        run: bash scripts/ci-set-version.sh "${{ needs.resolve-version.outputs.version }}"
-      - name: Package Linux x64
-        run: |
-          export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
-          ./gradlew :app:desktop:packageReleaseLinux -PdesktopArch=x64 --no-daemon
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux-x64
-          path: |
-            app/desktop/build/distributions/release/*-linux-x64.deb
-            app/desktop/build/distributions/release/*-linux-x64.rpm
-            app/desktop/build/distributions/release/*-linux-x64.AppImage
-          if-no-files-found: error
+          version: ${{ needs.resolve-version.outputs.version }}
+      - name: Compile JVM and Android release sources
+        run: bash scripts/ci-test-compile.sh
 
-  linux-arm64:
-    needs: resolve-version
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-      - name: Install packaging tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y fakeroot rpm binutils libfuse2 wget
-          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-aarch64.AppImage -O /tmp/appimagetool
-          chmod +x /tmp/appimagetool
-          echo "APPIMAGETOOL=/tmp/appimagetool" >> "$GITHUB_ENV"
-      - name: Set version
-        run: bash scripts/ci-set-version.sh "${{ needs.resolve-version.outputs.version }}"
-      - name: Package Linux ARM64
-        run: |
-          export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
-          ./gradlew :app:desktop:packageReleaseLinux -PdesktopArch=arm64 --no-daemon
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux-arm64
-          path: |
-            app/desktop/build/distributions/release/*-linux-arm64.deb
-            app/desktop/build/distributions/release/*-linux-arm64.rpm
-            app/desktop/build/distributions/release/*-linux-arm64.AppImage
-          if-no-files-found: error
-
-  windows-x64:
+  test-rust:
     needs: resolve-version
     runs-on: windows-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
-      - name: Set version
+      - uses: ./.github/actions/cache-cargo-windows
+      - name: Test Windows installer Rust workspace
         shell: bash
-        run: bash scripts/ci-set-version.sh "${{ needs.resolve-version.outputs.version }}"
-      - name: Package Windows x64
-        shell: bash
-        run: |
-          export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
-          ./gradlew :app:desktop:packageReleaseWindows -PdesktopArch=x64 --no-daemon
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows-x64
-          path: app/desktop/build/distributions/release/*-windows-x64.exe
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows-x64-app-image
-          path: app/desktop/build/compose/binaries/main-release/app/FromChat
-          if-no-files-found: error
+        working-directory: app/desktop/windows-setup
+        run: cargo test --workspace --release
 
-  windows-arm64:
-    needs: resolve-version
-    runs-on: windows-11-arm
+  windows-common:
+    needs: [resolve-version, test-compile, test-rust]
+    runs-on: windows-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: ./.github/actions/setup-java-gradle
+      - uses: ./.github/actions/set-version
         with:
-          distribution: temurin
-          java-version: "17"
+          version: ${{ needs.resolve-version.outputs.version }}
       - uses: dtolnay/rust-toolchain@stable
-      - name: Set version
-        shell: bash
-        run: bash scripts/ci-set-version.sh "${{ needs.resolve-version.outputs.version }}"
-      - name: Package Windows ARM64
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: ./.github/actions/cache-cargo-windows
+      - name: Build arch-independent Windows tooling and JVM artifacts
         shell: bash
         run: |
           export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
-          ./gradlew :app:desktop:packageReleaseWindows -PdesktopArch=arm64 --no-daemon
-      - uses: actions/upload-artifact@v4
+          ./gradlew \
+            :app:desktop:buildWindowsSetupRust \
+            :app:shared:compileKotlinJvm \
+            :utils:shared:compileKotlinJvm \
+            :app:desktop:compileKotlin \
+            :app:desktop:jar \
+            --no-daemon \
+            --console=plain
+      - name: Upload Windows Rust installer tools
+        uses: actions/upload-artifact@v4
         with:
-          name: windows-arm64
-          path: app/desktop/build/distributions/release/*-windows-arm64.exe
+          name: windows-rust-tools
+          path: app/desktop/windows-setup/target/release/*.exe
           if-no-files-found: error
+          retention-days: 7
+
+  windows-package:
+    needs: [resolve-version, windows-common]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-latest
+            java-architecture: ""
+          - arch: arm64
+            runner: windows-11-arm
+            java-architecture: ""
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-java-gradle
+        with:
+          java-architecture: ${{ matrix.java-architecture }}
+      - uses: ./.github/actions/set-version
+        with:
+          version: ${{ needs.resolve-version.outputs.version }}
+      - name: Ensure ARM64 packaging JDK
+        if: matrix.arch == 'arm64'
+        shell: cmd
+        run: call scripts\ensure-windows-arm64-jdk.cmd
+      - name: Restore Windows Rust installer tools
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-rust-tools
+          path: app/desktop/windows-setup/target/release
+      - name: Package Windows ${{ matrix.arch }} installer
+        shell: bash
+        run: bash scripts/ci-package-windows-release.sh "${{ matrix.arch }}"
+      - name: Upload Windows ${{ matrix.arch }} installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.arch }}
+          path: app/desktop/build/distributions/release/*-windows-${{ matrix.arch }}.exe
+          if-no-files-found: error
+
+  macos:
+    needs: [resolve-version, test-compile, test-rust]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            java-architecture: ""
+          - arch: x64
+            java-architecture: x64
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-java-gradle
+        with:
+          java-architecture: ${{ matrix.java-architecture }}
+      - uses: ./.github/actions/set-version
+        with:
+          version: ${{ needs.resolve-version.outputs.version }}
+      - name: Cache DMG background tooling
+        uses: actions/cache@v4
+        with:
+          path: |
+            app/desktop/dmg-background/node_modules
+            ~/.cache/ms-playwright
+          key: dmg-tools-${{ hashFiles('app/desktop/dmg-background/package-lock.json') }}
+          restore-keys: dmg-tools-
+      - name: Install macOS packaging tools
+        run: bash scripts/ci-install-macos-dmg.sh
+      - name: Package macOS ${{ matrix.arch }}
+        run: |
+          export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
+          ./gradlew :app:desktop:packageReleaseMac -PdesktopArch=${{ matrix.arch }} --no-daemon --console=plain
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-arm64-app-image
-          path: app/desktop/build/compose/binaries/main-release/app/FromChat
+          name: macos-${{ matrix.arch }}
+          path: app/desktop/build/distributions/release/*-macOS-${{ matrix.arch }}.dmg
+          if-no-files-found: error
+
+  linux:
+    needs: [resolve-version, test-compile, test-rust]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-java-gradle
+      - uses: ./.github/actions/set-version
+        with:
+          version: ${{ needs.resolve-version.outputs.version }}
+      - name: Install Linux packaging tools
+        run: bash scripts/ci-install-linux-packaging.sh "${{ matrix.arch }}"
+      - name: Package Linux ${{ matrix.arch }}
+        run: |
+          export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
+          ./gradlew :app:desktop:packageReleaseLinux -PdesktopArch=${{ matrix.arch }} --no-daemon --console=plain
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: |
+            app/desktop/build/distributions/release/*-linux-${{ matrix.arch }}.deb
+            app/desktop/build/distributions/release/*-linux-${{ matrix.arch }}.rpm
+            app/desktop/build/distributions/release/*-linux-${{ matrix.arch }}.AppImage
           if-no-files-found: error
 
   android:
-    needs: resolve-version
+    needs: [resolve-version, test-compile, test-rust]
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
+      - uses: ./.github/actions/setup-java-gradle
       - uses: android-actions/setup-android@v3
-      - name: Set version
-        run: bash scripts/ci-set-version.sh "${{ needs.resolve-version.outputs.version }}"
+      - uses: ./.github/actions/set-version
+        with:
+          version: ${{ needs.resolve-version.outputs.version }}
+      - name: Cache Android SDK extras
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.android/build-cache
+            ~/.android/cache
+          key: android-sdk-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', 'app/android/build.gradle.kts') }}
+          restore-keys: android-sdk-${{ runner.os }}-
       - name: Prepare Android signing
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -247,7 +267,7 @@ debugKeyPassword=android
 EOF
           printf '%s' "$GOOGLE_SERVICES_JSON" | base64 -d > app/android/google-services.json
       - name: Build universal Android APK
-        run: ./gradlew :app:android:assembleRelease --no-daemon
+        run: ./gradlew :app:android:assembleRelease --no-daemon --console=plain
       - name: Stage APK
         run: |
           mkdir -p release-staging
@@ -259,43 +279,18 @@ EOF
           path: release-staging/*.apk
           if-no-files-found: error
 
-  ios:
-    needs: resolve-version
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-      - name: Set version
-        run: bash scripts/ci-set-version.sh "${{ needs.resolve-version.outputs.version }}"
-      - name: Package iOS IPA
-        run: |
-          mkdir -p release-staging
-          bash scripts/package-ios-ipa.sh "${{ needs.resolve-version.outputs.version }}" release-staging
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ios
-          path: release-staging/*.ipa
-          if-no-files-found: error
-
-  publish:
+  verify:
     needs:
       - resolve-version
-      - macos-arm64
-      - macos-x64
-      - linux-x64
-      - linux-arm64
-      - windows-x64
-      - windows-arm64
+      - windows-package
+      - macos
+      - linux
       - android
-      - ios
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
+      - name: Install verification tools
+        run: sudo apt-get update && sudo apt-get install -y rpm file unzip
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -308,29 +303,30 @@ EOF
             -name '*.rpm' -o \
             -name '*.AppImage' -o \
             -name '*.exe' -o \
-            -name '*.apk' -o \
-            -name '*.ipa' \
+            -name '*.apk' \
           \) -exec cp {} release-assets/ \;
           ls -la release-assets
-          for pattern in \
-            '*-windows-x64.exe' \
-            '*-windows-arm64.exe' \
-            '*-macOS-x64.dmg' \
-            '*-macOS-arm64.dmg' \
-            '*-linux-x64.deb' \
-            '*-linux-arm64.deb' \
-            '*-linux-x64.rpm' \
-            '*-linux-arm64.rpm' \
-            '*-linux-x64.AppImage' \
-            '*-linux-arm64.AppImage' \
-            '*-android-universal.apk' \
-            '*-ios.ipa'
-          do
-            if ! compgen -G "release-assets/$pattern" > /dev/null; then
-              echo "Missing release asset: $pattern" >&2
-              exit 1
-            fi
-          done
+      - name: Verify release assets
+        run: bash scripts/ci-verify-release-assets.sh "${{ needs.resolve-version.outputs.version }}" release-assets
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: release-assets/*
+          if-no-files-found: error
+
+  publish:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.skip_publish == false }}
+    needs:
+      - resolve-version
+      - verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: release-assets
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
