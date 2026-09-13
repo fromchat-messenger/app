@@ -84,10 +84,10 @@ jobs:
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
-      - uses: ./.github/actions/cache-desktop-proguard
-        id: proguard-cache
+      - uses: ./.github/actions/cache-gradle-build
+        id: gradle-build-cache
       - name: Compile and ProGuard release desktop jars
-        if: steps.proguard-cache.outputs.cache-hit != 'true'
+        if: steps.gradle-build-cache.outputs.cache-hit != 'true'
         run: ./gradlew :app:desktop:exportReleaseProguardForCi --no-daemon --console=plain
       - uses: actions/upload-artifact@v5
         with:
@@ -107,6 +107,7 @@ jobs:
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
+      - uses: ./.github/actions/cache-gradle-build
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
@@ -163,6 +164,7 @@ jobs:
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
+      - uses: ./.github/actions/cache-gradle-build
       - uses: actions/download-artifact@v5
         with:
           name: desktop-proguard
@@ -218,6 +220,7 @@ jobs:
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
+      - uses: ./.github/actions/cache-gradle-build
       - uses: actions/download-artifact@v5
         with:
           name: desktop-proguard
@@ -273,6 +276,7 @@ jobs:
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
+      - uses: ./.github/actions/cache-gradle-build
       - uses: actions/download-artifact@v5
         with:
           name: desktop-proguard
@@ -315,6 +319,7 @@ jobs:
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
+      - uses: ./.github/actions/cache-gradle-build
       - name: Cache Android SDK extras
         uses: actions/cache@v5
         with:
