@@ -6,6 +6,10 @@ inputs:
     description: Optional JDK architecture (x64). Omit for host default.
     required: false
     default: ""
+  cache-read-only:
+    description: Restore Gradle User Home only; do not save (avoids parallel cache write races).
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -19,6 +23,6 @@ runs:
     - uses: gradle/actions/setup-gradle@v5
       with:
         gradle-version: wrapper
-        cache-read-only: false
+        cache-read-only: ${{ inputs.cache-read-only == 'true' }}
         cache-overwrite-existing: true
         add-job-summary: on-failure

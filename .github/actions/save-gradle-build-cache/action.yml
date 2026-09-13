@@ -1,5 +1,5 @@
 name: Save Gradle build directories
-description: Save module build/ trees after a Gradle build (always runs, even on cache hit)
+description: Save module build/ trees after a Gradle build
 
 inputs:
   primary-key:
@@ -10,6 +10,7 @@ runs:
   using: composite
   steps:
     - uses: actions/cache/save@v5
+      continue-on-error: true
       with:
         key: ${{ inputs.primary-key }}
         path: |

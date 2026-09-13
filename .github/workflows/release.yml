@@ -86,6 +86,8 @@ jobs:
           version: ${{ needs.resolve-version.outputs.version }}
       - uses: ./.github/actions/cache-gradle-build
         id: gradle-build-cache
+        with:
+          scope: build-jar
       - name: Compile and ProGuard release desktop jars
         run: ./gradlew :app:desktop:exportReleaseProguardForCi --no-daemon --console=plain
       - uses: ./.github/actions/save-gradle-build-cache
@@ -112,6 +114,8 @@ jobs:
           version: ${{ needs.resolve-version.outputs.version }}
       - uses: ./.github/actions/cache-gradle-build
         id: gradle-build-cache
+        with:
+          scope: windows-installer
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
@@ -166,15 +170,21 @@ jobs:
         run: call scripts\ensure-windows-arm64-jdk.cmd
       - uses: ./.github/actions/setup-java-gradle
         if: matrix.arch == 'x64'
+        with:
+          cache-read-only: "true"
       - uses: gradle/actions/setup-gradle@v5
         if: matrix.arch == 'arm64'
         with:
           gradle-version: wrapper
+          cache-read-only: true
           add-job-summary: on-failure
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
       - uses: ./.github/actions/cache-gradle-build
+        id: gradle-build-cache
+        with:
+          scope: windows-package-${{ matrix.arch }}
       - uses: actions/download-artifact@v5
         with:
           name: desktop-proguard
@@ -205,6 +215,10 @@ jobs:
           name: windows-${{ matrix.arch }}
           path: app/desktop/build/distributions/release/*-windows-${{ matrix.arch }}.exe
           if-no-files-found: error
+      - uses: ./.github/actions/save-gradle-build-cache
+        if: always()
+        with:
+          primary-key: ${{ steps.gradle-build-cache.outputs.cache-primary-key }}
 
   macos:
     name: macOS (${{ matrix.label }})
@@ -227,13 +241,18 @@ jobs:
         if: matrix.arch == 'x64'
         with:
           java-architecture: x64
+          cache-read-only: "true"
       - uses: ./.github/actions/setup-java-gradle
         if: matrix.arch == 'arm64'
+        with:
+          cache-read-only: "true"
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
       - uses: ./.github/actions/cache-gradle-build
         id: gradle-build-cache
+        with:
+          scope: macos-${{ matrix.arch }}
       - uses: actions/download-artifact@v5
         with:
           name: desktop-proguard
@@ -266,7 +285,7 @@ jobs:
           path: app/desktop/build/distributions/release/*-macOS-${{ matrix.arch }}.dmg
           if-no-files-found: error
       - uses: ./.github/actions/save-gradle-build-cache
-        if: always() && matrix.arch == 'arm64'
+        if: always()
         with:
           primary-key: ${{ steps.gradle-build-cache.outputs.cache-primary-key }}
 
@@ -292,11 +311,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup-java-gradle
+        with:
+          cache-read-only: "true"
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
       - uses: ./.github/actions/cache-gradle-build
         id: gradle-build-cache
+        with:
+          scope: linux-${{ matrix.arch }}
       - uses: actions/download-artifact@v5
         with:
           name: desktop-proguard
@@ -327,7 +350,7 @@ jobs:
             app/desktop/build/distributions/release/*-linux-${{ matrix.arch }}.AppImage
           if-no-files-found: error
       - uses: ./.github/actions/save-gradle-build-cache
-        if: always() && matrix.arch == 'arm64'
+        if: always()
         with:
           primary-key: ${{ steps.gradle-build-cache.outputs.cache-primary-key }}
 
@@ -339,11 +362,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup-java-gradle
+        with:
+          cache-read-only: "true"
       - uses: android-actions/setup-android@v4
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
       - uses: ./.github/actions/cache-gradle-build
+        id: gradle-build-cache
+        with:
+          scope: android
       - name: Cache Android SDK extras
         uses: actions/cache@v5
         with:
@@ -379,6 +407,10 @@ jobs:
           printf '%s' "$GOOGLE_SERVICES_JSON" | base64 -d > app/android/google-services.json
       - name: Build universal Android APK
         run: ./gradlew :app:android:assembleRelease --no-daemon --console=plain
+      - uses: ./.github/actions/save-gradle-build-cache
+        if: always()
+        with:
+          primary-key: ${{ steps.gradle-build-cache.outputs.cache-primary-key }}
       - name: Stage APK
         run: |
           mkdir -p release-staging
