@@ -1,0 +1,20 @@
+name: Save Gradle build directories
+description: Save module build/ trees after a Gradle build (always runs, even on cache hit)
+
+inputs:
+  primary-key:
+    description: cache-primary-key from cache-gradle-build restore step
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache/save@v5
+      with:
+        key: ${{ inputs.primary-key }}
+        path: |
+          app/desktop/build
+          app/shared/build
+          app/android/build
+          utils/shared/build
+          utils/android/build
