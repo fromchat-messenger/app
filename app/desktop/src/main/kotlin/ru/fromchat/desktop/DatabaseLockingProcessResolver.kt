@@ -6,17 +6,14 @@ import java.util.concurrent.TimeUnit
 
 object DatabaseLockingProcessResolver {
     fun findLockingProcesses(files: List<File>): List<LockingProcessInfo> {
-        val discovered = buildList {
-            if (isWindowsOs()) {
-                addAll(WindowsRestartManager.findLockingProcesses(files))
-            }
-            if (isMacOs()) {
-                addAll(findWithLsof(files))
-            }
-            if (isLinuxOs()) {
-                addAll(findWithFuser(files))
-            }
-            addAll(ProcessExecutableResolver.findFromChatProcesses())
+        val probeFiles = files
+            .map { file -> runCatching { file.canonicalFile }.getOrDefault(file) }
+            .distinctBy { it.absolutePath }
+        val discovered = when {
+            isWindowsOs() -> WindowsRestartManager.findLockingProcesses(probeFiles)
+            isMacOs() -> findWithLsof(probeFiles.filter { it.exists() })
+            isLinuxOs() -> findWithFuser(probeFiles.filter { it.exists() })
+            else -> emptyList()
         }
         return discovered
             .distinctBy { it.pid }

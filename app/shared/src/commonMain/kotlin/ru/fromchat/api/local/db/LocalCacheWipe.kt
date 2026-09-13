@@ -1,7 +1,7 @@
 package ru.fromchat.api.local.db
 
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import ru.fromchat.api.local.db.store.messageDatabaseDispatcher
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.ChatListSync
 import ru.fromchat.api.ProfileUpdateSync
@@ -36,7 +36,7 @@ suspend fun wipeLocalCacheOnDisk() {
     if (instanceId.isNotEmpty()) {
         cancelOutboxProcessing(instanceId)
     }
-    withContext(Dispatchers.Default) {
+    withContext(messageDatabaseDispatcher) {
         MessageDatabaseProvider.closeAndReset()
     }
     wipeFromChatCacheDirectory()

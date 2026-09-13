@@ -93,6 +93,8 @@ internal fun Window.windowsHwnd(): HWND {
 internal fun HWND.isNativeZoomed(): Boolean =
     User32.INSTANCE.GetWindowLong(this, WinUser.GWL_STYLE) and WS_MAXIMIZE != 0
 
+internal fun Window.isNativeZoomed(): Boolean = windowsHwnd().isNativeZoomed()
+
 private const val WS_MAXIMIZE = 0x01000000
 
 @Suppress("FunctionName")

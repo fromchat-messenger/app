@@ -52,32 +52,6 @@ internal object ProcessExecutableResolver {
         return SkiaImage.makeFromEncoded(bytes).toComposeImageBitmap()
     }
 
-    fun findFromChatProcesses(): List<LockingProcessInfo> {
-        val currentPid = ProcessHandle.current().pid()
-        return ProcessHandle.allProcesses().toList().mapNotNull { handle ->
-            val pid = handle.pid()
-            if (pid == currentPid) return@mapNotNull null
-            val command = handle.info().command().orElse("")
-            if (!looksLikeFromChatProcess(command)) return@mapNotNull null
-            val executable = extractExecutablePath(command)
-            LockingProcessInfo(
-                pid = pid,
-                name = handle.info().command().map { File(it).name }.orElse("FromChat"),
-                description = command,
-                executablePath = executable,
-                icon = iconForExecutable(executable),
-            )
-        }
-    }
-
-    private fun looksLikeFromChatProcess(command: String): Boolean {
-        if (command.isBlank()) return false
-        val lower = command.lowercase()
-        return lower.contains("ru.fromchat.desktop.mainkt") ||
-            lower.contains("fromchat.desktop.main") ||
-            (lower.contains("fromchat") && (lower.contains("java") || lower.contains("javaw")))
-    }
-
     private fun extractExecutablePath(command: String): String? {
         val trimmed = command.trim()
         if (trimmed.isEmpty()) return null

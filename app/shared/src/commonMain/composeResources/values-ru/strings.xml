@@ -12,6 +12,10 @@
     <string name="about_link_website">Сайт</string>
     <string name="about_link_privacy">Политика конфиденциальности</string>
     <string name="about_link_terms">Пользовательское соглашение</string>
+    <string name="about_what_changed">Что изменилось в этом обновлении</string>
+    <string name="release_notes_title">Что нового</string>
+    <string name="release_notes_ok">OK</string>
+    <string name="release_notes_dont_show_again">Больше не показывать</string>
     <string name="legal_privacy_title">Политика конфиденциальности</string>
     <string name="legal_terms_title">Пользовательское соглашение</string>
     <string name="legal_document_cached_banner">Показана сохранённая копия документа. Содержимое может быть устаревшим.</string>
@@ -38,6 +42,7 @@
     <string name="desktop_database_locked_kill">Завершить процесс</string>
     <string name="desktop_database_locked_waiting">Ожидание освобождения базы данных…</string>
     <string name="desktop_database_locked_unknown_process">Неизвестный процесс</string>
+    <string name="desktop_database_locked_unknown_hint">Не удалось определить процесс. Возможно, базу удерживает другое приложение (IDE, просмотрщик БД, антивирус или синхронизация папки с данными). Проверьте диспетчер задач на скрытый java.exe.</string>
     <string name="desktop_database_locked_pid">PID %1$d</string>
     <string name="welcome">Добро пожаловать!</string>
     <string name="login">Войти</string>
