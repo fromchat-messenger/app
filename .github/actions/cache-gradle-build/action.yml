@@ -1,25 +1,20 @@
-name: Cache Gradle build directories
-description: Restore or save module build/ trees for faster CI Gradle jobs
-
-inputs:
-  save:
-    description: Save cache at job end. Use false on parallel jobs that share the same cache key.
-    required: false
-    default: "true"
+name: Restore Gradle build directories
+description: Restore module build/ trees for faster CI Gradle jobs
 
 outputs:
   cache-hit:
-    description: Whether build directories were restored from cache
+    description: Whether an exact cache key match was restored
     value: ${{ steps.cache.outputs.cache-hit }}
+  cache-primary-key:
+    description: Primary cache key to pass to the save action after the build
+    value: ${{ steps.cache.outputs.cache-primary-key }}
 
 runs:
   using: composite
   steps:
-    - uses: actions/cache@v5
+    - uses: actions/cache/restore@v5
       id: cache
       with:
-        lookup-only: ${{ inputs.save != 'true' }}
-        save-always: ${{ inputs.save == 'true' }}
         path: |
           app/desktop/build
           app/shared/build
