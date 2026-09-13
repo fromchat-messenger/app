@@ -25,6 +25,7 @@ concurrency:
 
 env:
   GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx6g -Dkotlin.daemon.jvm.options=-Xmx6g
+  FROMCHAT_PREBUILT_PROGUARD: "1"
 
 jobs:
   resolve-version:
@@ -48,10 +49,35 @@ jobs:
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "tag=v$V" >> "$GITHUB_OUTPUT"
 
+  desktop-proguard:
+    needs: resolve-version
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: wrapper
+      - uses: ./.github/actions/set-version
+        with:
+          version: ${{ needs.resolve-version.outputs.version }}
+      - name: Compile and ProGuard release desktop jars
+        run: ./gradlew :app:desktop:exportReleaseProguardForCi --no-daemon --console=plain
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-proguard
+          path: app/desktop/build/ci/proguard/
+          if-no-files-found: error
+          retention-days: 7
+
   windows-common:
     needs: resolve-version
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -77,20 +103,10 @@ jobs:
           key: cargo-windows-${{ runner.os }}-${{ hashFiles('app/desktop/windows-setup/Cargo.lock') }}
           restore-keys: |
             cargo-windows-${{ runner.os }}-
-      - name: Build arch-independent Windows tooling and compile JVM
+      - name: Build Windows installer Rust tooling
         shell: bash
-        run: |
-          export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
-          ./gradlew \
-            :app:desktop:buildWindowsSetupRust \
-            :app:shared:compileKotlinJvm \
-            :utils:shared:compileKotlinJvm \
-            :app:desktop:compileKotlin \
-            :app:desktop:jar \
-            --no-daemon \
-            --console=plain
-      - name: Upload Windows Rust installer tools
-        uses: actions/upload-artifact@v4
+        run: ./gradlew :app:desktop:buildWindowsSetupRust --no-daemon --console=plain
+      - uses: actions/upload-artifact@v4
         with:
           name: windows-rust-tools
           path: app/desktop/windows-setup/target/release/*.exe
@@ -98,7 +114,7 @@ jobs:
           retention-days: 7
 
   windows-package:
-    needs: [resolve-version, windows-common]
+    needs: [resolve-version, desktop-proguard, windows-common]
     strategy:
       fail-fast: false
       matrix:
@@ -126,6 +142,10 @@ jobs:
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-proguard
+          path: app/desktop/build/prebuilt/main-release/proguard
       - name: Restore Windows Rust installer tools
         uses: actions/download-artifact@v4
         with:
@@ -156,7 +176,7 @@ jobs:
           if-no-files-found: error
 
   macos:
-    needs: resolve-version
+    needs: [resolve-version, desktop-proguard]
     strategy:
       fail-fast: false
       matrix:
@@ -164,7 +184,7 @@ jobs:
           - arch: arm64
           - arch: x64
     runs-on: macos-latest
-    timeout-minutes: 90
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -184,6 +204,10 @@ jobs:
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-proguard
+          path: app/desktop/build/prebuilt/main-release/proguard
       - name: Cache DMG background tooling
         uses: actions/cache@v4
         with:
@@ -213,7 +237,7 @@ jobs:
           if-no-files-found: error
 
   linux:
-    needs: resolve-version
+    needs: [resolve-version, desktop-proguard]
     strategy:
       fail-fast: false
       matrix:
@@ -225,7 +249,7 @@ jobs:
             runner: ubuntu-24.04-arm
             appimage: appimagetool-aarch64.AppImage
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 75
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -238,6 +262,10 @@ jobs:
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-proguard
+          path: app/desktop/build/prebuilt/main-release/proguard
       - name: Install Linux packaging tools
         run: |
           sudo apt-get update
