@@ -6,6 +6,12 @@ inputs:
     description: Unique id for this job (part of the cache key; use restore-keys to reuse other scopes)
     required: true
 
+inputs:
+  save:
+    description: Save cache at job end. Use false on parallel jobs that share the same cache key.
+    required: false
+    default: "true"
+
 outputs:
   cache-hit:
     description: Whether an exact cache key match was restored
@@ -37,6 +43,8 @@ runs:
       if: inputs.scope != 'android'
       id: cache
       with:
+        lookup-only: ${{ inputs.save != 'true' }}
+        save-always: ${{ inputs.save == 'true' }}
         path: |
           .gradle
           build
