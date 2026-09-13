@@ -72,6 +72,13 @@ private fun isWindowsArm64Host(): Boolean {
     return os.contains("win") && hostCpuArch() == "aarch64"
 }
 
+/** jpackage packageVersion (MAJOR.MINOR.BUILD); strips pre-release suffixes like `-beta`. */
+private fun jpackagePackageVersion(versionName: String): String {
+    val match = Regex("""^(\d+)\.(\d+)\.(\d+)""").find(versionName.trim())
+        ?: error("Cannot derive jpackage packageVersion from versionName=$versionName")
+    return match.destructured.let { (major, minor, patch) -> "$major.$minor.$patch" }
+}
+
 /** CI / packaging label: `x64` or `arm64`. Override with `-PdesktopArch=…`. */
 fun desktopReleaseArchLabel(): String {
     project.findProperty("desktopArch")?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
@@ -257,7 +264,9 @@ compose.desktop {
 
         nativeDistributions {
             packageName = "FromChat"
-            packageVersion = rootProject.extra["versionName"] as String
+            val versionName = rootProject.extra["versionName"] as String
+            val nativePackageVersion = jpackagePackageVersion(versionName)
+            packageVersion = nativePackageVersion
             description =
                 if (project.findProperty("betaDesktop") != null) "FromChat Beta" else "FromChat"
             copyright = "© FromChat"
@@ -293,10 +302,14 @@ compose.desktop {
             // Without iconFile, packaged apps (and macOS dock via jpackage) use Compose's default logo.
             linux {
                 iconFile.set(desktopWindowIconPng)
+                packageVersion = nativePackageVersion
+                rpmPackageVersion = nativePackageVersion
             }
             windows {
                 // jpackage on Windows requires .ico; a PNG is ignored and the Java cup stays.
                 iconFile.set(desktopWindowIconIco)
+                packageVersion = nativePackageVersion
+                exePackageVersion = nativePackageVersion
                 jvmArgs(*windowsSkikoJvmArgs().toTypedArray())
             }
             macOS {
