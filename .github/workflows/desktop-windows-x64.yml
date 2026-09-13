@@ -29,7 +29,8 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
       - uses: ./.github/actions/cache-cargo-windows
-      - name: Set version
+      - id: ver
+        name: Resolve version
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -37,7 +38,10 @@ jobs:
           else
             V="${GITHUB_REF_NAME#win-x64-}"
           fi
-          bash scripts/ci-set-version.sh "$V"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/set-version
+        with:
+          version: ${{ steps.ver.outputs.version }}
       - name: Package Windows x64 installer
         shell: bash
         run: |
