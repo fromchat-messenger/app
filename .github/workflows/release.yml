@@ -24,7 +24,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx6g -Dkotlin.daemon.jvm.options=-Xmx6g
+  GRADLE_OPTS: >-
+    -Dorg.gradle.jvmargs=-Xmx6g
+    -Dkotlin.daemon.jvm.options=-Xmx6g
+    -Dorg.gradle.parallel=true
 
 jobs:
   resolve-version:
@@ -55,64 +58,57 @@ jobs:
     env:
       FROMCHAT_PREBUILT_PROGUARD: "0"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: wrapper
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup-java-gradle
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
+      - uses: ./.github/actions/cache-desktop-proguard
+        id: proguard-cache
       - name: Compile and ProGuard release desktop jars
+        if: steps.proguard-cache.outputs.cache-hit != 'true'
         run: ./gradlew :app:desktop:exportReleaseProguardForCi --no-daemon --console=plain
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: desktop-proguard
           path: app/desktop/build/ci/proguard/
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 3
 
   windows-common:
     needs: resolve-version
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: wrapper
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup-java-gradle
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
-      - name: Cache Cargo
-        uses: actions/cache@v4
+      - name: Cache Cargo registry
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            app/desktop/windows-setup/target
-          key: cargo-windows-${{ runner.os }}-${{ hashFiles('app/desktop/windows-setup/Cargo.lock') }}
+          key: cargo-registry-${{ runner.os }}-${{ hashFiles('app/desktop/windows-setup/Cargo.lock') }}
           restore-keys: |
-            cargo-windows-${{ runner.os }}-
+            cargo-registry-${{ runner.os }}-
+      - uses: ./.github/actions/cache-windows-rust-tools
+        id: rust-tools-cache
       - name: Build Windows installer Rust tooling
+        if: steps.rust-tools-cache.outputs.cache-hit != 'true'
         shell: bash
         run: ./gradlew :app:desktop:buildWindowsSetupRust --no-daemon --console=plain
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: windows-rust-tools
           path: app/desktop/windows-setup/target/release/*.exe
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 3
 
   windows-package:
     needs: [resolve-version, desktop-proguard, windows-common]
@@ -129,28 +125,27 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Ensure ARM64 packaging JDK
         if: matrix.arch == 'arm64'
         shell: cmd
         run: call scripts\ensure-windows-arm64-jdk.cmd
-      - uses: actions/setup-java@v4
+      - uses: ./.github/actions/setup-java-gradle
         if: matrix.arch == 'x64'
-        with:
-          distribution: temurin
-          java-version: "17"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
+        if: matrix.arch == 'arm64'
         with:
           gradle-version: wrapper
+          add-job-summary: on-failure
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: desktop-proguard
           path: app/desktop/build/prebuilt/main-release/proguard
       - name: Restore Windows Rust installer tools
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: windows-rust-tools
           path: app/desktop/windows-setup/target/release
@@ -170,7 +165,7 @@ jobs:
             args+=("-PwindowsArm64")
           fi
           ./gradlew "${args[@]}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: windows-${{ matrix.arch }}
           path: app/desktop/build/distributions/release/*-windows-${{ matrix.arch }}.exe
@@ -189,30 +184,22 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup-java-gradle
         if: matrix.arch == 'x64'
         with:
-          distribution: temurin
-          java-version: "17"
-          architecture: x64
-      - uses: actions/setup-java@v4
+          java-architecture: x64
+      - uses: ./.github/actions/setup-java-gradle
         if: matrix.arch == 'arm64'
-        with:
-          distribution: temurin
-          java-version: "17"
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: wrapper
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: desktop-proguard
           path: app/desktop/build/prebuilt/main-release/proguard
       - name: Cache DMG background tooling
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             app/desktop/dmg-background/node_modules
@@ -226,14 +213,14 @@ jobs:
           fi
           DMG_DIR="app/desktop/dmg-background"
           if [[ ! -f "$DMG_DIR/node_modules/playwright/package.json" ]]; then
-            npm --prefix "$DMG_DIR" install --no-fund --no-audit
+            npm --prefix "$DMG_DIR" ci --no-fund --no-audit
             npm --prefix "$DMG_DIR" exec playwright install chromium
           fi
       - name: Package macOS ${{ matrix.arch }}
         run: |
           export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
           ./gradlew :app:desktop:packageReleaseMac -PdesktopArch=${{ matrix.arch }} --no-daemon --console=plain
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: macos-${{ matrix.arch }}
           path: app/desktop/build/distributions/release/*-macOS-${{ matrix.arch }}.dmg
@@ -256,25 +243,20 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: wrapper
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup-java-gradle
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: desktop-proguard
           path: app/desktop/build/prebuilt/main-release/proguard
       - name: Install Linux packaging tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y fakeroot rpm binutils libfuse2 wget
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            fakeroot rpm binutils libfuse2 wget
           CACHE_DIR="${RUNNER_TOOL_CACHE}/appimagetool"
           mkdir -p "$CACHE_DIR"
           TOOL="$CACHE_DIR/appimagetool-${{ matrix.arch }}.AppImage"
@@ -287,7 +269,7 @@ jobs:
         run: |
           export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
           ./gradlew :app:desktop:packageReleaseLinux -PdesktopArch=${{ matrix.arch }} --no-daemon --console=plain
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: linux-${{ matrix.arch }}
           path: |
@@ -301,20 +283,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: wrapper
-      - uses: android-actions/setup-android@v3
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup-java-gradle
+      - uses: android-actions/setup-android@v4
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
       - name: Cache Android SDK extras
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.android/build-cache
@@ -353,7 +329,7 @@ jobs:
           mkdir -p release-staging
           APK="$(find app/android/build/outputs/apk/release -name '*release*.apk' | head -n 1)"
           cp "$APK" "release-staging/FromChat-${{ needs.resolve-version.outputs.version }}-android-universal.apk"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: android
           path: release-staging/*.apk
@@ -371,8 +347,19 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
         with:
+          sparse-checkout: |
+            RELEASE_NOTES.md
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: |
+            windows-*
+            macos-*
+            linux-*
+            android
+          merge-multiple: true
           path: artifacts
       - name: Collect release assets
         run: |
@@ -384,7 +371,7 @@ jobs:
             -name '*.AppImage' -o \
             -name '*.exe' -o \
             -name '*.apk' \
-          \) -exec cp {} release-assets/ \;
+          \) -exec cp -t release-assets {} +
           ls -la release-assets
           VERSION="${{ needs.resolve-version.outputs.version }}"
           for pattern in \
@@ -405,13 +392,23 @@ jobs:
               exit 1
             fi
           done
+      - name: Prepare release notes
+        run: |
+          VERSION="${{ needs.resolve-version.outputs.version }}"
+          {
+            echo "# FromChat ${VERSION}"
+            echo ""
+            cat RELEASE_NOTES.md
+          } > release-body.md
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.resolve-version.outputs.tag }}
           name: FromChat ${{ needs.resolve-version.outputs.version }}
+          body_path: release-body.md
           draft: false
-          generate_release_notes: true
+          prerelease: false
+          generate_release_notes: false
           files: release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

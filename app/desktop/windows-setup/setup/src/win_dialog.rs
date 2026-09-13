@@ -5,7 +5,7 @@ mod imp {
     use windows::core::PCWSTR;
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{
-        MessageBoxW, MB_DEFBUTTON2, MB_ICONERROR, MB_ICONWARNING, MB_OK, MB_YESNO, IDNO, IDYES,
+        MessageBoxW, MB_DEFBUTTON2, MB_ICONERROR, MB_ICONWARNING, MB_OK, MB_YESNO, IDYES,
     };
 
     fn wide(s: &str) -> Vec<u16> {

@@ -1,0 +1,18 @@
+name: Cache desktop ProGuard jars
+description: Restore or save the CI ProGuard export directory (speeds up release desktop-proguard job)
+
+outputs:
+  cache-hit:
+    description: Whether ProGuard jars were restored from cache
+    value: ${{ steps.cache.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@v5
+      id: cache
+      with:
+        path: app/desktop/build/ci/proguard
+        key: desktop-proguard-v1-${{ hashFiles('gradle/libs.versions.toml', 'build.gradle.kts', 'settings.gradle.kts', 'app/desktop/build.gradle.kts', 'app/desktop/proguard-rules.pro', 'app/shared/build.gradle.kts') }}
+        restore-keys: |
+          desktop-proguard-v1-

@@ -7,11 +7,6 @@ pub fn ease_in_out_cubic(t: f32) -> f32 {
     }
 }
 
-pub fn ease_out_cubic(t: f32) -> f32 {
-    let t = t.clamp(0.0, 1.0);
-    1.0 - (1.0 - t).powi(3)
-}
-
 #[derive(Clone, Copy)]
 pub struct ScreenTransition<S: Copy> {
     pub from: S,

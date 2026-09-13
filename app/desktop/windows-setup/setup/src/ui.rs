@@ -399,7 +399,7 @@ impl eframe::App for SetupApp {
                         .transition
                         .is_some_and(|t| t.from == Screen::Welcome || t.to == Screen::Welcome);
 
-                ui.allocate_ui_at_rect(full, |ui| {
+                widgets::scope_at_rect(ui, full, |ui| {
                     ui.set_clip_rect(full);
                     if let Some(tr) = self.transition {
                         let w = full.width();
@@ -412,10 +412,10 @@ impl eframe::App for SetupApp {
                         };
                         let from = tr.from;
                         let to = tr.to;
-                        ui.allocate_ui_at_rect(full.translate(Vec2::new(out_x, 0.0)), |ui| {
+                        widgets::scope_at_rect(ui, full.translate(Vec2::new(out_x, 0.0)), |ui| {
                             self.draw_screen(ui, from, false);
                         });
-                        ui.allocate_ui_at_rect(full.translate(Vec2::new(in_x, 0.0)), |ui| {
+                        widgets::scope_at_rect(ui, full.translate(Vec2::new(in_x, 0.0)), |ui| {
                             // Hover off during slide; clicks still register.
                             self.draw_screen(ui, to, false);
                         });
@@ -511,7 +511,7 @@ impl SetupApp {
             Rect::from_min_size(Pos2::new(left, y), Vec2::new(card_w, version_h));
 
         if let Some(upgrade_rect) = upgrade_rect {
-            ui.allocate_ui_at_rect(upgrade_rect, |ui| {
+            widgets::scope_at_rect(ui, upgrade_rect, |ui| {
                 ui.set_clip_rect(upgrade_rect);
                 if widgets::choice_card_sized(
                     ui,
@@ -525,7 +525,7 @@ impl SetupApp {
                 }
             });
         }
-        ui.allocate_ui_at_rect(primary_rect, |ui| {
+        widgets::scope_at_rect(ui, primary_rect, |ui| {
             ui.set_clip_rect(primary_rect);
             if widgets::choice_card_sized(
                 ui,
@@ -542,7 +542,7 @@ impl SetupApp {
                 }
             }
         });
-        ui.allocate_ui_at_rect(portable_rect, |ui| {
+        widgets::scope_at_rect(ui, portable_rect, |ui| {
             ui.set_clip_rect(portable_rect);
             if widgets::choice_card_sized(
                 ui,
@@ -555,7 +555,7 @@ impl SetupApp {
                 self.go(Screen::PortableOptions);
             }
         });
-        ui.allocate_ui_at_rect(version_rect, |ui| {
+        widgets::scope_at_rect(ui, version_rect, |ui| {
             ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
                 ui.set_width(card_w);
                 ui.label(
@@ -578,7 +578,7 @@ impl SetupApp {
             Pos2::new(full.right(), bar_rect.top()),
         );
 
-        ui.allocate_ui_at_rect(body_rect, |ui| {
+        widgets::scope_at_rect(ui, body_rect, |ui| {
             ui.set_clip_rect(body_rect);
             ui.add_space(TITLE_BAR_HEIGHT + 4.0);
             egui::Frame::none()
@@ -631,7 +631,7 @@ impl SetupApp {
 
         let mut back = false;
         let mut go_next = false;
-        ui.allocate_ui_at_rect(bar_rect, |ui| {
+        widgets::scope_at_rect(ui, bar_rect, |ui| {
             ui.set_clip_rect(bar_rect);
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 egui::Frame::none()
@@ -671,7 +671,7 @@ impl SetupApp {
             Pos2::new(full.right(), bar_rect.top()),
         );
 
-        ui.allocate_ui_at_rect(body_rect, |ui| {
+        widgets::scope_at_rect(ui, body_rect, |ui| {
             ui.set_clip_rect(body_rect);
             ui.add_space(TITLE_BAR_HEIGHT + 4.0);
             egui::Frame::none()
@@ -707,7 +707,7 @@ impl SetupApp {
 
         let mut back = false;
         let mut go_next = false;
-        ui.allocate_ui_at_rect(bar_rect, |ui| {
+        widgets::scope_at_rect(ui, bar_rect, |ui| {
             ui.set_clip_rect(bar_rect);
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 egui::Frame::none()
@@ -747,7 +747,7 @@ impl SetupApp {
             Pos2::new(full.right(), bar_rect.top()),
         );
 
-        ui.allocate_ui_at_rect(body_rect, |ui| {
+        widgets::scope_at_rect(ui, body_rect, |ui| {
             ui.set_clip_rect(body_rect);
             ui.add_space(TITLE_BAR_HEIGHT + 4.0);
             egui::Frame::none()
@@ -809,7 +809,7 @@ impl SetupApp {
 
         let mut back = false;
         let mut go_next = false;
-        ui.allocate_ui_at_rect(bar_rect, |ui| {
+        widgets::scope_at_rect(ui, bar_rect, |ui| {
             ui.set_clip_rect(bar_rect);
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 egui::Frame::none()
@@ -872,7 +872,7 @@ impl SetupApp {
         );
         let installed = self.installed.clone();
 
-        ui.allocate_ui_at_rect(body_rect, |ui| {
+        widgets::scope_at_rect(ui, body_rect, |ui| {
             ui.set_clip_rect(body_rect);
             ui.add_space(TITLE_BAR_HEIGHT + 4.0);
             egui::Frame::none()
@@ -921,7 +921,7 @@ impl SetupApp {
         let mut back = false;
         let mut go_next = false;
         let can_upgrade = installed.is_some();
-        ui.allocate_ui_at_rect(bar_rect, |ui| {
+        widgets::scope_at_rect(ui, bar_rect, |ui| {
             ui.set_clip_rect(bar_rect);
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 egui::Frame::none()
@@ -1009,7 +1009,7 @@ impl SetupApp {
             Pos2::new(full.right(), bar_rect.top()),
         );
 
-        ui.allocate_ui_at_rect(body_rect, |ui| {
+        widgets::scope_at_rect(ui, body_rect, |ui| {
             ui.set_clip_rect(body_rect);
             ui.add_space(TITLE_BAR_HEIGHT + 4.0);
             egui::Frame::none()
@@ -1083,7 +1083,7 @@ impl SetupApp {
         });
 
         let ctx = ui.ctx().clone();
-        ui.allocate_ui_at_rect(bar_rect, |ui| {
+        widgets::scope_at_rect(ui, bar_rect, |ui| {
             ui.set_clip_rect(bar_rect);
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 egui::Frame::none()
@@ -1119,7 +1119,7 @@ impl SetupApp {
             Pos2::new(full.right(), bar_rect.top()),
         );
 
-        ui.allocate_ui_at_rect(body_rect, |ui| {
+        widgets::scope_at_rect(ui, body_rect, |ui| {
             ui.set_clip_rect(body_rect);
             ui.add_space(TITLE_BAR_HEIGHT + 4.0);
             egui::Frame::none()
@@ -1145,7 +1145,7 @@ impl SetupApp {
         });
 
         let ctx = ui.ctx().clone();
-        ui.allocate_ui_at_rect(bar_rect, |ui| {
+        widgets::scope_at_rect(ui, bar_rect, |ui| {
             ui.set_clip_rect(bar_rect);
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 egui::Frame::none()
@@ -1742,33 +1742,10 @@ fn run_elevated_install(
             let _ = tx.send(ev);
             if done {
                 got_terminal = true;
-                break;
             }
         }
     }
     Ok(())
-}
-
-fn find_app_exe(dest: &PathBuf) -> anyhow::Result<PathBuf> {
-    find_jpackage_app_exe(dest).map_err(Into::into)
-}
-
-fn walkdir_files(root: &PathBuf) -> anyhow::Result<Vec<PathBuf>> {
-    let mut out = Vec::new();
-    fn rec(dir: &PathBuf, out: &mut Vec<PathBuf>) -> anyhow::Result<()> {
-        for e in std::fs::read_dir(dir)? {
-            let e = e?;
-            let p = e.path();
-            if e.file_type()?.is_dir() {
-                rec(&p, out)?;
-            } else {
-                out.push(p);
-            }
-        }
-        Ok(())
-    }
-    rec(root, &mut out)?;
-    Ok(out)
 }
 
 fn default_install_path(all_users: bool, edition: FromChatEdition) -> String {

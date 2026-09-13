@@ -26,6 +26,10 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 earcutr = "0.4"
 raw-window-handle = "0.6"
 
+[lints.rust]
+dead_code = "allow"
+unused_assignments = "warn"
+
 [build-dependencies]
 winres = "0.1"
 image = { version = "0.25", default-features = false, features = ["png"] }
