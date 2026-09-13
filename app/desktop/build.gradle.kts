@@ -744,6 +744,46 @@ val macDmgReleaseOutput = desktopDistDir.map {
     it.file("FromChat-$desktopVersionName-macOS-${desktopReleaseArchLabel()}.dmg")
 }
 
+val releaseProguardOutputDir = layout.buildDirectory.dir("compose/tmp/main-release/proguard")
+val ciPrebuiltProguardDir = layout.buildDirectory.dir("prebuilt/main-release/proguard")
+val ciProguardExportDir = layout.buildDirectory.dir("ci/proguard")
+
+fun useCiPrebuiltProguard(): Boolean =
+    System.getenv("FROMCHAT_PREBUILT_PROGUARD") == "1"
+
+tasks.register<Copy>("exportReleaseProguardForCi") {
+    group = "compose desktop"
+    description = "Compile, ProGuard, and export release jars for CI (run once on Linux x64)."
+    dependsOn("proguardReleaseJars")
+    from(releaseProguardOutputDir)
+    into(ciProguardExportDir)
+}
+
+tasks.register<Copy>("stageCiPrebuiltProguard") {
+    group = "compose desktop"
+    description = "Stage downloaded CI ProGuard jars into compose release tmp before packaging."
+    onlyIf { useCiPrebuiltProguard() }
+    from(ciPrebuiltProguardDir)
+    into(releaseProguardOutputDir)
+    doFirst {
+        check(ciPrebuiltProguardDir.get().asFile.isDirectory) {
+            "Missing prebuilt ProGuard at ${ciPrebuiltProguardDir.get().asFile}"
+        }
+    }
+}
+
+tasks.register("packageReleaseFromPrebuiltProguard") {
+    group = "compose desktop"
+    description = "Package release desktop for the current OS using CI prebuilt ProGuard jars."
+    dependsOn("stageCiPrebuiltProguard")
+    when {
+        runningOnMacOs -> dependsOn("packageReleaseMac")
+        runningOnLinux -> dependsOn("packageReleaseLinux")
+        runningOnWindows -> dependsOn("packageReleaseWindows")
+        else -> doFirst { error("Unsupported OS for packageReleaseFromPrebuiltProguard") }
+    }
+}
+
 tasks.register("packageReleaseMac") {
     group = "compose desktop"
     description = "Build release macOS DMG and copy to distributions/release."
@@ -1109,6 +1149,18 @@ tasks.register<Exec>("packageBetaWindows") {
 }
 
 afterEvaluate {
+    tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
+        onlyIf {
+            !useCiPrebuiltProguard() || !ciPrebuiltProguardDir.get().asFile.isDirectory
+        }
+    }
+    tasks.matching {
+        it.name == "createReleaseDistributable" || it.name == "createReleaseDistributableImpl"
+    }.configureEach {
+        if (useCiPrebuiltProguard()) {
+            dependsOn("stageCiPrebuiltProguard")
+        }
+    }
     tasks.matching { it.name == "createRuntimeImage" || it.name == "createReleaseRuntimeImage" }.configureEach {
         if (!isWindowsArm64Host()) return@configureEach
         inputs.property("packagingJdkHome", resolvePackagingJdkHome())
