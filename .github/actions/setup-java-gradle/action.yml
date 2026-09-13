@@ -1,0 +1,23 @@
+name: Setup Java and Gradle
+description: Temurin JDK 17 + Gradle wrapper with dependency and build cache
+
+inputs:
+  java-architecture:
+    description: Optional JDK architecture (x64, arm64, …)
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: "17"
+        architecture: ${{ inputs.java-architecture }}
+
+    - uses: gradle/actions/setup-gradle@v4
+      with:
+        gradle-version: wrapper
+        cache-read-only: false
+        add-job-summary: true

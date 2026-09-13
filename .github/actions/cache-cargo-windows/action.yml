@@ -1,0 +1,16 @@
+name: Cache Cargo (windows-setup)
+description: Cache registry, git sources, and target/ for the Windows installer Rust workspace
+
+runs:
+  using: composite
+  steps:
+    - name: Cache Cargo
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          app/desktop/windows-setup/target
+        key: cargo-windows-${{ runner.os }}-${{ hashFiles('app/desktop/windows-setup/Cargo.lock', 'app/desktop/windows-setup/**/*.rs') }}
+        restore-keys: |
+          cargo-windows-${{ runner.os }}-

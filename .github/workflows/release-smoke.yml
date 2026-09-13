@@ -1,0 +1,100 @@
+name: Release smoke
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - ".github/workflows/release-smoke.yml"
+      - ".github/actions/**"
+      - "scripts/ci-*.sh"
+      - "app/desktop/build.gradle.kts"
+  workflow_dispatch:
+
+concurrency:
+  group: release-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx6g -Dkotlin.daemon.jvm.options=-Xmx6g
+
+jobs:
+  test-compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-java-gradle
+      - uses: android-actions/setup-android@v3
+      - run: bash scripts/ci-test-compile.sh
+
+  test-rust:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: ./.github/actions/cache-cargo-windows
+      - name: Test Windows installer Rust workspace
+        shell: bash
+        working-directory: app/desktop/windows-setup
+        run: cargo test --workspace --release
+
+  verify-script:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax-check CI scripts
+        run: |
+          set -euo pipefail
+          for script in scripts/ci-*.sh; do
+            bash -n "$script"
+            echo "OK $script"
+          done
+      - name: Dry-run asset verification patterns
+        run: |
+          mkdir -p /tmp/release-assets
+          V="9.9.9"
+          for name in \
+            "FromChat-Setup-${V}-windows-x64.exe" \
+            "FromChat-Setup-${V}-windows-arm64.exe" \
+            "FromChat-${V}-macOS-x64.dmg" \
+            "FromChat-${V}-macOS-arm64.dmg" \
+            "FromChat-${V}-linux-x64.deb" \
+            "FromChat-${V}-linux-arm64.deb" \
+            "FromChat-${V}-linux-x64.rpm" \
+            "FromChat-${V}-linux-arm64.rpm" \
+            "FromChat-${V}-linux-x64.AppImage" \
+            "FromChat-${V}-linux-arm64.AppImage" \
+            "FromChat-${V}-android-universal.apk"
+          do
+            echo "placeholder" > "/tmp/release-assets/$name"
+          done
+          python3 - <<'PY'
+import struct, pathlib, zipfile
+root = pathlib.Path("/tmp/release-assets")
+for name, machine in [
+    ("FromChat-Setup-9.9.9-windows-x64.exe", 0x8664),
+    ("FromChat-Setup-9.9.9-windows-arm64.exe", 0xAA64),
+]:
+    path = root / name
+    data = bytearray(0x40)
+    struct.pack_into("<I", data, 0x3C, 0x40)
+    struct.pack_into("<H", data, 0x44, machine)
+    path.write_bytes(data)
+apk = root / "FromChat-9.9.9-android-universal.apk"
+with zipfile.ZipFile(apk, "w") as zf:
+    zf.writestr("lib/arm64-v8a/libdummy.so", b"\x00")
+    zf.writestr("lib/x86_64/libdummy.so", b"\x00")
+for deb in root.glob("*.deb"):
+    deb.write_bytes(b"!<arch>\n")
+for rpm in root.glob("*.rpm"):
+    rpm.write_bytes(b"\xed\xab\xee\xdb" + b"\x00" * 96)
+for appimage in root.glob("*.AppImage"):
+    appimage.write_bytes(b"\x7fELF" + b"\x00" * 16)
+for dmg in root.glob("*.dmg"):
+    dmg.write_bytes(b"UDIF" + b"\x00" * 32)
+PY
+          sudo apt-get update && sudo apt-get install -y rpm file unzip
+          CI_SMOKE=1 bash scripts/ci-verify-release-assets.sh "$V" /tmp/release-assets

@@ -1,0 +1,14 @@
+name: Set release version
+description: Writes versionName/versionCode into build.gradle.kts for CI
+
+inputs:
+  version:
+    description: Semantic version (e.g. 1.2.3)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Set version
+      shell: bash
+      run: bash scripts/ci-set-version.sh "${{ inputs.version }}"
