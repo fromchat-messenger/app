@@ -11,10 +11,13 @@ on:
         required: true
         type: string
       skip_publish:
-        description: "Build only; skip GitHub Release upload"
+        description: "Skip GitHub Release upload"
         required: false
-        type: boolean
-        default: false
+        type: choice
+        options:
+          - "false"
+          - "true"
+        default: "false"
 
 concurrency:
   group: release-${{ github.ref }}
@@ -137,7 +140,7 @@ jobs:
       matrix:
         include:
           - arch: arm64
-            java-architecture: ""
+            java-architecture: none
           - arch: x64
             java-architecture: x64
     runs-on: macos-latest
@@ -281,7 +284,7 @@ EOF
           if-no-files-found: error
 
   publish:
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.skip_publish == false }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.skip_publish != 'true' }}
     needs:
       - resolve-version
       - windows-package
