@@ -15,6 +15,10 @@
     <string name="about_link_website">Website</string>
     <string name="about_link_privacy">Privacy policy</string>
     <string name="about_link_terms">Terms of service</string>
+    <string name="about_what_changed">What changed in this update</string>
+    <string name="release_notes_title">What\'s new</string>
+    <string name="release_notes_ok">OK</string>
+    <string name="release_notes_dont_show_again">Don\'t show again</string>
     <string name="legal_privacy_title">Privacy policy</string>
     <string name="legal_terms_title">Terms of service</string>
     <string name="legal_document_cached_banner">Showing a saved copy. Content may be out of date.</string>
@@ -43,6 +47,7 @@
     <string name="desktop_database_locked_kill">End process</string>
     <string name="desktop_database_locked_waiting">Waiting for the database to become available…</string>
     <string name="desktop_database_locked_unknown_process">Unknown process</string>
+    <string name="desktop_database_locked_unknown_hint">Could not identify the locking process. Another app may have the database open (IDE, DB browser, antivirus, or cloud sync on the data folder). Check Task Manager for a hidden java.exe.</string>
     <string name="desktop_database_locked_pid">PID %1$d</string>
 
     <!-- Authentication -->

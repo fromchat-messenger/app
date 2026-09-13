@@ -19,38 +19,73 @@ object DatabaseLockGate {
     private val _processes = MutableStateFlow<List<LockingProcessInfo>>(emptyList())
     val processes: StateFlow<List<LockingProcessInfo>> = _processes.asStateFlow()
 
+    private val _runtimeSqliteBusy = MutableStateFlow(false)
+
     private var monitorJob: Job? = null
+
+    fun onSqliteBusy(throwable: Throwable?): Boolean {
+        Logger.w("DatabaseLockGate", "SQLite busy", throwable)
+        _runtimeSqliteBusy.value = true
+        return refreshBlockedState()
+    }
 
     fun startMonitoring(scope: CoroutineScope, onUnlocked: () -> Unit) {
         monitorJob?.cancel()
         monitorJob = scope.launch {
-            var everBlocked = false
             var bootstrapDelivered = false
             while (isActive) {
-                val locked = MessageDatabasePaths.isDatabaseLocked()
-                if (locked) {
-                    everBlocked = true
-                    _blocked.value = true
-                    _processes.value = DatabaseLockingProcessResolver.findLockingProcesses(
-                        MessageDatabasePaths.lockTargetFiles(),
-                    )
-                } else {
-                    if (_blocked.value) {
-                        Logger.i("DatabaseLockGate", "database unlocked; resuming startup")
-                    }
-                    _blocked.value = false
-                    _processes.value = emptyList()
-                    if (!bootstrapDelivered) {
-                        bootstrapDelivered = true
-                        onUnlocked()
-                    }
-                    if (!everBlocked) return@launch
-                    if (!_blocked.value) return@launch
+                val blocked = refreshBlockedState()
+                if (!blocked && !bootstrapDelivered) {
+                    bootstrapDelivered = true
+                    onUnlocked()
                 }
+                if (!blocked && bootstrapDelivered) return@launch
                 delay(750.milliseconds)
             }
         }
     }
 
     fun killProcess(pid: Long): Boolean = DatabaseLockingProcessResolver.killProcess(pid)
+
+    fun releaseRuntimeLock() {
+        MessageDatabaseRuntimeLock.release()
+    }
+
+    private fun refreshBlockedState(): Boolean {
+        val externalProcesses = DatabaseLockingProcessResolver.findLockingProcesses(
+            MessageDatabasePaths.lockProbeFiles(),
+        )
+
+        if (!MessageDatabaseRuntimeLock.isHeld() && !MessageDatabaseRuntimeLock.tryAcquire()) {
+            Logger.w(
+                "DatabaseLockGate",
+                "Instance lock held by another process; blockers=$externalProcesses",
+            )
+            _blocked.value = true
+            _processes.value = externalProcesses
+            return true
+        }
+
+        if (externalProcesses.isNotEmpty()) {
+            Logger.w(
+                "DatabaseLockGate",
+                "Database files in use by other process(es): $externalProcesses",
+            )
+            _blocked.value = true
+            _processes.value = externalProcesses
+            return true
+        }
+
+        if (_runtimeSqliteBusy.value) {
+            Logger.i(
+                "DatabaseLockGate",
+                "SQLite busy with no external locker — treating as in-process contention, not blocking",
+            )
+            _runtimeSqliteBusy.value = false
+        }
+
+        _blocked.value = false
+        _processes.value = emptyList()
+        return false
+    }
 }

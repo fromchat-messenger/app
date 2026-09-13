@@ -4,7 +4,8 @@ import app.cash.sqldelight.db.SqlDriver
 import ru.fromchat.api.local.db.ensureMessageDatabaseSchema
 import ru.fromchat.api.local.db.rebindUnboundMigrationInstance
 import ru.fromchat.api.local.db.withMessageDatabaseLock
-import ru.fromchat.api.local.db.withSqliteBusyRetry
+import ru.fromchat.api.local.db.isSqliteBusy
+import ru.fromchat.api.local.db.MessageDatabaseConcurrency
 import ru.fromchat.db.MessageDatabase
 
 /**
@@ -34,16 +35,19 @@ object MessageDatabaseProvider {
     }
 
     /** Runs [block] once; on a stale connection after cache wipe, resets and retries. */
-    internal fun <T> withDatabaseRecover(block: () -> T): T =
-        withSqliteBusyRetry {
-            try {
-                block()
-            } catch (e: Exception) {
-                if (!isStaleSqliteConnection(e)) throw e
-                closeAndReset()
-                block()
+    internal fun <T> withDatabaseRecover(block: () -> T): T {
+        try {
+            return block()
+        } catch (e: Exception) {
+            if (isSqliteBusy(e)) {
+                MessageDatabaseConcurrency.notifySqliteBusy(e)
+                throw e
             }
+            if (!isStaleSqliteConnection(e)) throw e
+            closeAndReset()
+            return block()
         }
+    }
 
     internal fun isStaleSqliteConnection(throwable: Throwable): Boolean {
         var current: Throwable? = throwable

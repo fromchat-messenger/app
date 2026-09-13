@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -18,6 +19,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import ru.fromchat.ui.components.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,11 +48,13 @@ import ru.fromchat.about_link_telegram
 import ru.fromchat.about_link_terms
 import ru.fromchat.about_link_website
 import ru.fromchat.about_version
+import ru.fromchat.about_what_changed
 import ru.fromchat.app_desc
 import ru.fromchat.logo_square
 import ru.fromchat.legal.DocumentType
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.components.BrandTitle
+import ru.fromchat.ui.release.ReleaseNotesDialog
 
 private const val URL_TELEGRAM = "https://t.me/fromchat_ch"
 private const val URL_MAX = "https://maxgate.io/fromchat_ch"
@@ -60,6 +67,11 @@ fun AboutScreen() {
     val scrollBehavior = rememberSettingsCollapsingScrollBehavior()
     val navController = LocalNavController.current
     val uriHandler = LocalUriHandler.current
+    var showReleaseNotes by remember { mutableStateOf(false) }
+
+    if (showReleaseNotes) {
+        ReleaseNotesDialog(onDismiss = { showReleaseNotes = false })
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -125,6 +137,22 @@ fun AboutScreen() {
             }
 
             Category(Modifier.padding(top = 16.dp)) {
+                if (AppBuildInfo.releaseNotesMarkdown.isNotBlank()) {
+                    ListItem(
+                        headline = stringResource(Res.string.about_what_changed),
+                        onClick = { showReleaseNotes = true },
+                        divider = true,
+                        leadingContent = {
+                            Icon(
+                                imageVector = Icons.Outlined.NewReleases,
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp),
+                                tint = MaterialTheme.colorScheme.onSurface,
+                            )
+                        },
+                    )
+                }
+
                 ListItem(
                     headline = stringResource(Res.string.about_link_telegram),
                     supportingText = URL_TELEGRAM,

@@ -48,6 +48,7 @@ import com.pr0gramm3r101.utils.widthSizeClass
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
@@ -71,6 +72,7 @@ import ru.fromchat.api.instance.scheduleSessionInstanceNetworkRefresh
 import ru.fromchat.api.local.WebSocketManager
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.cache.ensureFromChatCacheGeneration
+import ru.fromchat.api.local.db.store.messageDatabaseDispatcher
 import ru.fromchat.api.local.db.store.ProfileCache
 import ru.fromchat.api.local.db.store.UserStatusStore
 import ru.fromchat.api.local.messages.DmInboxCoordinator
@@ -78,6 +80,8 @@ import ru.fromchat.api.local.send.OutgoingMessageCoordinator
 import ru.fromchat.api.schema.websocket.WebSocketMessage
 import ru.fromchat.api.schema.websocket.types.WebSocketUpdatesData
 import ru.fromchat.config.ServerConfig
+import ru.fromchat.ui.release.ReleaseNotesDialog
+import ru.fromchat.ui.release.ReleaseNotesPrompt
 import ru.fromchat.desktop.DesktopMenuCommand
 import ru.fromchat.desktop.DesktopMenuCommands
 import ru.fromchat.notifications.NotificationLaunchCoordinator
@@ -243,11 +247,13 @@ fun App(
     var sessionLogoutRequired by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        kotlinx.coroutines.withContext(Dispatchers.Default) {
-            runCatching { ServerConfig.initialize() }
+        runCatching { ServerConfig.initialize() }
+        withContext(messageDatabaseDispatcher) {
             runCatching { ensureFromChatCacheGeneration() }
-            runCatching { NetworkConnectivity.ensureStarted() }
             runCatching { ApiClient.loadPersistedData() }
+        }
+        withContext(Dispatchers.Default) {
+            runCatching { NetworkConnectivity.ensureStarted() }
             runCatching { UpdateSyncManager.initializeFromStorage(ApiClient.user?.id) }
             Logger.i("App", "FromChat started")
         }
@@ -487,6 +493,12 @@ fun App(
             }
 
             val fullscreenImageController = remember { ChatFullscreenImageController() }
+            var showReleaseNotesPrompt by remember { mutableStateOf(false) }
+            LaunchedEffect(startDestination) {
+                if (startDestination != null && ReleaseNotesPrompt.shouldShowAutomatically()) {
+                    showReleaseNotesPrompt = true
+                }
+            }
             CompositionLocalProvider(
                 LocalNavController provides navController,
                 LocalDesktopChatsNavController provides
@@ -758,6 +770,9 @@ fun App(
 
                             ChatFullscreenImageHost(Modifier.fillMaxSize())
                             CallOverlay(Modifier.fillMaxSize())
+                            if (showReleaseNotesPrompt) {
+                                ReleaseNotesDialog(onDismiss = { showReleaseNotesPrompt = false })
+                            }
                         }
                     }
                 }

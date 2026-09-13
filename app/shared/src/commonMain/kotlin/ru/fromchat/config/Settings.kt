@@ -28,6 +28,8 @@ object Settings {
     private const val HTTPS_ENABLED_KEY = "https_enabled"
     private const val DEVICE_SESSIONS_CACHE_KEY = "device_sessions_cache_v1"
     private const val LAST_SERVER_INSTANCE_ID_KEY = "last_server_instance_id"
+    private const val LAST_ACKNOWLEDGED_APP_VERSION_KEY = "last_acknowledged_app_version"
+    private const val RELEASE_NOTES_PERMANENTLY_HIDDEN_KEY = "release_notes_permanently_hidden"
 
     private val settings = PlatformSettings()
     private val deviceSessionsJson = Json { ignoreUnknownKeys = true }
@@ -183,8 +185,22 @@ object Settings {
         runIO { settings.remove(DEVICE_SESSIONS_CACHE_KEY) }
     }
 
+    /** Suspend read for coroutine / single [runBlocking] callers (e.g. schema migration on the DB thread). */
+    internal suspend fun readLastKnownServerInstanceIdRaw(): String =
+        settings.getString(LAST_SERVER_INSTANCE_ID_KEY, "")
+
     /** Last known [ServerInstanceIdResponse.instanceId] from the configured API (empty until first fetch). */
     var lastKnownServerInstanceId: String
-        get() = runBlocking { settings.getString(LAST_SERVER_INSTANCE_ID_KEY, "") }
+        get() = runBlocking { readLastKnownServerInstanceIdRaw() }
         set(value) = runIO { settings.putString(LAST_SERVER_INSTANCE_ID_KEY, value) }
+
+    /** App version for which the user last dismissed the release-notes prompt. */
+    var lastAcknowledgedAppVersion: String
+        get() = runBlocking { settings.getString(LAST_ACKNOWLEDGED_APP_VERSION_KEY, "") }
+        set(value) = runIO { settings.putString(LAST_ACKNOWLEDGED_APP_VERSION_KEY, value) }
+
+    /** When true, the automatic post-update release-notes dialog is suppressed. */
+    var releaseNotesPermanentlyHidden: Boolean
+        get() = runBlocking { settings.getBoolean(RELEASE_NOTES_PERMANENTLY_HIDDEN_KEY, false) }
+        set(value) = runIO { settings.putBoolean(RELEASE_NOTES_PERMANENTLY_HIDDEN_KEY, value) }
 }

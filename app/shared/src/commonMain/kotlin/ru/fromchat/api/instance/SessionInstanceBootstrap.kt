@@ -6,14 +6,17 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.ChatListSync
 import ru.fromchat.api.ProfileUpdateSync
 import ru.fromchat.api.PublicChatProfileSync
 import ru.fromchat.api.StatusSubscriptionCoordinator
 import ru.fromchat.api.local.db.store.InstanceRegistryStore
+import ru.fromchat.api.local.db.store.MessageDatabaseProvider
 import ru.fromchat.api.local.db.store.MessageRepository
 import ru.fromchat.api.local.db.store.PublicChatProfileCache
+import ru.fromchat.api.local.db.store.messageDatabaseDispatcher
 import ru.fromchat.api.local.download.AttachmentDownloadNotifier
 import ru.fromchat.api.local.send.scheduleOutboxProcessing
 import ru.fromchat.config.Settings
@@ -39,7 +42,12 @@ private fun scheduleAttachmentResumeAfterSession() {
 
 private suspend fun activateInstance(instanceId: String) {
     CacheContext.setActiveInstance(instanceId, ApiClient.user?.id)
-    runCatching { PublicChatProfileCache.hydrateFromDiskImmediate(instanceId) }
+    withContext(messageDatabaseDispatcher) {
+        runCatching { PublicChatProfileCache.hydrateFromDiskImmediate(instanceId) }
+        if (instanceId.isNotBlank()) {
+            MessageDatabaseProvider.rebindUnboundPartition(instanceId)
+        }
+    }
     PublicChatProfileSync.ensureStarted()
     ProfileUpdateSync.ensureStarted()
     StatusSubscriptionCoordinator.ensureStarted()

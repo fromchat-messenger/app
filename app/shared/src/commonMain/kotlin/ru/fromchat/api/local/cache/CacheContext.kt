@@ -5,7 +5,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import ru.fromchat.api.local.db.store.ProfileCache
 import ru.fromchat.api.local.db.store.PublicChatProfileCache
-import ru.fromchat.api.local.db.store.MessageDatabaseProvider
 import ru.fromchat.api.local.cache.CacheContext.activeInstanceId
 import ru.fromchat.ui.chat.utils.PublicChatPanelCache
 import ru.fromchat.ui.chat.panels.dm.DmPanelCache
@@ -28,12 +27,8 @@ object CacheContext {
         _activeUserId.value = userId
         if (changed) {
             ProfileCache.onActiveInstanceChanged(trimmed)
-            runCatching { PublicChatProfileCache.hydrateFromDiskImmediate(trimmed) }
             PublicChatPanelCache.onActiveInstanceChanged(trimmed)
             DmPanelCache.onActiveInstanceChanged(trimmed)
-            if (trimmed.isNotEmpty()) {
-                MessageDatabaseProvider.rebindUnboundPartition(trimmed)
-            }
         }
     }
 
