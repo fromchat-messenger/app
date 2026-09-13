@@ -38,7 +38,7 @@ pe_machine() {
 import struct, sys
 path = sys.argv[1]
 with open(path, "rb") as f:
-    data = f.read(0x40)
+    data = f.read(0x80)
 pe_off = struct.unpack_from("<I", data, 0x3C)[0]
 machine = struct.unpack_from("<H", data, pe_off + 4)[0]
 print(machine)

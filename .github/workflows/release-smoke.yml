@@ -24,7 +24,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-java-gradle
-      - uses: android-actions/setup-android@v3
       - run: bash scripts/ci-test-compile.sh
 
   test-rust:

@@ -34,7 +34,7 @@ for name, machine in [
     ("FromChat-Setup-9.9.9-windows-arm64.exe", 0xAA64),
 ]:
     path = root / name
-    data = bytearray(0x40)
+    data = bytearray(0x80)
     struct.pack_into("<I", data, 0x3C, 0x40)
     struct.pack_into("<H", data, 0x44, machine)
     path.write_bytes(data)
