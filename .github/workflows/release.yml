@@ -305,12 +305,12 @@ jobs:
             -dname "CN=FromChat Debug" \
             -keystore app/android/keys/debug.jks \
             -storepass android -keypass android
-          cat > app/android/keys/keystore.properties <<EOF
-releaseStorePassword=${RELEASE_STORE_PASSWORD}
-releaseKeyPassword=${RELEASE_KEY_PASSWORD}
-debugStorePassword=android
-debugKeyPassword=android
-EOF
+          {
+            echo "releaseStorePassword=${RELEASE_STORE_PASSWORD}"
+            echo "releaseKeyPassword=${RELEASE_KEY_PASSWORD}"
+            echo "debugStorePassword=android"
+            echo "debugKeyPassword=android"
+          } > app/android/keys/keystore.properties
           printf '%s' "$GOOGLE_SERVICES_JSON" | base64 -d > app/android/google-services.json
       - name: Build universal Android APK
         run: ./gradlew :app:android:assembleRelease --no-daemon --console=plain
