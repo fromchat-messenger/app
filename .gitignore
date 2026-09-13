@@ -32,3 +32,5 @@ google-services.json
 
 premortem-transcript-*.md
 premortem-report-*.html
+
+target/
