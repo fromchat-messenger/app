@@ -25,7 +25,6 @@ concurrency:
 
 env:
   GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx6g -Dkotlin.daemon.jvm.options=-Xmx6g
-  FROMCHAT_PREBUILT_PROGUARD: "1"
 
 jobs:
   resolve-version:
@@ -53,6 +52,8 @@ jobs:
     needs: resolve-version
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      FROMCHAT_PREBUILT_PROGUARD: "0"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -115,6 +116,8 @@ jobs:
 
   windows-package:
     needs: [resolve-version, desktop-proguard, windows-common]
+    env:
+      FROMCHAT_PREBUILT_PROGUARD: "1"
     strategy:
       fail-fast: false
       matrix:
@@ -158,8 +161,6 @@ jobs:
         run: |
           export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
           args=(
-            :app:desktop:createReleaseDistributable
-            :app:desktop:patchWindowsJpackageReleaseIcon
             :app:desktop:packSetupOnly
             "-PdesktopArch=${{ matrix.arch }}"
             --no-daemon
@@ -177,6 +178,8 @@ jobs:
 
   macos:
     needs: [resolve-version, desktop-proguard]
+    env:
+      FROMCHAT_PREBUILT_PROGUARD: "1"
     strategy:
       fail-fast: false
       matrix:
@@ -238,6 +241,8 @@ jobs:
 
   linux:
     needs: [resolve-version, desktop-proguard]
+    env:
+      FROMCHAT_PREBUILT_PROGUARD: "1"
     strategy:
       fail-fast: false
       matrix:

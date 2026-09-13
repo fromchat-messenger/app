@@ -989,8 +989,7 @@ val patchWindowsJpackageReleaseIcon = tasks.register<Exec>("patchWindowsJpackage
     group = "compose desktop"
     description = "Embed branded icon into release jpackage FromChat.exe."
     onlyIf { runningOnWindows }
-    dependsOn(ensureWindowsRustBinaries)
-    mustRunAfter("createReleaseDistributable")
+    dependsOn(ensureWindowsRustBinaries, "createReleaseDistributable")
     doFirst {
         val appImageDir = releaseAppImageDir.get().asFile
         check(appImageDir.isDirectory) { "Missing app image at ${appImageDir.absolutePath}" }
@@ -1094,7 +1093,7 @@ tasks.register<Exec>("packSetupOnly") {
     group = "compose desktop"
     description = "Repack setup EXE from existing app-image + Rust (skips ProGuard)."
     onlyIf { runningOnWindows }
-    dependsOn(ensureWindowsRustBinaries)
+    dependsOn(ensureWindowsRustBinaries, "createReleaseDistributable", "patchWindowsJpackageReleaseIcon")
     configureWindowsPackTask(
         appImageDir = releaseAppImageDir,
         setupOutput = windowsSetupOutput,
@@ -1149,16 +1148,24 @@ tasks.register<Exec>("packageBetaWindows") {
 }
 
 afterEvaluate {
+    val exportingProguardForCi = gradle.startParameter.taskNames.any {
+        it.contains("exportReleaseProguardForCi")
+    }
     tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
         onlyIf {
-            !useCiPrebuiltProguard() || !ciPrebuiltProguardDir.get().asFile.isDirectory
+            exportingProguardForCi ||
+                !useCiPrebuiltProguard() ||
+                !ciPrebuiltProguardDir.get().asFile.isDirectory
         }
     }
-    tasks.matching {
-        it.name == "createReleaseDistributable" || it.name == "createReleaseDistributableImpl"
-    }.configureEach {
-        if (useCiPrebuiltProguard()) {
-            dependsOn("stageCiPrebuiltProguard")
+    if (useCiPrebuiltProguard()) {
+        val stagePrebuilt = tasks.named("stageCiPrebuiltProguard")
+        tasks.matching {
+            it.name == "createReleaseDistributable" ||
+                it.name == "createReleaseDistributableImpl" ||
+                (it.name.startsWith("packageRelease") && it.name != "packageReleaseFromPrebuiltProguard")
+        }.configureEach {
+            dependsOn(stagePrebuilt)
         }
     }
     tasks.matching { it.name == "createRuntimeImage" || it.name == "createReleaseRuntimeImage" }.configureEach {
