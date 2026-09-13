@@ -85,11 +85,9 @@ jobs:
         with:
           version: ${{ needs.resolve-version.outputs.version }}
       - uses: ./.github/actions/cache-gradle-build
-        id: gradle-build-cache
         with:
           save: "true"
       - name: Compile and ProGuard release desktop jars
-        if: steps.gradle-build-cache.outputs.cache-hit != 'true'
         run: ./gradlew :app:desktop:exportReleaseProguardForCi --no-daemon --console=plain
       - uses: actions/upload-artifact@v5
         with:
@@ -138,7 +136,7 @@ jobs:
           retention-days: 3
 
   windows-package:
-    name: Windows (${{ matrix.arch == 'arm64' && 'ARM' || 'x64' }})
+    name: Windows (${{ matrix.label }})
     needs: [resolve-version, desktop-proguard, windows-common]
     env:
       FROMCHAT_PREBUILT_PROGUARD: "1"
@@ -147,8 +145,10 @@ jobs:
       matrix:
         include:
           - arch: x64
+            label: x64
             runner: windows-latest
           - arch: arm64
+            label: ARM
             runner: windows-11-arm
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
@@ -203,7 +203,7 @@ jobs:
           if-no-files-found: error
 
   macos:
-    name: macOS (${{ matrix.arch == 'arm64' && 'Apple Silicon' || 'Intel' }})
+    name: macOS (${{ matrix.label }})
     needs: [resolve-version, desktop-proguard]
     env:
       FROMCHAT_PREBUILT_PROGUARD: "1"
@@ -212,7 +212,9 @@ jobs:
       matrix:
         include:
           - arch: arm64
+            label: Apple Silicon
           - arch: x64
+            label: Intel
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
@@ -262,7 +264,7 @@ jobs:
           if-no-files-found: error
 
   linux:
-    name: Linux (${{ matrix.arch == 'arm64' && 'ARM' || 'x64' }})
+    name: Linux (${{ matrix.label }})
     needs: [resolve-version, desktop-proguard]
     env:
       FROMCHAT_PREBUILT_PROGUARD: "1"
@@ -271,9 +273,11 @@ jobs:
       matrix:
         include:
           - arch: x64
+            label: x64
             runner: ubuntu-latest
             appimage: appimagetool-x86_64.AppImage
           - arch: arm64
+            label: ARM
             runner: ubuntu-24.04-arm
             appimage: appimagetool-aarch64.AppImage
     runs-on: ${{ matrix.runner }}
