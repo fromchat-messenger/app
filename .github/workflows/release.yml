@@ -111,7 +111,12 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - name: Ensure ARM64 packaging JDK
+        if: matrix.arch == 'arm64'
+        shell: cmd
+        run: call scripts\ensure-windows-arm64-jdk.cmd
       - uses: actions/setup-java@v4
+        if: matrix.arch == 'x64'
         with:
           distribution: temurin
           java-version: "17"
@@ -121,10 +126,6 @@ jobs:
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
-      - name: Ensure ARM64 packaging JDK
-        if: matrix.arch == 'arm64'
-        shell: cmd
-        run: call scripts\ensure-windows-arm64-jdk.cmd
       - name: Restore Windows Rust installer tools
         uses: actions/download-artifact@v4
         with:
