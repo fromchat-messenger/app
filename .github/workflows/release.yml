@@ -37,6 +37,7 @@ jobs:
       version: ${{ steps.ver.outputs.version }}
       tag: ${{ steps.ver.outputs.tag }}
       prerelease: ${{ steps.ver.outputs.prerelease }}
+      release_label: ${{ steps.ver.outputs.release_label }}
     steps:
       - id: ver
         shell: bash
@@ -50,8 +51,21 @@ jobs:
             echo "Invalid version: $V" >&2
             exit 1
           fi
+          if [[ ! "$V" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+            echo "Cannot derive release label from version: $V" >&2
+            exit 1
+          fi
+          MAJOR="${BASH_REMATCH[1]}"
+          MINOR="${BASH_REMATCH[2]}"
+          PATCH="${BASH_REMATCH[3]}"
+          if [[ "$PATCH" == "0" ]]; then
+            RELEASE_LABEL="${MAJOR}.${MINOR}"
+          else
+            RELEASE_LABEL="${MAJOR}.${MINOR}.${PATCH}"
+          fi
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "tag=v$V" >> "$GITHUB_OUTPUT"
+          echo "release_label=$RELEASE_LABEL" >> "$GITHUB_OUTPUT"
           case "$V" in
             *-beta*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
             *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
@@ -340,7 +354,7 @@ jobs:
         run: |
           mkdir -p release-staging
           APK="$(find app/android/build/outputs/apk/release -name '*release*.apk' | head -n 1)"
-          cp "$APK" "release-staging/FromChat-${{ needs.resolve-version.outputs.version }}-android-universal.apk"
+          cp "$APK" "release-staging/FromChat-${{ needs.resolve-version.outputs.release_label }}.apk"
       - uses: actions/upload-artifact@v5
         with:
           name: android
@@ -374,36 +388,41 @@ jobs:
           merge-multiple: true
           path: artifacts
       - name: Collect release assets
+        env:
+          LABEL: ${{ needs.resolve-version.outputs.release_label }}
         run: |
+          set -euo pipefail
           mkdir -p release-assets
-          find artifacts -type f \( \
-            -name '*.dmg' -o \
-            -name '*.deb' -o \
-            -name '*.rpm' -o \
-            -name '*.AppImage' -o \
-            -name '*.exe' -o \
-            -name '*.apk' \
-          \) -exec cp -t release-assets {} +
-          ls -la release-assets
-          VERSION="${{ needs.resolve-version.outputs.version }}"
-          for pattern in \
-            "*-windows-x64.exe" \
-            "*-windows-arm64.exe" \
-            "*-macOS-x64.dmg" \
-            "*-macOS-arm64.dmg" \
-            "*-linux-x64.deb" \
-            "*-linux-arm64.deb" \
-            "*-linux-x64.rpm" \
-            "*-linux-arm64.rpm" \
-            "*-linux-x64.AppImage" \
-            "*-linux-arm64.AppImage" \
-            "*-android-universal.apk"
-          do
-            if ! compgen -G "release-assets/$pattern" > /dev/null; then
-              echo "Missing release asset: $pattern" >&2
+
+          pick_one() {
+            local pattern="$1"
+            local dest="$2"
+            local match
+            match=$(find artifacts -type f -name "$pattern" | head -n 1)
+            if [[ -z "$match" ]]; then
+              echo "Missing artifact matching $pattern" >&2
               exit 1
             fi
-          done
+            cp "$match" "release-assets/$dest"
+          }
+
+          pick_one "*-windows-x64.exe" "FromChat-${LABEL}-x64.exe"
+          pick_one "*-windows-arm64.exe" "FromChat-${LABEL}-arm.exe"
+          pick_one "*-macOS-arm64.dmg" "FromChat-${LABEL}-apple.dmg"
+          pick_one "*-macOS-x64.dmg" "FromChat-${LABEL}-intel.dmg"
+          pick_one "*-linux-x64.deb" "FromChat-${LABEL}-x64.deb"
+          pick_one "*-linux-arm64.deb" "FromChat-${LABEL}-arm.deb"
+          pick_one "*-linux-x64.rpm" "FromChat-${LABEL}-x64.rpm"
+          pick_one "*-linux-arm64.rpm" "FromChat-${LABEL}-arm.rpm"
+          pick_one "*-linux-x64.AppImage" "FromChat-${LABEL}-x64.AppImage"
+          pick_one "*-linux-arm64.AppImage" "FromChat-${LABEL}-arm.AppImage"
+          pick_one "*.apk" "FromChat-${LABEL}.apk"
+
+          if find release-assets -type f -name '*.zip' | grep -q .; then
+            echo "Release assets must not be zip archives" >&2
+            exit 1
+          fi
+          ls -la release-assets
       - name: Prepare release notes
         run: |
           VERSION="${{ needs.resolve-version.outputs.version }}"
@@ -421,6 +440,17 @@ jobs:
           draft: false
           prerelease: ${{ needs.resolve-version.outputs.prerelease == 'true' }}
           generate_release_notes: false
-          files: release-assets/*
+          files: |
+            release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}.apk
+            release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}-x64.exe
+            release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}-arm.exe
+            release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}-apple.dmg
+            release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}-intel.dmg
+            release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}-x64.deb
+            release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}-arm.deb
+            release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}-x64.rpm
+            release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}-arm.rpm
+            release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}-x64.AppImage
+            release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}-arm.AppImage
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
