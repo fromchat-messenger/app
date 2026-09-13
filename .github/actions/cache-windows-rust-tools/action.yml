@@ -1,0 +1,18 @@
+name: Cache Windows installer Rust binaries
+description: Restore or save compiled windows-setup release executables
+
+outputs:
+  cache-hit:
+    description: Whether Rust installer tools were restored from cache
+    value: ${{ steps.cache.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@v5
+      id: cache
+      with:
+        path: app/desktop/windows-setup/target/release
+        key: windows-rust-tools-v1-${{ hashFiles('app/desktop/windows-setup/Cargo.lock') }}
+        restore-keys: |
+          windows-rust-tools-v1-

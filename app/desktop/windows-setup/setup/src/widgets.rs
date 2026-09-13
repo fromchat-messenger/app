@@ -15,7 +15,12 @@ use crate::theme::{
     TEXT_BUTTON_PAD_END_WITH_ICON, TEXT_BUTTON_PAD_START_WITH_ICON, TEXT_FIELD_CORNER_RADIUS,
     TEXT_FIELD_HEIGHT, TEXT_FIELD_PAD_HORIZONTAL, TEXT_FIELD_TRAILING_ICON_WIDTH,
 };
-use eframe::egui::{self, Color32, Id, Pos2, Rect, Rounding, Sense, Stroke, TextureHandle, Ui, Vec2};
+use eframe::egui::{self, Color32, Id, InnerResponse, Pos2, Rect, Rounding, Sense, Stroke, TextureHandle, Ui, UiBuilder, Vec2};
+
+/// Lay out a child [Ui] in a fixed rectangle (replaces deprecated `allocate_ui_at_rect`).
+pub fn scope_at_rect<R>(ui: &mut Ui, rect: Rect, add_contents: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R> {
+    ui.scope_builder(UiBuilder::new().max_rect(rect), add_contents)
+}
 
 pub const H_PADDING: f32 = 24.0;
 /// Matches [H_PADDING] so bottom / side insets stay equal.
@@ -701,7 +706,7 @@ pub fn path_field(ui: &mut Ui, value: &mut String, enabled: bool, field_id: Id) 
         paint_path_line(ui.painter(), &to_text, fade);
     }
 
-    ui.allocate_ui_at_rect(text_rect, |ui| {
+    scope_at_rect(ui, text_rect, |ui| {
         ui.set_clip_rect(text_rect);
         ui.with_layout(
             egui::Layout::left_to_right(egui::Align::Center),
@@ -726,7 +731,7 @@ pub fn path_field(ui: &mut Ui, value: &mut String, enabled: bool, field_id: Id) 
     });
 
     let mut browse = false;
-    ui.allocate_ui_at_rect(icon_rect, |ui| {
+    scope_at_rect(ui, icon_rect, |ui| {
         ui.with_layout(
             egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
             |ui| {

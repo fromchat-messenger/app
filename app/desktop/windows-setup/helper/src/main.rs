@@ -280,6 +280,3 @@ fn parse_edition(raw: &str) -> Result<FromChatEdition> {
     }
 }
 
-fn find_app_exe(dest: &PathBuf) -> Result<PathBuf> {
-    find_jpackage_app_exe(dest)
-}
