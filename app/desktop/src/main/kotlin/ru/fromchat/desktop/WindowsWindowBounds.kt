@@ -45,15 +45,6 @@ internal fun clampFloatingAwtWindowToWorkArea(window: Window): Boolean {
 internal fun applyFloatingGeometry(
     window: Window,
     windowState: WindowState,
-    geometry: DesktopFloatingGeometry,
-    density: Density,
-) {
-    applyFloatingGeometry(window, windowState, geometry.size, geometry.position, density)
-}
-
-internal fun applyFloatingGeometry(
-    window: Window,
-    windowState: WindowState,
     size: DpSize,
     position: WindowPosition,
     density: Density,
@@ -80,7 +71,13 @@ internal fun applySavedFloatingGeometry(
     windowState: WindowState,
     density: Density,
 ) {
-    applyFloatingGeometry(window, windowState, DesktopWindowPrefs.loadFloatingGeometry(), density)
+    applyFloatingGeometry(
+        window,
+        windowState,
+        DesktopWindowPrefs.loadSize(),
+        DesktopWindowPrefs.loadPosition(),
+        density,
+    )
 }
 
 internal fun captureFloatingGeometryToPrefs(
@@ -91,7 +88,7 @@ internal fun captureFloatingGeometryToPrefs(
     if (windowState.placement != WindowPlacement.Floating || window.isNativeZoomed()) return
     val bounds = window.bounds
     with(density) {
-        DesktopWindowPrefs.saveFloatingGeometry(
+        DesktopWindowPrefs.save(
             size = DpSize(bounds.width.toDp(), bounds.height.toDp()),
             position = WindowPosition(bounds.x.toDp(), bounds.y.toDp()),
         )

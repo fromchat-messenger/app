@@ -1,6 +1,5 @@
 package ru.fromchat.api.local.db.store
 
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import ru.fromchat.api.local.send.cancelOutboxProcessing
 import ru.fromchat.config.ServerConfigData
@@ -18,7 +17,7 @@ object InstanceRegistryStore {
     private fun nowIso(): String = Clock.System.now().toString()
 
     suspend fun getActiveInstanceIdForConfig(config: ServerConfigData): String? =
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             MessageDatabaseProvider.withDatabaseRecover {
                 db.messageDatabaseQueries
                     .selectActiveInstanceIdForConfig(config.configKey())
@@ -30,7 +29,7 @@ object InstanceRegistryStore {
         val id = instanceId.trim()
         if (id.isEmpty()) return
         val now = nowIso()
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             MessageDatabaseProvider.withDatabaseRecover {
                 val existing = db.messageDatabaseQueries
                     .selectAllInstanceIds()
@@ -54,7 +53,7 @@ object InstanceRegistryStore {
         }
         val key = config.configKey()
         val now = nowIso()
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             MessageDatabaseProvider.withDatabaseRecover {
                 db.messageDatabaseQueries.upsertServerBinding(key, newId, now)
                 val existing = db.messageDatabaseQueries
@@ -93,7 +92,7 @@ object InstanceRegistryStore {
     suspend fun purgePartition(instanceId: String) {
         val id = instanceId.trim()
         if (id.isEmpty()) return
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             MessageDatabaseProvider.withDatabaseRecover {
                 db.messageDatabaseQueries.deleteAllMessagesForInstance(id)
                 db.messageDatabaseQueries.deleteAllConversationsForInstance(id)
@@ -106,7 +105,7 @@ object InstanceRegistryStore {
     }
 
     suspend fun purgeAllCache() {
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             MessageDatabaseProvider.withDatabaseRecover {
                 db.messageDatabaseQueries.purgeAllCache()
             }
@@ -114,7 +113,7 @@ object InstanceRegistryStore {
     }
 
     suspend fun clearServerBindingForCurrentConfig() {
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             MessageDatabaseProvider.withDatabaseRecover {
                 db.messageDatabaseQueries.deleteServerBinding(Settings.serverConfig.configKey())
             }

@@ -14,25 +14,14 @@ fun isSqliteBusy(throwable: Throwable): Boolean {
     return false
 }
 
-internal fun <T> withSqliteBusyRetry(
-    maxAttempts: Int = 8,
-    initialDelayMs: Long = 25L,
-    block: () -> T,
-): T {
-    var attempt = 0
-    var delayMs = initialDelayMs
-    while (true) {
-        try {
-            return block()
-        } catch (e: Throwable) {
-            attempt++
-            if (!isSqliteBusy(e) || attempt >= maxAttempts) throw e
-            Logger.w(
-                "MessageDatabase",
-                "SQLite busy (attempt $attempt/$maxAttempts), retrying in ${delayMs}ms",
-            )
-            Thread.sleep(delayMs)
-            delayMs = minOf(delayMs * 2, 500L)
+internal fun <T> withSqliteBusyGuard(block: () -> T): T {
+    try {
+        return block()
+    } catch (e: Throwable) {
+        if (isSqliteBusy(e)) {
+            Logger.w("MessageDatabase", "SQLite busy", e)
+            MessageDatabaseConcurrency.notifySqliteBusy(e)
         }
+        throw e
     }
 }

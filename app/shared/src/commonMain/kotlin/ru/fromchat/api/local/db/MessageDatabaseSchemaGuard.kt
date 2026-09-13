@@ -270,7 +270,9 @@ private fun normalizeLegacyConversationIds(driver: SqlDriver) {
 }
 
 private fun migrationInstanceId(): String {
-  val known = runBlocking { Settings.lastKnownServerInstanceId.trim() }
+  // Do not read via Settings.lastKnownServerInstanceId here — its getter nests runBlocking and
+  // deadlocks when this runs on the single-thread SQLite executor while the UI waits on .get().
+  val known = runBlocking { Settings.readLastKnownServerInstanceIdRaw().trim() }
   if (known.isNotEmpty() && isValidInstanceUuid(known)) return known
   return UNBOUND_MIGRATION_INSTANCE_ID
 }

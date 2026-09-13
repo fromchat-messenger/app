@@ -1,8 +1,6 @@
 package ru.fromchat.api.local.db.store
 
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.pr0gramm3r101.utils.files.PlatformFileSystem
-import ru.fromchat.api.local.db.isSqliteBusy
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.channels.OverlappingFileLockException
@@ -23,11 +21,28 @@ object MessageDatabasePaths {
         ).filter { it.exists() }
     }
 
-    fun isDatabaseLocked(): Boolean {
+    /** Database files plus the desktop instance lock sidecar for handle-based lock discovery. */
+    fun lockProbeFiles(): List<File> {
+        val db = databaseFile()
+        val instanceLock = File(db.parentFile, "message_database.instance.lock")
+        return listOf(
+            db,
+            File("${db.path}-wal"),
+            File("${db.path}-shm"),
+            File("${db.path}-journal"),
+            instanceLock,
+        ).distinctBy { it.absolutePath }
+    }
+
+    /**
+     * Best-effort check for a **foreign** lock while this process does **not** have the DB open.
+     * Returns false when only this process holds the files (JDBC keeps them open), so do not use
+     * this while the app is running — use handle-based discovery instead.
+     */
+    fun isDatabaseLockedByAnotherProcess(): Boolean {
         val targets = lockTargetFiles()
         if (targets.isEmpty()) return false
-        if (targets.any { isFileLockedExclusively(it) }) return true
-        return isSqliteWriteLocked(databaseFile())
+        return targets.any { isFileLockedExclusively(it) }
     }
 
     private fun isFileLockedExclusively(file: File): Boolean =
@@ -43,16 +58,4 @@ object MessageDatabasePaths {
                 lock == null
             }
         }.getOrDefault(true)
-
-    private fun isSqliteWriteLocked(dbFile: File): Boolean =
-        runCatching {
-            val probe = JdbcSqliteDriver("jdbc:sqlite:${dbFile.absolutePath}?busy_timeout=1")
-            try {
-                probe.execute(null, "BEGIN IMMEDIATE;", 0)
-                probe.execute(null, "ROLLBACK;", 0)
-                false
-            } finally {
-                probe.close()
-            }
-        }.getOrElse { isSqliteBusy(it) }
 }

@@ -9,8 +9,8 @@ plugins {
 }
 
 /** Single source of truth for app version (APK + generated [AppBuildInfo]). */
-extra["versionName"] = "1.1.4"
-extra["versionCode"] = 114
+extra["versionName"] = "1.2.0"
+extra["versionCode"] = 120
 
 buildscript {
     repositories {

@@ -2,8 +2,10 @@
 
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
 
@@ -26,6 +28,9 @@ abstract class GenerateAppBuildInfoTask : DefaultTask() {
     @get:Input
     abstract val debugBuild: Property<Boolean>
 
+    @get:InputFile
+    abstract val releaseNotesFile: RegularFileProperty
+
     @get:OutputDirectory
     abstract val outputDirectory: DirectoryProperty
 
@@ -35,6 +40,14 @@ abstract class GenerateAppBuildInfoTask : DefaultTask() {
         check(outRoot.invariantSeparatorsPath.contains("/generated/")) {
             "AppBuildInfo must be written under a generated/ directory, got: $outRoot"
         }
+        val releaseNotesEscaped = releaseNotesFile.get().asFile
+            .takeIf { it.isFile }
+            ?.readText()
+            ?.replace("\\", "\\\\")
+            ?.replace("\"", "\\\"")
+            ?.replace("\r\n", "\n")
+            ?.replace("\n", "\\n")
+            ?: ""
         outRoot.deleteRecursively()
         outRoot.resolve("ru/fromchat").apply { mkdirs() }.resolve("AppBuildInfo.kt").writeText(
             """
@@ -45,6 +58,7 @@ abstract class GenerateAppBuildInfoTask : DefaultTask() {
             |    const val version = "${versionName.get()}"
             |    const val versionCode = ${versionCode.get()}
             |    const val isDebug = ${debugBuild.get()}
+            |    const val releaseNotesMarkdown = "$releaseNotesEscaped"
             |}
             |
             """.trimMargin()
@@ -55,6 +69,7 @@ abstract class GenerateAppBuildInfoTask : DefaultTask() {
 val generateAppBuildInfo = tasks.register<GenerateAppBuildInfoTask>("generateAppBuildInfo") {
     versionName.set(rootProject.extra["versionName"] as String)
     versionCode.set(rootProject.extra["versionCode"] as Int)
+    releaseNotesFile.set(rootProject.layout.projectDirectory.file("RELEASE_NOTES.md"))
     debugBuild.set(
         gradle.startParameter.taskNames.let { names ->
             !names.any { it.contains("Release", ignoreCase = true) } ||

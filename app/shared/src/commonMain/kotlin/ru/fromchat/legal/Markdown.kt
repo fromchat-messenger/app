@@ -305,6 +305,26 @@ internal fun MarkdownPlain(
                     index += 1
                 }
 
+                trimmed.startsWith("## ") -> {
+                    MarkdownBlockText(
+                        text = parseInlineMarkdown(trimmed.removePrefix("## "), linkStyle, onLinkClick),
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
+                    )
+
+                    index += 1
+                }
+
+                trimmed.startsWith("# ") -> {
+                    MarkdownBlockText(
+                        text = parseInlineMarkdown(trimmed.removePrefix("# "), linkStyle, onLinkClick),
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+
+                    index += 1
+                }
+
                 trimmed.startsWith("- ") -> {
                     Row(modifier = Modifier.padding(start = 8.dp, bottom = 4.dp)) {
                         Text(

@@ -29,10 +29,6 @@ import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.rounded.Android
-import androidx.compose.material.icons.rounded.Language
-import androidx.compose.material.icons.rounded.LaptopMac
-import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -60,16 +56,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import com.pr0gramm3r101.components.Category
 import com.pr0gramm3r101.components.ListItem
-import com.pr0gramm3r101.utils.currentDeviceInfo
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.blur.hazeBlur
@@ -85,9 +78,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import ru.fromchat.Res
-import ru.fromchat.os_linux
-import ru.fromchat.os_macos
-import ru.fromchat.os_windows
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.WebSocketManager
 import ru.fromchat.api.schema.user.devices.DeviceSessionInfo
@@ -127,154 +117,10 @@ private fun isUnreachableDevicesFetchError(error: Throwable): Boolean = when (er
     else -> true
 }
 
-private fun enrichDevicesList(list: List<DeviceSessionInfo>): List<DeviceSessionInfo> {
-    val currentIndex = list.indexOfFirst { it.current }
-    if (currentIndex < 0) return list
-    return list
-        .toMutableList()
-        .also { it[currentIndex] = deviceSessionForCurrentDevice(it[currentIndex]) }
-}
-
-private fun formatDeviceLine(d: DeviceSessionInfo, fallbackLabel: String) =
-    listOfNotNull(
-        d.deviceName,
-        d.brand,
-        d.model,
-        deviceSessionOsLine(d),
-        d.browserName,
-        d.deviceType
-    )
-        .mapNotNull { it.trim().takeIf { it.isNotBlank() } }
-        .distinct()
-        .let {
-            if (it.isNotEmpty()) {
-                it.joinToString(" • ")
-            } else {
-                d.deviceType?.takeIf { it.isNotBlank() } ?: fallbackLabel
-            }
-        }
-
-private fun deviceSessionForCurrentDevice(d: DeviceSessionInfo): DeviceSessionInfo {
-    if (d.current) {
-        val current = currentDeviceInfo()
-
-        val localOsName = current.osName?.trim()?.takeIf { it.isNotBlank() }
-        val localOsVersion = current.osVersion?.trim()?.takeIf { it.isNotBlank() }
-        val localDeviceType = current.deviceType?.trim()?.takeIf { it.isNotBlank() }
-        val localDeviceName = current.deviceName?.trim()?.takeIf { it.isNotBlank() }
-        val localBrand = current.brand?.trim()?.takeIf { it.isNotBlank() }
-        val localModel = current.model?.trim()?.takeIf { it.isNotBlank() }
-        val remoteDeviceName = d.deviceName?.trim()?.takeIf { it.isNotBlank() }
-        val remoteBrand = d.brand?.trim()?.takeIf { it.isNotBlank() }
-        val remoteModel = d.model?.trim()?.takeIf { it.isNotBlank() }
-
-        return d.copy(
-            osName = localOsName ?: d.osName,
-            osVersion = localOsVersion ?: d.osVersion,
-            deviceType = localDeviceType ?: d.deviceType,
-            deviceName = remoteDeviceName ?: localDeviceName ?: d.deviceName,
-            brand = remoteBrand ?: localBrand ?: d.brand,
-            model = remoteModel ?: localModel ?: d.model
-        )
-    } else {
-        return d
-    }
-}
-
 @Composable
 private fun formatDeviceLastSeen(iso: String?): String {
     if (iso.isNullOrBlank()) return stringResource(Res.string.unknown)
     return iso.replace("T", " ").take(19)
-}
-
-private fun resolveDeviceOsName(d: DeviceSessionInfo): String? {
-    val direct = normalizeDeviceOsName(d.osName)
-    if (direct != null) return direct
-    return normalizeDeviceOsName(inferDeviceOsFromSession(d))
-}
-
-private fun normalizeDeviceOsName(raw: String?): String? {
-    val trimmed = raw?.trim() ?: return null
-    if (trimmed.isBlank()) return null
-    val lower = trimmed.lowercase()
-    return when {
-        "windows" in lower || "win" in lower -> "Windows"
-        "mac" in lower || "os x" in lower || "darwin" in lower -> "macOS"
-        "linux" in lower -> "Linux"
-        "android" in lower -> "Android"
-        "ios" in lower || "iphone" in lower || "ipad" in lower -> "iOS"
-        else -> trimmed
-    }
-}
-
-private fun inferDeviceOsFromSession(d: DeviceSessionInfo): String? {
-    val type = d.deviceType?.lowercase().orEmpty()
-    val name = d.deviceName?.lowercase().orEmpty()
-    val brand = d.brand?.lowercase().orEmpty()
-    val model = d.model?.lowercase().orEmpty()
-    val browser = d.browserName?.lowercase().orEmpty()
-    val isMobile = "mobile" in type || "tablet" in type || "phone" in type
-    return when {
-        isMobile && (brand.contains("apple") || name.contains("iphone") || name.contains("ipad") || model.contains("iphone") || model.contains("ipad") || browser.contains("ios")) -> "iOS"
-        isMobile && (brand.contains("android") || name.contains("android") || model.contains("android") || browser.contains("android")) -> "Android"
-        isMobile && (
-            brand.contains("samsung") ||
-            brand.contains("xiaomi") ||
-            brand.contains("huawei") ||
-            brand.contains("oppo") ||
-            brand.contains("vivo") ||
-            brand.contains("pixel") ||
-            brand.contains("oneplus") ||
-            brand.contains("google") ||
-            brand.contains("lg") ||
-            brand.contains("motorola") ||
-            brand.contains("honor") ||
-            brand.contains("realme")
-        ) -> "Android"
-        "android" in browser || "android" in brand || "android" in model -> "Android"
-        brand.contains("apple") || model.contains("iphone") || model.contains("ipad") || browser.contains("ios") || browser.contains("iphone") || browser.contains("ipad") -> "iOS"
-        else -> null
-    }
-}
-
-private fun deviceSessionOsLine(d: DeviceSessionInfo): String? {
-    val os = resolveDeviceOsName(d) ?: return null
-    val version = d.osVersion?.trim().orEmpty()
-    return if (version.isBlank()) os else "$os $version"
-}
-
-private fun deviceSessionLogoResource(d: DeviceSessionInfo): DrawableResource? {
-    return when (resolveDeviceOsName(d)?.lowercase()) {
-        "windows", "windows nt" -> Res.drawable.os_windows
-        "mac", "mac os", "macos" -> Res.drawable.os_macos
-        "linux" -> Res.drawable.os_linux
-        else -> null
-    }
-}
-
-private fun deviceHeadline(d: DeviceSessionInfo, fallback: String): String {
-    d.deviceName?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
-    val brandModel = listOfNotNull(d.brand?.trim(), d.model?.trim())
-        .filter { it.isNotEmpty() }
-        .joinToString(" ")
-    if (brandModel.isNotEmpty()) return brandModel
-    return formatDeviceLine(d, fallback)
-}
-
-private fun deviceSessionIcon(d: DeviceSessionInfo): ImageVector {
-    val type = d.deviceType?.lowercase().orEmpty()
-    val os = resolveDeviceOsName(d)?.lowercase().orEmpty()
-    val hasBrowser = d.browserName?.isNotBlank() == true
-
-    return when {
-        "android" in os -> Icons.Rounded.Android
-        // "ios" in os || "iphone" in os -> TODO()
-        "mobile" in type || "phone" in type -> Icons.Rounded.PhoneAndroid
-        hasBrowser && "windows" !in os && "mac" !in os && "linux" !in os &&
-                "android" !in os && "ios" !in os -> Icons.Rounded.Language
-        hasBrowser -> Icons.Rounded.Language
-        else -> Icons.Rounded.LaptopMac
-    }
 }
 
 @OptIn(ExperimentalAnimationApi::class, ExperimentalMaterial3ExpressiveApi::class)
@@ -305,7 +151,7 @@ private fun DeviceSessionDetailBottomSheet(
         Spacer(Modifier.height(8.dp))
 
         Text(
-            text = deviceHeadline(d, unknownDeviceLabel),
+            text = deviceSessionHeadline(d, unknownDeviceLabel),
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center
@@ -535,7 +381,7 @@ fun DevicesScreen(onBack: () -> Unit) {
 
                 ListItem(
                     headline = remember(device) {
-                        deviceHeadline(device, unknownDeviceLabel)
+                        deviceSessionHeadline(device, unknownDeviceLabel)
                     },
                     supportingText = stringResource(
                         Res.string.settings_devices_last_active,

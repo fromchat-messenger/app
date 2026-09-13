@@ -15,7 +15,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
@@ -36,7 +35,6 @@ import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Notification
 import androidx.compose.ui.window.Tray
 import androidx.compose.ui.window.Window
-import androidx.compose.ui.window.WindowExceptionHandler
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberTrayState
@@ -56,9 +54,11 @@ import ru.fromchat.action_copy
 import ru.fromchat.action_select
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.WebSocketManager
+import ru.fromchat.api.local.db.MessageDatabaseConcurrency
 import ru.fromchat.api.local.db.isSqliteBusy
 import ru.fromchat.api.local.db.store.ConnectionStateStore
 import ru.fromchat.api.local.db.store.ConnectionStatus
+import ru.fromchat.api.local.db.store.messageDatabaseCoroutineDispatcher
 import ru.fromchat.api.local.workers.AttachmentTransferBootstrap
 import ru.fromchat.app_name
 import ru.fromchat.app_name_beta
@@ -120,7 +120,19 @@ import kotlin.time.Duration.Companion.milliseconds
 import org.jetbrains.skia.Image as SkiaImage
 
 private object DesktopApplicationBootstrap {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(
+        SupervisorJob() +
+            messageDatabaseCoroutineDispatcher +
+            kotlinx.coroutines.CoroutineExceptionHandler { _, throwable ->
+                if (isSqliteBusy(throwable)) {
+                    if (!DatabaseLockGate.onSqliteBusy(throwable)) {
+                        Logger.w("Desktop", "Suppressed SQLITE_BUSY in bootstrap coroutine", throwable)
+                    }
+                } else {
+                    Logger.e("Desktop", "uncaught in bootstrap coroutine", throwable)
+                }
+            },
+    )
     private var started = false
 
     fun launchOnApplicationStart() {
@@ -261,6 +273,16 @@ private object DesktopProtocolRegistration {
 }
 
 fun main(args: Array<String>) {
+    Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+        if (isSqliteBusy(throwable)) {
+            if (!DatabaseLockGate.onSqliteBusy(throwable)) {
+                Logger.w("Desktop", "Suppressed SQLITE_BUSY on ${thread.name}", throwable)
+            }
+        } else {
+            Logger.e("Desktop", "uncaught on ${thread.name}", throwable)
+        }
+    }
+
     configureDesktopAppDataName()
     // Do NOT set compose.layers.type=WINDOW.
     // On macOS Metal that mode creates a JWindow + MetalRedrawer per Popup/Dialog; native
@@ -309,19 +331,12 @@ fun main(args: Array<String>) {
     // Re-apply after AWT is fully up — Taskbar can ignore early sets on macOS :run.
     SwingUtilities.invokeLater { applyDockIcon(dockIconImage) }
 
+    MessageDatabaseConcurrency.onSqliteBusy = { DatabaseLockGate.onSqliteBusy(it) }
+    Runtime.getRuntime().addShutdownHook(Thread { DatabaseLockGate.releaseRuntimeLock() })
+    MessageDatabaseRuntimeLock.tryAcquire()
+
     application {
         UtilsLibrary.init()
-        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            if (isSqliteBusy(throwable)) {
-                Logger.w(
-                    "Desktop",
-                    "SQLite busy on ${thread.name}; database will retry on the next access",
-                    throwable,
-                )
-            } else {
-                Logger.e("Desktop", "uncaught on ${thread.name}", throwable)
-            }
-        }
         var bootstrapStarted by remember { mutableStateOf(false) }
         val databaseBlocked by DatabaseLockGate.blocked.collectAsState()
         val lockingProcesses by DatabaseLockGate.processes.collectAsState()
@@ -335,12 +350,25 @@ fun main(args: Array<String>) {
             }
         }
 
+        val mac = remember { isMacOs() }
+        val windows = remember { isWindowsOs() }
+        val windowIcon = remember {
+            dockIconImage?.toPainter() ?: loadAppIconPainter(tray = false)
+        }
+        val appName = stringResource(
+            if (AppBuildInfo.isDebug) Res.string.app_name_beta else Res.string.app_name,
+        )
+
         if (databaseBlocked) {
             DatabaseLockWindow(
+                appName = appName,
+                windowIcon = windowIcon,
+                dockIconImage = dockIconImage,
                 processes = lockingProcesses,
                 onKillProcess = { DatabaseLockGate.killProcess(it) },
                 onQuit = { exitApplication() },
             )
+            return@application
         }
 
         val windowState = rememberWindowState(
@@ -351,20 +379,12 @@ fun main(args: Array<String>) {
         var contentReady by remember { mutableStateOf(false) }
         var windowVisible by remember { mutableStateOf(true) }
         val trayState = rememberTrayState()
-        val mac = remember { isMacOs() }
-        val windows = remember { isWindowsOs() }
         val useTemplateTrayIcon = mac
         val trayIconImage = remember { loadAppIconBufferedImage(tray = useTemplateTrayIcon) }
         val trayIcon = remember(trayIconImage) {
             trayIconImage?.toPainter() ?: loadAppIconPainter(tray = useTemplateTrayIcon)
         }
-        val windowIcon = remember {
-            dockIconImage?.toPainter() ?: loadAppIconPainter(tray = false)
-        }
         val traySupported = remember { java.awt.SystemTray.isSupported() }
-        val appName = stringResource(
-            if (AppBuildInfo.isDebug) Res.string.app_name_beta else Res.string.app_name,
-        )
         val aboutApp = stringResource(Res.string.desktop_about_app)
         val trayShow = stringResource(Res.string.desktop_tray_show)
         val quit = stringResource(Res.string.desktop_quit)
@@ -564,7 +584,7 @@ fun main(args: Array<String>) {
             onCloseRequest = { requestCloseToBackgroundOrQuit() },
             title = appName,
             state = windowState,
-            visible = contentReady && (windowVisible || !traySupported) && !databaseBlocked,
+            visible = contentReady && (windowVisible || !traySupported),
             icon = windowIcon,
             undecorated = windows,
             onPreviewKeyEvent = { event ->
@@ -632,7 +652,7 @@ fun main(args: Array<String>) {
             }
 
             DisposableEffect(window) {
-                installLoggedWindowExceptionHandler(window)
+                installDesktopWindowExceptionHandler(window)
                 AppForeground.setForeground(true)
                 fun syncWindowFocus(focused: Boolean) {
                     DesktopAppVisibility.isWindowFocused = focused
@@ -714,9 +734,7 @@ fun main(args: Array<String>) {
                         .fillMaxSize()
                         .background(windowChrome),
                 ) {
-                    if (!databaseBlocked) {
-                        App(onContentReady = { contentReady = true })
-                    }
+                    App(onContentReady = { contentReady = true })
                     if (windows) {
                         MaterialTheme(colorScheme = getColorScheme(desktopAppDarkTheme(), dynamicColor = false)) {
                             WindowsDesktopTitleBar(
@@ -868,15 +886,12 @@ private fun applyDesktopWindowChromeBackground() {
     UIManager.put("control", ColorUIResource(desktopThemeBackgroundCompose().toAwtColor()))
 }
 
-private fun desktopThemeBackgroundCompose() =
-    if (desktopAppDarkTheme()) Color(0xFF1C1B1F) else Color(0xFFFFFBFE)
-
 private fun Color.toAwtColor() =
     java.awt.Color(red, green, blue, alpha)
 
 private fun isSystemAppearanceDark() = desktopSystemDarkTheme()
 
-private fun applyDockIcon(image: BufferedImage?) {
+internal fun applyDockIcon(image: BufferedImage?) {
     if (image == null) {
         Logger.w("DesktopIcon", "applyDockIcon skipped — image is null")
         return
@@ -1089,13 +1104,6 @@ private fun scaleBufferedImage(source: BufferedImage, size: Int): BufferedImage 
     }
 
     return out
-}
-
-@OptIn(ExperimentalComposeUiApi::class)
-private fun installLoggedWindowExceptionHandler(window: androidx.compose.ui.awt.ComposeWindow) {
-    window.exceptionHandler = WindowExceptionHandler { throwable ->
-        Logger.e("DesktopWindow", "uncaught in composition", throwable)
-    }
 }
 
 /** Opaque mark so Tray never substitutes the Compose default for a blank painter. */

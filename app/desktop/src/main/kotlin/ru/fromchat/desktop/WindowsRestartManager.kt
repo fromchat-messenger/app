@@ -2,14 +2,15 @@ package ru.fromchat.desktop
 
 import com.sun.jna.Native
 import com.sun.jna.Structure
-import com.sun.jna.WString
 import com.sun.jna.platform.win32.WinBase
+import ru.fromchat.Logger
 import com.sun.jna.platform.win32.WinDef.DWORD
 import com.sun.jna.platform.win32.WinNT
 import com.sun.jna.ptr.IntByReference
 import com.sun.jna.win32.StdCallLibrary
 import com.sun.jna.win32.W32APIOptions
 import java.io.File
+import java.lang.ProcessHandle
 
 internal object WindowsRestartManager {
     private const val ERROR_MORE_DATA = 234
@@ -18,26 +19,36 @@ internal object WindowsRestartManager {
 
     fun findLockingProcesses(files: List<File>): List<LockingProcessInfo> {
         if (!isWindowsOs()) return emptyList()
-        val paths = files.map { it.absolutePath }.filter { it.isNotBlank() }
+        val paths = files
+            .map { file -> runCatching { file.canonicalPath }.getOrElse { file.absolutePath } }
+            .filter { it.isNotBlank() }
+            .distinct()
         if (paths.isEmpty()) return emptyList()
 
         val session = IntByReference()
         val sessionKey = CharArray(33)
         val start = RestartManager.INSTANCE.RmStartSession(session, 0, sessionKey)
-        if (start != WinNT.ERROR_SUCCESS) return emptyList()
+        if (start != WinNT.ERROR_SUCCESS) {
+            Logger.w("WindowsRestartManager", "RmStartSession failed: $start")
+            return emptyList()
+        }
         val sessionHandle = session.value
 
         try {
+            val pathArray = paths.toTypedArray()
             val register = RestartManager.INSTANCE.RmRegisterResources(
                 sessionHandle,
-                paths.size,
-                paths.toTypedArray(),
+                pathArray.size,
+                pathArray,
                 0,
                 null,
                 0,
                 null,
             )
-            if (register != WinNT.ERROR_SUCCESS) return emptyList()
+            if (register != WinNT.ERROR_SUCCESS) {
+                Logger.w("WindowsRestartManager", "RmRegisterResources failed: $register paths=$paths")
+                return emptyList()
+            }
 
             val needed = IntByReference()
             val count = IntByReference()
@@ -48,10 +59,16 @@ internal object WindowsRestartManager {
                 null,
                 null,
             )
-            if (result != ERROR_MORE_DATA && result != WinNT.ERROR_SUCCESS) return emptyList()
+            if (result != ERROR_MORE_DATA && result != WinNT.ERROR_SUCCESS) {
+                Logger.w("WindowsRestartManager", "RmGetList probe failed: $result")
+                return emptyList()
+            }
 
-            val processCount = needed.value.coerceAtLeast(count.value).coerceAtLeast(1)
-            val processes = Array(processCount) { RmProcessInfo() }
+            val processCount = needed.value.coerceAtLeast(count.value)
+            if (processCount <= 0) return emptyList()
+
+            @Suppress("UNCHECKED_CAST")
+            val processes = RmProcessInfo().toArray(processCount) as Array<RmProcessInfo>
             count.value = processCount
             result = RestartManager.INSTANCE.RmGetList(
                 sessionHandle,
@@ -60,13 +77,18 @@ internal object WindowsRestartManager {
                 processes,
                 null,
             )
-            if (result != WinNT.ERROR_SUCCESS) return emptyList()
+            if (result != WinNT.ERROR_SUCCESS) {
+                Logger.w("WindowsRestartManager", "RmGetList failed: $result")
+                return emptyList()
+            }
 
+            val currentPid = ProcessHandle.current().pid()
             return processes
                 .take(count.value.coerceAtMost(processes.size))
+                .onEach { it.read() }
                 .mapNotNull { info ->
                     val pid = info.dwProcessId.toLong()
-                    if (pid <= 0L) return@mapNotNull null
+                    if (pid <= 0L || pid == currentPid) return@mapNotNull null
                     val appName = info.appName().trim()
                     val executable = ProcessExecutableResolver.executablePathForPid(pid)
                     LockingProcessInfo(
@@ -93,7 +115,7 @@ internal object WindowsRestartManager {
         "tsSessionId",
         "restartable",
     )
-    private class RmProcessInfo : Structure(), Structure.ByReference {
+    private class RmProcessInfo : Structure() {
         @JvmField var dwProcessId = 0
         @JvmField var processStartTime = WinBase.FILETIME()
         @JvmField var strAppName = CharArray(CCH_RM_MAX_APP_NAME + 1)
@@ -114,7 +136,7 @@ internal object WindowsRestartManager {
             fileCount: Int,
             fileNames: Array<String>?,
             serviceCount: Int,
-            serviceNames: Array<WString>?,
+            serviceNames: Array<String>?,
             processCount: Int,
             processIds: IntArray?,
         ): Int
