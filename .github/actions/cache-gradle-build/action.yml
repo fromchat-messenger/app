@@ -19,6 +19,7 @@ runs:
       id: cache
       with:
         lookup-only: ${{ inputs.save != 'true' }}
+        save-always: ${{ inputs.save == 'true' }}
         path: |
           app/desktop/build
           app/shared/build
