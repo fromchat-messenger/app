@@ -35,6 +35,7 @@ jobs:
     outputs:
       version: ${{ steps.ver.outputs.version }}
       tag: ${{ steps.ver.outputs.tag }}
+      prerelease: ${{ steps.ver.outputs.prerelease }}
     steps:
       - id: ver
         shell: bash
@@ -50,6 +51,10 @@ jobs:
           fi
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "tag=v$V" >> "$GITHUB_OUTPUT"
+          case "$V" in
+            *-beta*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
 
   desktop-proguard:
     needs: resolve-version
@@ -407,7 +412,7 @@ jobs:
           name: FromChat ${{ needs.resolve-version.outputs.version }}
           body_path: release-body.md
           draft: false
-          prerelease: false
+          prerelease: ${{ needs.resolve-version.outputs.prerelease == 'true' }}
           generate_release_notes: false
           files: release-assets/*
         env:
