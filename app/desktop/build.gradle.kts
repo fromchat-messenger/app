@@ -602,8 +602,8 @@ val installDmgBackgroundTools = tasks.register<Exec>("installDmgBackgroundTools"
         """
         if [ ! -f node_modules/playwright/package.json ]; then
           npm install --no-fund --no-audit
-          npx playwright install chromium
         fi
+        npx playwright install chromium
         """.trimIndent(),
     )
 }

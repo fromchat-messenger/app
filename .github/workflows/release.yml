@@ -31,6 +31,7 @@ env:
 
 jobs:
   resolve-version:
+    name: Resolve version
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.ver.outputs.version }}
@@ -57,6 +58,7 @@ jobs:
           esac
 
   desktop-proguard:
+    name: Build JAR
     needs: resolve-version
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -81,6 +83,7 @@ jobs:
           retention-days: 3
 
   windows-common:
+    name: Windows installer
     needs: resolve-version
     runs-on: windows-latest
     timeout-minutes: 30
@@ -116,6 +119,7 @@ jobs:
           retention-days: 3
 
   windows-package:
+    name: Windows (${{ matrix.arch == 'arm64' && 'ARM' || 'x64' }})
     needs: [resolve-version, desktop-proguard, windows-common]
     env:
       FROMCHAT_PREBUILT_PROGUARD: "1"
@@ -177,6 +181,7 @@ jobs:
           if-no-files-found: error
 
   macos:
+    name: macOS (${{ matrix.arch == 'arm64' && 'Apple Silicon' || 'Intel' }})
     needs: [resolve-version, desktop-proguard]
     env:
       FROMCHAT_PREBUILT_PROGUARD: "1"
@@ -209,8 +214,8 @@ jobs:
           path: |
             app/desktop/dmg-background/node_modules
             ~/.cache/ms-playwright
-          key: dmg-tools-${{ hashFiles('app/desktop/dmg-background/package-lock.json') }}
-          restore-keys: dmg-tools-
+          key: dmg-tools-${{ runner.arch }}-${{ hashFiles('app/desktop/dmg-background/package-lock.json') }}
+          restore-keys: dmg-tools-${{ runner.arch }}-
       - name: Install macOS packaging tools
         run: |
           if ! command -v create-dmg >/dev/null 2>&1; then
@@ -219,8 +224,8 @@ jobs:
           DMG_DIR="app/desktop/dmg-background"
           if [[ ! -f "$DMG_DIR/node_modules/playwright/package.json" ]]; then
             npm --prefix "$DMG_DIR" ci --no-fund --no-audit
-            npm --prefix "$DMG_DIR" exec playwright install chromium
           fi
+          npm --prefix "$DMG_DIR" exec playwright install chromium
       - name: Package macOS ${{ matrix.arch }}
         run: |
           export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
@@ -232,6 +237,7 @@ jobs:
           if-no-files-found: error
 
   linux:
+    name: Linux (${{ matrix.arch == 'arm64' && 'ARM' || 'x64' }})
     needs: [resolve-version, desktop-proguard]
     env:
       FROMCHAT_PREBUILT_PROGUARD: "1"
@@ -284,6 +290,7 @@ jobs:
           if-no-files-found: error
 
   android:
+    name: Android
     needs: resolve-version
     runs-on: ubuntu-latest
     timeout-minutes: 60
