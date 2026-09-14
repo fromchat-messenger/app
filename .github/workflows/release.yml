@@ -80,10 +80,11 @@ jobs:
       FROMCHAT_PREBUILT_PROGUARD: "0"
     steps:
       - uses: actions/checkout@v5
-      - uses: ./.github/actions/setup-java-gradle
+      - uses: ./.github/actions/restore-git-mtimes
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
+      - uses: ./.github/actions/setup-java-gradle
       - uses: ./.github/actions/cache-gradle-build
         id: gradle-build-cache
         with:
@@ -108,10 +109,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
-      - uses: ./.github/actions/setup-java-gradle
+      - uses: ./.github/actions/restore-git-mtimes
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
+      - uses: ./.github/actions/setup-java-gradle
       - uses: ./.github/actions/cache-gradle-build
         id: gradle-build-cache
         with:
@@ -164,6 +166,10 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/restore-git-mtimes
+      - uses: ./.github/actions/set-version
+        with:
+          version: ${{ needs.resolve-version.outputs.version }}
       - name: Ensure ARM64 packaging JDK
         if: matrix.arch == 'arm64'
         shell: cmd
@@ -178,9 +184,6 @@ jobs:
           gradle-version: wrapper
           cache-read-only: true
           add-job-summary: on-failure
-      - uses: ./.github/actions/set-version
-        with:
-          version: ${{ needs.resolve-version.outputs.version }}
       - uses: ./.github/actions/cache-gradle-build
         id: gradle-build-cache
         with:
@@ -237,6 +240,10 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/restore-git-mtimes
+      - uses: ./.github/actions/set-version
+        with:
+          version: ${{ needs.resolve-version.outputs.version }}
       - uses: ./.github/actions/setup-java-gradle
         if: matrix.arch == 'x64'
         with:
@@ -246,9 +253,6 @@ jobs:
         if: matrix.arch == 'arm64'
         with:
           cache-read-only: "true"
-      - uses: ./.github/actions/set-version
-        with:
-          version: ${{ needs.resolve-version.outputs.version }}
       - uses: ./.github/actions/cache-gradle-build
         id: gradle-build-cache
         with:
@@ -310,12 +314,13 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
-      - uses: ./.github/actions/setup-java-gradle
-        with:
-          cache-read-only: "true"
+      - uses: ./.github/actions/restore-git-mtimes
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
+      - uses: ./.github/actions/setup-java-gradle
+        with:
+          cache-read-only: "true"
       - uses: ./.github/actions/cache-gradle-build
         id: gradle-build-cache
         with:
@@ -361,13 +366,14 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/restore-git-mtimes
+      - uses: ./.github/actions/set-version
+        with:
+          version: ${{ needs.resolve-version.outputs.version }}
       - uses: ./.github/actions/setup-java-gradle
         with:
           cache-read-only: "true"
       - uses: android-actions/setup-android@v4
-      - uses: ./.github/actions/set-version
-        with:
-          version: ${{ needs.resolve-version.outputs.version }}
       - uses: ./.github/actions/cache-gradle-build
         id: gradle-build-cache
         with:

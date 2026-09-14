@@ -18,6 +18,12 @@ runs:
           VERSION_CODE=1
         fi
         GRADLE_FILE="build.gradle.kts"
+        CURRENT_NAME="$(sed -n 's/.*extra\["versionName"\] = "\([^"]*\)".*/\1/p' "$GRADLE_FILE" | head -n 1)"
+        CURRENT_CODE="$(sed -n 's/.*extra\["versionCode"\] = \([0-9]*\).*/\1/p' "$GRADLE_FILE" | head -n 1)"
+        if [[ "$CURRENT_NAME" == "$VERSION" && "$CURRENT_CODE" == "$VERSION_CODE" ]]; then
+          echo "versionName=$VERSION versionCode=$VERSION_CODE (unchanged)"
+          exit 0
+        fi
         sed -i.bak "s/extra\\[\"versionName\"\\] = \"[^\"]*\"/extra[\"versionName\"] = \"$VERSION\"/" "$GRADLE_FILE"
         sed -i.bak "s/extra\\[\"versionCode\"\\] = [0-9]*/extra[\"versionCode\"] = $VERSION_CODE/" "$GRADLE_FILE"
         rm -f "$GRADLE_FILE.bak"

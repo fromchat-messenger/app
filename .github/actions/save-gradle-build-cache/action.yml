@@ -1,5 +1,5 @@
 name: Save Gradle build directories
-description: Save module build/ trees after a Gradle build
+description: Save project .gradle/, build/ trees after a Gradle build
 
 inputs:
   primary-key:
@@ -14,6 +14,8 @@ runs:
       with:
         key: ${{ inputs.primary-key }}
         path: |
+          .gradle
+          build
           app/desktop/build
           app/shared/build
           app/android/build

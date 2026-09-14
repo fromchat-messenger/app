@@ -1,5 +1,5 @@
 name: Restore Gradle build directories
-description: Restore module build/ trees for faster CI Gradle jobs
+description: Restore project .gradle/, build/ trees for faster CI Gradle jobs
 
 inputs:
   scope:
@@ -21,11 +21,15 @@ runs:
       id: cache
       with:
         path: |
+          .gradle
+          build
           app/desktop/build
           app/shared/build
           app/android/build
           utils/shared/build
           utils/android/build
-        key: gradle-build-${{ runner.os }}-${{ runner.arch }}-v1-${{ inputs.scope }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts', 'gradle.properties', 'app/desktop/build.gradle.kts', 'app/desktop/proguard-rules.pro', 'app/shared/build.gradle.kts', 'app/android/build.gradle.kts', 'utils/shared/build.gradle.kts', 'utils/android/build.gradle.kts') }}
+        key: gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts', 'gradle.properties', 'build.gradle.kts', 'app/desktop/build.gradle.kts', 'app/desktop/proguard-rules.pro', 'app/shared/build.gradle.kts', 'app/android/build.gradle.kts', 'utils/shared/build.gradle.kts', 'utils/android/build.gradle.kts') }}
         restore-keys: |
-          gradle-build-${{ runner.os }}-${{ runner.arch }}-v1-
+          gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-
+          gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-build-jar-
+          gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-
