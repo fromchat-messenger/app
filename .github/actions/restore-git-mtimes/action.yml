@@ -13,5 +13,5 @@ runs:
           exit 0
         fi
         script="${RUNNER_TEMP}/git-restore-mtime"
-        curl -fsSL https://github.com/MestreLion/git-tools/raw/2024.11/git-restore-mtime -o "$script"
+        curl -fsSL https://raw.githubusercontent.com/MestreLion/git-tools/b5822d297b3ca4a3b6574e78327a464790b14937/git-restore-mtime -o "$script"
         python3 "$script"
