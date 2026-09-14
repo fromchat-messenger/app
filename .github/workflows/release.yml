@@ -119,7 +119,7 @@ jobs:
       - uses: ./.github/actions/save-gradle-build-cache
         if: always()
         with:
-          primary-key: ${{ steps.gradle-build-cache.outputs.cache-primary-key }}
+          scope: ${{ steps.gradle-build-cache.outputs.cache-save-scope }}
       - uses: actions/upload-artifact@v5
         with:
           name: desktop-proguard
@@ -170,7 +170,7 @@ jobs:
       - uses: ./.github/actions/save-gradle-build-cache
         if: always()
         with:
-          primary-key: ${{ steps.gradle-build-cache.outputs.cache-primary-key }}
+          scope: ${{ steps.gradle-build-cache.outputs.cache-save-scope }}
 
   windows-package:
     name: Windows (${{ matrix.label }})
@@ -246,7 +246,7 @@ jobs:
       - uses: ./.github/actions/save-gradle-build-cache
         if: always()
         with:
-          primary-key: ${{ steps.gradle-build-cache.outputs.cache-primary-key }}
+          scope: ${{ steps.gradle-build-cache.outputs.cache-save-scope }}
 
   macos:
     name: macOS (${{ matrix.label }})
@@ -316,7 +316,7 @@ jobs:
       - uses: ./.github/actions/save-gradle-build-cache
         if: always()
         with:
-          primary-key: ${{ steps.gradle-build-cache.outputs.cache-primary-key }}
+          scope: ${{ steps.gradle-build-cache.outputs.cache-save-scope }}
 
   linux:
     name: Linux (${{ matrix.label }})
@@ -382,7 +382,7 @@ jobs:
       - uses: ./.github/actions/save-gradle-build-cache
         if: always()
         with:
-          primary-key: ${{ steps.gradle-build-cache.outputs.cache-primary-key }}
+          scope: ${{ steps.gradle-build-cache.outputs.cache-save-scope }}
 
   android:
     name: Android
@@ -441,7 +441,7 @@ jobs:
       - uses: ./.github/actions/save-gradle-build-cache
         if: always()
         with:
-          primary-key: ${{ steps.gradle-build-cache.outputs.cache-primary-key }}
+          scope: ${{ steps.gradle-build-cache.outputs.cache-save-scope }}
       - name: Stage APK
         run: |
           mkdir -p release-staging
