@@ -441,18 +441,22 @@ jobs:
           sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v5
         with:
-          pattern: |
-            windows-*
-            macos-*
-            linux-*
-            android
+          pattern: "{windows,macos,linux}-*"
           merge-multiple: true
+          path: artifacts
+      - uses: actions/download-artifact@v5
+        with:
+          name: android
           path: artifacts
       - name: Collect release assets
         env:
           LABEL: ${{ needs.resolve-version.outputs.release_label }}
         run: |
           set -euo pipefail
+          if [[ ! -d artifacts ]]; then
+            echo "No artifacts were downloaded" >&2
+            exit 1
+          fi
           mkdir -p release-assets
 
           pick_one() {
