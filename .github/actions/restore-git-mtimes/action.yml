@@ -8,5 +8,10 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        python3 -m pip install --disable-pip-version-check --quiet git-restore-mtime
-        python3 -m git_restore_mtime
+        if command -v git-restore-mtime >/dev/null 2>&1; then
+          git-restore-mtime
+          exit 0
+        fi
+        script="${RUNNER_TEMP}/git-restore-mtime"
+        curl -fsSL https://github.com/MestreLion/git-tools/raw/2024.11/git-restore-mtime -o "$script"
+        python3 "$script"
