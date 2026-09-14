@@ -16,6 +16,8 @@ pluginManagement {
             }
         }
         mavenCentral()
+        // Fallback when repo.maven.apache.org returns 403 on GitHub-hosted runners.
+        maven("https://maven-central.storage-download.googleapis.com/maven2/")
         gradlePluginPortal()
     }
 }
@@ -33,6 +35,8 @@ dependencyResolutionManagement {
             }
         }
         mavenCentral()
+        // Fallback when repo.maven.apache.org returns 403 on GitHub-hosted runners.
+        maven("https://maven-central.storage-download.googleapis.com/maven2/")
         // LiveKit Android pulls com.github.davidliu:audioswitch from JitPack.
         maven("https://jitpack.io")
     }
