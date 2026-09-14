@@ -2,8 +2,8 @@ name: Save Gradle build directories
 description: Save project .gradle/, build/ trees after a Gradle build
 
 inputs:
-  primary-key:
-    description: cache-primary-key from cache-gradle-build restore step
+  scope:
+    description: Same scope passed to cache-gradle-build (save always uses this job's key, not a restored fallback key)
     required: true
 
 runs:
@@ -12,7 +12,7 @@ runs:
     - uses: actions/cache/save@v5
       continue-on-error: true
       with:
-        key: ${{ inputs.primary-key }}
+        key: gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts', 'gradle.properties', 'build.gradle.kts', 'app/desktop/build.gradle.kts', 'app/desktop/proguard-rules.pro', 'app/shared/build.gradle.kts', 'app/android/build.gradle.kts', 'utils/shared/build.gradle.kts', 'utils/android/build.gradle.kts') }}
         path: |
           .gradle
           build

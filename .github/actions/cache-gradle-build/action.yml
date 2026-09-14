@@ -10,9 +10,9 @@ outputs:
   cache-hit:
     description: Whether an exact cache key match was restored
     value: ${{ steps.cache.outputs.cache-hit }}
-  cache-primary-key:
-    description: Primary cache key to pass to the save action after the build
-    value: ${{ steps.cache.outputs.cache-primary-key }}
+  cache-save-scope:
+    description: Scope to pass to the save action (always this job's scope, not a restored fallback key)
+    value: ${{ inputs.scope }}
 
 runs:
   using: composite
