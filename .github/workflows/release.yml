@@ -146,21 +146,32 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
-      - name: Cache Cargo registry
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: cargo-registry-${{ runner.os }}-${{ hashFiles('app/desktop/windows-setup/Cargo.lock') }}
-          restore-keys: |
-            cargo-registry-${{ runner.os }}-
       - uses: ./.github/actions/cache-windows-rust-tools
         id: rust-tools-cache
+      - name: Verify Windows Rust binaries
+        id: rust-binaries
+        shell: bash
+        run: |
+          ready=true
+          for exe in \
+            FromChat-Installer.exe \
+            FromChat-Installer-Helper.exe \
+            fromchat-portable-launcher.exe \
+            fromchat-pack.exe \
+            fromchat-icon-patch.exe
+          do
+            if [[ ! -f "app/desktop/windows-setup/target/release/$exe" ]]; then
+              echo "Missing $exe"
+              ready=false
+            fi
+          done
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
       - name: Build Windows installer Rust tooling
-        if: steps.rust-tools-cache.outputs.cache-hit != 'true'
+        if: steps.rust-binaries.outputs.ready != 'true'
         shell: bash
         run: ./gradlew :app:desktop:buildWindowsSetupRust --no-daemon --console=plain
+      - uses: ./.github/actions/save-windows-rust-cache
+        if: always()
       - uses: actions/upload-artifact@v5
         with:
           name: windows-rust-tools
