@@ -18,6 +18,14 @@ on:
           - "false"
           - "true"
         default: "false"
+      force_update_release:
+        description: "Overwrite existing GitHub Release for this version instead of failing"
+        required: false
+        type: choice
+        options:
+          - "false"
+          - "true"
+        default: "false"
 
 concurrency:
   group: release-${{ github.ref }}
@@ -33,14 +41,19 @@ jobs:
   resolve-version:
     name: Resolve version
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       version: ${{ steps.ver.outputs.version }}
       tag: ${{ steps.ver.outputs.tag }}
       prerelease: ${{ steps.ver.outputs.prerelease }}
       release_label: ${{ steps.ver.outputs.release_label }}
+      force_update_release: ${{ steps.ver.outputs.force_update_release }}
     steps:
       - id: ver
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             V="${{ inputs.version }}"
@@ -63,13 +76,25 @@ jobs:
           else
             RELEASE_LABEL="${MAJOR}.${MINOR}.${PATCH}"
           fi
+          TAG="v$V"
           echo "version=$V" >> "$GITHUB_OUTPUT"
-          echo "tag=v$V" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "release_label=$RELEASE_LABEL" >> "$GITHUB_OUTPUT"
           case "$V" in
             *-beta*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
             *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
           esac
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force_update_release }}" = "true" ]; then
+              echo "Release $TAG exists; force_update_release enabled — publish will overwrite it."
+              echo "force_update_release=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "Release $TAG already exists. Delete it first, or run workflow_dispatch with force_update_release=true." >&2
+              exit 1
+            fi
+          else
+            echo "force_update_release=false" >> "$GITHUB_OUTPUT"
+          fi
 
   desktop-proguard:
     name: Build JAR
@@ -494,23 +519,16 @@ jobs:
             exit 1
           fi
           ls -la release-assets
-      - name: Prepare release notes
-        run: |
-          VERSION="${{ needs.resolve-version.outputs.version }}"
-          {
-            echo "# FromChat ${VERSION}"
-            echo ""
-            cat RELEASE_NOTES.md
-          } > release-body.md
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.resolve-version.outputs.tag }}
-          name: FromChat ${{ needs.resolve-version.outputs.version }}
-          body_path: release-body.md
+          name: ${{ needs.resolve-version.outputs.tag }}
+          body_path: RELEASE_NOTES.md
           draft: false
           prerelease: ${{ needs.resolve-version.outputs.prerelease == 'true' }}
           generate_release_notes: false
+          overwrite_existing: ${{ needs.resolve-version.outputs.force_update_release == 'true' }}
           files: |
             release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}.apk
             release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}-x64.exe
