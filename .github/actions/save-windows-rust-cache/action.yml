@@ -1,0 +1,14 @@
+name: Save Windows Rust build cache
+description: Save Cargo registry, git checkouts, and the windows-setup target directory
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache/save@v5
+      continue-on-error: true
+      with:
+        key: windows-rust-${{ runner.os }}-v2-${{ hashFiles('app/desktop/windows-setup/Cargo.lock', 'app/desktop/windows-setup/Cargo.toml', 'app/desktop/windows-setup/**/src/**', 'app/desktop/windows-setup/**/build.rs') }}
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          app/desktop/windows-setup/target
