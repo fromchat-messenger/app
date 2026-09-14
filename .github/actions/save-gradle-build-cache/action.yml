@@ -9,7 +9,22 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/cache/save@v5
+    - name: Save Android Gradle build cache
+      if: inputs.scope == 'android'
+      uses: actions/cache/save@v5
+      continue-on-error: true
+      with:
+        key: gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts', 'gradle.properties', 'build.gradle.kts', 'app/desktop/build.gradle.kts', 'app/desktop/proguard-rules.pro', 'app/shared/build.gradle.kts', 'app/android/build.gradle.kts', 'utils/shared/build.gradle.kts', 'utils/android/build.gradle.kts') }}
+        path: |
+          .gradle
+          build
+          app/shared/build
+          app/android/build
+          utils/shared/build
+          utils/android/build
+    - name: Save Gradle build cache
+      if: inputs.scope != 'android'
+      uses: actions/cache/save@v5
       continue-on-error: true
       with:
         key: gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts', 'gradle.properties', 'build.gradle.kts', 'app/desktop/build.gradle.kts', 'app/desktop/proguard-rules.pro', 'app/shared/build.gradle.kts', 'app/android/build.gradle.kts', 'utils/shared/build.gradle.kts', 'utils/android/build.gradle.kts') }}
