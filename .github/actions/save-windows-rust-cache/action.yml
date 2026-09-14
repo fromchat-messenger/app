@@ -7,7 +7,7 @@ runs:
     - uses: actions/cache/save@v5
       continue-on-error: true
       with:
-        key: windows-rust-${{ runner.os }}-v2-${{ hashFiles('app/desktop/windows-setup/Cargo.lock', 'app/desktop/windows-setup/Cargo.toml', 'app/desktop/windows-setup/**/src/**', 'app/desktop/windows-setup/**/build.rs') }}
+        key: windows-rust-${{ runner.os }}-v3-${{ hashFiles('app/desktop/windows-setup/Cargo.lock') }}
         path: |
           ~/.cargo/registry
           ~/.cargo/git

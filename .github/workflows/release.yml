@@ -28,7 +28,7 @@ on:
         default: "false"
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release
   cancel-in-progress: true
 
 env:
@@ -414,6 +414,8 @@ jobs:
         id: gradle-build-cache
         with:
           scope: android
+      - name: Prepare Android SDK cache dirs
+        run: mkdir -p ~/.android/build-cache ~/.android/cache
       - name: Cache Android SDK extras
         uses: actions/cache@v5
         with:

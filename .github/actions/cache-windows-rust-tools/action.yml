@@ -16,6 +16,9 @@ runs:
           ~/.cargo/registry
           ~/.cargo/git
           app/desktop/windows-setup/target
-        key: windows-rust-${{ runner.os }}-v2-${{ hashFiles('app/desktop/windows-setup/Cargo.lock', 'app/desktop/windows-setup/Cargo.toml', 'app/desktop/windows-setup/**/src/**', 'app/desktop/windows-setup/**/build.rs') }}
+        key: windows-rust-${{ runner.os }}-v3-${{ hashFiles('app/desktop/windows-setup/Cargo.lock') }}
         restore-keys: |
+          windows-rust-${{ runner.os }}-v3-
           windows-rust-${{ runner.os }}-v2-
+          windows-rust-tools-v1-
+          cargo-registry-${{ runner.os }}-
