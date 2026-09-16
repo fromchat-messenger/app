@@ -339,6 +339,16 @@
     <string name="debug_tools">Отладка API</string>
     <string name="debug_tools_d">Просмотр ответов API профиля и личных сообщений.</string>
 
+    <string name="plugins_title">Плагины</string>
+    <string name="plugins_engine">Движок плагинов</string>
+    <string name="plugins_engine_d">Запуск Kotlin-плагинов для расширения FromChat.</string>
+    <string name="plugins_developer_mode">Режим разработчика</string>
+    <string name="plugins_developer_mode_d">Включает локальный DevServer на порту 42690.</string>
+    <string name="plugins_installed">Установленные плагины</string>
+    <string name="plugins_none_installed">Плагины ещё не установлены.</string>
+    <string name="plugins_enabled">Включено</string>
+    <string name="plugins_settings_title">Настройки плагина</string>
+
     <string name="settings_category_appearance">Оформление</string>
     <string name="settings_category_appearance_d">Тема и Material You</string>
     <string name="settings_category_server_tools">Сервер и инструменты</string>

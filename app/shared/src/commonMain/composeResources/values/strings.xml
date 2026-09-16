@@ -370,6 +370,16 @@
     <string name="debug_tools">Debug API</string>
     <string name="debug_tools_d">Inspect profile and DM endpoints used by the client.</string>
 
+    <string name="plugins_title">Plugins</string>
+    <string name="plugins_engine">Plugin engine</string>
+    <string name="plugins_engine_d">Run Kotlin plugins that extend FromChat.</string>
+    <string name="plugins_developer_mode">Developer mode</string>
+    <string name="plugins_developer_mode_d">Enable the local DevServer on port 42690.</string>
+    <string name="plugins_installed">Installed plugins</string>
+    <string name="plugins_none_installed">No plugins installed yet.</string>
+    <string name="plugins_enabled">Enabled</string>
+    <string name="plugins_settings_title">Plugin settings</string>
+
     <!-- Settings categories -->
     <string name="settings_category_appearance">Appearance</string>
     <string name="settings_category_appearance_d">Theme and Material You</string>

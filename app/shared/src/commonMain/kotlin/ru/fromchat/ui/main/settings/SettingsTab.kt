@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
@@ -40,6 +41,8 @@ import ru.fromchat.api.ApiClient
 import ru.fromchat.change_server
 import ru.fromchat.change_server_d
 import ru.fromchat.logs_title
+import ru.fromchat.plugins_title
+import ru.fromchat.plugins_engine_d
 import ru.fromchat.profile
 import ru.fromchat.settings
 import ru.fromchat.settings_category_account
@@ -176,7 +179,15 @@ fun SettingsTab() {
                     headline = stringResource(Res.string.logs_title),
                     supportingText = stringResource(Res.string.settings_hub_logs_sub),
                     onClick = { openDetail(SettingsRoutes.Logs) },
-                    leadingContent = { Icon(Icons.Outlined.BugReport, null) }
+                    leadingContent = { Icon(Icons.Outlined.BugReport, null) },
+                    divider = true,
+                )
+
+                ListItem(
+                    headline = stringResource(Res.string.plugins_title),
+                    supportingText = stringResource(Res.string.plugins_engine_d),
+                    onClick = { openDetail(SettingsRoutes.Plugins) },
+                    leadingContent = { Icon(Icons.Filled.Extension, null) },
                 )
             }
         }

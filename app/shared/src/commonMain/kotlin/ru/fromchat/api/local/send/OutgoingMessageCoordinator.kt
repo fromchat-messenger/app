@@ -197,13 +197,21 @@ object OutgoingMessageCoordinator {
         clientMessageId: String,
         optimisticMessage: Message,
     ) {
+        val hooked = ru.fromchat.plugins.host.PluginHookDispatcher.interceptSendMessage(
+            ru.fromchat.plugins.SendMessageHookContext(
+                text = content,
+                isDm = false,
+                recipientId = null,
+            ),
+        ) ?: return
+        val finalContent = hooked.text
         val instanceId = CacheContext.requireActiveInstanceId()
         val conversationId = conversationIdForGroup(GENERAL_PUBLIC_GROUP_ID)
         markOutboundActive(clientMessageId)
         withContext(Dispatchers.Default) {
             MessageRepository.upsertPublicMessage(optimisticMessage)
-            Logger.d("OutgoingMessageCoordinator", "enqueuePublicMessage: clientId=${clientMessageId.take(12)} contentLen=${content.length}")
-            val payload = json.encodeToString(PublicOutboxPayload(content, replyToId))
+            Logger.d("OutgoingMessageCoordinator", "enqueuePublicMessage: clientId=${clientMessageId.take(12)} contentLen=${finalContent.length}")
+            val payload = json.encodeToString(PublicOutboxPayload(finalContent, replyToId))
             MessageDatabaseProvider.database.messageDatabaseQueries.upsertOutbox(
                 instanceId = instanceId,
                 clientMessageId = clientMessageId,
@@ -227,12 +235,20 @@ object OutgoingMessageCoordinator {
         transportFiles: List<SendDmFile> = emptyList(),
         uploadedFileIds: List<String> = emptyList(),
     ) {
+        val hooked = ru.fromchat.plugins.host.PluginHookDispatcher.interceptSendMessage(
+            ru.fromchat.plugins.SendMessageHookContext(
+                text = plaintext,
+                isDm = true,
+                recipientId = recipientId,
+            ),
+        ) ?: return
+        val finalPlaintext = hooked.text
         val instanceId = CacheContext.requireActiveInstanceId()
         val conversationId = conversationIdForDm(recipientId)
         markOutboundActive(clientMessageId)
         withContext(Dispatchers.Default) {
             MessageRepository.upsertDmMessage(recipientId, optimisticMessage)
-            val outboundPlaintext = buildDmOutboundPlaintext(plaintext, replyToId)
+            val outboundPlaintext = buildDmOutboundPlaintext(finalPlaintext, replyToId)
             val payload = json.encodeToString(
                 DmOutboxPayload(
                     recipientId = recipientId,

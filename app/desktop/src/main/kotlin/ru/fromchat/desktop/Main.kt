@@ -142,6 +142,7 @@ private object DesktopApplicationBootstrap {
         scope.launch {
             runCatching { ApiClient.loadPersistedData() }
             runCatching { AttachmentTransferBootstrap.runColdStart() }
+            runCatching { ru.fromchat.plugins.integration.DesktopPluginBootstrap.init() }
         }
     }
 }
