@@ -1,8 +1,8 @@
 package ru.fromchat.ui.main.settings
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,31 +10,30 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PushPin
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -44,7 +43,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.pr0gramm3r101.components.Category
@@ -52,8 +51,8 @@ import com.pr0gramm3r101.components.ListItem
 import com.pr0gramm3r101.components.SwitchListItem
 import com.pr0gramm3r101.utils.supportClipboardManagerImpl
 import com.pr0gramm3r101.utils.verticalScroll
-import org.jetbrains.compose.resources.stringResource
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.back
 import ru.fromchat.cancel
@@ -62,7 +61,10 @@ import ru.fromchat.plugins.PluginSetting
 import ru.fromchat.plugins.host.PluginEngine
 import ru.fromchat.plugins.integration.PluginInstallSupport
 import ru.fromchat.ui.LocalNavController
+import ru.fromchat.ui.components.ExpressiveIconFrame
+import ru.fromchat.ui.components.SearchBar
 import ru.fromchat.ui.components.Text
+import ru.fromchat.plugins_add
 import ru.fromchat.plugins_delete
 import ru.fromchat.plugins_delete_confirm
 import ru.fromchat.plugins_developer_mode
@@ -80,16 +82,13 @@ import ru.fromchat.plugins_title
 import ru.fromchat.plugins_usage
 import ru.fromchat.plugins_version_author
 
-private val PluginMasterBlue = Color(0xFF3D85C6)
-private val PluginCardBackground = Color(0xFF1A1A1A)
-private val PluginDestructiveRed = Color(0xFFD9534F)
-
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun PluginsScreen() {
     val navController = LocalNavController.current
     val scope = rememberCoroutineScope()
     val clipboard = supportClipboardManagerImpl
+    val scrollBehavior = rememberSettingsCollapsingScrollBehavior()
     val engineEnabled by PluginEngine.engineEnabled.collectAsState()
     val developerMode by PluginEngine.developerMode.collectAsState()
     val installed by PluginEngine.installed.collectAsState()
@@ -119,8 +118,15 @@ fun PluginsScreen() {
             title = { Text(stringResource(Res.string.plugins_info_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(stringResource(Res.string.plugins_info_body))
-                    Text(stringResource(Res.string.plugins_engine_d))
+                    Text(
+                        stringResource(Res.string.plugins_info_body),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        stringResource(Res.string.plugins_engine_d),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                     SwitchListItem(
                         headline = stringResource(Res.string.plugins_developer_mode),
                         supportingText = stringResource(Res.string.plugins_developer_mode_d),
@@ -150,7 +156,10 @@ fun PluginsScreen() {
                         deleteTarget = null
                     },
                 ) {
-                    Text(stringResource(Res.string.plugins_delete))
+                    Text(
+                        stringResource(Res.string.plugins_delete),
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
             },
             dismissButton = {
@@ -174,9 +183,12 @@ fun PluginsScreen() {
     }
 
     Scaffold(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .nestedScroll(scrollBehavior.nestedScrollConnection),
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
+            SettingsDetailTopBar(
                 title = {
                     Text(
                         stringResource(Res.string.plugins_title),
@@ -184,31 +196,10 @@ fun PluginsScreen() {
                         overflow = TextOverflow.Ellipsis,
                     )
                 },
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(Res.string.back))
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { /* search toggled via field below */ }) {
-                        Icon(Icons.Default.Search, contentDescription = stringResource(Res.string.plugins_search))
-                    }
-                    IconButton(onClick = { PluginInstallSupport.installFromPicker() }) {
-                        Icon(Icons.Outlined.Add, contentDescription = null)
-                    }
-                    IconButton(onClick = { showInfoDialog = true }) {
-                        Icon(Icons.Default.Info, contentDescription = stringResource(Res.string.plugins_info_title))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Black,
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White,
-                    actionIconContentColor = Color.White,
-                ),
+                onBack = { navController.navigateUp() },
+                scrollBehavior = scrollBehavior,
             )
         },
-        containerColor = Color.Black,
     ) { innerPadding ->
         Column(
             Modifier
@@ -217,18 +208,38 @@ fun PluginsScreen() {
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp),
         ) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
+            SearchBar(
+                query = searchQuery,
+                onQueryChange = { searchQuery = it },
+                onSearch = {},
+                placeholder = stringResource(Res.string.plugins_search),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 8.dp, bottom = 12.dp),
-                placeholder = { Text(stringResource(Res.string.plugins_search)) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                singleLine = true,
+                    .padding(top = 8.dp, bottom = 16.dp),
             )
 
-            PluginMasterToggle(
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FilledTonalIconButton(onClick = { PluginInstallSupport.installFromPicker() }) {
+                    Icon(
+                        Icons.Outlined.Add,
+                        contentDescription = stringResource(Res.string.plugins_add),
+                    )
+                }
+                IconButton(onClick = { showInfoDialog = true }) {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = stringResource(Res.string.plugins_info_title),
+                    )
+                }
+            }
+
+            PluginEngineMasterCard(
                 checked = engineEnabled,
                 onCheckedChange = PluginEngine::setEngineEnabled,
             )
@@ -242,7 +253,8 @@ fun PluginsScreen() {
                     } else {
                         stringResource(Res.string.plugins_no_results)
                     },
-                    color = Color.White.copy(alpha = 0.7f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.padding(vertical = 24.dp),
                 )
             } else {
@@ -277,43 +289,46 @@ fun PluginsScreen() {
 }
 
 @Composable
-private fun PluginMasterToggle(
+private fun PluginEngineMasterCard(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) },
-        shape = RoundedCornerShape(12.dp),
-        color = PluginMasterBlue,
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+        ),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(
-                text = stringResource(Res.string.plugins_enable_system),
-                color = Color.White,
-                style = MaterialTheme.typography.titleMedium,
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(Res.string.plugins_enable_system),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                Text(
+                    text = stringResource(Res.string.plugins_engine_d),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
             Switch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color.White,
-                    checkedTrackColor = Color.White.copy(alpha = 0.35f),
-                    uncheckedThumbColor = Color.White,
-                    uncheckedTrackColor = Color.Black.copy(alpha = 0.25f),
-                ),
             )
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun PluginCard(
     manifest: PluginManifest,
@@ -327,10 +342,12 @@ private fun PluginCard(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
+    Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = PluginCardBackground,
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ),
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(
@@ -338,75 +355,66 @@ private fun PluginCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Icon(
-                    imageVector = Icons.Default.Extension,
-                    contentDescription = null,
-                    tint = PluginMasterBlue,
-                    modifier = Modifier.size(40.dp),
+                ExpressiveIconFrame(
+                    icon = Icons.Default.Extension,
+                    containerSize = 48.dp,
+                    iconSize = 24.dp,
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    materialPolygon = MaterialShapes.SoftBurst,
                 )
                 Switch(
                     checked = enabled,
                     onCheckedChange = onEnabledChange,
                     enabled = engineEnabled,
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = PluginMasterBlue,
-                        checkedTrackColor = PluginMasterBlue.copy(alpha = 0.45f),
-                    ),
                 )
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
 
             Text(
                 text = manifest.name,
-                color = Color.White,
                 style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
             )
 
             val authorLabel = manifest.author.removePrefix("@")
-            if (authorLabel.isNotBlank()) {
-                Text(
-                    text = stringResource(
+            Text(
+                text = if (authorLabel.isNotBlank()) {
+                    stringResource(
                         Res.string.plugins_version_author,
                         manifest.version,
                         authorLabel,
-                    ),
-                    color = Color.White.copy(alpha = 0.55f),
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            } else {
-                Text(
-                    text = manifest.version,
-                    color = Color.White.copy(alpha = 0.55f),
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
+                    )
+                } else {
+                    manifest.version
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
 
             if (manifest.description.isNotBlank()) {
                 Text(
                     text = manifest.description,
-                    color = Color.White.copy(alpha = 0.85f),
                     style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(top = 12.dp),
                 )
             }
 
-            val usage = manifest.usage.ifBlank {
-                manifest.description
-            }
-            if (usage.isNotBlank()) {
+            val usage = manifest.usage.takeIf { it.isNotBlank() }
+            if (usage != null) {
                 Text(
                     text = stringResource(Res.string.plugins_usage),
-                    color = Color.White,
                     style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(top = 12.dp),
                 )
                 Text(
                     text = usage,
-                    color = Color.White.copy(alpha = 0.75f),
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp),
                 )
             }
@@ -418,18 +426,33 @@ private fun PluginCard(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                PluginCardAction(Icons.Default.Share, onShare)
-                PluginCardAction(Icons.Default.OpenInNew, onOpenSettings)
-                PluginCardAction(
-                    imageVector = if (pinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
-                    onClick = onTogglePin,
-                )
+                FilledTonalIconButton(onClick = onShare) {
+                    Icon(Icons.Default.Share, contentDescription = null)
+                }
+                FilledTonalIconButton(onClick = onOpenSettings) {
+                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null)
+                }
+                FilledTonalIconButton(onClick = onTogglePin) {
+                    Icon(
+                        imageVector = if (pinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
+                        contentDescription = null,
+                        tint = if (pinned) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
                 Spacer(Modifier.weight(1f))
-                IconButton(onClick = onDelete) {
+                IconButton(
+                    onClick = onDelete,
+                    colors = IconButtonDefaults.iconButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) {
                     Icon(
                         Icons.Default.Delete,
                         contentDescription = stringResource(Res.string.plugins_delete),
-                        tint = PluginDestructiveRed,
                     )
                 }
             }
@@ -437,31 +460,21 @@ private fun PluginCard(
     }
 }
 
-@Composable
-private fun PluginCardAction(
-    imageVector: androidx.compose.ui.graphics.vector.ImageVector,
-    onClick: () -> Unit,
-) {
-    IconButton(onClick = onClick) {
-        Icon(
-            imageVector = imageVector,
-            contentDescription = null,
-            tint = Color.White.copy(alpha = 0.85f),
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun PluginDetailScreen(pluginId: String) {
     val navController = LocalNavController.current
+    val scrollBehavior = rememberSettingsCollapsingScrollBehavior()
     val plugin = PluginEngine.loadedPlugin(pluginId)
     val settings = plugin?.instance?.createSettings().orEmpty()
 
     Scaffold(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .nestedScroll(scrollBehavior.nestedScrollConnection),
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
+            SettingsDetailTopBar(
                 title = {
                     Text(
                         plugin?.manifest?.name ?: pluginId,
@@ -469,11 +482,8 @@ fun PluginDetailScreen(pluginId: String) {
                         overflow = TextOverflow.Ellipsis,
                     )
                 },
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(Res.string.back))
-                    }
-                },
+                onBack = { navController.navigateUp() },
+                scrollBehavior = scrollBehavior,
             )
         },
     ) { innerPadding ->
@@ -483,10 +493,49 @@ fun PluginDetailScreen(pluginId: String) {
                 .verticalScroll()
                 .padding(innerPadding),
         ) {
-            Category(Modifier.padding(top = 16.dp)) {
+            if (plugin != null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    ExpressiveIconFrame(
+                        icon = Icons.Default.Extension,
+                        materialPolygon = MaterialShapes.Cookie6Sided,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = plugin.manifest.name,
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    val authorLabel = plugin.manifest.author.removePrefix("@")
+                    if (authorLabel.isNotBlank()) {
+                        Text(
+                            text = stringResource(
+                                Res.string.plugins_version_author,
+                                plugin.manifest.version,
+                                authorLabel,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                }
+            }
+
+            Category(
+                modifier = Modifier.padding(top = 8.dp),
+                margin = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
                 Text(
                     text = stringResource(Res.string.plugins_settings_title),
                     modifier = Modifier.padding(horizontal = SettingsStepHorizontalPadding, vertical = 8.dp),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
                 )
                 settings.forEach { setting ->
                     when (setting) {
@@ -494,6 +543,7 @@ fun PluginDetailScreen(pluginId: String) {
                             Text(
                                 text = setting.text,
                                 modifier = Modifier.padding(horizontal = SettingsStepHorizontalPadding, vertical = 8.dp),
+                                style = MaterialTheme.typography.titleSmall,
                             )
                         }
                         is PluginSetting.Text -> {
@@ -528,7 +578,7 @@ fun PluginDetailScreen(pluginId: String) {
                                     ),
                                 )
                             }
-                            androidx.compose.material3.OutlinedTextField(
+                            OutlinedTextField(
                                 value = text,
                                 onValueChange = { value ->
                                     text = value

@@ -351,6 +351,7 @@
     <string name="plugins_enabled">Включено</string>
     <string name="plugins_settings_title">Настройки плагина</string>
     <string name="plugins_search">Поиск плагинов</string>
+    <string name="plugins_add">Добавить плагин</string>
     <string name="plugins_usage">Использование:</string>
     <string name="plugins_version_author">Версия %1$s • @%2$s</string>
     <string name="plugins_delete">Удалить</string>

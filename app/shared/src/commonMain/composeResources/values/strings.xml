@@ -382,6 +382,7 @@
     <string name="plugins_enabled">Enabled</string>
     <string name="plugins_settings_title">Plugin settings</string>
     <string name="plugins_search">Search plugins</string>
+    <string name="plugins_add">Add plugin</string>
     <string name="plugins_usage">Usage:</string>
     <string name="plugins_version_author">Version %1$s • @%2$s</string>
     <string name="plugins_delete">Delete</string>
