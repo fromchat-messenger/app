@@ -17,6 +17,10 @@ object DesktopPluginBootstrap {
         PluginEngine.appVersionProvider = { ru.fromchat.AppBuildInfo.version }
         installBundledPlugin(classLoader)
         PluginEngine.init()
+        if (ru.fromchat.AppBuildInfo.isDebug) {
+            PluginEngine.setEngineEnabled(true)
+            PluginEngine.setPluginEnabled("hello_world", true)
+        }
         PluginEngine.dispatchAppEvent(AppEvent.START)
         FeatureGate.registerDefault("calls") { ru.fromchat.config.ServerConfig.callsEnabled }
     }

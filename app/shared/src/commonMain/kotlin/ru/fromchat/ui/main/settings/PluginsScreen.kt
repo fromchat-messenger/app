@@ -10,7 +10,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MediumTopAppBar
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
@@ -25,6 +24,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.pr0gramm3r101.components.Category
 import com.pr0gramm3r101.components.ListItem
+import com.pr0gramm3r101.components.SwitchListItem
 import com.pr0gramm3r101.utils.verticalScroll
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
@@ -68,23 +68,19 @@ fun PluginsScreen() {
                 .padding(innerPadding),
         ) {
             Category(Modifier.padding(top = 16.dp)) {
-                ListItem(
+                SwitchListItem(
                     headline = stringResource(Res.string.plugins_engine),
                     supportingText = stringResource(Res.string.plugins_engine_d),
-                    trailingContent = {
-                        Switch(checked = engineEnabled, onCheckedChange = PluginEngine::setEngineEnabled)
-                    },
+                    checked = engineEnabled,
+                    onCheckedChange = PluginEngine::setEngineEnabled,
+                    divider = true,
                 )
-                ListItem(
+                SwitchListItem(
                     headline = stringResource(Res.string.plugins_developer_mode),
                     supportingText = stringResource(Res.string.plugins_developer_mode_d),
-                    trailingContent = {
-                        Switch(
-                            checked = developerMode,
-                            onCheckedChange = PluginEngine::setDeveloperMode,
-                            enabled = engineEnabled,
-                        )
-                    },
+                    checked = developerMode,
+                    onCheckedChange = PluginEngine::setDeveloperMode,
+                    enabled = engineEnabled,
                 )
             }
             Category(Modifier.padding(top = 8.dp)) {
@@ -98,21 +94,20 @@ fun PluginsScreen() {
                         leadingContent = { Icon(Icons.Default.Extension, contentDescription = null) },
                     )
                 } else {
-                    installed.forEach { manifest ->
-                        ListItem(
+                    installed.forEachIndexed { index, manifest ->
+                        SwitchListItem(
                             headline = manifest.name,
                             supportingText = manifest.description.ifBlank { manifest.id },
                             leadingContent = { Icon(Icons.Default.Extension, contentDescription = null) },
-                            trailingContent = {
-                                Switch(
-                                    checked = PluginEngine.isPluginEnabled(manifest.id),
-                                    onCheckedChange = { enabled ->
-                                        PluginEngine.setPluginEnabled(manifest.id, enabled)
-                                    },
-                                    enabled = engineEnabled,
-                                )
+                            checked = PluginEngine.isPluginEnabled(manifest.id),
+                            onCheckedChange = { enabled ->
+                                PluginEngine.setPluginEnabled(manifest.id, enabled)
                             },
-                            onClick = { navController.navigate(SettingsRoutes.pluginDetail(manifest.id)) },
+                            enabled = engineEnabled,
+                            divider = index < installed.lastIndex,
+                            listItemOnClick = {
+                                navController.navigate(SettingsRoutes.pluginDetail(manifest.id))
+                            },
                         )
                     }
                 }
@@ -174,17 +169,13 @@ fun PluginDetailScreen(pluginId: String) {
                                     PluginEngine.getPluginSettingBoolean(pluginId, setting.key, setting.default),
                                 )
                             }
-                            ListItem(
+                            SwitchListItem(
                                 headline = setting.text,
                                 supportingText = setting.subtext,
-                                trailingContent = {
-                                    Switch(
-                                        checked = checked,
-                                        onCheckedChange = { value ->
-                                            checked = value
-                                            PluginEngine.setPluginSetting(pluginId, setting.key, value.toString())
-                                        },
-                                    )
+                                checked = checked,
+                                onCheckedChange = { value ->
+                                    checked = value
+                                    PluginEngine.setPluginSetting(pluginId, setting.key, value.toString())
                                 },
                             )
                         }
