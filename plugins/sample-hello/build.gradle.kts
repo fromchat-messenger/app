@@ -35,9 +35,10 @@ tasks.register("packageFcPlugin") {
             {
               "id": "hello_world",
               "name": "Hello World",
-              "description": "Rewrites .hello commands into a friendly greeting",
+              "description": "Demonstrates high-level send hooks and raw Logger.d hooks.",
               "author": "FromChat",
-              "version": "1.0.0",
+              "version": "1.0.1",
+              "usage": "Send .hello Name in any chat to rewrite the message. Raw hook shows a bulletin when a message is queued for sending.",
               "app_version": ">=1.0.0",
               "sdk_version": ">=1.0.0",
               "entry_class": "ru.fromchat.plugins.sample.hello.HelloWorldPlugin",

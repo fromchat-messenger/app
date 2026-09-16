@@ -66,6 +66,7 @@ data class PluginManifest(
     val description: String = "",
     val author: String = "",
     val version: String = "1.0.0",
+    val usage: String = "",
     val appVersion: String = "",
     val sdkVersion: String = "",
     val entryClass: String,

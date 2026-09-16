@@ -13,6 +13,17 @@ class HelloWorldPlugin : BasePlugin() {
         addOnSendMessageHook { context ->
             onSendMessage(context)
         }
+        hookShared(
+            hookId = "logger.debug",
+            after = { args, _ ->
+                val tag = args.getOrNull(0) as? String ?: return@hookShared HookResult()
+                val message = args.getOrNull(1) as? String ?: return@hookShared HookResult()
+                if (tag == "OutgoingMessageCoordinator" && message.contains("enqueue")) {
+                    showBulletin("Raw hook: intercepted outgoing message pipeline")
+                }
+                HookResult()
+            },
+        )
     }
 
     override fun createSettings(): List<PluginSetting> = listOf(
@@ -36,6 +47,7 @@ class HelloWorldPlugin : BasePlugin() {
         val name = parts.getOrNull(1)?.trim().orEmpty().ifEmpty { "World" }
         val template = getSettingString("template", "Hello, {name}!")
         context.text = template.replace("{name}", name)
+        showBulletin("High-level hook: rewrote .hello command")
         return HookResult(strategy = HookStrategy.MODIFY, value = context)
     }
 }

@@ -17,22 +17,20 @@ object DesktopPluginBootstrap {
         PluginEngine.appVersionProvider = { ru.fromchat.AppBuildInfo.version }
         installBundledPlugin(classLoader)
         PluginEngine.init()
-        if (ru.fromchat.AppBuildInfo.isDebug) {
-            PluginEngine.setEngineEnabled(true)
-            PluginEngine.setPluginEnabled("hello_world", true)
-        }
         PluginEngine.dispatchAppEvent(AppEvent.START)
         FeatureGate.registerDefault("calls") { ru.fromchat.config.ServerConfig.callsEnabled }
     }
 
     private fun installBundledPlugin(classLoader: ClassLoader) {
-        val installed = desktopPluginsRoot().resolve("hello_world")
-        if (installed.exists()) return
         val stream = classLoader.getResourceAsStream("bundled_plugins/hello_world.fcplugin") ?: return
         val temp = File.createTempFile("hello_world", ".fcplugin")
         temp.outputStream().use { out -> stream.copyTo(out) }
-        runCatching { PluginEngine.installFcPluginArchive(temp) }
-            .onFailure { Logger.w("Plugins", "Bundled plugin install failed: ${it.message}") }
+        runCatching {
+            val bundledDir = temp.parentFile!!.resolve("bundled")
+            bundledDir.mkdirs()
+            temp.copyTo(bundledDir.resolve("hello_world.fcplugin"), overwrite = true)
+            PluginEngine.ensureBundledPlugins(bundledDir)
+        }.onFailure { Logger.w("Plugins", "Bundled plugin install failed: ${it.message}") }
         temp.delete()
     }
 

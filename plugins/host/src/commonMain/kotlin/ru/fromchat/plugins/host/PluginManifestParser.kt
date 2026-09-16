@@ -19,6 +19,7 @@ object PluginManifestParser {
             description = root["description"]?.jsonPrimitive?.contentOrNull.orEmpty(),
             author = root["author"]?.jsonPrimitive?.contentOrNull.orEmpty(),
             version = root["version"]?.jsonPrimitive?.contentOrNull ?: "1.0.0",
+            usage = root["usage"]?.jsonPrimitive?.contentOrNull.orEmpty(),
             appVersion = root["app_version"]?.jsonPrimitive?.contentOrNull.orEmpty(),
             sdkVersion = root["sdk_version"]?.jsonPrimitive?.contentOrNull.orEmpty(),
             entryClass = root.requireString("entry_class"),

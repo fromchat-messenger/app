@@ -24,6 +24,7 @@ object PluginEngine : PluginHostBridge {
     val installed: StateFlow<List<PluginManifest>> = _installed.asStateFlow()
 
     private val enabledIds = linkedSetOf<String>()
+    private val pinnedIds = linkedSetOf<String>()
     private val loaded = mutableMapOf<String, LoadedPlugin>()
     private val settings = mutableMapOf<String, MutableMap<String, String>>()
     private val sharedUnhooks = mutableMapOf<String, MutableList<() -> Unit>>()
@@ -71,6 +72,40 @@ object PluginEngine : PluginHostBridge {
     }
 
     fun isPluginEnabled(pluginId: String): Boolean = pluginId in enabledIds
+
+    fun isPluginPinned(pluginId: String): Boolean = pluginId in pinnedIds
+
+    fun setPluginPinned(pluginId: String, pinned: Boolean) {
+        if (pinned) {
+            pinnedIds += pluginId
+        } else {
+            pinnedIds -= pluginId
+        }
+        persistPinnedState()
+        refreshInstalledList()
+    }
+
+    fun sortedInstalled(): List<PluginManifest> {
+        val manifests = _installed.value
+        return manifests.sortedWith(
+            compareByDescending<PluginManifest> { it.id in pinnedIds }
+                .thenBy { it.name.lowercase() },
+        )
+    }
+
+    fun removePlugin(pluginId: String) {
+        unloadPlugin(pluginId)
+        enabledIds -= pluginId
+        pinnedIds -= pluginId
+        settings.remove(pluginId)
+        val dir = pluginsRootProvider().resolve(pluginId)
+        if (dir.exists()) {
+            dir.deleteRecursively()
+        }
+        persistEnabledState()
+        persistPinnedState()
+        refreshInstalledList()
+    }
 
     fun loadedPlugin(pluginId: String): LoadedPlugin? = loaded[pluginId]
 
@@ -238,10 +273,19 @@ object PluginEngine : PluginHostBridge {
             enabledIds.clear()
             enabledIds += enabledFile.readLines().map { it.trim() }.filter { it.isNotEmpty() }
         }
+        val pinnedFile = pluginsRootProvider().resolve("pinned_plugins.txt")
+        if (pinnedFile.exists()) {
+            pinnedIds.clear()
+            pinnedIds += pinnedFile.readLines().map { it.trim() }.filter { it.isNotEmpty() }
+        }
     }
 
     private fun persistEnabledState() {
         pluginsRootProvider().resolve("enabled_plugins.txt").writeText(enabledIds.joinToString("\n"))
+    }
+
+    private fun persistPinnedState() {
+        pluginsRootProvider().resolve("pinned_plugins.txt").writeText(pinnedIds.joinToString("\n"))
     }
 
     private fun projectZipExtract(archive: File, dest: File) {
@@ -261,10 +305,30 @@ object PluginEngine : PluginHostBridge {
     fun ensureBundledPlugins(bundledDir: File) {
         if (!bundledDir.exists()) return
         bundledDir.listFiles()?.filter { it.extension == "fcplugin" }?.forEach { archive ->
-            val installed = pluginsRootProvider().resolve("hello_world")
-            if (!installed.exists()) {
+            val manifestInArchive = readManifestFromArchive(archive) ?: return@forEach
+            val installedDir = pluginsRootProvider().resolve(manifestInArchive.id)
+            val installedManifest = installedDir.resolve("manifest.json")
+            val shouldInstall = when {
+                !installedManifest.exists() -> true
+                else -> {
+                    val current = runCatching {
+                        PluginManifestParser.parse(installedManifest.readText())
+                    }.getOrNull()
+                    current == null || current.version != manifestInArchive.version
+                }
+            }
+            if (shouldInstall) {
                 runCatching { installFcPluginArchive(archive) }
             }
         }
+    }
+
+    private fun readManifestFromArchive(archive: File): PluginManifest? {
+        return runCatching {
+            java.util.zip.ZipFile(archive).use { zip ->
+                val entry = zip.getEntry("manifest.json") ?: return null
+                zip.getInputStream(entry).bufferedReader().use { PluginManifestParser.parse(it.readText()) }
+            }
+        }.getOrNull()
     }
 }
