@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.BugReport
@@ -36,6 +37,7 @@ import ru.fromchat.more
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.extraStatusBars
+import ru.fromchat.plugins_title
 import ru.fromchat.ui.main.settings.SettingsRoutes
 
 /** Margin between the window edge and the wide [AuthContentFrame] panel. */
@@ -103,6 +105,16 @@ fun PreAuthOverflowMenu() {
                 onClick = {
                     menuExpanded = false
                     navController.navigate(SettingsRoutes.About)
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(Res.string.plugins_title)) },
+                leadingIcon = {
+                    Icon(Icons.Default.Extension, contentDescription = null)
+                },
+                onClick = {
+                    menuExpanded = false
+                    navController.navigate(SettingsRoutes.Plugins)
                 },
             )
             DropdownMenuItem(

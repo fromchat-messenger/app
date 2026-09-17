@@ -162,6 +162,7 @@ import ru.fromchat.ui.chat.utils.visibleMessageIdsInChatList
 import ru.fromchat.ui.chat.utils.unobstructedVisibleMessageIdsInChatList
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.SuspendedAccountSupportSheet
+import ru.fromchat.plugins.integration.PluginOverlayBanner
 import ru.fromchat.ui.extraStatusBars
 import ru.fromchat.utils.NetworkConnectivity
 import ru.fromchat.utils.formatLastSeen
@@ -1409,6 +1410,14 @@ fun ChatScreen(
 
                         item { Spacer(modifier.height(floatingHeaderClearance)) }
                         }
+
+                        PluginOverlayBanner(
+                            slot = "chat.banner",
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .zIndex(2f)
+                                .padding(top = innerPadding.calculateTopPadding()),
+                        )
 
                         val showScrollToBottomFab = !isNearBottom &&
                             panelState.messages.isNotEmpty() &&

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
@@ -40,6 +41,8 @@ import ru.fromchat.api.ApiClient
 import ru.fromchat.change_server
 import ru.fromchat.change_server_d
 import ru.fromchat.logs_title
+import ru.fromchat.plugins_title
+import ru.fromchat.plugins_engine_d
 import ru.fromchat.profile
 import ru.fromchat.settings
 import ru.fromchat.settings_category_account
@@ -61,6 +64,9 @@ import ru.fromchat.ui.main.LocalDesktopSettingsNavController
 import ru.fromchat.ui.main.LocalMainChromeInsets
 import ru.fromchat.ui.main.mainPagerBottomInset
 import ru.fromchat.ui.main.navigateReplacingMainDetail
+import ru.fromchat.plugins.integration.PluginOverlayBanner
+import ru.fromchat.plugins.integration.PluginSettingsMenuItems
+import ru.fromchat.plugins.integration.pluginFeatureEnabled
 
 val SettingsStepHorizontalPadding = 24.dp
 
@@ -109,6 +115,8 @@ fun SettingsTab() {
         ) {
             Spacer(Modifier.height(innerPadding.calculateTopPadding()))
 
+            PluginOverlayBanner(slot = "settings.banner")
+
             if (isTwoPane) {
                 Category(Modifier.padding(top = 16.dp)) {
                     ListItem(
@@ -132,13 +140,15 @@ fun SettingsTab() {
                     divider = true
                 )
 
-                ListItem(
-                    headline = stringResource(Res.string.settings_category_devices),
-                    supportingText = stringResource(Res.string.settings_category_devices_d),
-                    onClick = { openDetail(SettingsRoutes.Devices) },
-                    leadingContent = { Icon(Icons.Filled.Devices, null) },
-                    divider = true
-                )
+                if (pluginFeatureEnabled("settings.devices")) {
+                    ListItem(
+                        headline = stringResource(Res.string.settings_category_devices),
+                        supportingText = stringResource(Res.string.settings_category_devices_d),
+                        onClick = { openDetail(SettingsRoutes.Devices) },
+                        leadingContent = { Icon(Icons.Filled.Devices, null) },
+                        divider = true
+                    )
+                }
 
                 ListItem(
                     headline = stringResource(Res.string.settings_category_appearance),
@@ -172,11 +182,26 @@ fun SettingsTab() {
                     divider = true
                 )
 
+                if (pluginFeatureEnabled("settings.logs")) {
+                    ListItem(
+                        headline = stringResource(Res.string.logs_title),
+                        supportingText = stringResource(Res.string.settings_hub_logs_sub),
+                        onClick = { openDetail(SettingsRoutes.Logs) },
+                        leadingContent = { Icon(Icons.Outlined.BugReport, null) },
+                        divider = true,
+                    )
+                }
+
+                PluginSettingsMenuItems(
+                    showDividerBeforeFirst = true,
+                    showDividerAfterLast = true,
+                )
+
                 ListItem(
-                    headline = stringResource(Res.string.logs_title),
-                    supportingText = stringResource(Res.string.settings_hub_logs_sub),
-                    onClick = { openDetail(SettingsRoutes.Logs) },
-                    leadingContent = { Icon(Icons.Outlined.BugReport, null) }
+                    headline = stringResource(Res.string.plugins_title),
+                    supportingText = stringResource(Res.string.plugins_engine_d),
+                    onClick = { openDetail(SettingsRoutes.Plugins) },
+                    leadingContent = { Icon(Icons.Filled.Extension, null) },
                 )
             }
         }

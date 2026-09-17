@@ -1,6 +1,13 @@
 # Release shrinking: obfuscate/rename classes and members as aggressively as R8 allows.
 # proguard-android-optimize.txt (from build.gradle) supplies repackageclasses, overloadaggressively, etc.
 
+# ru.fromchat: keep names for plugin hooks; allow unused code removal.
+-keepnames,allowshrinking class ru.fromchat.** { *; }
+-keepclassmembernames,allowshrinking class ru.fromchat.** { *; }
+
+# Plugin SDK loaded from plugin artifacts.
+-keepnames class ru.fromchat.plugins.** { *; }
+
 # Crash reports: keep real .kt file names and line numbers; class names stay obfuscated.
 -keepattributes SourceFile,LineNumberTable
 
