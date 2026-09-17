@@ -4,6 +4,7 @@ import ru.fromchat.plugins.HookResult
 import ru.fromchat.plugins.HookStrategy
 import ru.fromchat.plugins.MenuItemData
 import ru.fromchat.plugins.SendMessageHookContext
+import ru.fromchat.plugins.host.ui.PluginOverlayStore
 
 data class RegisteredSendHook(
     val pluginId: String,
@@ -27,6 +28,7 @@ object PluginHookDispatcher {
         featureOverrides.values.forEach { list -> list.removeAll { it.first == pluginId } }
         menuItems.removeAll { it.first == pluginId }
         SharedMethodHookRegistry.unregisterPlugin(pluginId)
+        PluginOverlayStore.unregisterPlugin(pluginId)
     }
 
     fun registerFeatureOverride(pluginId: String, featureId: String, provider: () -> Boolean?) {
@@ -37,8 +39,17 @@ object PluginHookDispatcher {
         menuItems += pluginId to item
     }
 
+    fun menuItemEntriesFor(type: ru.fromchat.plugins.MenuItemType): List<Pair<String, MenuItemData>> =
+        menuItems.filter { it.second.menuType == type }.sortedByDescending { it.second.priority }
+
     fun menuItemsFor(type: ru.fromchat.plugins.MenuItemType): List<MenuItemData> =
-        menuItems.filter { it.second.menuType == type }.sortedByDescending { it.second.priority }.map { it.second }
+        menuItemEntriesFor(type).map { it.second }
+
+    fun dispatchMenuItemClick(clickKey: String) {
+        if (clickKey.isBlank()) return
+        val owner = menuItems.firstOrNull { it.second.onClickKey == clickKey } ?: return
+        PluginEngine.loadedPlugin(owner.first)?.instance?.onMenuItemClick(clickKey)
+    }
 
     fun featureOverrideValue(id: String): Boolean? {
         featureOverrides[id]?.asReversed()?.forEach { (_, provider) ->

@@ -64,6 +64,9 @@ import ru.fromchat.ui.main.LocalDesktopSettingsNavController
 import ru.fromchat.ui.main.LocalMainChromeInsets
 import ru.fromchat.ui.main.mainPagerBottomInset
 import ru.fromchat.ui.main.navigateReplacingMainDetail
+import ru.fromchat.plugins.integration.PluginOverlayBanner
+import ru.fromchat.plugins.integration.PluginSettingsMenuItems
+import ru.fromchat.plugins.integration.pluginFeatureEnabled
 
 val SettingsStepHorizontalPadding = 24.dp
 
@@ -112,6 +115,8 @@ fun SettingsTab() {
         ) {
             Spacer(Modifier.height(innerPadding.calculateTopPadding()))
 
+            PluginOverlayBanner(slot = "settings.banner")
+
             if (isTwoPane) {
                 Category(Modifier.padding(top = 16.dp)) {
                     ListItem(
@@ -135,13 +140,15 @@ fun SettingsTab() {
                     divider = true
                 )
 
-                ListItem(
-                    headline = stringResource(Res.string.settings_category_devices),
-                    supportingText = stringResource(Res.string.settings_category_devices_d),
-                    onClick = { openDetail(SettingsRoutes.Devices) },
-                    leadingContent = { Icon(Icons.Filled.Devices, null) },
-                    divider = true
-                )
+                if (pluginFeatureEnabled("settings.devices")) {
+                    ListItem(
+                        headline = stringResource(Res.string.settings_category_devices),
+                        supportingText = stringResource(Res.string.settings_category_devices_d),
+                        onClick = { openDetail(SettingsRoutes.Devices) },
+                        leadingContent = { Icon(Icons.Filled.Devices, null) },
+                        divider = true
+                    )
+                }
 
                 ListItem(
                     headline = stringResource(Res.string.settings_category_appearance),
@@ -175,12 +182,19 @@ fun SettingsTab() {
                     divider = true
                 )
 
-                ListItem(
-                    headline = stringResource(Res.string.logs_title),
-                    supportingText = stringResource(Res.string.settings_hub_logs_sub),
-                    onClick = { openDetail(SettingsRoutes.Logs) },
-                    leadingContent = { Icon(Icons.Outlined.BugReport, null) },
-                    divider = true,
+                if (pluginFeatureEnabled("settings.logs")) {
+                    ListItem(
+                        headline = stringResource(Res.string.logs_title),
+                        supportingText = stringResource(Res.string.settings_hub_logs_sub),
+                        onClick = { openDetail(SettingsRoutes.Logs) },
+                        leadingContent = { Icon(Icons.Outlined.BugReport, null) },
+                        divider = true,
+                    )
+                }
+
+                PluginSettingsMenuItems(
+                    showDividerBeforeFirst = true,
+                    showDividerAfterLast = true,
                 )
 
                 ListItem(

@@ -23,6 +23,9 @@ object PluginEngine : PluginHostBridge {
     private val _installed = MutableStateFlow<List<PluginManifest>>(emptyList())
     val installed: StateFlow<List<PluginManifest>> = _installed.asStateFlow()
 
+    private val _hostRevision = MutableStateFlow(0)
+    val hostRevision: StateFlow<Int> = _hostRevision.asStateFlow()
+
     private val enabledIds = linkedSetOf<String>()
     private val pinnedIds = linkedSetOf<String>()
     private val loaded = mutableMapOf<String, LoadedPlugin>()
@@ -51,6 +54,7 @@ object PluginEngine : PluginHostBridge {
         } else {
             loaded.keys.toList().forEach { unloadPlugin(it) }
         }
+        bumpHostRevision()
     }
 
     fun setDeveloperMode(enabled: Boolean) {
@@ -69,6 +73,7 @@ object PluginEngine : PluginHostBridge {
         }
         persistEnabledState()
         refreshInstalledList()
+        bumpHostRevision()
     }
 
     fun isPluginEnabled(pluginId: String): Boolean = pluginId in enabledIds
@@ -182,6 +187,10 @@ object PluginEngine : PluginHostBridge {
         PluginHookDispatcher.registerMenuItem(pluginId, item)
     }
 
+    override fun registerUiOverlay(pluginId: String, slot: String, title: String, message: String) {
+        ru.fromchat.plugins.host.ui.PluginOverlayStore.register(pluginId, slot, title, message)
+    }
+
     override fun showBulletin(message: String) {
         PluginHookDispatcher.showBulletin(message)
     }
@@ -193,7 +202,37 @@ object PluginEngine : PluginHostBridge {
         before: ((Array<Any?>) -> HookResult<Array<Any?>>)?,
         after: ((Array<Any?>, Any?) -> HookResult<Any?>)?,
     ): () -> Unit {
-        val registration = SharedHookRegistration(pluginId, hookId, priority, before, after)
+        val target = SharedMethodHookRegistry.targetFor(hookId)
+            ?: run {
+                log(pluginId, "Unknown shared hook id: $hookId")
+                return {}
+            }
+        return registerSharedHook(pluginId, hookId, target, priority, before, after)
+    }
+
+    override fun hookRawMethod(
+        pluginId: String,
+        className: String,
+        methodName: String,
+        paramTypeNames: Array<String>,
+        priority: Int,
+        before: ((Array<Any?>) -> HookResult<Array<Any?>>)?,
+        after: ((Array<Any?>, Any?) -> HookResult<Any?>)?,
+    ): () -> Unit {
+        val hookId = "raw:$className#$methodName"
+        val target = SharedHookTarget(className, methodName, paramTypeNames)
+        return registerSharedHook(pluginId, hookId, target, priority, before, after)
+    }
+
+    private fun registerSharedHook(
+        pluginId: String,
+        hookId: String,
+        target: SharedHookTarget,
+        priority: Int,
+        before: ((Array<Any?>) -> HookResult<Array<Any?>>)?,
+        after: ((Array<Any?>, Any?) -> HookResult<Any?>)?,
+    ): () -> Unit {
+        val registration = SharedHookRegistration(pluginId, hookId, target, priority, before, after)
         SharedMethodHookRegistry.register(registration)
         val unhook = {
             SharedMethodHookRegistry.unregisterPlugin(pluginId)
@@ -215,6 +254,7 @@ object PluginEngine : PluginHostBridge {
         runCatching { loadedPlugin.instance.onPluginLoad() }
             .onFailure { log(manifest.id, "onPluginLoad failed: ${it.message}") }
         loaded[manifest.id] = loadedPlugin
+        bumpHostRevision()
     }
 
     private fun unloadPlugin(pluginId: String) {
@@ -223,6 +263,11 @@ object PluginEngine : PluginHostBridge {
         PluginHookDispatcher.unregisterPlugin(pluginId)
         sharedUnhooks.remove(pluginId)
         PluginPlatform.current?.unloadPlugin(pluginId)
+        bumpHostRevision()
+    }
+
+    private fun bumpHostRevision() {
+        _hostRevision.value++
     }
 
     private fun loadSettingsFile(pluginId: String): MutableMap<String, String> {

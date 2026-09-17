@@ -21,9 +21,9 @@ actual object PluginPlatform {
     private val pineHooks = mutableMapOf<String, MutableList<top.canyie.pine.Pine.HookRecord>>()
 
     actual fun installSharedHook(registration: SharedHookRegistration) {
-        val target = SharedMethodHookRegistry.targetFor(registration.hookId) ?: return
+        val target = registration.target
         val clazz = Class.forName(target.className)
-        val paramTypes = target.paramTypeNames.map { Class.forName(it) }.toTypedArray()
+        val paramTypes = target.paramTypeNames.map { resolveJvmParameterType(it) }.toTypedArray()
         val method = clazz.getDeclaredMethod(target.methodName, *paramTypes)
         val record = Pine.hook(method, object : MethodHook() {
             override fun beforeCall(callFrame: Pine.CallFrame) {

@@ -8,10 +8,21 @@ interface PluginHostBridge {
     fun registerSendMessageHook(pluginId: String, priority: Int, handler: (SendMessageHookContext) -> HookResult<SendMessageHookContext>)
     fun registerFeatureOverride(pluginId: String, featureId: String, provider: () -> Boolean?)
     fun registerMenuItem(pluginId: String, item: MenuItemData)
+    fun registerUiOverlay(pluginId: String, slot: String, title: String, message: String)
     fun showBulletin(message: String)
     fun hookSharedMethod(
         pluginId: String,
         hookId: String,
+        priority: Int,
+        before: ((Array<Any?>) -> HookResult<Array<Any?>>)?,
+        after: ((Array<Any?>, Any?) -> HookResult<Any?>)?,
+    ): () -> Unit
+
+    fun hookRawMethod(
+        pluginId: String,
+        className: String,
+        methodName: String,
+        paramTypeNames: Array<String>,
         priority: Int,
         before: ((Array<Any?>) -> HookResult<Array<Any?>>)?,
         after: ((Array<Any?>, Any?) -> HookResult<Any?>)?,
@@ -31,6 +42,7 @@ abstract class BasePlugin {
     open fun onPluginLoad() {}
     open fun onPluginUnload() {}
     open fun onAppEvent(event: AppEvent) {}
+    open fun onMenuItemClick(key: String) {}
     open fun createSettings(): List<PluginSetting> = emptyList()
 
     protected fun log(message: String) = bridge.log(pluginId, message)
@@ -63,6 +75,10 @@ abstract class BasePlugin {
         bridge.registerMenuItem(pluginId, item)
     }
 
+    protected fun registerUiOverlay(slot: String, title: String, message: String) {
+        bridge.registerUiOverlay(pluginId, slot, title, message)
+    }
+
     protected fun showBulletin(message: String) {
         bridge.showBulletin(message)
     }
@@ -73,6 +89,23 @@ abstract class BasePlugin {
         before: ((Array<Any?>) -> HookResult<Array<Any?>>)? = null,
         after: ((Array<Any?>, Any?) -> HookResult<Any?>)? = null,
     ): () -> Unit = bridge.hookSharedMethod(pluginId, hookId, priority, before, after)
+
+    protected fun hookRawMethod(
+        className: String,
+        methodName: String,
+        paramTypeNames: Array<String> = emptyArray(),
+        priority: Int = 0,
+        before: ((Array<Any?>) -> HookResult<Array<Any?>>)? = null,
+        after: ((Array<Any?>, Any?) -> HookResult<Any?>)? = null,
+    ): () -> Unit = bridge.hookRawMethod(
+        pluginId,
+        className,
+        methodName,
+        paramTypeNames,
+        priority,
+        before,
+        after,
+    )
 }
 
 object PluginSettingsReload {

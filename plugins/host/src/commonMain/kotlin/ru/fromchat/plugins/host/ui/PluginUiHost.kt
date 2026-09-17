@@ -32,10 +32,12 @@ fun PluginUiHost(content: @Composable () -> Unit) {
     val bulletins = remember { PluginBulletinStore.bulletins }
     Box(Modifier.fillMaxSize()) {
         content()
-        bulletins.lastOrNull()?.let { bulletin ->
+        bulletins.firstOrNull()?.let { bulletin ->
             LaunchedEffect(bulletin.id) {
                 delay(4_000)
-                bulletins.remove(bulletin)
+                if (bulletins.firstOrNull()?.id == bulletin.id) {
+                    bulletins.removeAt(0)
+                }
             }
             Surface(
                 modifier = Modifier

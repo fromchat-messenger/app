@@ -15,8 +15,9 @@ object DesktopPluginBootstrap {
         PluginHookDispatcher.bulletinHandler = PluginBulletinStore::show
         PluginEngine.pluginsRootProvider = { desktopPluginsRoot().apply { mkdirs() } }
         PluginEngine.appVersionProvider = { ru.fromchat.AppBuildInfo.version }
-        installBundledPlugin(classLoader)
         PluginEngine.init()
+        installBundledPlugin(classLoader)
+        PluginEngine.refreshInstalledList()
         PluginEngine.dispatchAppEvent(AppEvent.START)
         FeatureGate.registerDefault("calls") { ru.fromchat.config.ServerConfig.callsEnabled }
     }

@@ -35,10 +35,10 @@ tasks.register("packageFcPlugin") {
             {
               "id": "hello_world",
               "name": "Hello World",
-              "description": "Demonstrates high-level send hooks and raw Logger.d hooks.",
+              "description": "Demonstrates high-level send hooks, raw Logger.d hooks, and raw main-nav hooks.",
               "author": "FromChat",
-              "version": "1.0.1",
-              "usage": "Send .hello Name in any chat to rewrite the message. Raw hook shows a bulletin when a message is queued for sending.",
+              "version": "1.0.3",
+              "usage": "Raw-hooks existing MainScreen/ContactsTab JVM methods (no app hook IDs). Also hides Devices/Logs settings and emoji; injects settings row, message menu item, and chat banner. Send .hello Name to test send hooks.",
               "app_version": ">=1.0.0",
               "sdk_version": ">=1.0.0",
               "entry_class": "ru.fromchat.plugins.sample.hello.HelloWorldPlugin",

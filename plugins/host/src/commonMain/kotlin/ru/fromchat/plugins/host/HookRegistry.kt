@@ -15,7 +15,7 @@ object HookRegistry {
         LOGGER_DEBUG to SharedHookTarget(
             className = "ru.fromchat.Logger",
             methodName = "d",
-            paramTypeNames = arrayOf("java.lang.String", "java.lang.String"),
+            paramTypeNames = arrayOf("java.lang.String", "java.lang.String", "java.lang.Throwable"),
         ),
     )
 }
@@ -23,6 +23,7 @@ object HookRegistry {
 data class SharedHookRegistration(
     val pluginId: String,
     val hookId: String,
+    val target: SharedHookTarget,
     val priority: Int,
     val before: ((Array<Any?>) -> HookResult<Array<Any?>>)?,
     val after: ((Array<Any?>, Any?) -> HookResult<Any?>)?,

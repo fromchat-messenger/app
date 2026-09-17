@@ -1,21 +1,16 @@
 package ru.fromchat.plugins.host
 
+import net.bytebuddy.ByteBuddy
 import net.bytebuddy.agent.ByteBuddyAgent
-import net.bytebuddy.implementation.MethodDelegation
-import net.bytebuddy.implementation.bind.annotation.AllArguments
-import net.bytebuddy.implementation.bind.annotation.Origin
-import net.bytebuddy.implementation.bind.annotation.RuntimeType
-import net.bytebuddy.implementation.bind.annotation.SuperCall
+import net.bytebuddy.asm.Advice
+import net.bytebuddy.dynamic.loading.ClassReloadingStrategy
 import net.bytebuddy.matcher.ElementMatchers
 import ru.fromchat.plugins.BasePlugin
-import ru.fromchat.plugins.HookResult
-import ru.fromchat.plugins.HookStrategy
 import ru.fromchat.plugins.PluginManifest
+import ru.fromchat.plugins.host.util.PluginLogger
 import java.io.File
 import java.lang.reflect.Method
 import java.net.URLClassLoader
-import java.util.concurrent.Callable
-import net.bytebuddy.ByteBuddy
 
 actual object PluginPlatform {
     actual val current: PluginPlatform? get() = this
@@ -26,14 +21,14 @@ actual object PluginPlatform {
     private var agentInstalled = false
 
     actual fun installSharedHook(registration: SharedHookRegistration) {
-        val target = SharedMethodHookRegistry.targetFor(registration.hookId) ?: return
-        val handle = JvmSharedHookHandle(registration, target)
+        val handle = JvmSharedHookHandle(registration, registration.target)
         handle.install()
         hookHandles.getOrPut(registration.pluginId) { mutableListOf() } += handle
     }
 
     actual fun uninstallSharedHook(registration: SharedHookRegistration) {
         hookHandles[registration.pluginId]?.removeAll { it.registration == registration }
+        HookAdviceBindings.unbind(registration)
     }
 
     actual fun loadPlugin(manifest: PluginManifest, pluginDir: String): LoadedPlugin? {
@@ -56,7 +51,7 @@ actual object PluginPlatform {
 
     private fun ensureAgent() {
         if (agentInstalled) return
-        runCatching { ByteBuddyAgent.install() }
+        ByteBuddyAgent.install()
         agentInstalled = true
     }
 
@@ -71,52 +66,37 @@ actual object PluginPlatform {
         private val target: SharedHookTarget,
     ) : SharedHookHandle {
         private var installed = false
+        private var boundMethod: Method? = null
 
         override fun install() {
             if (installed) return
-            ensureAgent()
-            val clazz = Class.forName(target.className)
-            val paramTypes = target.paramTypeNames.map { Class.forName(it) }.toTypedArray()
-            val method = clazz.getDeclaredMethod(target.methodName, *paramTypes)
-            ByteBuddy()
-                .redefine(clazz)
-                .method(ElementMatchers.named(target.methodName))
-                .intercept(MethodDelegation.to(JvmHookInterceptor(registration)))
-                .make()
-                .load(clazz.classLoader)
-            installed = true
+            runCatching {
+                ensureAgent()
+                val clazz = Class.forName(target.className)
+                val paramTypes = target.paramTypeNames.map { resolveJvmParameterType(it) }.toTypedArray()
+                val method = clazz.getDeclaredMethod(target.methodName, *paramTypes)
+                HookAdviceBindings.bind(method, registration)
+                boundMethod = method
+                ByteBuddy()
+                    .redefine(clazz)
+                    .visit(Advice.to(SharedHookAdvice::class.java).on(ElementMatchers.`is`(method)))
+                    .make()
+                    .load(clazz.classLoader, ClassReloadingStrategy.fromInstalledAgent())
+                installed = true
+            }.onFailure {
+                boundMethod?.let { HookAdviceBindings.unbind(registration) }
+                boundMethod = null
+                PluginLogger.log(
+                    registration.pluginId,
+                    "Raw hook install failed for ${target.className}.${target.methodName}: ${it.message}",
+                )
+            }
         }
 
         override fun uninstall() {
+            HookAdviceBindings.unbind(registration)
+            boundMethod = null
             installed = false
-        }
-    }
-
-    class JvmHookInterceptor(private val registration: SharedHookRegistration) {
-        @RuntimeType
-        fun intercept(
-            @AllArguments args: Array<Any?>,
-            @Origin method: Method,
-            @SuperCall callable: Callable<Any?>,
-        ): Any? {
-            registration.before?.let { before ->
-                val result = before(args)
-                when (result.strategy) {
-                    HookStrategy.CANCEL -> return null
-                    HookStrategy.MODIFY, HookStrategy.MODIFY_FINAL -> result.value?.let { return@intercept callable.call() }
-                    HookStrategy.DEFAULT -> Unit
-                }
-            }
-            val value = callable.call()
-            registration.after?.let { after ->
-                val result = after(args, value)
-                when (result.strategy) {
-                    HookStrategy.CANCEL -> return null
-                    HookStrategy.MODIFY, HookStrategy.MODIFY_FINAL -> return result.value
-                    HookStrategy.DEFAULT -> Unit
-                }
-            }
-            return value
         }
     }
 }

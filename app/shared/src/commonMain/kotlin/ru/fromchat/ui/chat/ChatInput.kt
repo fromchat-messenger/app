@@ -55,6 +55,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import ru.fromchat.ui.components.Text
+import ru.fromchat.plugins.integration.pluginFeatureEnabled
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -568,19 +569,21 @@ fun ChatInput(
                                 .padding(horizontal = 6.dp, vertical = 0.dp),
                             verticalAlignment = Alignment.Bottom,
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .padding(vertical = ChatInputIconSlotVerticalInset)
-                                    .size(ChatInputIconSlotSize)
-                                    .clip(CircleShape)
-                                    .clickable(onClick = { /* emoji picker to be wired */ }),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.SentimentSatisfied,
-                                    contentDescription = cdEmoji,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                            if (pluginFeatureEnabled("chat.emoji_picker")) {
+                                Box(
+                                    modifier = Modifier
+                                        .padding(vertical = ChatInputIconSlotVerticalInset)
+                                        .size(ChatInputIconSlotSize)
+                                        .clip(CircleShape)
+                                        .clickable(onClick = { /* emoji picker to be wired */ }),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.SentimentSatisfied,
+                                        contentDescription = cdEmoji,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             }
 
                             val inputTextStyle = MaterialTheme.typography.bodyLarge.merge(
