@@ -46,7 +46,9 @@ fun NavGraphBuilder.conversationDetailDestinations(
     sharedTransitionScope: SharedTransitionScope,
     scrollToMessageId: Int?,
 ) {
-    composable(PublicChatNav.CHAT_ROUTE) {
+    composable(
+        route = PublicChatNav.CHAT_ROUTE,
+    ) {
         PublicChatChatRoute(
             scrollToMessageId = scrollToMessageId,
             navController = navController,
@@ -55,7 +57,9 @@ fun NavGraphBuilder.conversationDetailDestinations(
         )
     }
 
-    composable(PublicChatNav.PROFILE_ROUTE) {
+    composable(
+        route = PublicChatNav.PROFILE_ROUTE,
+    ) {
         PublicChatProfileRoute(
             navController = navController,
             sharedTransitionScope = sharedTransitionScope,

@@ -341,6 +341,12 @@
 
     <string name="settings_category_appearance">Оформление</string>
     <string name="settings_category_appearance_d">Тема и Material You</string>
+    <string name="appearance_nav_bar_style">Стиль панели навигации</string>
+    <string name="appearance_nav_bar_style_d">Как выглядит нижняя панель навигации</string>
+    <string name="appearance_nav_bar_traditional">Классическая</string>
+    <string name="appearance_nav_bar_floating">Плавающая</string>
+    <string name="appearance_nav_bar_show_titles">Показывать названия вкладок</string>
+    <string name="appearance_nav_bar_show_titles_d">Показывать подпись выбранной вкладки</string>
     <string name="settings_category_server_tools">Сервер и инструменты</string>
     <string name="settings_category_server_tools_d">Смена сервера, отладка API</string>
     <string name="settings_category_notifications">Уведомления</string>

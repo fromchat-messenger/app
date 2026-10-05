@@ -98,6 +98,7 @@ import ru.fromchat.ui.chat.panels.dm.navigateToDmChat
 import ru.fromchat.ui.chat.panels.publicchat.PublicChatNav
 import ru.fromchat.ui.chat.panels.publicchat.navigateToPublicChat
 import ru.fromchat.ui.chat.utils.appRootAttachmentDropTarget
+import ru.fromchat.ui.components.provideSwitchHaptics
 import ru.fromchat.ui.main.ConversationListDetailShell
 import ru.fromchat.ui.main.DesktopChatsDetailNavHost
 import ru.fromchat.ui.main.DesktopContactsDetailNavHost
@@ -142,6 +143,10 @@ private fun standaloneProfileUserId(entry: NavBackStackEntry?): Int? {
     return entry.savedStateHandle.get<String>("userId")?.toIntOrNull()?.takeIf { it > 0 }
 }
 
+/**
+ * Root NavHost transitions — scale+fade for the primary
+ * flow (welcome ↔ auth ↔ chat).
+ */
 private val rootNavTween = tween<Float>(durationMillis = 250, easing = FastOutSlowInEasing)
 
 private fun rootNavEnterTransition(): EnterTransition =
@@ -356,6 +361,7 @@ fun App(
     }
 
     FromChatTheme {
+        provideSwitchHaptics {
         SharedTransitionLayout {
             val navController = rememberNavController()
             val chatsDetailNavController = rememberNavController()
@@ -777,6 +783,7 @@ fun App(
                     }
                 }
             }
+        }
         }
     }
 }

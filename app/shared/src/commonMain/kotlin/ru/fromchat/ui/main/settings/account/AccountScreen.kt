@@ -79,7 +79,7 @@ fun AccountScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             SettingsDetailTopBar(
-                title = { Text(stringResource(Res.string.settings_account_title)) },
+                title = stringResource(Res.string.settings_account_title),
                 onBack = onBack,
                 scrollBehavior = scrollBehavior,
             )
