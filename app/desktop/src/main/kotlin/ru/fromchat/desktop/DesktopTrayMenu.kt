@@ -97,8 +97,12 @@ internal fun DesktopTrayHost(
             onDispose {}
         } else {
             val trayIcon = TrayIcon(trayImage, tooltip)
-            trayIcon.isImageAutoSize = true
+            trayIcon.isImageAutoSize = !isLinuxOs()
+            var lastMenuOpenAtMs = 0L
             fun openMenu(event: MouseEvent) {
+                val now = System.currentTimeMillis()
+                if (now - lastMenuOpenAtMs < 250) return
+                lastMenuOpenAtMs = now
                 val screen = event.locationOnScreen
                 SwingUtilities.invokeLater {
                     menuAnchor = screen
@@ -107,14 +111,18 @@ internal fun DesktopTrayHost(
             }
             val listener = object : MouseAdapter() {
                 override fun mouseClicked(event: MouseEvent) {
-                    if (MouseEvent.BUTTON1 == event.button && event.clickCount == 1) {
-                        SwingUtilities.invokeLater { onShowState.value() }
+                    when {
+                        MouseEvent.BUTTON1 == event.button && event.clickCount == 1 ->
+                            SwingUtilities.invokeLater { onShowState.value() }
+                        MouseEvent.BUTTON3 == event.button ->
+                            openMenu(event)
                     }
                 }
 
                 override fun mousePressed(event: MouseEvent) {
                     if (event.isPopupTrigger) {
                         event.consume()
+                        openMenu(event)
                     }
                 }
 

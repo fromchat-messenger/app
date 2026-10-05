@@ -58,17 +58,25 @@ fun WindowScope.WindowsDesktopTitleBar(
     val windowActive = rememberWindowsFrameActive(window)
     val isMaximized = windowState.placement == WindowPlacement.Maximized
     val scheme = MaterialTheme.colorScheme
+    val useWindowsCaptionColors = isWindowsOs()
     val titleColor =
-        if (windowActive) {
-            Color.White
+        if (useWindowsCaptionColors) {
+            if (windowActive) Color.White else Color.White.copy(alpha = 0.63f)
         } else {
-            Color.White.copy(alpha = 0.63f)
+            if (windowActive) scheme.onSurface else scheme.onSurface.copy(alpha = 0.63f)
+        }
+    val barBackground =
+        if (useWindowsCaptionColors) {
+            Color.Transparent
+        } else {
+            scheme.surfaceContainerHigh
         }
 
     Row(
         modifier
             .fillMaxWidth()
-            .height(WindowsTitleBarHeight),
+            .height(WindowsTitleBarHeight)
+            .background(barBackground),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         WindowDraggableArea(
@@ -97,16 +105,18 @@ fun WindowScope.WindowsDesktopTitleBar(
             }
         }
         TitleBarWindowButton(
-            onClick = { window.windowsMinimize() },
+            onClick = { window.desktopMinimize(windowState) },
             windowActive = windowActive,
             isClose = false,
+            useWindowsCaptionColors = useWindowsCaptionColors,
         ) {
             TitleBarRemoveIcon(tint = it)
         }
         TitleBarWindowButton(
-            onClick = { window.windowsToggleMaximize(windowState) },
+            onClick = { window.desktopToggleMaximize(windowState) },
             windowActive = windowActive,
             isClose = false,
+            useWindowsCaptionColors = useWindowsCaptionColors,
         ) {
             if (isMaximized) {
                 TitleBarRestoreIcon(tint = it)
@@ -118,6 +128,7 @@ fun WindowScope.WindowsDesktopTitleBar(
             onClick = onCloseRequest,
             windowActive = windowActive,
             isClose = true,
+            useWindowsCaptionColors = useWindowsCaptionColors,
         ) {
             TitleBarCloseIcon(tint = it)
         }
@@ -129,6 +140,7 @@ private fun TitleBarWindowButton(
     onClick: () -> Unit,
     windowActive: Boolean,
     isClose: Boolean,
+    useWindowsCaptionColors: Boolean,
     icon: @Composable (Color) -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -137,8 +149,10 @@ private fun TitleBarWindowButton(
     val scheme = MaterialTheme.colorScheme
     val iconTint = when {
         isClose && (hovered || pressed) -> scheme.onError
-        windowActive -> Color.White
-        else -> Color.White.copy(alpha = 0.63f)
+        useWindowsCaptionColors && windowActive -> Color.White
+        useWindowsCaptionColors -> Color.White.copy(alpha = 0.63f)
+        windowActive -> scheme.onSurface
+        else -> scheme.onSurface.copy(alpha = 0.63f)
     }
     val hoverAlpha = when {
         isClose && (hovered || pressed) -> TitleBarCloseHoverAlpha

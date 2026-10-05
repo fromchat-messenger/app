@@ -55,21 +55,21 @@ fun DatabaseLockWindow(
     onKillProcess: (Long) -> Unit,
     onQuit: () -> Unit,
 ) {
-    val windows = remember { isWindowsOs() }
+    val customFrame = remember { usesCustomDesktopFrame() }
     val windowState = rememberWindowState(width = 420.dp, height = 480.dp)
     Window(
         onCloseRequest = onQuit,
         title = appName,
         state = windowState,
         icon = windowIcon,
-        undecorated = windows,
+        undecorated = customFrame,
         resizable = false,
     ) {
         DesktopRootSurface(
             appName = appName,
             windowIcon = windowIcon,
             dockIconImage = dockIconImage,
-            windows = windows,
+            customFrame = customFrame,
             windowState = windowState,
             onCloseRequest = onQuit,
         ) {
@@ -77,7 +77,7 @@ fun DatabaseLockWindow(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(
-                        top = if (windows) WindowsTitleBarHeight + 24.dp else 24.dp,
+                        top = if (customFrame) WindowsTitleBarHeight + 24.dp else 24.dp,
                         start = 32.dp,
                         end = 32.dp,
                         bottom = 24.dp,

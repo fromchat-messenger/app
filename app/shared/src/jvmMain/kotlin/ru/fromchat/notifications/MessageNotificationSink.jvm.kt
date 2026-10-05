@@ -9,7 +9,9 @@ import ru.fromchat.desktop.DesktopAppVisibility
 import ru.fromchat.desktop.DesktopNotificationSettings
 import ru.fromchat.desktop.DesktopNotifier
 import ru.fromchat.desktop.DesktopTaskbarBadge
+import ru.fromchat.desktop.LinuxDesktopNotifications
 import ru.fromchat.desktop.MacNotificationCenter
+import ru.fromchat.desktop.WindowsDesktopNotifications
 import ru.fromchat.public_chat
 import ru.fromchat.ui.chat.panels.publicchat.isPublicChatVisible
 
@@ -43,13 +45,30 @@ internal actual object MessageNotificationSink {
             "present id=${notification.identifier} update=${notification.isUpdate} " +
                 "titleLen=${title.length} subtitleLen=${subtitle.length} bodyLen=${notification.body.length}",
         )
-        val native = MacNotificationCenter.deliver(
-            title = title,
-            body = notification.body,
-            subtitle = subtitle,
-            identifier = notification.identifier,
-            playSound = !notification.isUpdate,
-        )
+        val os = System.getProperty("os.name").orEmpty().lowercase()
+        val native = when {
+            os.contains("mac") ->
+                MacNotificationCenter.deliver(
+                    title = title,
+                    body = notification.body,
+                    subtitle = subtitle,
+                    identifier = notification.identifier,
+                    playSound = !notification.isUpdate,
+                )
+            os.contains("win") ->
+                WindowsDesktopNotifications.deliver(
+                    title = title,
+                    body = notification.body,
+                    subtitle = subtitle,
+                )
+            os.contains("linux") ->
+                LinuxDesktopNotifications.deliver(
+                    title = title,
+                    body = notification.body,
+                    subtitle = subtitle,
+                )
+            else -> false
+        }
         if (!native) {
             DesktopNotifier.showAwtFallback(
                 title,

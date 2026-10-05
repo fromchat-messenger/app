@@ -48,7 +48,7 @@ internal fun FrameWindowScope.DesktopRootSurface(
     appName: String,
     windowIcon: Painter,
     dockIconImage: BufferedImage?,
-    windows: Boolean,
+    customFrame: Boolean,
     windowState: WindowState,
     onCloseRequest: () -> Unit,
     content: @Composable () -> Unit,
@@ -60,12 +60,12 @@ internal fun FrameWindowScope.DesktopRootSurface(
         windowChrome.toAwtColor().also {
             window.background = it
             window.contentPane.background = it
-            if (windows) {
+            if (customFrame && isWindowsOs()) {
                 updateWindowsNativeCaptionBackground(window, it)
             }
         }
 
-        if (windows) {
+        if (customFrame && isWindowsOs()) {
             installWindowsNativeCaptionChrome(window)
             applyWindowsRoundedCorners(window)
         }
@@ -84,7 +84,7 @@ internal fun FrameWindowScope.DesktopRootSurface(
     FromChatTheme(darkTheme = desktopAppDarkTheme()) {
         CompositionLocalProvider(
             LocalExtraStatusBarTop provides when {
-                windows -> WindowsTitleBarHeight
+                customFrame -> WindowsTitleBarHeight
                 else -> 0.dp
             },
         ) {
@@ -94,7 +94,7 @@ internal fun FrameWindowScope.DesktopRootSurface(
                     .background(windowChrome),
             ) {
                 content()
-                if (windows) {
+                if (customFrame) {
                     MaterialTheme(colorScheme = getColorScheme(desktopAppDarkTheme(), dynamicColor = false)) {
                         WindowsDesktopTitleBar(
                             title = appName,
