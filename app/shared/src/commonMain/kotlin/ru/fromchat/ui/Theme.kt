@@ -2,15 +2,18 @@ package ru.fromchat.ui
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import ru.fromchat.config.Settings
-import ru.fromchat.ui.components.googleSansMaterialTypography
+import ru.fromchat.ui.components.googleSansFlexTypography
 
 enum class Theme {
     AsSystem,
@@ -24,6 +27,18 @@ var dynamicThemeEnabled by mutableStateOf(
 
 var theme by mutableStateOf(
     runCatching { Settings.theme }.getOrNull() ?: Theme.AsSystem
+)
+
+/**
+ * Expressive shape scale used by the redesigned UI (cards, nav pill, CTAs).
+ * Independent of the color scheme, so it is shared across platforms.
+ */
+val expressiveShapes = Shapes(
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(8.dp),
+    medium = RoundedCornerShape(12.dp),
+    large = RoundedCornerShape(16.dp),
+    extraLarge = RoundedCornerShape(28.dp),
 )
 
 @Composable
@@ -122,7 +137,8 @@ fun FromChatTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = googleSansMaterialTypography(),
+        typography = googleSansFlexTypography(),
+        shapes = expressiveShapes,
         content = content
     )
 }
