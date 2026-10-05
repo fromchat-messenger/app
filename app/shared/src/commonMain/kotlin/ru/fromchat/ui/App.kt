@@ -9,6 +9,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.SnackbarDuration
@@ -98,6 +100,7 @@ import ru.fromchat.ui.chat.panels.dm.navigateToDmChat
 import ru.fromchat.ui.chat.panels.publicchat.PublicChatNav
 import ru.fromchat.ui.chat.panels.publicchat.navigateToPublicChat
 import ru.fromchat.ui.chat.utils.appRootAttachmentDropTarget
+import ru.fromchat.ui.components.provideSwitchHaptics
 import ru.fromchat.ui.main.ConversationListDetailShell
 import ru.fromchat.ui.main.DesktopChatsDetailNavHost
 import ru.fromchat.ui.main.DesktopContactsDetailNavHost
@@ -142,23 +145,53 @@ private fun standaloneProfileUserId(entry: NavBackStackEntry?): Int? {
     return entry.savedStateHandle.get<String>("userId")?.toIntOrNull()?.takeIf { it > 0 }
 }
 
-private val rootNavTween = tween<Float>(durationMillis = 250, easing = FastOutSlowInEasing)
-
+/**
+ * Root NavHost transitions — emphasized-spring scale+fade for the primary
+ * flow (welcome ↔ auth ↔ chat). List→detail routes (DMs, profiles, settings
+ * detail) get their own shared-axis transitions on each composable (see
+ * [conversationDetailDestinations] and friends).
+ */
 private fun rootNavEnterTransition(): EnterTransition =
-    scaleIn(initialScale = 0.9f, animationSpec = rootNavTween) +
-        fadeIn(animationSpec = rootNavTween)
+    scaleIn(initialScale = 0.92f, animationSpec = EmphasizedSpring) +
+        fadeIn(animationSpec = EmphasizedSpring)
 
 private fun rootNavExitTransition(): ExitTransition =
-    scaleOut(targetScale = 1.1f, animationSpec = rootNavTween) +
-        fadeOut(animationSpec = rootNavTween)
+    scaleOut(targetScale = 1.06f, animationSpec = EmphasizedSpring) +
+        fadeOut(animationSpec = EmphasizedSpring)
 
 private fun rootNavPopEnterTransition(): EnterTransition =
-    scaleIn(initialScale = 1.1f, animationSpec = rootNavTween) +
-        fadeIn(animationSpec = rootNavTween)
+    scaleIn(initialScale = 1.06f, animationSpec = EmphasizedSpring) +
+        fadeIn(animationSpec = EmphasizedSpring)
 
 private fun rootNavPopExitTransition(): ExitTransition =
-    scaleOut(targetScale = 0.9f, animationSpec = rootNavTween) +
-        fadeOut(animationSpec = rootNavTween)
+    scaleOut(targetScale = 0.92f, animationSpec = EmphasizedSpring) +
+        fadeOut(animationSpec = EmphasizedSpring)
+
+/**
+ * Shared-axis transition pair for list→detail screens. The target slides in
+ * from the right (a quarter of the screen) while scaling up from 0.92 and
+ * fading in; the source scales down and slides slightly left. Classic
+ * "expanding panel" feel from Material 3 Expressive.
+ */
+fun sharedAxisDetailEnter(): EnterTransition =
+    slideInHorizontally(animationSpec = SharedAxisSpring, initialOffsetX = { it / 4 }) +
+        scaleIn(initialScale = 0.92f, animationSpec = StandardSpring) +
+        fadeIn(animationSpec = StandardSpring)
+
+fun sharedAxisDetailExit(): ExitTransition =
+    slideOutHorizontally(animationSpec = SharedAxisSpring, targetOffsetX = { -it / 6 }) +
+        scaleOut(targetScale = 0.95f, animationSpec = StandardSpring) +
+        fadeOut(animationSpec = StandardSpring)
+
+fun sharedAxisDetailPopEnter(): EnterTransition =
+    slideInHorizontally(animationSpec = SharedAxisSpring, initialOffsetX = { -it / 6 }) +
+        scaleIn(initialScale = 0.95f, animationSpec = StandardSpring) +
+        fadeIn(animationSpec = StandardSpring)
+
+fun sharedAxisDetailPopExit(): ExitTransition =
+    slideOutHorizontally(animationSpec = SharedAxisSpring, targetOffsetX = { it / 4 }) +
+        scaleOut(targetScale = 1.04f, animationSpec = StandardSpring) +
+        fadeOut(animationSpec = StandardSpring)
 
 private val searchScreenFade = tween<Float>(durationMillis = 260)
 
@@ -356,6 +389,7 @@ fun App(
     }
 
     FromChatTheme {
+        provideSwitchHaptics {
         SharedTransitionLayout {
             val navController = rememberNavController()
             val chatsDetailNavController = rememberNavController()
@@ -777,6 +811,7 @@ fun App(
                     }
                 }
             }
+        }
         }
     }
 }

@@ -6,4 +6,8 @@ enum class HapticFeedbackEvent {
     MessageSent,
     ContextMenuOpened,
     SelectionModeEntered,
+    /** Light tick on touch-down of a switch — fires before the state flips. */
+    SwitchPress,
+    /** Heavier click at the commit moment — fires exactly when the state flips. */
+    SwitchToggle,
 }

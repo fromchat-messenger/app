@@ -17,7 +17,6 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TopAppBar
@@ -28,7 +27,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.pr0gramm3r101.components.Category
-import com.pr0gramm3r101.components.ListItem
 import com.pr0gramm3r101.utils.WindowWidthSizeClass
 import com.pr0gramm3r101.utils.currentWindowAdaptiveInfo
 import com.pr0gramm3r101.utils.verticalScroll
@@ -55,6 +53,8 @@ import ru.fromchat.settings_hub_logs_sub
 import ru.fromchat.settings_hub_profile_sub
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.components.Text
+import ru.fromchat.ui.components.ExpressiveListItem
+import ru.fromchat.ui.components.ExpressiveTints
 import ru.fromchat.ui.extraStatusBars
 import ru.fromchat.ui.main.LocalConversationListDetailActive
 import ru.fromchat.ui.main.LocalDesktopSettingsNavController
@@ -111,72 +111,88 @@ fun SettingsTab() {
 
             if (isTwoPane) {
                 Category(Modifier.padding(top = 16.dp)) {
-                    ListItem(
+                    ExpressiveListItem(
+                        icon = Icons.Filled.Person,
+                        iconTint = ExpressiveTints.LightBlue,
+                        iconSubTint = ExpressiveTints.Blue,
                         headline = stringResource(Res.string.profile),
                         supportingText = stringResource(Res.string.settings_hub_profile_sub),
                         onClick = {
-                            val userId = ApiClient.user?.id?.takeIf { it > 0 } ?: return@ListItem
+                            val userId = ApiClient.user?.id?.takeIf { it > 0 } ?: return@ExpressiveListItem
                             openDetail("profile/$userId")
                         },
-                        leadingContent = { Icon(Icons.Filled.Person, null) },
                     )
                 }
             }
 
             Category(Modifier.padding(top = 16.dp)) {
-                ListItem(
+                ExpressiveListItem(
+                    icon = Icons.Filled.AccountCircle,
+                    iconTint = ExpressiveTints.LightGreen,
+                    iconSubTint = ExpressiveTints.Green,
                     headline = stringResource(Res.string.settings_category_account),
                     supportingText = stringResource(Res.string.settings_category_account_d),
                     onClick = { openDetail(SettingsRoutes.Account) },
-                    leadingContent = { Icon(Icons.Filled.AccountCircle, null) },
                     divider = true
                 )
 
-                ListItem(
+                ExpressiveListItem(
+                    icon = Icons.Filled.Devices,
+                    iconTint = ExpressiveTints.LightBlue,
+                    iconSubTint = ExpressiveTints.Blue,
                     headline = stringResource(Res.string.settings_category_devices),
                     supportingText = stringResource(Res.string.settings_category_devices_d),
                     onClick = { openDetail(SettingsRoutes.Devices) },
-                    leadingContent = { Icon(Icons.Filled.Devices, null) },
                     divider = true
                 )
 
-                ListItem(
+                ExpressiveListItem(
+                    icon = Icons.Filled.Palette,
+                    iconTint = ExpressiveTints.LightPurple,
+                    iconSubTint = ExpressiveTints.Purple,
                     headline = stringResource(Res.string.settings_category_appearance),
                     supportingText = stringResource(Res.string.settings_category_appearance_d),
                     onClick = { openDetail(SettingsRoutes.Appearance) },
-                    leadingContent = { Icon(Icons.Filled.Palette, null) },
                     divider = true
                 )
 
-                ListItem(
+                ExpressiveListItem(
+                    icon = Icons.Filled.Notifications,
+                    iconTint = ExpressiveTints.LightYellow,
+                    iconSubTint = ExpressiveTints.Yellow,
                     headline = stringResource(Res.string.settings_category_notifications),
                     supportingText = stringResource(Res.string.settings_category_notifications_d),
                     onClick = { openDetail(SettingsRoutes.Notifications) },
-                    leadingContent = { Icon(Icons.Filled.Notifications, null) },
                     divider = true
                 )
 
-                ListItem(
+                ExpressiveListItem(
+                    icon = Icons.Filled.Storage,
+                    iconTint = ExpressiveTints.LightRed,
+                    iconSubTint = ExpressiveTints.Red,
                     headline = stringResource(Res.string.change_server),
                     supportingText = stringResource(Res.string.change_server_d),
                     onClick = { openDetail(SettingsRoutes.ServerConfig) },
-                    leadingContent = { Icon(Icons.Filled.Storage, null) },
                     divider = true
                 )
 
-                ListItem(
+                ExpressiveListItem(
+                    icon = Icons.Filled.Info,
+                    iconTint = ExpressiveTints.LightGreen,
+                    iconSubTint = ExpressiveTints.Green,
                     headline = stringResource(Res.string.about),
                     supportingText = stringResource(Res.string.settings_hub_about_sub),
                     onClick = { openDetail(SettingsRoutes.About) },
-                    leadingContent = { Icon(Icons.Filled.Info, null) },
                     divider = true
                 )
 
-                ListItem(
+                ExpressiveListItem(
+                    icon = Icons.Outlined.BugReport,
+                    iconTint = ExpressiveTints.LightBlue,
+                    iconSubTint = ExpressiveTints.Blue,
                     headline = stringResource(Res.string.logs_title),
                     supportingText = stringResource(Res.string.settings_hub_logs_sub),
                     onClick = { openDetail(SettingsRoutes.Logs) },
-                    leadingContent = { Icon(Icons.Outlined.BugReport, null) }
                 )
             }
         }
