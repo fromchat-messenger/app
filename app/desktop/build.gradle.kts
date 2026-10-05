@@ -180,6 +180,49 @@ private fun assertWindowsAppImageArch(appImageRoot: File) {
     assertWindowsBinaryArch(jli, "Bundled JRE (jli.dll)")
 }
 
+/** MSVC/UCRT beside the launcher + explicit runtime path for clean Windows VMs. */
+fun stageWindowsJpackageRuntime(appImageRoot: File) {
+    if (!System.getProperty("os.name").orEmpty().lowercase().contains("win")) return
+    val launcher = findJpackageAppExe(appImageRoot)
+    val launcherDir = launcher.parentFile ?: return
+    val runtimeBin = appImageRoot.resolve("runtime/bin")
+    if (!runtimeBin.isDirectory) return
+
+    val cfg = appImageRoot.resolve("app/FromChat.cfg")
+    if (cfg.isFile) {
+        val text = cfg.readText()
+        if (!text.contains("app.runtime=")) {
+            val runtimeLine = "app.runtime=\$APPDIR\\..\\runtime"
+            val updated = if (text.contains("[Application]")) {
+                text.replace("[Application]", "[Application]\n$runtimeLine")
+            } else {
+                "[Application]\n$runtimeLine\n$text"
+            }
+            cfg.writeText(updated)
+        }
+    }
+
+    val dllNames = listOf(
+        "vcruntime140.dll",
+        "vcruntime140_1.dll",
+        "msvcp140.dll",
+        "msvcp140_1.dll",
+        "msvcp140_2.dll",
+        "ucrtbase.dll",
+    )
+    for (name in dllNames) {
+        val src = runtimeBin.resolve(name)
+        if (!src.isFile) continue
+        for (targetDir in listOf(launcherDir, runtimeBin, runtimeBin.resolve("server"))) {
+            if (!targetDir.isDirectory) continue
+            val target = targetDir.resolve(name)
+            if (!target.isFile) {
+                src.copyTo(target, overwrite = false)
+            }
+        }
+    }
+}
+
 fun resolvePackagingJdkHome(): String {
     System.getenv("FROMCHAT_PACKAGING_JDK")?.takeIf { it.isNotBlank() }?.let { candidate ->
         if (isWindowsArm64Host()) {
@@ -1201,6 +1244,7 @@ afterEvaluate {
                 else -> debugAppImageDir.get().asFile
             }
             assertWindowsAppImageArch(appImageRoot)
+            stageWindowsJpackageRuntime(appImageRoot)
             if (!isWindowsArm64Host()) return@doLast
             val appDir = appImageRoot.resolve("app")
             syncWindowsArm64SkikoNatives(appDir, configurations.runtimeClasspath.get().files)

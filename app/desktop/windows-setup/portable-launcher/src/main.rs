@@ -104,7 +104,7 @@ fn is_installed_beta_launcher(exe: &Path) -> bool {
 }
 
 fn is_true_portable_layout(dir: &Path) -> bool {
-    dir.join("fromchat-data").is_dir() && !dir.join("runtime").is_dir()
+    dir.join("fromchat-data").is_dir()
 }
 
 fn find_app_exe(dir: &PathBuf) -> Result<PathBuf> {

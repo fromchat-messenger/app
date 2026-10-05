@@ -64,7 +64,12 @@ object DesktopNotifier {
                 "subtitleLen=${payload.subtitle.length} bodyLen=${payload.body.length} " +
                 "launch=$launchTarget",
         )
-        sink?.invoke(payload) ?: showAwtBalloon(payload.title, payload.displayBody())
+        if (sink != null) {
+            sink.invoke(payload)
+            return
+        }
+        if (deliverNative(payload)) return
+        showAwtBalloon(payload.title, payload.displayBody())
     }
 
     /** Opens the chat referenced by [identifier], or the most recent notification if unknown. */
@@ -80,7 +85,31 @@ object DesktopNotifier {
     }
 
     fun showAwtFallback(title: String, body: String) {
+        val payload = DesktopNotificationPayload(title = title, body = body)
+        if (deliverNative(payload)) return
         showAwtBalloon(title, body)
+    }
+
+    internal fun deliverPlatformNative(payload: DesktopNotificationPayload): Boolean =
+        deliverNative(payload)
+
+    private fun deliverNative(payload: DesktopNotificationPayload): Boolean {
+        val os = System.getProperty("os.name").orEmpty().lowercase()
+        return when {
+            os.contains("win") ->
+                WindowsDesktopNotifications.deliver(
+                    title = payload.title,
+                    body = payload.body,
+                    subtitle = payload.subtitle,
+                )
+            os.contains("linux") ->
+                LinuxDesktopNotifications.deliver(
+                    title = payload.title,
+                    body = payload.body,
+                    subtitle = payload.subtitle,
+                )
+            else -> false
+        }
     }
 
     private fun showAwtBalloon(title: String, body: String) {

@@ -352,6 +352,7 @@ fun main(args: Array<String>) {
 
         val mac = remember { isMacOs() }
         val windows = remember { isWindowsOs() }
+        val customFrame = remember { usesCustomDesktopFrame() }
         val windowIcon = remember {
             dockIconImage?.toPainter() ?: loadAppIconPainter(tray = false)
         }
@@ -449,7 +450,7 @@ fun main(args: Array<String>) {
                             Notification(title = payload.title, message = payload.displayBody()),
                         )
                     } else {
-                        Logger.i("DesktopNotifier", "sink fallback AWT balloon")
+                        Logger.i("DesktopNotifier", "sink fallback native/AWT notification")
                         DesktopNotifier.showAwtFallback(payload.title, payload.displayBody())
                     }
                 }
@@ -586,7 +587,7 @@ fun main(args: Array<String>) {
             state = windowState,
             visible = contentReady && (windowVisible || !traySupported),
             icon = windowIcon,
-            undecorated = windows,
+            undecorated = customFrame,
             onPreviewKeyEvent = { event ->
                 // macOS: MenuBar KeyShortcuts handle these. Win/Linux: no menu bar.
                 if (mac || event.type != KeyEventType.KeyDown || !event.isCtrlPressed) {
@@ -635,12 +636,12 @@ fun main(args: Array<String>) {
                 windowChrome.toAwtColor().also {
                     window.background = it
                     window.contentPane.background = it
-                    if (windows) {
+                    if (customFrame && windows) {
                         updateWindowsNativeCaptionBackground(window, it)
                     }
                 }
 
-                if (windows) {
+                if (customFrame && windows) {
                     installWindowsNativeCaptionChrome(window)
                     applyWindowsRoundedCorners(window)
                 }
@@ -725,7 +726,7 @@ fun main(args: Array<String>) {
             CompositionLocalProvider(
                 LocalExtraStatusBarTop provides when {
                     mac -> 28.dp
-                    windows -> WindowsTitleBarHeight
+                    customFrame -> WindowsTitleBarHeight
                     else -> 0.dp
                 },
             ) {
@@ -735,7 +736,7 @@ fun main(args: Array<String>) {
                         .background(windowChrome),
                 ) {
                     App(onContentReady = { contentReady = true })
-                    if (windows) {
+                    if (customFrame) {
                         MaterialTheme(colorScheme = getColorScheme(desktopAppDarkTheme(), dynamicColor = false)) {
                             WindowsDesktopTitleBar(
                                 title = appName,
@@ -952,6 +953,9 @@ private fun loadAppIconBufferedImage(tray: Boolean): BufferedImage? {
     }
 
     for (name in names) {
+        if (tray && isLinuxOs() && name.startsWith("app_window_icon")) {
+            continue
+        }
         return ensureArgb(
             (
                 decodeImageBytes(
@@ -976,7 +980,7 @@ private fun loadAppIconBufferedImage(tray: Boolean): BufferedImage? {
                 }
             }
         )
-            .let { if (tray) scaleBufferedImage(it, 64) else it }
+            .let { if (tray) prepareTrayIcon(it) else it }
             .also {
                 Logger.i("DesktopIcon", "Loaded $name (${it.width}x${it.height}) tray=$tray")
             }
@@ -1082,6 +1086,39 @@ private fun bufferedImageFromComposeArgb(
     val out = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
     out.setRGB(0, 0, w, h, pixels, 0, w)
 
+    return out
+}
+
+private fun prepareTrayIcon(source: BufferedImage): BufferedImage {
+    val transparent = stripTrayMatteBackground(source)
+    val size = if (isLinuxOs()) linuxTrayIconSize() else 64
+    return scaleBufferedImage(transparent, size)
+}
+
+private fun linuxTrayIconSize(): Int {
+    val scale = System.getenv("GDK_SCALE")?.toFloatOrNull() ?: 1f
+    return (22f * scale).toInt().coerceIn(22, 48)
+}
+
+private fun stripTrayMatteBackground(source: BufferedImage): BufferedImage {
+    val argb = ensureArgb(source)
+    val out = BufferedImage(argb.width, argb.height, BufferedImage.TYPE_INT_ARGB)
+    for (y in 0 until argb.height) {
+        for (x in 0 until argb.width) {
+            val pixel = argb.getRGB(x, y)
+            val alpha = pixel ushr 24 and 0xFF
+            val red = pixel ushr 16 and 0xFF
+            val green = pixel ushr 8 and 0xFF
+            val blue = pixel and 0xFF
+            val replacementAlpha = when {
+                alpha < 16 -> 0
+                red < 20 && green < 20 && blue < 20 -> 0
+                red > 245 && green > 245 && blue > 245 -> 0
+                else -> alpha
+            }
+            out.setRGB(x, y, (replacementAlpha shl 24) or (pixel and 0x00FFFFFF))
+        }
+    }
     return out
 }
 

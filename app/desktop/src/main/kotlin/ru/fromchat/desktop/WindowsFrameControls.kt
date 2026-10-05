@@ -61,6 +61,29 @@ internal fun Window.windowsToggleMaximize(windowState: WindowState) {
     }
 }
 
+internal fun Window.desktopMinimize(windowState: WindowState) {
+    if (isWindowsOs()) {
+        windowsMinimize()
+        return
+    }
+    val frame = this as? Frame ?: return
+    frame.extendedState = frame.extendedState or Frame.ICONIFIED
+    windowState.isMinimized = true
+}
+
+internal fun Window.desktopToggleMaximize(windowState: WindowState) {
+    if (isWindowsOs()) {
+        windowsToggleMaximize(windowState)
+        return
+    }
+    windowState.placement =
+        if (windowState.placement == WindowPlacement.Maximized) {
+            WindowPlacement.Floating
+        } else {
+            WindowPlacement.Maximized
+        }
+}
+
 @Composable
 internal fun Window.syncWindowsPlacementFromNative(windowState: WindowState) {
     DisposableEffect(this, windowState) {
