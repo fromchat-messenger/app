@@ -1,0 +1,33 @@
+name: Hash release build inputs
+description: Fingerprint tracked sources that affect release builds (excludes docs like README and RELEASE_NOTES)
+
+outputs:
+  hash:
+    description: SHA-256 of tracked build input files
+    value: ${{ steps.hash.outputs.hash }}
+
+runs:
+  using: composite
+  steps:
+    - id: hash
+      shell: bash
+      run: |
+        set -euo pipefail
+        HASH="$(
+          while IFS= read -r -d '' file; do
+            case "$file" in
+              *.md) continue ;;
+            esac
+            sha256sum "$file"
+          done < <(git ls-files -z -- \
+            gradle \
+            build.gradle.kts \
+            settings.gradle.kts \
+            gradle.properties \
+            app \
+            utils \
+            .github/workflows/release.yml \
+            .github/actions) \
+          | sha256sum | awk '{print $1}'
+        )"
+        echo "hash=$HASH" >> "$GITHUB_OUTPUT"

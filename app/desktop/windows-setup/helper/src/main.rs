@@ -98,6 +98,7 @@ fn dispatch(handle: fromchat_installer_common::PipeHandle, cmd: HelperCommand) -
                 &serde_json::to_string(&ProgressEvent::Progress { fraction: 0.7 })?,
             )?;
             let app_exe = find_jpackage_app_exe(&dest)?;
+            stage_windows_jpackage_runtime(&dest, &app_exe)?;
             patch_jpackage_exe_icon(&app_exe)
                 .with_context(|| format!("patch icon on {}", app_exe.display()))?;
             let launch_exe = finalize_install_launcher(&dest, edition, &launcher_bytes)?;
@@ -224,6 +225,7 @@ fn dispatch(handle: fromchat_installer_common::PipeHandle, cmd: HelperCommand) -
                 &serde_json::to_string(&ProgressEvent::Progress { fraction: 0.7 })?,
             )?;
             let app_exe = find_jpackage_app_exe(&dest)?;
+            stage_windows_jpackage_runtime(&dest, &app_exe)?;
             patch_jpackage_exe_icon(&app_exe)
                 .with_context(|| format!("patch icon on {}", app_exe.display()))?;
             let launch_exe = finalize_install_launcher(&dest, edition, &launcher_bytes)?;
@@ -267,6 +269,44 @@ fn dispatch(handle: fromchat_installer_common::PipeHandle, cmd: HelperCommand) -
                 })?,
             )?;
             let _ = app_exe;
+        }
+    }
+    Ok(())
+}
+
+/// Ensures MSVC/UCRT DLLs are beside the jpackage launcher and JVM server dir on clean Windows VMs.
+fn stage_windows_jpackage_runtime(dest: &Path, app_exe: &Path) -> Result<()> {
+    let runtime_bin = dest.join("runtime").join("bin");
+    if !runtime_bin.is_dir() {
+        return Ok(());
+    }
+    let app_dir = app_exe
+        .parent()
+        .context("jpackage launcher has no parent directory")?;
+    let server_dir = runtime_bin.join("server");
+    let dll_names = [
+        "vcruntime140.dll",
+        "vcruntime140_1.dll",
+        "msvcp140.dll",
+        "msvcp140_1.dll",
+        "msvcp140_2.dll",
+        "ucrtbase.dll",
+    ];
+    for name in dll_names {
+        let src = runtime_bin.join(name);
+        if !src.is_file() {
+            continue;
+        }
+        for target_dir in [app_dir, &runtime_bin, &server_dir] {
+            if !target_dir.is_dir() {
+                continue;
+            }
+            let target = target_dir.join(name);
+            if target.is_file() {
+                continue;
+            }
+            fs::copy(&src, &target)
+                .with_context(|| format!("copy {} to {}", src.display(), target.display()))?;
         }
     }
     Ok(())
