@@ -30,6 +30,8 @@ object Settings {
     private const val LAST_SERVER_INSTANCE_ID_KEY = "last_server_instance_id"
     private const val LAST_ACKNOWLEDGED_APP_VERSION_KEY = "last_acknowledged_app_version"
     private const val RELEASE_NOTES_PERMANENTLY_HIDDEN_KEY = "release_notes_permanently_hidden"
+    private const val NAV_BAR_STYLE_KEY = "nav_bar_style"
+    private const val NAV_BAR_SHOW_TITLE_KEY = "nav_bar_show_title"
 
     private val settings = PlatformSettings()
     private val deviceSessionsJson = Json { ignoreUnknownKeys = true }
@@ -82,6 +84,20 @@ object Settings {
     var theme: Theme
         get() = runBlocking { Theme.entries[settings.getInt(THEME_KEY, Theme.AsSystem.ordinal)] }
         set(value) = runIO { settings.putInt(THEME_KEY, value.ordinal) }
+
+    var navBarStyle: NavBarStyle
+        get() = runBlocking {
+            NavBarStyle.entries[settings.getInt(NAV_BAR_STYLE_KEY, NavBarStyle.Traditional.ordinal)]
+        }
+        set(value) = runIO { settings.putInt(NAV_BAR_STYLE_KEY, value.ordinal) }
+
+    /**
+     * When true, compact (single-pane) detail screens use the Pixel top app bar
+     * with an app "seed" chip instead of the stock collapsing app bar.
+     */
+    var navBarShowTitle: Boolean
+        get() = runBlocking { settings.getBoolean(NAV_BAR_SHOW_TITLE_KEY, true) }
+        set(value) = runIO { settings.putBoolean(NAV_BAR_SHOW_TITLE_KEY, value) }
 
     /**
      * When true, Enter sends the message and Shift+Enter inserts a newline.
@@ -203,4 +219,13 @@ object Settings {
     var releaseNotesPermanentlyHidden: Boolean
         get() = runBlocking { settings.getBoolean(RELEASE_NOTES_PERMANENTLY_HIDDEN_KEY, false) }
         set(value) = runIO { settings.putBoolean(RELEASE_NOTES_PERMANENTLY_HIDDEN_KEY, value) }
+}
+
+/** Main-screen bottom navigation bar style. */
+enum class NavBarStyle {
+    /** Standard [androidx.compose.material3.NavigationBar] with icon + text labels. */
+    Traditional,
+
+    /** Floating, fully-rounded pill bar (drag-to-swap, colorful haze). */
+    Floating,
 }
