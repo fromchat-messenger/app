@@ -4,7 +4,6 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.unit.IntOffset
 
 /**
  * Central spring / motion tokens shared by the expressive components and
@@ -31,12 +30,6 @@ val StandardSpring = spring<Float>(
 val TitleSpring = spring<Float>(
     dampingRatio = 0.82f,
     stiffness = 240f,
-)
-
-/** Shared-axis slide spring (IntOffset) — nav transitions slide, panel morphs. */
-val SharedAxisSpring = spring<IntOffset>(
-    dampingRatio = Spring.DampingRatioMediumBouncy,
-    stiffness = Spring.StiffnessMediumLow,
 )
 
 /** Full / CTA shape (nav pill, primary buttons) — fully rounded. */

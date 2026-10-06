@@ -9,8 +9,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.SnackbarDuration
@@ -146,52 +144,26 @@ private fun standaloneProfileUserId(entry: NavBackStackEntry?): Int? {
 }
 
 /**
- * Root NavHost transitions — emphasized-spring scale+fade for the primary
- * flow (welcome ↔ auth ↔ chat). List→detail routes (DMs, profiles, settings
- * detail) get their own shared-axis transitions on each composable (see
- * [conversationDetailDestinations] and friends).
+ * Root NavHost transitions — scale+fade for the primary
+ * flow (welcome ↔ auth ↔ chat).
  */
+private val rootNavTween = tween<Float>(durationMillis = 250, easing = FastOutSlowInEasing)
+
 private fun rootNavEnterTransition(): EnterTransition =
-    scaleIn(initialScale = 0.92f, animationSpec = EmphasizedSpring) +
-        fadeIn(animationSpec = EmphasizedSpring)
+    scaleIn(initialScale = 0.9f, animationSpec = rootNavTween) +
+        fadeIn(animationSpec = rootNavTween)
 
 private fun rootNavExitTransition(): ExitTransition =
-    scaleOut(targetScale = 1.06f, animationSpec = EmphasizedSpring) +
-        fadeOut(animationSpec = EmphasizedSpring)
+    scaleOut(targetScale = 1.1f, animationSpec = rootNavTween) +
+        fadeOut(animationSpec = rootNavTween)
 
 private fun rootNavPopEnterTransition(): EnterTransition =
-    scaleIn(initialScale = 1.06f, animationSpec = EmphasizedSpring) +
-        fadeIn(animationSpec = EmphasizedSpring)
+    scaleIn(initialScale = 1.1f, animationSpec = rootNavTween) +
+        fadeIn(animationSpec = rootNavTween)
 
 private fun rootNavPopExitTransition(): ExitTransition =
-    scaleOut(targetScale = 0.92f, animationSpec = EmphasizedSpring) +
-        fadeOut(animationSpec = EmphasizedSpring)
-
-/**
- * Shared-axis transition pair for list→detail screens. The target slides in
- * from the right (a quarter of the screen) while scaling up from 0.92 and
- * fading in; the source scales down and slides slightly left. Classic
- * "expanding panel" feel from Material 3 Expressive.
- */
-fun sharedAxisDetailEnter(): EnterTransition =
-    slideInHorizontally(animationSpec = SharedAxisSpring, initialOffsetX = { it / 4 }) +
-        scaleIn(initialScale = 0.92f, animationSpec = StandardSpring) +
-        fadeIn(animationSpec = StandardSpring)
-
-fun sharedAxisDetailExit(): ExitTransition =
-    slideOutHorizontally(animationSpec = SharedAxisSpring, targetOffsetX = { -it / 6 }) +
-        scaleOut(targetScale = 0.95f, animationSpec = StandardSpring) +
-        fadeOut(animationSpec = StandardSpring)
-
-fun sharedAxisDetailPopEnter(): EnterTransition =
-    slideInHorizontally(animationSpec = SharedAxisSpring, initialOffsetX = { -it / 6 }) +
-        scaleIn(initialScale = 0.95f, animationSpec = StandardSpring) +
-        fadeIn(animationSpec = StandardSpring)
-
-fun sharedAxisDetailPopExit(): ExitTransition =
-    slideOutHorizontally(animationSpec = SharedAxisSpring, targetOffsetX = { it / 4 }) +
-        scaleOut(targetScale = 1.04f, animationSpec = StandardSpring) +
-        fadeOut(animationSpec = StandardSpring)
+    scaleOut(targetScale = 0.9f, animationSpec = rootNavTween) +
+        fadeOut(animationSpec = rootNavTween)
 
 private val searchScreenFade = tween<Float>(durationMillis = 260)
 

@@ -71,6 +71,8 @@ import ru.fromchat.desktop.DesktopMenuCommands
 import ru.fromchat.profile
 import ru.fromchat.settings
 import ru.fromchat.ui.LocalNavController
+import ru.fromchat.ui.navBarShowTitle
+import ru.fromchat.ui.navBarStyle
 import ru.fromchat.ui.chat.rememberChatSurfaceContainerHazeStyle
 import ru.fromchat.ui.chat.panels.dm.navigateToDmChat
 import ru.fromchat.ui.components.BackHandler
@@ -267,7 +269,7 @@ fun MainScreen(
     val contactsLabel = stringResource(Res.string.contacts)
     val settingsLabel = stringResource(Res.string.settings)
     val profileLabel = stringResource(Res.string.profile)
-    val navBarStyle = AppSettings.navBarStyle
+    val navBarStyle = navBarStyle
 
     BoxWithConstraints(
         Modifier.fillMaxSize(),
@@ -349,7 +351,14 @@ fun MainScreen(
                     }
                     .then(
                         if (navBarStyle == NavBarStyle.Floating) {
-                            Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            Modifier.padding(
+                                start = 16.dp,
+                                end = 16.dp,
+                                top = 16.dp,
+                                bottom = 16.dp + WindowInsets.navigationBars.only(WindowInsetsSides.Bottom).let {
+                                    with(density) { it.getBottom(this).toDp() }
+                                },
+                            )
                         } else {
                             Modifier
                                 .background(MaterialTheme.colorScheme.surfaceContainer)
@@ -359,6 +368,7 @@ fun MainScreen(
             ) {
                 if (navBarStyle == NavBarStyle.Floating) {
                     FloatingNavBar(
+                        modifier = Modifier.fillMaxWidth(),
                         items =
                             listOf(
                                 FloatingNavItemSpec(PAGE_CHATS.toString(), Icons.AutoMirrored.Filled.Chat, chatsLabel),
@@ -367,6 +377,7 @@ fun MainScreen(
                                 FloatingNavItemSpec(PAGE_PROFILE.toString(), Icons.Filled.Person, profileLabel),
                             ),
                         selectedId = selectedPage.toString(),
+                        showTitles = navBarShowTitle,
                         onItemClick = { id ->
                             id.toIntOrNull()?.let { page ->
                                 selectMainPage(

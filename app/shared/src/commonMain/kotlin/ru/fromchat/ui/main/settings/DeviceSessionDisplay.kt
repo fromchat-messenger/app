@@ -145,14 +145,21 @@ internal fun deviceSessionIcon(d: DeviceSessionInfo): ImageVector {
     }
 }
 
-internal fun deviceSessionLogoResource(d: DeviceSessionInfo): DrawableResource? =
-    when (resolveDeviceOsName(d)?.lowercase()) {
+internal fun deviceSessionLogoResource(d: DeviceSessionInfo): DrawableResource? {
+    // Android (Compose MP AndroidRenderer) cannot rasterise SVG files and throws
+    // "Android platform doesn't support SVG format." when a .svg drawable is used
+    // via painterResource. On Android fall back to the vector [deviceSessionIcon].
+    if (!svgDrawablesSupported()) return null
+    return when (resolveDeviceOsName(d)?.lowercase()) {
         "windows" -> Res.drawable.os_windows
         "macos" -> Res.drawable.os_macos
         "linux" -> Res.drawable.os_linux
         else -> null
     }
+}
 
+/** True when the Compose renderer can load .svg drawables (JVM / iOS). */
+expect fun svgDrawablesSupported(): Boolean
 internal fun resolveDeviceOsName(d: DeviceSessionInfo): String? {
     val direct = normalizeDeviceOsName(d.osName)
     if (direct != null) return direct

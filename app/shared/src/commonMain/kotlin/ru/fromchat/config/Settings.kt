@@ -87,7 +87,7 @@ object Settings {
 
     var navBarStyle: NavBarStyle
         get() = runBlocking {
-            NavBarStyle.entries[settings.getInt(NAV_BAR_STYLE_KEY, NavBarStyle.Traditional.ordinal)]
+            NavBarStyle.entries[settings.getInt(NAV_BAR_STYLE_KEY, NavBarStyle.Floating.ordinal)]
         }
         set(value) = runIO { settings.putInt(NAV_BAR_STYLE_KEY, value.ordinal) }
 
