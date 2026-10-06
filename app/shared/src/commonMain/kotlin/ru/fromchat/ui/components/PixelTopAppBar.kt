@@ -45,8 +45,13 @@ import kotlin.time.Duration.Companion.milliseconds
  * rises in with a small per-word delay, giving the deliberate "reflow" feel.
  * Re-runs whenever [text] changes.
  */
+/**
+ * Word-by-word staggered reveal for the app bar title. Each word fades and
+ * rises in with a small per-word delay, giving the deliberate "reflow" feel.
+ * Re-runs whenever [text] changes.
+ */
 @Composable
-private fun AnimatedWordTitle(
+fun AnimatedWordTitle(
     text: String,
     modifier: Modifier = Modifier,
 ) {

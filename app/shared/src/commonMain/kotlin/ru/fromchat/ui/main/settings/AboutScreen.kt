@@ -30,7 +30,6 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.pr0gramm3r101.components.Category
 import com.pr0gramm3r101.components.ListItem
@@ -77,13 +76,7 @@ fun AboutScreen() {
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             SettingsDetailTopBar(
-                title = {
-                    Text(
-                        stringResource(Res.string.about),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
+                title = stringResource(Res.string.about),
                 onBack = { navController.navigateUp() },
                 scrollBehavior = scrollBehavior,
             )

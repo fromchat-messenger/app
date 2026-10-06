@@ -39,7 +39,14 @@ import com.pr0gramm3r101.utils.conditional
 import com.pr0gramm3r101.utils.materialYouAvailable
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
+import ru.fromchat.appearance_nav_bar_floating
+import ru.fromchat.appearance_nav_bar_show_titles
+import ru.fromchat.appearance_nav_bar_show_titles_d
+import ru.fromchat.appearance_nav_bar_style
+import ru.fromchat.appearance_nav_bar_style_d
+import ru.fromchat.appearance_nav_bar_traditional
 import ru.fromchat.as_system
+import ru.fromchat.config.NavBarStyle
 import ru.fromchat.config.Settings
 import ru.fromchat.dark
 import ru.fromchat.enter_to_send
@@ -52,6 +59,8 @@ import ru.fromchat.theme
 import ru.fromchat.ui.Theme
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.dynamicThemeEnabled
+import ru.fromchat.ui.navBarShowTitle
+import ru.fromchat.ui.navBarStyle
 import ru.fromchat.ui.theme
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -70,7 +79,7 @@ fun AppearanceScreen(onBack: () -> Unit) {
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             SettingsDetailTopBar(
-                title = { Text(stringResource(Res.string.settings_category_appearance)) },
+                title = stringResource(Res.string.settings_category_appearance),
                 onBack = onBack,
                 scrollBehavior = scrollBehavior,
             )
@@ -153,6 +162,52 @@ fun AppearanceScreen(onBack: () -> Unit) {
                             }
                         }
                     }
+                )
+            }
+
+            Category(
+                Modifier.padding(top = 8.dp),
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+            ) {
+                ListItem(
+                    headline = stringResource(Res.string.appearance_nav_bar_style),
+                    supportingText = stringResource(Res.string.appearance_nav_bar_style_d),
+                    leadingContent = { Icon(Icons.Filled.Brush, null) },
+                    divider = true,
+                    bottomContent = {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            NavBarStyle.entries.forEach { style ->
+                                FilterChip(
+                                    onClick = {
+                                        Settings.navBarStyle = style
+                                        navBarStyle = style
+                                    },
+                                    selected = navBarStyle == style,
+                                    label = {
+                                        Text(
+                                            text = if (style == NavBarStyle.Traditional) {
+                                                stringResource(Res.string.appearance_nav_bar_traditional)
+                                            } else {
+                                                stringResource(Res.string.appearance_nav_bar_floating)
+                                            },
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
+                )
+                SwitchListItem(
+                    headline = stringResource(Res.string.appearance_nav_bar_show_titles),
+                    supportingText = stringResource(Res.string.appearance_nav_bar_show_titles_d),
+                    enabled = navBarStyle == NavBarStyle.Floating,
+                    checked = navBarShowTitle,
+                    onCheckedChange = {
+                        Settings.navBarShowTitle = it
+                        navBarShowTitle = it
+                    },
+                    divider = false
                 )
             }
         }

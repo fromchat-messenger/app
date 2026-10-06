@@ -373,6 +373,12 @@
     <!-- Settings categories -->
     <string name="settings_category_appearance">Appearance</string>
     <string name="settings_category_appearance_d">Theme and Material You</string>
+    <string name="appearance_nav_bar_style">Navigation bar style</string>
+    <string name="appearance_nav_bar_style_d">How the bottom navigation bar looks</string>
+    <string name="appearance_nav_bar_traditional">Traditional</string>
+    <string name="appearance_nav_bar_floating">Floating</string>
+    <string name="appearance_nav_bar_show_titles">Show tab titles</string>
+    <string name="appearance_nav_bar_show_titles_d">Reveal the label of the selected tab</string>
     <string name="settings_category_server_tools">Server and tools</string>
     <string name="settings_category_server_tools_d">Change server, debug API</string>
     <string name="settings_category_notifications">Notifications</string>

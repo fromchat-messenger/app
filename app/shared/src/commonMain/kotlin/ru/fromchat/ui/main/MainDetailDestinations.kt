@@ -8,10 +8,6 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import ru.fromchat.Logger
-import ru.fromchat.ui.sharedAxisDetailEnter
-import ru.fromchat.ui.sharedAxisDetailExit
-import ru.fromchat.ui.sharedAxisDetailPopEnter
-import ru.fromchat.ui.sharedAxisDetailPopExit
 import ru.fromchat.legal.DocumentScreen
 import ru.fromchat.legal.DocumentType
 import ru.fromchat.ui.chat.panels.dm.DmChatRoute
@@ -52,10 +48,6 @@ fun NavGraphBuilder.conversationDetailDestinations(
 ) {
     composable(
         route = PublicChatNav.CHAT_ROUTE,
-        enterTransition = { sharedAxisDetailEnter() },
-        exitTransition = { sharedAxisDetailExit() },
-        popEnterTransition = { sharedAxisDetailPopEnter() },
-        popExitTransition = { sharedAxisDetailPopExit() },
     ) {
         PublicChatChatRoute(
             scrollToMessageId = scrollToMessageId,
@@ -67,10 +59,6 @@ fun NavGraphBuilder.conversationDetailDestinations(
 
     composable(
         route = PublicChatNav.PROFILE_ROUTE,
-        enterTransition = { sharedAxisDetailEnter() },
-        exitTransition = { sharedAxisDetailExit() },
-        popEnterTransition = { sharedAxisDetailPopEnter() },
-        popExitTransition = { sharedAxisDetailPopExit() },
     ) {
         PublicChatProfileRoute(
             navController = navController,
@@ -81,10 +69,6 @@ fun NavGraphBuilder.conversationDetailDestinations(
 
     composable(
         route = DmNav.CHAT_ROUTE,
-        enterTransition = { sharedAxisDetailEnter() },
-        exitTransition = { sharedAxisDetailExit() },
-        popEnterTransition = { sharedAxisDetailPopEnter() },
-        popExitTransition = { sharedAxisDetailPopExit() },
         arguments = listOf(
             navArgument("otherUserId") { type = NavType.StringType },
             navArgument("sourceMessageId") { type = NavType.StringType; defaultValue = "0" },
@@ -104,10 +88,6 @@ fun NavGraphBuilder.conversationDetailDestinations(
 
     composable(
         route = DmNav.PROFILE_ROUTE,
-        enterTransition = { sharedAxisDetailEnter() },
-        exitTransition = { sharedAxisDetailExit() },
-        popEnterTransition = { sharedAxisDetailPopEnter() },
-        popExitTransition = { sharedAxisDetailPopExit() },
         arguments = listOf(navArgument("otherUserId") { type = NavType.StringType }),
     ) { entry ->
         val otherUserId = entry.pathInt("otherUserId")
@@ -133,10 +113,6 @@ fun NavGraphBuilder.profileDetailDestinations(
 ) {
     composable(
         route = "profile/{userId}?fromDeepLink={fromDeepLink}",
-        enterTransition = { sharedAxisDetailEnter() },
-        exitTransition = { sharedAxisDetailExit() },
-        popEnterTransition = { sharedAxisDetailPopEnter() },
-        popExitTransition = { sharedAxisDetailPopExit() },
         arguments = listOf(
             navArgument("userId") { type = NavType.StringType },
             navArgument("fromDeepLink") {
@@ -182,10 +158,6 @@ fun NavGraphBuilder.profileDetailDestinations(
 
     composable(
         route = ProfileRoutes.Edit,
-        enterTransition = { sharedAxisDetailEnter() },
-        exitTransition = { sharedAxisDetailExit() },
-        popEnterTransition = { sharedAxisDetailPopEnter() },
-        popExitTransition = { sharedAxisDetailPopExit() },
         arguments = listOf(
             navArgument(ProfileRoutes.ARG_FOCUS) {
                 type = NavType.StringType
@@ -212,33 +184,15 @@ fun NavGraphBuilder.settingsDetailDestinations(
     navController: NavController,
     rootNavController: NavController = navController,
 ) {
-    composable(
-        "about",
-        enterTransition = { sharedAxisDetailEnter() },
-        exitTransition = { sharedAxisDetailExit() },
-        popEnterTransition = { sharedAxisDetailPopEnter() },
-        popExitTransition = { sharedAxisDetailPopExit() },
-    ) {
+    composable("about") {
         AboutScreen()
     }
 
-    composable(
-        SettingsRoutes.Logs,
-        enterTransition = { sharedAxisDetailEnter() },
-        exitTransition = { sharedAxisDetailExit() },
-        popEnterTransition = { sharedAxisDetailPopEnter() },
-        popExitTransition = { sharedAxisDetailPopExit() },
-    ) {
+    composable(SettingsRoutes.Logs) {
         LogsScreen()
     }
 
-    composable(
-        SettingsRoutes.LogFiles,
-        enterTransition = { sharedAxisDetailEnter() },
-        exitTransition = { sharedAxisDetailExit() },
-        popEnterTransition = { sharedAxisDetailPopEnter() },
-        popExitTransition = { sharedAxisDetailPopExit() },
-    ) {
+    composable(SettingsRoutes.LogFiles) {
         LogFilesScreen(
             onOpenFile = { file ->
                 navController.previousBackStackEntry
@@ -251,10 +205,6 @@ fun NavGraphBuilder.settingsDetailDestinations(
 
     composable(
         route = DocumentType.ROUTE,
-        enterTransition = { sharedAxisDetailEnter() },
-        exitTransition = { sharedAxisDetailExit() },
-        popEnterTransition = { sharedAxisDetailPopEnter() },
-        popExitTransition = { sharedAxisDetailPopExit() },
         arguments = listOf(
             navArgument(DocumentType.ARG_DOCUMENT_TYPE) { type = NavType.StringType },
         ),
@@ -274,56 +224,26 @@ fun NavGraphBuilder.settingsDetailDestinations(
         )
     }
 
-    composable(
-        SettingsRoutes.Appearance,
-        enterTransition = { sharedAxisDetailEnter() },
-        exitTransition = { sharedAxisDetailExit() },
-        popEnterTransition = { sharedAxisDetailPopEnter() },
-        popExitTransition = { sharedAxisDetailPopExit() },
-    ) {
+    composable(SettingsRoutes.Appearance) {
         AppearanceScreen(onBack = { navController.navigateUp() })
     }
 
-    composable(
-        SettingsRoutes.Notifications,
-        enterTransition = { sharedAxisDetailEnter() },
-        exitTransition = { sharedAxisDetailExit() },
-        popEnterTransition = { sharedAxisDetailPopEnter() },
-        popExitTransition = { sharedAxisDetailPopExit() },
-    ) {
+    composable(SettingsRoutes.Notifications) {
         NotificationsScreen(onBack = { navController.navigateUp() })
     }
 
-    composable(
-        SettingsRoutes.Devices,
-        enterTransition = { sharedAxisDetailEnter() },
-        exitTransition = { sharedAxisDetailExit() },
-        popEnterTransition = { sharedAxisDetailPopEnter() },
-        popExitTransition = { sharedAxisDetailPopExit() },
-    ) {
+    composable(SettingsRoutes.Devices) {
         DevicesScreen(onBack = { navController.navigateUp() })
     }
 
-    composable(
-        SettingsRoutes.SecurityPasswordFlow,
-        enterTransition = { sharedAxisDetailEnter() },
-        exitTransition = { sharedAxisDetailExit() },
-        popEnterTransition = { sharedAxisDetailPopEnter() },
-        popExitTransition = { sharedAxisDetailPopExit() },
-    ) {
+    composable(SettingsRoutes.SecurityPasswordFlow) {
         ChangePasswordScreen(
             onBack = { navController.navigateUp() },
             onDone = { navController.popBackStack() },
         )
     }
 
-    composable(
-        SettingsRoutes.AccountDeleteFlow,
-        enterTransition = { sharedAxisDetailEnter() },
-        exitTransition = { sharedAxisDetailExit() },
-        popEnterTransition = { sharedAxisDetailPopEnter() },
-        popExitTransition = { sharedAxisDetailPopExit() },
-    ) {
+    composable(SettingsRoutes.AccountDeleteFlow) {
         DeleteAccountScreen(
             onBack = { navController.navigateUp() },
             onDeleted = {
@@ -334,37 +254,19 @@ fun NavGraphBuilder.settingsDetailDestinations(
         )
     }
 
-    composable(
-        SettingsRoutes.AccountYandexFlow,
-        enterTransition = { sharedAxisDetailEnter() },
-        exitTransition = { sharedAxisDetailExit() },
-        popEnterTransition = { sharedAxisDetailPopEnter() },
-        popExitTransition = { sharedAxisDetailPopExit() },
-    ) {
+    composable(SettingsRoutes.AccountYandexFlow) {
         ChangeYandexConfirmScreen(
             onBack = { navController.navigateUp() },
         )
     }
 
-    composable(
-        SettingsRoutes.AccountYandexOAuth,
-        enterTransition = { sharedAxisDetailEnter() },
-        exitTransition = { sharedAxisDetailExit() },
-        popEnterTransition = { sharedAxisDetailPopEnter() },
-        popExitTransition = { sharedAxisDetailPopExit() },
-    ) {
+    composable(SettingsRoutes.AccountYandexOAuth) {
         ChangeYandexOAuthScreen(
             onBack = { navController.navigateUp() },
         )
     }
 
-    composable(
-        SettingsRoutes.AccountYandexDone,
-        enterTransition = { sharedAxisDetailEnter() },
-        exitTransition = { sharedAxisDetailExit() },
-        popEnterTransition = { sharedAxisDetailPopEnter() },
-        popExitTransition = { sharedAxisDetailPopExit() },
-    ) {
+    composable(SettingsRoutes.AccountYandexDone) {
         ChangeYandexDoneScreen(
             onDone = {
                 navController.popBackStack(SettingsRoutes.Account, inclusive = false)
@@ -372,13 +274,7 @@ fun NavGraphBuilder.settingsDetailDestinations(
         )
     }
 
-    composable(
-        SettingsRoutes.Account,
-        enterTransition = { sharedAxisDetailEnter() },
-        exitTransition = { sharedAxisDetailExit() },
-        popEnterTransition = { sharedAxisDetailPopEnter() },
-        popExitTransition = { sharedAxisDetailPopExit() },
-    ) {
+    composable(SettingsRoutes.Account) {
         AccountScreen(
             onBack = { navController.navigateUp() },
             onLogout = {
@@ -393,13 +289,7 @@ fun NavGraphBuilder.settingsDetailDestinations(
     }
 
     // Same route string as pre-auth server config on the root graph; fine on a nested graph.
-    composable(
-        SettingsRoutes.ServerConfig,
-        enterTransition = { sharedAxisDetailEnter() },
-        exitTransition = { sharedAxisDetailExit() },
-        popEnterTransition = { sharedAxisDetailPopEnter() },
-        popExitTransition = { sharedAxisDetailPopExit() },
-    ) {
+    composable(SettingsRoutes.ServerConfig) {
         ServerConfigScreen()
     }
 }

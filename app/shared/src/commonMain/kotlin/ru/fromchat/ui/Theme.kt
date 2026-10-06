@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import ru.fromchat.config.NavBarStyle
 import ru.fromchat.config.Settings
 import ru.fromchat.ui.components.googleSansFlexTypography
 
@@ -27,6 +28,14 @@ var dynamicThemeEnabled by mutableStateOf(
 
 var theme by mutableStateOf(
     runCatching { Settings.theme }.getOrNull() ?: Theme.AsSystem
+)
+
+var navBarStyle by mutableStateOf(
+    runCatching { Settings.navBarStyle }.getOrNull() ?: NavBarStyle.Floating
+)
+
+var navBarShowTitle by mutableStateOf(
+    runCatching { Settings.navBarShowTitle }.getOrNull() ?: true
 )
 
 /**

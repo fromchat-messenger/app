@@ -8,14 +8,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Devices
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material.icons.rounded.AccountCircle
+import androidx.compose.material.icons.rounded.Devices
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -112,9 +112,8 @@ fun SettingsTab() {
             if (isTwoPane) {
                 Category(Modifier.padding(top = 16.dp)) {
                     ExpressiveListItem(
-                        icon = Icons.Filled.Person,
-                        iconTint = ExpressiveTints.LightBlue,
-                        iconSubTint = ExpressiveTints.Blue,
+                        icon = Icons.Rounded.Person,
+                        iconPreset = ExpressiveTints.Green,
                         headline = stringResource(Res.string.profile),
                         supportingText = stringResource(Res.string.settings_hub_profile_sub),
                         onClick = {
@@ -127,9 +126,8 @@ fun SettingsTab() {
 
             Category(Modifier.padding(top = 16.dp)) {
                 ExpressiveListItem(
-                    icon = Icons.Filled.AccountCircle,
-                    iconTint = ExpressiveTints.LightGreen,
-                    iconSubTint = ExpressiveTints.Green,
+                    icon = Icons.Rounded.AccountCircle,
+                    iconPreset = ExpressiveTints.Green,
                     headline = stringResource(Res.string.settings_category_account),
                     supportingText = stringResource(Res.string.settings_category_account_d),
                     onClick = { openDetail(SettingsRoutes.Account) },
@@ -137,19 +135,18 @@ fun SettingsTab() {
                 )
 
                 ExpressiveListItem(
-                    icon = Icons.Filled.Devices,
-                    iconTint = ExpressiveTints.LightBlue,
-                    iconSubTint = ExpressiveTints.Blue,
+                    icon = Icons.Rounded.Devices,
+                    iconPreset = ExpressiveTints.Rose,
                     headline = stringResource(Res.string.settings_category_devices),
                     supportingText = stringResource(Res.string.settings_category_devices_d),
                     onClick = { openDetail(SettingsRoutes.Devices) },
-                    divider = true
                 )
+            }
 
+            Category(Modifier.padding(top = 8.dp)) {
                 ExpressiveListItem(
-                    icon = Icons.Filled.Palette,
-                    iconTint = ExpressiveTints.LightPurple,
-                    iconSubTint = ExpressiveTints.Purple,
+                    icon = Icons.Rounded.Palette,
+                    iconPreset = ExpressiveTints.Yellow,
                     headline = stringResource(Res.string.settings_category_appearance),
                     supportingText = stringResource(Res.string.settings_category_appearance_d),
                     onClick = { openDetail(SettingsRoutes.Appearance) },
@@ -157,19 +154,18 @@ fun SettingsTab() {
                 )
 
                 ExpressiveListItem(
-                    icon = Icons.Filled.Notifications,
-                    iconTint = ExpressiveTints.LightYellow,
-                    iconSubTint = ExpressiveTints.Yellow,
+                    icon = Icons.Rounded.Notifications,
+                    iconPreset = ExpressiveTints.Orange,
                     headline = stringResource(Res.string.settings_category_notifications),
                     supportingText = stringResource(Res.string.settings_category_notifications_d),
                     onClick = { openDetail(SettingsRoutes.Notifications) },
-                    divider = true
                 )
+            }
 
+            Category(Modifier.padding(top = 8.dp)) {
                 ExpressiveListItem(
-                    icon = Icons.Filled.Storage,
-                    iconTint = ExpressiveTints.LightRed,
-                    iconSubTint = ExpressiveTints.Red,
+                    icon = Icons.Rounded.Storage,
+                    iconPreset = ExpressiveTints.Green,
                     headline = stringResource(Res.string.change_server),
                     supportingText = stringResource(Res.string.change_server_d),
                     onClick = { openDetail(SettingsRoutes.ServerConfig) },
@@ -177,9 +173,8 @@ fun SettingsTab() {
                 )
 
                 ExpressiveListItem(
-                    icon = Icons.Filled.Info,
-                    iconTint = ExpressiveTints.LightGreen,
-                    iconSubTint = ExpressiveTints.Green,
+                    icon = Icons.Rounded.Info,
+                    iconPreset = ExpressiveTints.Purple,
                     headline = stringResource(Res.string.about),
                     supportingText = stringResource(Res.string.settings_hub_about_sub),
                     onClick = { openDetail(SettingsRoutes.About) },
@@ -187,9 +182,8 @@ fun SettingsTab() {
                 )
 
                 ExpressiveListItem(
-                    icon = Icons.Outlined.BugReport,
-                    iconTint = ExpressiveTints.LightBlue,
-                    iconSubTint = ExpressiveTints.Blue,
+                    icon = Icons.Rounded.BugReport,
+                    iconPreset = ExpressiveTints.Rose,
                     headline = stringResource(Res.string.logs_title),
                     supportingText = stringResource(Res.string.settings_hub_logs_sub),
                     onClick = { openDetail(SettingsRoutes.Logs) },

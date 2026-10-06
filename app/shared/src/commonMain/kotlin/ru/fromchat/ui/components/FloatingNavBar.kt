@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -50,14 +49,17 @@ import dev.chrisbanes.haze.HazeState
 import kotlin.math.abs
 
 /**
- * A single item in a [FloatingNavBar]. Drawn as a round chip that expands to
- * reveal its [label] when [selected].
+ * A single item in a [FloatingNavBar]. When [selected], the item is expanded
+ * to reveal its [label] and drawn on a tone-container pill (secondaryContainer)
+ * to highlight it. When not selected, the item is a plain round chip with
+ * no container color.
  */
 @Composable
 private fun FloatingNavItem(
     icon: ImageVector,
     label: String,
     selected: Boolean,
+    showTitle: Boolean,
     onClick: () -> Unit,
     onPositioned: (LayoutCoordinates) -> Unit,
 ) {
@@ -70,9 +72,18 @@ private fun FloatingNavItem(
         animationSpec = tween(300),
         label = "navItemContentColor",
     )
+    val containerColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.secondaryContainer
+        } else {
+            Color.Transparent
+        },
+        animationSpec = tween(300),
+        label = "navItemContainerColor",
+    )
     val interactionSource = remember { MutableInteractionSource() }
 
-    Row(
+    Surface(
         modifier = Modifier
             .onGloballyPositioned { onPositioned(it) }
             .clip(CircleShape)
@@ -80,31 +91,36 @@ private fun FloatingNavItem(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = onClick,
-            )
-            .padding(horizontal = 12.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
+            ),
+        shape = CircleShape,
+        color = containerColor,
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = contentColor,
-            modifier = Modifier.size(22.dp),
-        )
-        AnimatedVisibility(
-            visible = selected,
-            enter = expandHorizontally(animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)),
-            exit = shrinkHorizontally(animationSpec = tween(300)) + fadeOut(animationSpec = tween(300)),
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
         ) {
-            Text(
-                text = label,
-                modifier = Modifier.padding(start = 8.dp),
-                color = contentColor,
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Ellipsis,
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = contentColor,
+                modifier = Modifier.size(22.dp),
             )
+            AnimatedVisibility(
+                visible = selected && showTitle,
+                enter = expandHorizontally(animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)),
+                exit = shrinkHorizontally(animationSpec = tween(300)) + fadeOut(animationSpec = tween(300)),
+            ) {
+                Text(
+                    text = label,
+                    modifier = Modifier.padding(start = 8.dp),
+                    color = contentColor,
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
@@ -113,13 +129,15 @@ private fun FloatingNavItem(
  * A floating, fully-rounded (CircleShape) pill navigation bar with:
  *  * a subtle primary-tinted haze backdrop (the "colorful" blur),
  *  * an expanded selected-state that reveals the item label on tap,
+ *  * a tonal (secondaryContainer) pill highlight on the selected item,
  *  * a drag-to-swap gesture (hold + slide across the bar).
  *
- * Drop-in replacement for the stock [androidx.compose.material3.NavigationBar] on
- * the bottom of the main screen.
+ * The bar is centered horizontally within its parent; the parent is expected to
+ * handle window-inset padding (status / navigation bars, IME) before calling
+ * this composable.
  *
  * @param items The items to render. Exactly one should have `selected = true`.
- * @param selectedId The id of the currently selected item (label reveal + color).
+ * @param selectedId The id of the currently selected item (label reveal + pill highlight).
  * @param onItemClick Called on tap with the item id.
  * @param onSwap Called when a drag-to-swap gesture completes over another item.
  * @param hazeState Optional [HazeState]; when present, the pill uses a tinted
@@ -129,6 +147,7 @@ private fun FloatingNavItem(
 fun FloatingNavBar(
     items: List<FloatingNavItemSpec>,
     selectedId: String,
+    showTitles: Boolean = true,
     onItemClick: (String) -> Unit,
     onSwap: (String) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -173,9 +192,10 @@ fun FloatingNavBar(
 
     val surfaceColor = if (hazeState != null) Color.Transparent else containerColor
 
+    // Outer Box: fill parent width, center horizontally. Inner Surface: natural
+    // width capped at 620dp so it reads as a floating pill (not full-width).
     Box(
-        modifier = modifier
-            .clip(CircleShape),
+        modifier = modifier,
         contentAlignment = Alignment.Center,
     ) {
         Surface(
@@ -190,8 +210,8 @@ fun FloatingNavBar(
         ) {
             Row(
                 modifier = Modifier
-                    .wrapContentWidth()
-                    .padding(horizontal = 8.dp)
+                    .wrapContentWidth(Alignment.Start)
+                    .padding(8.dp)
                     .pointerInput(Unit) {
                         detectDragGestures(
                             onDragStart = { offset ->
@@ -232,6 +252,7 @@ fun FloatingNavBar(
                         icon = item.icon,
                         label = item.label,
                         selected = item.id == selectedId,
+                        showTitle = showTitles,
                         onClick = { onItemClick(item.id) },
                         onPositioned = { itemCoordinates[item.id] = it },
                     )

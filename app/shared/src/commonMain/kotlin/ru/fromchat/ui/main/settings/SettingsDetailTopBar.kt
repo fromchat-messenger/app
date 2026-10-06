@@ -33,6 +33,7 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.back
+import ru.fromchat.ui.components.AnimatedWordTitle
 import ru.fromchat.ui.extraStatusBars
 import ru.fromchat.ui.main.detailPaneShowBackButton
 
@@ -72,7 +73,7 @@ fun rememberSettingsCollapsingScrollBehavior(): TopAppBarScrollBehavior {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsDetailTopBar(
-    title: @Composable () -> Unit,
+    title: String,
     onBack: () -> Unit,
     scrollBehavior: TopAppBarScrollBehavior? = null,
 ) {
@@ -86,14 +87,11 @@ fun SettingsDetailTopBar(
             }
         }
     }
-    // Match Profile / shell (`background`), not AppPanel's default
-    // `surfaceContainerLowest` — that token reads as a separate pane fill in
-    // two-pane against the list–detail shell.
     val paneColor = MaterialTheme.colorScheme.background
     val topBarWindowInsets = settingsDetailWindowInsets()
     if (settingsDetailUseCollapsingTopBar()) {
         MediumTopAppBar(
-            title = title,
+            title = { AnimatedWordTitle(text = title) },
             navigationIcon = navigationIcon,
             scrollBehavior = scrollBehavior,
             windowInsets = topBarWindowInsets,
@@ -105,7 +103,7 @@ fun SettingsDetailTopBar(
     } else {
         // Desktop / expanded: pinned TopAppBar (not Large/Medium).
         TopAppBar(
-            title = title,
+            title = { AnimatedWordTitle(text = title) },
             navigationIcon = navigationIcon,
             windowInsets = topBarWindowInsets,
             colors = TopAppBarDefaults.topAppBarColors(
