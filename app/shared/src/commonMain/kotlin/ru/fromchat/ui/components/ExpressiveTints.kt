@@ -32,6 +32,12 @@ object ExpressiveTints {
     /** Green chip, deep-green glyph. */
     val Green = IconPreset(Color(0xFF70B576), Color(0xFF00512B))
 
+    /** Sky-blue chip, deep-navy glyph. Good fit for "identity / account" items. */
+    val Blue = IconPreset(Color(0xFFA1C9FF), Color(0xFF04409F))
+
+    /** Cyan chip, deep-teal glyph. Good fit for "server / network" items. */
+    val Cyan = IconPreset(Color(0xFF67D4FF), Color(0xFF004D68))
+
     /** Neutral surface tile (accent / default). */
     val NeutralTile: Color = Color(0xFF1C1C1C).copy(alpha = 0.06f)
 }

@@ -113,7 +113,7 @@ fun SettingsTab() {
                 Category(Modifier.padding(top = 16.dp)) {
                     ExpressiveListItem(
                         icon = Icons.Rounded.Person,
-                        iconPreset = ExpressiveTints.Green,
+                        iconPreset = ExpressiveTints.Blue,
                         headline = stringResource(Res.string.profile),
                         supportingText = stringResource(Res.string.settings_hub_profile_sub),
                         onClick = {
@@ -165,7 +165,7 @@ fun SettingsTab() {
             Category(Modifier.padding(top = 8.dp)) {
                 ExpressiveListItem(
                     icon = Icons.Rounded.Storage,
-                    iconPreset = ExpressiveTints.Green,
+                    iconPreset = ExpressiveTints.Cyan,
                     headline = stringResource(Res.string.change_server),
                     supportingText = stringResource(Res.string.change_server_d),
                     onClick = { openDetail(SettingsRoutes.ServerConfig) },
