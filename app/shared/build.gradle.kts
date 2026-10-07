@@ -165,6 +165,7 @@ kotlin {
         }
 
         androidMain.dependencies {
+            implementation(project(":plugins:host"))
             implementation(libs.androidx.core.ktx)
             implementation(libs.markdown.renderer.m3)
             implementation(libs.bouncycastle.bcprov)
@@ -200,6 +201,7 @@ kotlin {
             } else {
                 implementation(compose.desktop.currentOs)
             }
+            implementation(project(":plugins:host"))
             implementation(libs.jetbrains.kotlinx.io.bytestring)
             implementation(libs.jetbrains.kotlinx.coroutines.core)
             implementation(libs.ktor.client.cio)

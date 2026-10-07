@@ -370,6 +370,27 @@
     <string name="debug_tools">Debug API</string>
     <string name="debug_tools_d">Inspect profile and DM endpoints used by the client.</string>
 
+    <string name="plugins_title">Plugins</string>
+    <string name="plugins_enable_system">Enable plugin system</string>
+    <string name="plugins_engine">Plugin engine</string>
+    <string name="plugins_engine_d">Run Kotlin plugins that extend FromChat.</string>
+    <string name="plugins_developer_mode">Developer mode</string>
+    <string name="plugins_developer_mode_d">Enable the local DevServer on port 42690.</string>
+    <string name="plugins_installed">Installed plugins</string>
+    <string name="plugins_none_installed">No plugins installed yet.</string>
+    <string name="plugins_no_results">No plugins match your search.</string>
+    <string name="plugins_enabled">Enabled</string>
+    <string name="plugins_settings_title">Plugin settings</string>
+    <string name="plugins_search">Search plugins</string>
+    <string name="plugins_add">Add plugin</string>
+    <string name="plugins_usage">Usage:</string>
+    <string name="plugins_version_author">Version %1$s • @%2$s</string>
+    <string name="plugins_delete">Delete</string>
+    <string name="plugins_delete_confirm">Remove \"%1$s\" and all its data?</string>
+    <string name="plugins_share_copied">Plugin info copied to clipboard.</string>
+    <string name="plugins_info_title">About plugins</string>
+    <string name="plugins_info_body">Plugins can modify UI, intercept messages, and hook internal app methods. Only install plugins from sources you trust.</string>
+
     <!-- Settings categories -->
     <string name="settings_category_appearance">Appearance</string>
     <string name="settings_category_appearance_d">Theme and Material You</string>

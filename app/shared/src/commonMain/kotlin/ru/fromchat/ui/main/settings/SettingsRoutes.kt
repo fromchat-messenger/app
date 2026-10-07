@@ -20,4 +20,8 @@ object SettingsRoutes {
     const val About = "about"
     const val Logs = "settings/logs"
     const val LogFiles = "settings/logs/files"
+    const val Plugins = "settings/plugins"
+    const val PluginDetail = "settings/plugins/{pluginId}"
+
+    fun pluginDetail(pluginId: String): String = "settings/plugins/$pluginId"
 }

@@ -9,6 +9,7 @@ import kotlinx.coroutines.launch
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.workers.AttachmentTransferBootstrap
 import ru.fromchat.notifications.MessageNotificationCoordinator
+import ru.fromchat.plugins.integration.AndroidPluginBootstrap
 
 class App : Application() {
     @OptIn(DelicateCoroutinesApi::class)
@@ -16,6 +17,7 @@ class App : Application() {
         super.onCreate()
         UtilsLibrary.init(this)
         MessageNotificationCoordinator.install()
+        AndroidPluginBootstrap.init(this)
 
         GlobalScope.launch(Dispatchers.IO) {
             runCatching { ApiClient.loadPersistedData() }

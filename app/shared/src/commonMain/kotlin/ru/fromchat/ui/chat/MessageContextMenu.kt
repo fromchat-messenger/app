@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SaveAlt
 import androidx.compose.material3.Icon
@@ -70,6 +71,8 @@ import ru.fromchat.api.local.download.resolveSavableMessageFile
 import ru.fromchat.api.local.download.resolveSavableMessageImage
 import ru.fromchat.api.local.messages.isQueuedOutbound
 import ru.fromchat.api.schema.messages.Message
+import ru.fromchat.plugins.MenuItemType
+import ru.fromchat.plugins.host.PluginHookDispatcher
 import ru.fromchat.ui.components.Text
 
 data class ContextMenuState(
@@ -275,6 +278,7 @@ fun MessageContextMenu(
                     onRetrySend(it)
                     onDismiss()
                 },
+                onDismiss = onDismiss,
                 modifier = modifier
                     .then(
                         if (lockedMenuWidthPx > 0) {
@@ -327,6 +331,7 @@ private fun ContextMenuContent(
     onSave: (Message) -> Unit,
     onCancelSend: (Message) -> Unit,
     onRetrySend: (Message) -> Unit,
+    onDismiss: () -> Unit,
     isReadOnly: Boolean = false,
     modifier: Modifier,
     animated: Boolean,
@@ -418,6 +423,16 @@ private fun ContextMenuContent(
                         isError = true,
                     )
                 }
+            }
+            PluginHookDispatcher.menuItemEntriesFor(MenuItemType.MESSAGE_CONTEXT).forEach { (_, item) ->
+                ChatStyleContextMenuItem(
+                    icon = Icons.Rounded.Extension,
+                    text = item.text,
+                    onClick = {
+                        PluginHookDispatcher.dispatchMenuItemClick(item.onClickKey)
+                        onDismiss()
+                    },
+                )
             }
         }
     }

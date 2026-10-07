@@ -82,7 +82,9 @@ import ru.fromchat.ui.main.chats.ChatContextMenuOverlayHost
 import ru.fromchat.ui.main.chats.ChatsSearchScreen
 import ru.fromchat.ui.main.chats.ChatsTab
 import ru.fromchat.ui.main.settings.SettingsTab
+import ru.fromchat.plugins.host.PluginEngine
 import ru.fromchat.ui.profile.ProfileScreen
+import androidx.compose.runtime.collectAsState
 
 const val MAIN_PAGE_CHATS = 0
 const val MAIN_PAGE_CONTACTS = 1
@@ -258,6 +260,8 @@ fun MainScreen(
             bottom = bottomChromeHeightDp,
         )
     }
+
+    val pluginHostRevision by PluginEngine.hostRevision.collectAsState()
 
     val chatsLabel = stringResource(Res.string.chats)
     val contactsLabel = stringResource(Res.string.contacts)

@@ -24,6 +24,8 @@ import ru.fromchat.ui.main.settings.LOG_FILE_OPEN_RESULT_KEY
 import ru.fromchat.ui.main.settings.LogFilesScreen
 import ru.fromchat.ui.main.settings.LogsScreen
 import ru.fromchat.ui.main.settings.NotificationsScreen
+import ru.fromchat.ui.main.settings.PluginDetailScreen
+import ru.fromchat.ui.main.settings.PluginsScreen
 import ru.fromchat.ui.main.settings.SettingsRoutes
 import ru.fromchat.ui.main.settings.account.AccountScreen
 import ru.fromchat.ui.main.settings.account.changepassword.ChangePasswordScreen
@@ -287,6 +289,22 @@ fun NavGraphBuilder.settingsDetailDestinations(
     // Same route string as pre-auth server config on the root graph; fine on a nested graph.
     composable(SettingsRoutes.ServerConfig) {
         ServerConfigScreen()
+    }
+
+    composable(SettingsRoutes.Plugins) {
+        PluginsScreen()
+    }
+
+    composable(
+        route = SettingsRoutes.PluginDetail,
+        arguments = listOf(
+            navArgument("pluginId") { type = NavType.StringType },
+        ),
+    ) { entry ->
+        val pluginId = entry.savedStateHandle.get<String>("pluginId").orEmpty()
+        if (pluginId.isNotBlank()) {
+            PluginDetailScreen(pluginId)
+        }
     }
 }
 

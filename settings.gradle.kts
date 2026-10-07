@@ -42,5 +42,13 @@ dependencyResolutionManagement {
     }
 }
 
-include(":app:shared", ":utils:shared", ":app:android", ":app:desktop")
+include(
+    ":app:shared",
+    ":utils:shared",
+    ":app:android",
+    ":app:desktop",
+    ":plugins:sdk",
+    ":plugins:host",
+    ":plugins:sample-hello",
+)
  

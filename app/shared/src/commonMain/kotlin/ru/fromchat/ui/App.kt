@@ -534,6 +534,7 @@ fun App(
                     }
 
                     ScreenSurface {
+                        ru.fromchat.plugins.host.ui.PluginUiHost {
                         Box(
                             Modifier
                                 .fillMaxSize()
@@ -773,6 +774,7 @@ fun App(
                             if (showReleaseNotesPrompt) {
                                 ReleaseNotesDialog(onDismiss = { showReleaseNotesPrompt = false })
                             }
+                        }
                         }
                     }
                 }
