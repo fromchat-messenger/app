@@ -14,7 +14,9 @@ import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.Interaction
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -837,8 +839,29 @@ inline fun SwitchListItem(
     groupItemCount: Int? = null,
     noinline onContextMenuOpen: (() -> Unit)? = null,
     noinline contextMenu: (ListItemContextMenuScope.() -> Unit)? = null,
+    /**
+     * Premium two-stage haptic: a light tick on touch-down (before state flips) and a
+     * heavier click at the commit moment (exactly when state flips). Defaults ON so
+     * every switch in the app gets the feel automatically; pass `false` to silence.
+     *
+     * No-op on platforms that don't support haptics.
+     */
+    hapticFeedback: Boolean = true,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    val (pressHaptic, commitHaptic) = if (enabled && hapticFeedback) {
+        switchHapticCallbacks()
+    } else {
+        val noop: () -> Unit = { }
+        noop to noop
+    }
+    LaunchedEffect(interactionSource) {
+        interactionSource.interactions.collect { interaction ->
+            if (interaction is PressInteraction.Press) {
+                pressHaptic()
+            }
+        }
+    }
     ListItem(
         modifier = if (enabled) Modifier.clickable(
             interactionSource = interactionSource,
@@ -852,7 +875,12 @@ inline fun SwitchListItem(
             val (sw) = createRefs()
             Switch(
                 checked = checked,
-                onCheckedChange = onCheckedChange,
+                // Fire the heavier click exactly at the commit moment (when state
+                // actually flips) so the haptic aligns with the visual switch.
+                onCheckedChange = { newState ->
+                    commitHaptic()
+                    onCheckedChange(newState)
+                },
                 interactionSource = interactionSource,
                 enabled = enabled,
                 modifier = Modifier.constrainAs(sw) {

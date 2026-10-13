@@ -64,16 +64,21 @@ import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
 import ru.fromchat.chats
+import ru.fromchat.config.NavBarStyle
 import ru.fromchat.contacts
 import ru.fromchat.desktop.DesktopMenuCommand
 import ru.fromchat.desktop.DesktopMenuCommands
 import ru.fromchat.profile
 import ru.fromchat.settings
 import ru.fromchat.ui.LocalNavController
+import ru.fromchat.ui.navBarShowTitle
+import ru.fromchat.ui.navBarStyle
 import ru.fromchat.ui.chat.rememberChatSurfaceContainerHazeStyle
 import ru.fromchat.ui.chat.panels.dm.navigateToDmChat
 import ru.fromchat.ui.components.BackHandler
 import ru.fromchat.ui.components.FromChatSnackbarHost
+import ru.fromchat.ui.components.FloatingNavBar
+import ru.fromchat.ui.components.FloatingNavItemSpec
 import ru.fromchat.ui.components.LocalPaneHazeState
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.extraStatusBars
@@ -82,6 +87,7 @@ import ru.fromchat.ui.main.chats.ChatContextMenuOverlayHost
 import ru.fromchat.ui.main.chats.ChatsSearchScreen
 import ru.fromchat.ui.main.chats.ChatsTab
 import ru.fromchat.ui.main.settings.SettingsTab
+import ru.fromchat.config.Settings as AppSettings
 import ru.fromchat.ui.profile.ProfileScreen
 
 const val MAIN_PAGE_CHATS = 0
@@ -263,6 +269,7 @@ fun MainScreen(
     val contactsLabel = stringResource(Res.string.contacts)
     val settingsLabel = stringResource(Res.string.settings)
     val profileLabel = stringResource(Res.string.profile)
+    val navBarStyle = navBarStyle
 
     BoxWithConstraints(
         Modifier.fillMaxSize(),
@@ -342,9 +349,60 @@ fun MainScreen(
                             bottomChromeHeightDp = measured
                         }
                     }
-                    .background(MaterialTheme.colorScheme.surfaceContainer)
-                    .hazeBlur(input = HazeInput.Backdrop(navBarHazeState), style = navBarHazeStyle),
+                    .then(
+                        if (navBarStyle == NavBarStyle.Floating) {
+                            Modifier.padding(
+                                start = 16.dp,
+                                end = 16.dp,
+                                top = 16.dp,
+                                bottom = 16.dp + WindowInsets.navigationBars.only(WindowInsetsSides.Bottom).let {
+                                    with(density) { it.getBottom(this).toDp() }
+                                },
+                            )
+                        } else {
+                            Modifier
+                                .background(MaterialTheme.colorScheme.surfaceContainer)
+                                .hazeBlur(input = HazeInput.Backdrop(navBarHazeState), style = navBarHazeStyle)
+                        },
+                    ),
             ) {
+                if (navBarStyle == NavBarStyle.Floating) {
+                    FloatingNavBar(
+                        modifier = Modifier.fillMaxWidth(),
+                        items =
+                            listOf(
+                                FloatingNavItemSpec(PAGE_CHATS.toString(), Icons.AutoMirrored.Filled.Chat, chatsLabel),
+                                FloatingNavItemSpec(PAGE_CONTACTS.toString(), Icons.Filled.Contacts, contactsLabel),
+                                FloatingNavItemSpec(PAGE_SETTINGS.toString(), Icons.Filled.Settings, settingsLabel),
+                                FloatingNavItemSpec(PAGE_PROFILE.toString(), Icons.Filled.Person, profileLabel),
+                            ),
+                        selectedId = selectedPage.toString(),
+                        showTitles = navBarShowTitle,
+                        onItemClick = { id ->
+                            id.toIntOrNull()?.let { page ->
+                                selectMainPage(
+                                    page = page,
+                                    widthClass = widthClass,
+                                    scope = scope,
+                                    pagerState = pagerState,
+                                    settingsDetailNavController = settingsDetailNavController,
+                                )
+                            }
+                        },
+                        onSwap = { id ->
+                            id.toIntOrNull()?.let { page ->
+                                selectMainPage(
+                                    page = page,
+                                    widthClass = widthClass,
+                                    scope = scope,
+                                    pagerState = pagerState,
+                                    settingsDetailNavController = settingsDetailNavController,
+                                )
+                            }
+                        },
+                        hazeState = navBarHazeState,
+                    )
+                } else {
                 NavigationBar(
                     modifier = Modifier.fillMaxWidth(),
                     containerColor = Color.Transparent,
@@ -421,6 +479,7 @@ fun MainScreen(
                             Icon(Icons.Filled.Person, contentDescription = null)
                         },
                     )
+                }
                 }
             }
         }

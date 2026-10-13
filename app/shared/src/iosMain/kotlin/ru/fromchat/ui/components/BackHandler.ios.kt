@@ -21,6 +21,8 @@ actual fun rememberHapticFeedbackInternal(): (Int) -> Unit =
                 HapticFeedbackEvent.MessageSent.ordinal -> UIImpactFeedbackStyle.UIImpactFeedbackStyleMedium
                 HapticFeedbackEvent.ContextMenuOpened.ordinal -> UIImpactFeedbackStyle.UIImpactFeedbackStyleHeavy
                 HapticFeedbackEvent.SelectionModeEntered.ordinal -> UIImpactFeedbackStyle.UIImpactFeedbackStyleMedium
+                HapticFeedbackEvent.SwitchPress.ordinal -> UIImpactFeedbackStyle.UIImpactFeedbackStyleLight
+                HapticFeedbackEvent.SwitchToggle.ordinal -> UIImpactFeedbackStyle.UIImpactFeedbackStyleHeavy
                 else -> UIImpactFeedbackStyle.UIImpactFeedbackStyleLight
             }
             UIImpactFeedbackGenerator(style).impactOccurred()

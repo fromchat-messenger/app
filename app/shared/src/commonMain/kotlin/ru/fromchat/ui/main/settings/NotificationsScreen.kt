@@ -44,7 +44,6 @@ import ru.fromchat.settings_push_notifications_unavailable
 import ru.fromchat.settings_desktop_notifications
 import ru.fromchat.settings_desktop_notifications_d
 import ru.fromchat.ui.components.FromChatSnackbarHost
-import ru.fromchat.ui.components.Text
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,7 +67,7 @@ fun NotificationsScreen(onBack: () -> Unit) {
         snackbarHost = { FromChatSnackbarHost(hostState = snackbarHostState) },
         topBar = {
             SettingsDetailTopBar(
-                title = { Text(stringResource(Res.string.settings_notifications_title)) },
+                title = stringResource(Res.string.settings_notifications_title),
                 onBack = onBack,
                 scrollBehavior = scrollBehavior,
             )
