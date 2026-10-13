@@ -278,6 +278,19 @@ fun resolvePackagingJdkHome(): String {
             add("/usr/lib/jvm/java-21-openjdk-amd64")
             add("/usr/lib/jvm/java-17-openjdk")
             add("/usr/lib/jvm/java-21-openjdk")
+            // Distro-specific layouts (Arch: /usr/lib/jvm/java-17-temurin, etc.) have
+            // no fixed name — scan /usr/lib/jvm for anything that carries jpackage.
+            File("/usr/lib/jvm").listFiles()
+                ?.filter { it.isDirectory && File(it, "bin/jpackage").isFile }
+                ?.sortedByDescending { it.name }
+                ?.forEach { add(it.absolutePath) }
+            // Gradle-provisioned toolchain JDKs (auto-downloaded per jvmToolchain)
+            // include jpackage in every Temurin download and exist on every machine
+            // that built this project.
+            File(userHome, ".gradle/jdks").listFiles()
+                ?.filter { it.isDirectory && File(it, "bin/jpackage").isFile }
+                ?.sortedByDescending { it.name }
+                ?.forEach { add(it.absolutePath) }
         }
         System.getProperty("java.home")?.let { add(it) }
     }
