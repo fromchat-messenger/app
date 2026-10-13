@@ -13,9 +13,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Chat
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.automirrored.rounded.Chat
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.MarkEmailRead
@@ -234,7 +234,7 @@ internal fun ChatContextMenuContent(
                 when (state.target) {
                     ChatContextMenuTarget.Public -> {
                         ChatContextMenuItem(
-                            icon = Icons.AutoMirrored.Filled.Chat,
+                            icon = Icons.AutoMirrored.Rounded.Chat,
                             text = labelMessage,
                             onClick = onMessage,
                         )
@@ -247,13 +247,13 @@ internal fun ChatContextMenuContent(
                         }
                         if (hasPublicLink) {
                             ChatContextMenuItem(
-                                icon = Icons.Filled.Link,
+                                icon = Icons.Rounded.Link,
                                 text = labelLink,
                                 onClick = onLink,
                             )
                         }
                         ChatContextMenuItem(
-                            icon = Icons.Filled.CheckCircle,
+                            icon = Icons.Rounded.CheckCircle,
                             text = labelSelect,
                             onClick = onSelect,
                         )
@@ -261,7 +261,7 @@ internal fun ChatContextMenuContent(
 
                     ChatContextMenuTarget.Dm -> {
                         ChatContextMenuItem(
-                            icon = Icons.AutoMirrored.Filled.Chat,
+                            icon = Icons.AutoMirrored.Rounded.Chat,
                             text = labelMessage,
                             onClick = onMessage,
                         )
@@ -273,7 +273,7 @@ internal fun ChatContextMenuContent(
                             )
                         }
                         ChatContextMenuItem(
-                            icon = Icons.Filled.Link,
+                            icon = Icons.Rounded.Link,
                             text = labelLink,
                             onClick = onLink,
                         )
@@ -285,7 +285,7 @@ internal fun ChatContextMenuContent(
                             )
                         }
                         ChatContextMenuItem(
-                            icon = Icons.Filled.CheckCircle,
+                            icon = Icons.Rounded.CheckCircle,
                             text = labelSelect,
                             onClick = onSelect,
                         )

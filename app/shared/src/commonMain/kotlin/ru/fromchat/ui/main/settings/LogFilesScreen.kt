@@ -31,10 +31,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
-import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.rounded.Archive
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.rounded.Delete
@@ -690,8 +690,8 @@ private fun LogFileRow(
                 )
                 Icon(
                     imageVector = when {
-                        file.name == FromChatLogDirs.CURRENT_LOG_FILE -> Icons.Default.History
-                        file.isGzip -> Icons.Default.Archive
+                        file.name == FromChatLogDirs.CURRENT_LOG_FILE -> Icons.Rounded.History
+                        file.isGzip -> Icons.Rounded.Archive
                         else -> Icons.AutoMirrored.Rounded.InsertDriveFile
                     },
                     contentDescription = null,
