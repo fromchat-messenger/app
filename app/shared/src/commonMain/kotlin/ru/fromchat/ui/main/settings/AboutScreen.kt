@@ -10,9 +10,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.NewReleases
-import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.NewReleases
+import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -137,10 +137,9 @@ fun AboutScreen() {
                         divider = true,
                         leadingContent = {
                             Icon(
-                                imageVector = Icons.Outlined.NewReleases,
+                                imageVector = Icons.Rounded.NewReleases,
                                 contentDescription = null,
                                 modifier = Modifier.size(24.dp),
-                                tint = MaterialTheme.colorScheme.onSurface,
                             )
                         },
                     )
@@ -173,10 +172,9 @@ fun AboutScreen() {
                     divider = true,
                     leadingContent = {
                         Icon(
-                            imageVector = Icons.Outlined.Website,
+                            imageVector = Icons.Rounded.Website,
                             contentDescription = null,
                             modifier = Modifier.size(24.dp),
-                            tint = MaterialTheme.colorScheme.onSurface,
                         )
                     }
                 )
@@ -187,10 +185,9 @@ fun AboutScreen() {
                     divider = true,
                     leadingContent = {
                         Icon(
-                            imageVector = Icons.Outlined.Shield,
+                            imageVector = Icons.Rounded.Shield,
                             contentDescription = null,
                             modifier = Modifier.size(24.dp),
-                            tint = MaterialTheme.colorScheme.onSurface,
                         )
                     }
                 )
@@ -200,10 +197,9 @@ fun AboutScreen() {
                     onClick = { navController.navigate(DocumentType.route(DocumentType.Terms)) },
                     leadingContent = {
                         Icon(
-                            imageVector = Icons.Outlined.Description,
+                            imageVector = Icons.Rounded.Description,
                             contentDescription = null,
                             modifier = Modifier.size(24.dp),
-                            tint = MaterialTheme.colorScheme.onSurface,
                         )
                     }
                 )

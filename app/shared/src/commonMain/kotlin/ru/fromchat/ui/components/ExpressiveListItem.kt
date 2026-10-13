@@ -61,7 +61,7 @@ fun ExpressiveListItem(
             }
         },
         trailingContent = trailingContent,
-        containerColor = MaterialTheme.colorScheme.surfaceBright,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
         enabled = enabled,
         divider = divider,
         position = position,

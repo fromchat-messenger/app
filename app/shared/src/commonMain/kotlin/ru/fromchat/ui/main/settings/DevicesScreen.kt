@@ -25,10 +25,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Login
-import androidx.compose.material.icons.filled.Devices
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.automirrored.rounded.Login
+import androidx.compose.material.icons.rounded.Devices
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -177,7 +177,7 @@ private fun DeviceSessionDetailBottomSheet(
                     headline = stringResource(Res.string.settings_devices_field_browser),
                     supportingText = "${d.browserName} ${d.browserVersion}",
                     leadingContent = {
-                        Icon(Icons.Filled.Language, null)
+                        Icon(Icons.Rounded.Language, null)
                     },
                     divider = true
                 )
@@ -187,7 +187,7 @@ private fun DeviceSessionDetailBottomSheet(
                 headline = stringResource(Res.string.settings_devices_field_signed_in),
                 supportingText = formatDeviceLastSeen(d.createdAt),
                 leadingContent = {
-                    Icon(Icons.AutoMirrored.Filled.Login, null)
+                    Icon(Icons.AutoMirrored.Rounded.Login, null)
                 },
                 divider = true
             )
@@ -196,7 +196,7 @@ private fun DeviceSessionDetailBottomSheet(
                 headline = stringResource(Res.string.settings_devices_field_last_active),
                 supportingText = formatDeviceLastSeen(d.lastSeen),
                 leadingContent = {
-                    Icon(Icons.Filled.History, null)
+                    Icon(Icons.Rounded.History, null)
                 }
             )
         }
@@ -354,7 +354,7 @@ fun DevicesScreen(onBack: () -> Unit) {
             item {
                 Column(Modifier.fillMaxWidth()) {
                     ExpressiveIconFrame(
-                        icon = Icons.Filled.Devices,
+                        icon = Icons.Rounded.Devices,
                         modifier = Modifier.align(Alignment.CenterHorizontally),
                         materialPolygon = MaterialShapes.VerySunny
                     )
@@ -402,8 +402,7 @@ fun DevicesScreen(onBack: () -> Unit) {
                                     deviceSessionIcon(device)
                                 },
                                 contentDescription = null,
-                                modifier = Modifier.size(24.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                modifier = Modifier.size(24.dp)
                             )
                         }
                     },

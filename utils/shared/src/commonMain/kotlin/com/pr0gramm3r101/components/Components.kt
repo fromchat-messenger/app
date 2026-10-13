@@ -556,6 +556,7 @@ fun ListItem(
     supportingSlot: (@Composable () -> Unit)? = null,
     leadingContent: (@Composable () -> Unit)? = null,
     trailingContent: (@Composable ConstraintLayoutScope.() -> Unit)? = null,
+    leadingIconTint: Color? = null,
     containerColor: Color = LocalContainerColor.current ?: ListItemDefaults.containerColor,
     enabled: Boolean = true,
     divider: Boolean = false,
@@ -683,9 +684,9 @@ fun ListItem(
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
-                            // Material list leadingIconColor default: onSurfaceVariant
+                            // Default tint: app primary (explicit tint on the Icon wins)
                             CompositionLocalProvider(
-                                LocalContentColor provides MaterialTheme.colorScheme.onSurfaceVariant,
+                                LocalContentColor provides (leadingIconTint ?: MaterialTheme.colorScheme.primary),
                             ) {
                                 leadingContent()
                             }
@@ -827,6 +828,7 @@ inline fun SwitchListItem(
     headline: String,
     supportingText: String? = null,
     noinline leadingContent: (@Composable () -> Unit)? = null,
+    leadingIconTint: Color? = null,
     checked: Boolean,
     noinline onCheckedChange: (Boolean) -> Unit,
     crossinline listItemOnClick: () -> Unit = { onCheckedChange(!checked) },
@@ -871,6 +873,7 @@ inline fun SwitchListItem(
         headline = headline,
         supportingText = supportingText,
         leadingContent = leadingContent,
+        leadingIconTint = leadingIconTint,
         trailingContent = {
             val (sw) = createRefs()
             Switch(
@@ -909,6 +912,7 @@ inline fun SeparatedSwitchListItem(
     headline: String,
     supportingText: String? = null,
     noinline leadingContent: (@Composable () -> Unit)? = null,
+    leadingIconTint: Color? = null,
     checked: Boolean,
     noinline onCheckedChange: (Boolean) -> Unit,
     noinline bodyOnClick: () -> Unit,
@@ -929,6 +933,7 @@ inline fun SeparatedSwitchListItem(
         headline = headline,
         supportingText = supportingText,
         leadingContent = leadingContent,
+        leadingIconTint = leadingIconTint,
         trailingContent = {
             val (div, switch) = createRefs()
             VerticalDivider(

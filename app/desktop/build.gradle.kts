@@ -412,35 +412,44 @@ val compileMacNotifications = tasks.register<Exec>("compileMacNotifications") {
     }
     inputs.file(macNotificationsSource)
     outputs.file(macNotificationsDylib)
+    // jni.h is only resolvable on macOS — resolve lazily in doFirst, not at
+    // registration time, so task-graph creation succeeds on Linux/Windows too.
     doFirst {
         macNotificationsDylib.get().asFile.parentFile.mkdirs()
+        val jdkHomes = buildList {
+            System.getenv("JAVA_HOME")?.let { add(it) }
+            System.getProperty("java.home")?.let { add(it) }
+            // Gradle-provisioned toolchain JDKs carry include/jni.h.
+            File(System.getProperty("user.home"), ".gradle/jdks").listFiles()
+                ?.filter { it.isDirectory && File(it, "include/jni.h").isFile }
+                ?.forEach { add(it.absolutePath) }
+        }
+        val jniInclude = listOfNotNull(
+            *jdkHomes.map { "$it/include" }.toTypedArray(),
+            "/opt/homebrew/opt/openjdk/include",
+            "/opt/homebrew/opt/openjdk@26/include",
+            "/Library/Java/JavaVirtualMachines/openjdk.jdk/Contents/Home/include",
+        ).first { file("$it/jni.h").isFile }
+        commandLine(
+            "clang",
+            "-shared",
+            "-fobjc-arc",
+            "-fobjc-exceptions",
+            "-fPIC",
+            "-mmacosx-version-min=11.0",
+            "-arch", "arm64",
+            "-arch", "x86_64",
+            "-framework", "Foundation",
+            "-framework", "AppKit",
+            "-framework", "UserNotifications",
+            "-framework", "CoreGraphics",
+            "-framework", "CoreServices",
+            "-I", jniInclude,
+            "-I", "$jniInclude/darwin",
+            "-o", macNotificationsDylib.get().asFile.absolutePath,
+            macNotificationsSource.asFile.absolutePath,
+        )
     }
-    val jniInclude = listOfNotNull(
-        System.getenv("JAVA_HOME")?.let { "$it/include" },
-        "${System.getProperty("java.home")}/include",
-        "/opt/homebrew/opt/openjdk/include",
-        "/opt/homebrew/opt/openjdk@26/include",
-        "/Library/Java/JavaVirtualMachines/openjdk.jdk/Contents/Home/include",
-    ).first { file("$it/jni.h").isFile }
-    commandLine(
-        "clang",
-        "-shared",
-        "-fobjc-arc",
-        "-fobjc-exceptions",
-        "-fPIC",
-        "-mmacosx-version-min=11.0",
-        "-arch", "arm64",
-        "-arch", "x86_64",
-        "-framework", "Foundation",
-        "-framework", "AppKit",
-        "-framework", "UserNotifications",
-        "-framework", "CoreGraphics",
-        "-framework", "CoreServices",
-        "-I", jniInclude,
-        "-I", "$jniInclude/darwin",
-        "-o", macNotificationsDylib.get().asFile.absolutePath,
-        macNotificationsSource.asFile.absolutePath,
-    )
 }
 
 tasks.named<Copy>("processResources") {

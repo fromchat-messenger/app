@@ -34,9 +34,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -356,7 +356,7 @@ internal fun ChatConversationsList(
                                 .padding(horizontal = 16.dp),
                             leadingIcon = {
                                 Icon(
-                                    imageVector = Icons.Default.Search,
+                                    imageVector = Icons.Rounded.Search,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -725,7 +725,7 @@ internal fun SelectionCheckmarkSlot(
         contentAlignment = Alignment.CenterStart,
     ) {
         Icon(
-            imageVector = if (isSelected) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+            imageVector = if (isSelected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
             contentDescription = selectedCd,
             tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier

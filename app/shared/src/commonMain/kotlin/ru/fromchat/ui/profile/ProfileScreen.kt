@@ -69,21 +69,20 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Chat
-import androidx.compose.material.icons.filled.AlternateEmail
-import androidx.compose.material.icons.filled.Block
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.DeleteForever
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Link
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.automirrored.rounded.Chat
+import androidx.compose.material.icons.rounded.AlternateEmail
+import androidx.compose.material.icons.rounded.Block
+import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.DeleteForever
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.ContentCopy
-import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -594,24 +593,24 @@ fun ProfileScreen(
         ).ifEmpty { presenceRecently }
         else -> ""
     }
-    val listItemIconTint = MaterialTheme.colorScheme.onSurfaceVariant
+    val listItemIconTint = MaterialTheme.colorScheme.primary
     val profileActions = resolvedProfile?.let { p ->
         if (isOwnProfile) {
             listOf(
                 ProfileAction(
                     label = labelEdit,
-                    icon = Icons.Filled.Edit,
+                    icon = Icons.Rounded.Edit,
                     holdsExpansionOnNavigate = true,
                     onClick = { navController.navigate(ProfileRoutes.editRoute()) },
                 ),
                 ProfileAction(
                     label = labelLink,
-                    icon = Icons.Filled.Link,
+                    icon = Icons.Rounded.Link,
                     onClick = { scope.launch { clipboard.setText(profileLink.orEmpty()) } },
                 ),
                 ProfileAction(
                     label = labelSettings,
-                    icon = Icons.Filled.Settings,
+                    icon = Icons.Rounded.Settings,
                     holdsExpansionOnNavigate = true,
                     onClick = onOpenSettings,
                 ),
@@ -620,13 +619,13 @@ fun ProfileScreen(
             listOf(
                 ProfileAction(
                     label = labelChat,
-                    icon = Icons.AutoMirrored.Filled.Chat,
+                    icon = Icons.AutoMirrored.Rounded.Chat,
                     holdsExpansionOnNavigate = true,
                     onClick = { onChat(p.id) },
                 ),
                 ProfileAction(
                     label = labelSearch,
-                    icon = Icons.Filled.Search,
+                    icon = Icons.Rounded.Search,
                     onClick = {
                         scope.launch {
                             snackbarHostState.showReplacingSnackbar(
@@ -643,7 +642,7 @@ fun ProfileScreen(
                 add(
                     ProfileAction(
                         label = labelChat,
-                        icon = Icons.AutoMirrored.Filled.Chat,
+                        icon = Icons.AutoMirrored.Rounded.Chat,
                         holdsExpansionOnNavigate = true,
                         onClick = { onChat(p.id) },
                     )
@@ -651,7 +650,7 @@ fun ProfileScreen(
                 add(
                     ProfileAction(
                         label = labelLink,
-                        icon = Icons.Filled.Link,
+                        icon = Icons.Rounded.Link,
                         onClick = { scope.launch { clipboard.setText(profileLink.orEmpty()) } },
                     )
                 )
@@ -667,7 +666,7 @@ fun ProfileScreen(
                 add(
                     ProfileAction(
                         label = labelSearch,
-                        icon = Icons.Filled.Search,
+                        icon = Icons.Rounded.Search,
                         onClick = {
                             scope.launch {
                                 snackbarHostState.showReplacingSnackbar(
@@ -902,7 +901,7 @@ fun PublicChatProfileScreen(
     val notImplementedMessage = stringResource(Res.string.feature_not_implemented)
     val headlineBio = stringResource(Res.string.profile_headline_bio)
     val labelCopy = stringResource(Res.string.action_copy)
-    val listItemIconTint = MaterialTheme.colorScheme.onSurfaceVariant
+    val listItemIconTint = MaterialTheme.colorScheme.primary
 
     var state by remember {
         mutableStateOf(
@@ -962,18 +961,18 @@ fun PublicChatProfileScreen(
         listOf(
             ProfileAction(
                 label = labelChat,
-                icon = Icons.AutoMirrored.Filled.Chat,
+                icon = Icons.AutoMirrored.Rounded.Chat,
                 holdsExpansionOnNavigate = true,
                 onClick = onChat,
             ),
             ProfileAction(
                 label = labelLink,
-                icon = Icons.Filled.Link,
+                icon = Icons.Rounded.Link,
                 onClick = { scope.launch { clipboard.setText(profileLink.orEmpty()) } },
             ),
             ProfileAction(
                 label = labelSearch,
-                icon = Icons.Filled.Search,
+                icon = Icons.Rounded.Search,
                 onClick = {
                     scope.launch {
                         snackbarHostState.showReplacingSnackbar(
@@ -1161,7 +1160,7 @@ private fun PublicChatProfileLoadedBody(
                     groupItemCount = 1,
                     leadingContent = {
                         Icon(
-                            imageVector = Icons.Filled.Info,
+                            imageVector = Icons.Rounded.Info,
                             contentDescription = null,
                             tint = listItemIconTint,
                         )
@@ -1465,7 +1464,7 @@ private fun ProfileLoadedBody(
                         onContextMenuOpen = openContextMenuHaptic,
                         leadingContent = {
                             Icon(
-                                imageVector = Icons.Filled.AlternateEmail,
+                                imageVector = Icons.Rounded.AlternateEmail,
                                 contentDescription = null,
                                 tint = listItemIconTint,
                             )
@@ -1503,7 +1502,7 @@ private fun ProfileLoadedBody(
                         onContextMenuOpen = openContextMenuHaptic,
                         leadingContent = {
                             Icon(
-                                imageVector = Icons.Filled.CalendarMonth,
+                                imageVector = Icons.Rounded.CalendarMonth,
                                 contentDescription = null,
                                 tint = listItemIconTint,
                             )
@@ -1536,7 +1535,7 @@ private fun ProfileLoadedBody(
                         onContextMenuOpen = openContextMenuHaptic,
                         leadingContent = {
                             Icon(
-                                imageVector = Icons.Filled.Info,
+                                imageVector = Icons.Rounded.Info,
                                 contentDescription = null,
                                 tint = listItemIconTint,
                             )
@@ -1569,7 +1568,7 @@ private fun ProfileLoadedBody(
                         groupItemCount = detailCount,
                         leadingContent = {
                             Icon(
-                                imageVector = Icons.Filled.Verified,
+                                imageVector = Icons.Rounded.Verified,
                                 contentDescription = null,
                                 tint = listItemIconTint,
                             )
@@ -1600,7 +1599,7 @@ private fun ProfileLoadedBody(
                     enabled = !adminActionInProgress,
                     leadingContent = {
                         Icon(
-                            imageVector = Icons.Filled.Verified,
+                            imageVector = Icons.Rounded.Verified,
                             contentDescription = null,
                             tint = listItemIconTint,
                         )
@@ -1618,9 +1617,9 @@ private fun ProfileLoadedBody(
                     leadingContent = {
                         Icon(
                             imageVector = if (isSuspended) {
-                                Icons.Filled.CheckCircle
+                                Icons.Rounded.CheckCircle
                             } else {
-                                Icons.Filled.Block
+                                Icons.Rounded.Block
                             },
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.error,
@@ -1643,7 +1642,7 @@ private fun ProfileLoadedBody(
                     enabled = !adminActionInProgress,
                     leadingContent = {
                         Icon(
-                            imageVector = Icons.Filled.DeleteForever,
+                            imageVector = Icons.Rounded.DeleteForever,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.error,
                         )

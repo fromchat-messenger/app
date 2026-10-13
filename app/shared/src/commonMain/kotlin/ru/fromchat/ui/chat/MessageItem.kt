@@ -92,8 +92,10 @@ import ru.fromchat.supportsMouseMessageInteraction
 import ru.fromchat.ui.chat.utils.imageAspectRatioForMessage
 import ru.fromchat.ui.chat.utils.imageAttachmentKey
 import ru.fromchat.ui.components.Text
+import ru.fromchat.ui.components.googleSansStandardFamily
 import ru.fromchat.ui.profile.StatusBadge
 import ru.fromchat.ui.profile.resolveVerificationStatus
+import kotlin.time.Duration.Companion.milliseconds
 
 /** True when [Message.content] is only a filename placeholder (no real caption). */
 internal fun isFilenameOnlyMessageCaption(message: Message): Boolean {
@@ -217,11 +219,11 @@ fun MessageItem(
     message: Message,
     isAuthor: Boolean,
     onLongPress: () -> Unit,
+    modifier: Modifier = Modifier,
     onTapPosition: (Offset) -> Unit = {},
     onUsernameClick: (() -> Unit)? = null,
     onImageClick: ((Message, Int) -> Unit)? = null,
     onImageBounds: ((String, Rect) -> Unit)? = null,
-    modifier: Modifier = Modifier,
     showUsername: Boolean = true,
     currentUserId: Int? = null,
     expandedImageKey: String? = null,
@@ -275,7 +277,7 @@ fun MessageItem(
         if (isContextMenuForThisMessage) {
             // Keep the press squash briefly so the bubble can animate down, then release
             // so it springs back up as the menu opens.
-            delay(48)
+            delay(48.milliseconds)
             isPressed = false
         } else {
             isPressed = false
@@ -667,28 +669,32 @@ fun MessageItem(
                                 active = runEnterAnimation,
                             ),
                         ) {
-                        Box(
-                            modifier = Modifier
-                                .widthIn(max = maxBubbleWidth)
-                                .wrapContentWidth()
-                                .graphicsLayer(
-                                    scaleX = scale,
-                                    scaleY = scale,
-                                    transformOrigin = TransformOrigin.Center
-                                )
-                                .clip(bubbleShape)
-                                .background(
-                                    if (isAuthor) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.surfaceContainerHigh
-                                    }
-                                )
-                                .padding(
-                                    top = if (primaryIsImageContent) 0.dp else 8.dp,
-                                    bottom = if (primaryIsImageContent && !hasImageCaption) 0.dp else 8.dp,
-                                )
-                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .widthIn(max = maxBubbleWidth)
+                                    .wrapContentWidth()
+                                    .graphicsLayer(
+                                        scaleX = scale,
+                                        scaleY = scale,
+                                        transformOrigin = TransformOrigin.Center
+                                    )
+                                    .clip(bubbleShape)
+                                    .background(
+                                        if (isAuthor) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.surfaceContainerHigh
+                                        }
+                                    )
+                                    .padding(
+                                        top = when {
+                                            primaryIsImageContent -> 0.dp
+                                            replyRef != null -> 8.dp
+                                            else -> 10.dp
+                                        },
+                                        bottom = if (primaryIsImageContent && !hasImageCaption) 0.dp else 10.dp
+                                    )
+                            ) {
                             Column(modifier = Modifier.width(IntrinsicSize.Max)) {
                                 if (showUsernameInBubble) {
                                     val usernameShape = RoundedCornerShape(6.dp)
@@ -780,7 +786,7 @@ fun MessageItem(
                                             ) {
                                                 Text(
                                                     text = displayUsername,
-                                                    style = MaterialTheme.typography.labelMedium,
+                                                    style = MaterialTheme.typography.labelMedium.copy(fontFamily = googleSansStandardFamily()),
                                                     fontWeight = FontWeight.SemiBold,
                                                     color = MaterialTheme.colorScheme.primary,
                                                 )
@@ -801,7 +807,7 @@ fun MessageItem(
                                             ) {
                                                 Text(
                                                     text = displayUsername,
-                                                    style = MaterialTheme.typography.labelMedium,
+                                                    style = MaterialTheme.typography.labelMedium.copy(fontFamily = googleSansStandardFamily()),
                                                     fontWeight = FontWeight.SemiBold,
                                                     color = MaterialTheme.colorScheme.primary,
                                                 )
@@ -849,7 +855,7 @@ fun MessageItem(
                                         if (isCorrupted) {
                                             Text(
                                                 text = corruptedBody,
-                                                style = MaterialTheme.typography.bodyMedium,
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = googleSansStandardFamily()),
                                                 color = contentColor.copy(alpha = 0.8f),
                                                 modifier = Modifier.padding(
                                                     horizontal = 12.dp,
@@ -1139,7 +1145,7 @@ fun MessageItem(
                                                         ) {
                                                             Text(
                                                                 text = message.content,
-                                                                style = MaterialTheme.typography.bodyLarge,
+                                                                style = MaterialTheme.typography.bodyLarge.copy(fontFamily = googleSansStandardFamily()),
                                                                 color = contentColor,
                                                                 modifier = selectableTextModifier,
                                                             )
@@ -1152,7 +1158,7 @@ fun MessageItem(
                                                 // off so long-press keeps opening the message menu.
                                                 Text(
                                                     text = message.content,
-                                                    style = MaterialTheme.typography.bodyLarge,
+                                                    style = MaterialTheme.typography.bodyLarge.copy(fontFamily = googleSansStandardFamily()),
                                                     color = contentColor,
                                                     modifier = selectableTextModifier,
                                                 )
@@ -1205,7 +1211,7 @@ fun MessageItem(
                                             Spacer(modifier = Modifier.width(4.dp))
                                             Text(
                                                 text = formattedTime,
-                                                style = MaterialTheme.typography.labelSmall,
+                                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = googleSansStandardFamily()),
                                                 fontSize = 12.sp,
                                                 color = metaColor,
                                             )
@@ -1229,7 +1235,7 @@ fun MessageItem(
                                         ) {
                                             Text(
                                                 text = formattedTime,
-                                                style = MaterialTheme.typography.labelSmall,
+                                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = googleSansStandardFamily()),
                                                 fontSize = 12.sp,
                                                 color = metaColor,
                                             )
@@ -1237,7 +1243,7 @@ fun MessageItem(
                                                 Spacer(modifier = Modifier.width(4.dp))
                                                 Text(
                                                     text = editedSuffix,
-                                                    style = MaterialTheme.typography.labelSmall,
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = googleSansStandardFamily()),
                                                     fontSize = 12.sp,
                                                     color = metaColor,
                                                 )
@@ -1347,7 +1353,7 @@ private fun MessageReplyQuote(
             ) {
                 Text(
                     text = replyName,
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = googleSansStandardFamily()),
                     fontWeight = FontWeight.SemiBold,
                     color = nameColor,
                     fontSize = 11.sp,
@@ -1356,7 +1362,7 @@ private fun MessageReplyQuote(
                 )
                 Text(
                     text = previewText,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = googleSansStandardFamily()),
                     color = previewColor,
                     fontSize = 12.sp,
                     maxLines = 1,

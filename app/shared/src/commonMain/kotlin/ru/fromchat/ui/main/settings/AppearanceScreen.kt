@@ -11,12 +11,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
-import androidx.compose.material.icons.filled.Brush
-import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Wallpaper
+import androidx.compose.material.icons.automirrored.rounded.KeyboardReturn
+import androidx.compose.material.icons.rounded.Brush
+import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Tab
+import androidx.compose.material.icons.rounded.Wallpaper
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -110,7 +111,7 @@ fun AppearanceScreen(onBack: () -> Unit) {
                     },
                     divider = true,
                     leadingContent = {
-                        Icon(Icons.Filled.Wallpaper, null)
+                        Icon(Icons.Rounded.Wallpaper, null)
                     }
                 )
                 SwitchListItem(
@@ -123,12 +124,12 @@ fun AppearanceScreen(onBack: () -> Unit) {
                     },
                     divider = true,
                     leadingContent = {
-                        Icon(Icons.AutoMirrored.Filled.KeyboardReturn, null)
+                        Icon(Icons.AutoMirrored.Rounded.KeyboardReturn, null)
                     }
                 )
                 ListItem(
                     headline = stringResource(Res.string.theme),
-                    leadingContent = { Icon(Icons.Filled.Brush, null) },
+                    leadingContent = { Icon(Icons.Rounded.Brush, null) },
                     bottomContent = {
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             val options = listOf(
@@ -149,9 +150,9 @@ fun AppearanceScreen(onBack: () -> Unit) {
                                             Spacer(Modifier.width(16.dp))
                                         }
                                         when (index) {
-                                            0 -> Icon(Icons.Filled.Settings, null)
-                                            1 -> Icon(Icons.Filled.LightMode, null)
-                                            2 -> Icon(Icons.Filled.DarkMode, null)
+                                            0 -> Icon(Icons.Rounded.Settings, null)
+                                            1 -> Icon(Icons.Rounded.LightMode, null)
+                                            2 -> Icon(Icons.Rounded.DarkMode, null)
                                             else -> Unit
                                         }
                                     },
@@ -172,7 +173,7 @@ fun AppearanceScreen(onBack: () -> Unit) {
                 ListItem(
                     headline = stringResource(Res.string.appearance_nav_bar_style),
                     supportingText = stringResource(Res.string.appearance_nav_bar_style_d),
-                    leadingContent = { Icon(Icons.Filled.Brush, null) },
+                    leadingContent = { Icon(Icons.Rounded.Brush, null) },
                     divider = true,
                     bottomContent = {
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -201,6 +202,12 @@ fun AppearanceScreen(onBack: () -> Unit) {
                 SwitchListItem(
                     headline = stringResource(Res.string.appearance_nav_bar_show_titles),
                     supportingText = stringResource(Res.string.appearance_nav_bar_show_titles_d),
+                    leadingContent = {
+                        Icon(
+                            imageVector = Icons.Rounded.Tab,
+                            contentDescription = null
+                        )
+                    },
                     enabled = navBarStyle == NavBarStyle.Floating,
                     checked = navBarShowTitle,
                     onCheckedChange = {

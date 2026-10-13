@@ -4,11 +4,20 @@ import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import org.jetbrains.compose.resources.Font
 import ru.fromchat.Res
+import ru.fromchat.google_sans_bold
+import ru.fromchat.google_sans_bold_italic
+import ru.fromchat.google_sans_italic
+import ru.fromchat.google_sans_medium
+import ru.fromchat.google_sans_medium_italic
+import ru.fromchat.google_sans_regular
 import ru.fromchat.google_sans_rounded_regular
+import ru.fromchat.google_sans_semibold
+import ru.fromchat.google_sans_semibold_italic
 
 /**
  * Typography matching Vaffuru's expressive Material 3 look.
@@ -141,3 +150,20 @@ fun googleSansFlexTypography(): Typography {
         ),
     )
 }
+
+/**
+ * Standard (non-rounded) Google Sans font family, using the static weight files
+ * shipped from `feature/desktop`. Used only for chat message text so that line
+ * metrics match the desktop build exactly.
+ */
+@Composable
+fun googleSansStandardFamily(): FontFamily = FontFamily(
+    Font(Res.font.google_sans_regular, FontWeight.Normal, FontStyle.Normal),
+    Font(Res.font.google_sans_italic, FontWeight.Normal, FontStyle.Italic),
+    Font(Res.font.google_sans_medium, FontWeight.Medium, FontStyle.Normal),
+    Font(Res.font.google_sans_medium_italic, FontWeight.Medium, FontStyle.Italic),
+    Font(Res.font.google_sans_semibold, FontWeight.SemiBold, FontStyle.Normal),
+    Font(Res.font.google_sans_semibold_italic, FontWeight.SemiBold, FontStyle.Italic),
+    Font(Res.font.google_sans_bold, FontWeight.Bold, FontStyle.Normal),
+    Font(Res.font.google_sans_bold_italic, FontWeight.Bold, FontStyle.Italic),
+)

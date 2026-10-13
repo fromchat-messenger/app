@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -91,7 +91,7 @@ fun NotificationsScreen(onBack: () -> Unit) {
                             headline = stringResource(Res.string.settings_push_notifications),
                             supportingText = stringResource(Res.string.settings_push_notifications_d),
                             leadingContent = {
-                                Icon(Icons.Filled.Notifications, null)
+                                Icon(Icons.Rounded.Notifications, null)
                             },
                             checked = notificationsEnabled,
                             onCheckedChange = { enabled ->
@@ -125,7 +125,7 @@ fun NotificationsScreen(onBack: () -> Unit) {
                             headline = stringResource(Res.string.settings_notification_settings),
                             supportingText = stringResource(Res.string.settings_notification_settings_d),
                             leadingContent = {
-                                Icon(Icons.Filled.Settings, null)
+                                Icon(Icons.Rounded.Settings, null)
                             },
                             onClick = { openAppNotificationSettings() }
                         )
@@ -136,7 +136,7 @@ fun NotificationsScreen(onBack: () -> Unit) {
                             headline = stringResource(Res.string.settings_desktop_notifications),
                             supportingText = stringResource(Res.string.settings_desktop_notifications_d),
                             leadingContent = {
-                                Icon(Icons.Filled.Notifications, null)
+                                Icon(Icons.Rounded.Notifications, null)
                             },
                             checked = notificationsEnabled,
                             onCheckedChange = { enabled ->
@@ -165,7 +165,7 @@ fun NotificationsScreen(onBack: () -> Unit) {
                             headline = stringResource(Res.string.settings_notification_settings),
                             supportingText = stringResource(Res.string.settings_notification_settings_d),
                             leadingContent = {
-                                Icon(Icons.Filled.Settings, null)
+                                Icon(Icons.Rounded.Settings, null)
                             },
                             onClick = { openAppNotificationSettings() },
                         )
@@ -176,7 +176,7 @@ fun NotificationsScreen(onBack: () -> Unit) {
                             headline = stringResource(Res.string.settings_push_notifications),
                             supportingText = stringResource(Res.string.settings_push_notifications_unavailable),
                             leadingContent = {
-                                Icon(Icons.Filled.Notifications, null)
+                                Icon(Icons.Rounded.Notifications, null)
                             },
                         )
                     }
