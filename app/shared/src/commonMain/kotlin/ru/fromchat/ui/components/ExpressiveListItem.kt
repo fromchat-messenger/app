@@ -28,10 +28,10 @@ import tech.annexflow.constraintlayout.compose.ConstraintLayoutScope
 @Composable
 fun ExpressiveListItem(
     icon: ImageVector,
-    iconPreset: IconPreset = ExpressiveTints.Purple,
     headline: String,
-    supportingText: String? = null,
     modifier: Modifier = Modifier,
+    iconPreset: IconPreset = ExpressiveTints.Purple,
+    supportingText: String? = null,
     trailingContent: (@Composable ConstraintLayoutScope.() -> Unit)? = null,
     enabled: Boolean = true,
     divider: Boolean = false,
