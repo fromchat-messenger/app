@@ -14,6 +14,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -975,6 +976,7 @@ fun ChatsTab(
                         publicChatSelected = publicChatSelected,
                         selectedOtherUserIds = selectedOtherUserIds,
                         contextMenuState = contextMenuState,
+                        isOverlayReplicaPublished = chatContextMenuOverlay.overlayFirstDrawn,
                         rowRevealProgress = rowRevealProgress,
                         listContentPadding = PaddingValues(top = fixedTopBarHeight),
                         showSearchBar = true,
@@ -987,8 +989,15 @@ fun ChatsTab(
                         listBottomInset = mainChromeInsets.bottom,
                         modifier = Modifier
                             .fillMaxSize()
-                            .hazeSource(topChromeHazeState)
-                            .then(searchCollapseSnapModifier),
+                            .background(
+                                if (LocalConversationListDetailActive.current) {
+                                    MaterialTheme.colorScheme.surfaceContainerLowest
+                                } else {
+                                    MaterialTheme.colorScheme.surface
+                                },
+                            )
+                            .then(searchCollapseSnapModifier)
+                            .hazeSource(topChromeHazeState),
                         onOpenPublic = {
                             when {
                                 selectionMode && publicChatSelected -> publicChatSelected = false
@@ -1263,6 +1272,7 @@ internal fun ChatContextMenuOverlayHost(
         uiState = uiState,
         screenWidthPx = screenWidthPx,
         screenHeightPx = screenHeightPx,
+        onFirstDraw = { controller.overlayFirstDrawn = true },
         onBlurProgressChange = { controller.blurProgress = it },
         onRowRevealProgressChange = { controller.rowRevealProgress = it },
         onStateChange = controller.onStateChange,
@@ -1291,6 +1301,7 @@ private fun ChatContextMenuOverlay(
     uiState: ChatContextMenuOverlayUiState,
     screenWidthPx: Int,
     screenHeightPx: Int,
+    onFirstDraw: () -> Unit,
     onBlurProgressChange: (Float) -> Unit,
     onRowRevealProgressChange: (Float) -> Unit,
     onStateChange: (ChatContextMenuState) -> Unit,
@@ -1575,6 +1586,7 @@ private fun ChatContextMenuOverlay(
             .onGloballyPositioned { coords ->
                 overlayOriginInRoot = coords.positionInRoot()
                 overlaySize = coords.size
+                if (overlaySize != IntSize.Zero) onFirstDraw()
             },
     ) {
         if (touchBlockActive) {

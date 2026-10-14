@@ -51,6 +51,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,6 +77,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastAll
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import ru.fromchat.ui.chat.utils.AttachmentDropHighlightBox
 import ru.fromchat.ui.chat.utils.chatAttachmentDropTarget
@@ -145,18 +148,31 @@ private val ChatListCategoryMargin = PaddingValues(
  * Mouse secondary click opens the one-chat context menu (same flow as avatar long-press).
  * Mouse primary long-press does not enter selection.
  */
+@Composable
 @OptIn(ExperimentalFoundationApi::class)
 private fun Modifier.chatRowOpenAndSelectGestures(
     selectionEnabled: Boolean,
+    scope: CoroutineScope,
     interactionSource: MutableInteractionSource,
     onOpen: () -> Unit,
     onEnterSelection: () -> Unit,
     onMouseContextMenu: (localOffset: Offset) -> Unit,
-): Modifier =
-    combinedClickable(
+): Modifier {
+    // combinedClickable fires onClick on the up of the very gesture that just triggered the
+    // selection long-press; onOpen must be skipped there, mirroring combinedClickable's
+    // built-in post-longClick click suppression (in selection mode onOpen toggles
+    // selection, so an un-suppressed click reverts the mode right after entering).
+    val suppressNextClick = remember { mutableStateOf(false) }
+    return combinedClickable(
         interactionSource = interactionSource,
         indication = ripple(),
-        onClick = onOpen,
+        onClick = {
+            if (suppressNextClick.value) {
+                suppressNextClick.value = false
+            } else {
+                onOpen()
+            }
+        },
     ).pointerInput(selectionEnabled) {
         if (!selectionEnabled) return@pointerInput
         awaitEachGesture {
@@ -179,7 +195,11 @@ private fun Modifier.chatRowOpenAndSelectGestures(
                             waitForUpOrCancellation()
                         }
                     } catch (_: PointerEventTimeoutCancellationException) {
-                        onEnterSelection()
+                        // Atomic: the entering coroutine dies with this gesture, but the
+                        // state flip must complete in one step — otherwise an early release
+                        // sees an empty selection and exits before the enter animation begins.
+                        suppressNextClick.value = true
+                        scope.launch { onEnterSelection() }
                         waitForUpOrCancellation()
                     }
                 }
@@ -187,6 +207,7 @@ private fun Modifier.chatRowOpenAndSelectGestures(
             }
         }
     }
+}
 
 /**
  * Touch/stylus: press feedback + long-press opens the menu.
@@ -209,6 +230,11 @@ private fun Modifier.chatRowAvatarGestures(
         }
     }
 
+/**
+ * Consumes the touch/stylus [down] so the row-level gesture (combinedClickable + selection
+ * long-press) ignores avatar presses: quick tap still opens the chat (tap fires from the
+ * unconsumed up), long-press opens only the context menu — no dual-mode trigger.
+ */
 private suspend fun AwaitPointerEventScope.handleChatRowAvatarGesture(
     onPressStart: () -> Unit,
     onPressEnd: () -> Unit,
@@ -221,6 +247,7 @@ private suspend fun AwaitPointerEventScope.handleChatRowAvatarGesture(
     val down = downEvent.changes.firstOrNull() ?: return
     if (down.type == PointerType.Mouse) return
     if (down.type != PointerType.Touch && down.type != PointerType.Stylus) return
+    downEvent.changes.forEach { if (it.changedToDown()) it.consume() }
     onPressStart()
     try {
         withTimeout(viewConfiguration.longPressTimeoutMillis) {
@@ -273,6 +300,8 @@ internal fun ChatConversationsList(
     publicChatSelected: Boolean,
     selectedOtherUserIds: Set<Int>,
     contextMenuState: ChatContextMenuState,
+    /** Set when the MainScreen overlay replica has been drawn; the list row hides only then. */
+    isOverlayReplicaPublished: Boolean,
     rowRevealProgress: Float,
     listContentPadding: PaddingValues = PaddingValues(0.dp),
     showSearchBar: Boolean = false,
@@ -387,7 +416,8 @@ internal fun ChatConversationsList(
                             selectionTransitionProgress = selectionTransitionProgress,
                             isSelected = publicChatSelected,
                             isHiddenForOverlay = contextMenuState.listIndex == ChatListLayout.PUBLIC_CHAT_ROW &&
-                                contextMenuState.isOverlayReplicaActive,
+                                contextMenuState.isOverlayReplicaActive &&
+                                isOverlayReplicaPublished,
                             isPressingForContextMenu = contextMenuState.listIndex == ChatListLayout.PUBLIC_CHAT_ROW &&
                                 contextMenuState.phase == ChatContextMenuPhase.Pressing,
                             contextMenuPressScaleActive = contextMenuState.listIndex == ChatListLayout.PUBLIC_CHAT_ROW &&
@@ -471,7 +501,8 @@ internal fun ChatConversationsList(
                             selectionTransitionProgress = selectionTransitionProgress,
                             isSelected = conversation.otherUserId in selectedOtherUserIds,
                             isHiddenForOverlay = contextMenuState.listIndex == lazyIndex &&
-                                contextMenuState.isOverlayReplicaActive,
+                                contextMenuState.isOverlayReplicaActive &&
+                                isOverlayReplicaPublished,
                             isPressingForContextMenu = contextMenuState.listIndex == lazyIndex &&
                                 contextMenuState.phase == ChatContextMenuPhase.Pressing,
                             contextMenuPressScaleActive = contextMenuState.listIndex == lazyIndex &&
@@ -851,6 +882,7 @@ internal fun PublicChatRow(
     val pressScaleAnim = remember { Animatable(1f) }
     val contextMenuScale = chatRowContextMenuScale(rowRevealProgress, contextMenuPressScaleActive)
     val rowInteractionSource = remember { MutableInteractionSource() }
+    val rowScope = rememberCoroutineScope()
     val dropBridge = rememberAttachmentDropBridge()
     val clipShape = listItemClipShape(listItemPosition, groupItemCount)
 
@@ -892,6 +924,7 @@ internal fun PublicChatRow(
                 },
             interactionModifier = Modifier.chatRowOpenAndSelectGestures(
                 selectionEnabled = listMode == ChatsListMode.Normal,
+                scope = rowScope,
                 interactionSource = rowInteractionSource,
                 onOpen = onOpenPublic,
                 onEnterSelection = onBodyLongPress,
@@ -1024,6 +1057,7 @@ internal fun DmConversationRow(
     val pressScaleAnim = remember { Animatable(1f) }
     val contextMenuScale = chatRowContextMenuScale(rowRevealProgress, contextMenuPressScaleActive)
     val rowInteractionSource = remember { MutableInteractionSource() }
+    val rowScope = rememberCoroutineScope()
     val dropBridge = rememberAttachmentDropBridge()
     val clipShape = listItemClipShape(listItemPosition, groupItemCount)
 
@@ -1065,6 +1099,7 @@ internal fun DmConversationRow(
                 },
             interactionModifier = Modifier.chatRowOpenAndSelectGestures(
                 selectionEnabled = listMode == ChatsListMode.Normal,
+                scope = rowScope,
                 interactionSource = rowInteractionSource,
                 onOpen = onOpenConversation,
                 onEnterSelection = onBodyLongPress,
