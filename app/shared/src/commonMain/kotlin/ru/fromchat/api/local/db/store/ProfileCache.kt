@@ -211,6 +211,10 @@ object ProfileCache {
         }
         val cur = profiles
         val existing = cur[profile.id]
+        if (existing == profile) {
+            Logger.d("ProfileCache", "put unchanged skip id=${profile.id}")
+            return
+        }
         val deletedChanged = existing?.deleted != profile.deleted
         val suspendedChanged = existing?.suspended != profile.suspended
         val verificationChanged = existing?.verified != profile.verified ||

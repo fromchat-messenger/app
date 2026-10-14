@@ -58,6 +58,33 @@ object DmInboundMessageProcessor {
     }
   }
 
+  /**
+   * Decrypts and builds a page of DM history without touching the cache, so a history
+   * rebuild can replace the whole conversation in a single cache write (one DB flow
+   * emission) instead of one full-conversation load + upsert per message.
+   */
+  suspend fun processHistoryPage(envelopes: List<DmEnvelope>, otherUserId: Int): List<Message> =
+    withContext(Dispatchers.Default) {
+      val currentUserId = ApiClient.user?.id ?: return@withContext emptyList()
+      val built = envelopes.mapNotNull { envelope ->
+        if (envelope.senderId != currentUserId && envelope.recipientId != currentUserId) {
+          return@mapNotNull null
+        }
+        val outcome = runCatching { decryptEnvelope(envelope, currentUserId) }.getOrNull()
+        val plaintext = outcome ?: ""
+        buildMessage(envelope, plaintext, outcome == null, currentUserId, otherUserId)
+      }
+      val byId = built.associateBy { it.id }
+      built.map { msg ->
+        val replyId = msg.dmEnvelope?.replyToId?.takeIf { it > 0 }
+        if (replyId != null && msg.reply_to == null) {
+          byId[replyId]?.let { msg.copy(reply_to = it) } ?: msg
+        } else {
+          msg
+        }
+      }
+    }
+
   suspend fun processDeleted(element: JsonElement) {
     val data = runCatching {
       ApiClient.json.decodeFromJsonElement(DmDeletedData.serializer(), element)

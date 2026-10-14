@@ -63,7 +63,16 @@ class PublicChatPanel(
         val order = compareBy<Message> { it.timestamp }.thenBy { it.id }
         val a = shown.sortedWith(order)
         val b = fromNetwork.sortedWith(order)
-        if (a.size != b.size) return true
+        if (a.size != b.size) {
+            if (b.size > a.size) return true
+            // Network page is a subset of the cached history: only flag a real difference
+            // when an incoming id/text/edited state doesn't already match the UI.
+            val byId = a.associateBy { it.id }
+            return b.any { y ->
+                val x = byId[y.id] ?: return@any true
+                x.content != y.content || x.is_edited != y.is_edited
+            }
+        }
         for (i in a.indices) {
             val x = a[i]
             val y = b[i]
