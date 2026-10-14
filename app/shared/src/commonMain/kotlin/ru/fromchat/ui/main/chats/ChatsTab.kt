@@ -14,6 +14,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -987,8 +988,15 @@ fun ChatsTab(
                         listBottomInset = mainChromeInsets.bottom,
                         modifier = Modifier
                             .fillMaxSize()
-                            .hazeSource(topChromeHazeState)
-                            .then(searchCollapseSnapModifier),
+                            .background(
+                                if (LocalConversationListDetailActive.current) {
+                                    MaterialTheme.colorScheme.surfaceContainerLowest
+                                } else {
+                                    MaterialTheme.colorScheme.surface
+                                },
+                            )
+                            .then(searchCollapseSnapModifier)
+                            .hazeSource(topChromeHazeState),
                         onOpenPublic = {
                             when {
                                 selectionMode && publicChatSelected -> publicChatSelected = false
