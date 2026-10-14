@@ -300,6 +300,8 @@ internal fun ChatConversationsList(
     publicChatSelected: Boolean,
     selectedOtherUserIds: Set<Int>,
     contextMenuState: ChatContextMenuState,
+    /** Set when the MainScreen overlay replica has been drawn; the list row hides only then. */
+    isOverlayReplicaPublished: Boolean,
     rowRevealProgress: Float,
     listContentPadding: PaddingValues = PaddingValues(0.dp),
     showSearchBar: Boolean = false,
@@ -414,7 +416,8 @@ internal fun ChatConversationsList(
                             selectionTransitionProgress = selectionTransitionProgress,
                             isSelected = publicChatSelected,
                             isHiddenForOverlay = contextMenuState.listIndex == ChatListLayout.PUBLIC_CHAT_ROW &&
-                                contextMenuState.isOverlayReplicaActive,
+                                contextMenuState.isOverlayReplicaActive &&
+                                isOverlayReplicaPublished,
                             isPressingForContextMenu = contextMenuState.listIndex == ChatListLayout.PUBLIC_CHAT_ROW &&
                                 contextMenuState.phase == ChatContextMenuPhase.Pressing,
                             contextMenuPressScaleActive = contextMenuState.listIndex == ChatListLayout.PUBLIC_CHAT_ROW &&
@@ -498,7 +501,8 @@ internal fun ChatConversationsList(
                             selectionTransitionProgress = selectionTransitionProgress,
                             isSelected = conversation.otherUserId in selectedOtherUserIds,
                             isHiddenForOverlay = contextMenuState.listIndex == lazyIndex &&
-                                contextMenuState.isOverlayReplicaActive,
+                                contextMenuState.isOverlayReplicaActive &&
+                                isOverlayReplicaPublished,
                             isPressingForContextMenu = contextMenuState.listIndex == lazyIndex &&
                                 contextMenuState.phase == ChatContextMenuPhase.Pressing,
                             contextMenuPressScaleActive = contextMenuState.listIndex == lazyIndex &&

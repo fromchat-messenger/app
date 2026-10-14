@@ -976,6 +976,7 @@ fun ChatsTab(
                         publicChatSelected = publicChatSelected,
                         selectedOtherUserIds = selectedOtherUserIds,
                         contextMenuState = contextMenuState,
+                        isOverlayReplicaPublished = chatContextMenuOverlay.overlayFirstDrawn,
                         rowRevealProgress = rowRevealProgress,
                         listContentPadding = PaddingValues(top = fixedTopBarHeight),
                         showSearchBar = true,
@@ -1271,6 +1272,7 @@ internal fun ChatContextMenuOverlayHost(
         uiState = uiState,
         screenWidthPx = screenWidthPx,
         screenHeightPx = screenHeightPx,
+        onFirstDraw = { controller.overlayFirstDrawn = true },
         onBlurProgressChange = { controller.blurProgress = it },
         onRowRevealProgressChange = { controller.rowRevealProgress = it },
         onStateChange = controller.onStateChange,
@@ -1299,6 +1301,7 @@ private fun ChatContextMenuOverlay(
     uiState: ChatContextMenuOverlayUiState,
     screenWidthPx: Int,
     screenHeightPx: Int,
+    onFirstDraw: () -> Unit,
     onBlurProgressChange: (Float) -> Unit,
     onRowRevealProgressChange: (Float) -> Unit,
     onStateChange: (ChatContextMenuState) -> Unit,
@@ -1583,6 +1586,7 @@ private fun ChatContextMenuOverlay(
             .onGloballyPositioned { coords ->
                 overlayOriginInRoot = coords.positionInRoot()
                 overlaySize = coords.size
+                if (overlaySize != IntSize.Zero) onFirstDraw()
             },
     ) {
         if (touchBlockActive) {

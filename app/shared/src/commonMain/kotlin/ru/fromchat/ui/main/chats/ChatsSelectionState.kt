@@ -103,6 +103,8 @@ class ChatContextMenuOverlayController {
     var blurProgress by mutableFloatStateOf(0f)
     /** Shared row scale progress (0 = pressed, 1 = full) for overlay ↔ list handoff. */
     var rowRevealProgress by mutableFloatStateOf(0f)
+    /** The overlay replica has been drawn at least once; the list row hides only after this. */
+    var overlayFirstDrawn by mutableStateOf(false)
     var onStateChange: (ChatContextMenuState) -> Unit = {}
     var onDismiss: () -> Unit = {}
     var onMessage: () -> Unit = {}
@@ -117,5 +119,6 @@ class ChatContextMenuOverlayController {
         uiState = null
         blurProgress = 0f
         rowRevealProgress = 0f
+        overlayFirstDrawn = false
     }
 }
