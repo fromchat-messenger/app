@@ -148,6 +148,7 @@ private val ChatListCategoryMargin = PaddingValues(
  * Mouse secondary click opens the one-chat context menu (same flow as avatar long-press).
  * Mouse primary long-press does not enter selection.
  */
+@Composable
 @OptIn(ExperimentalFoundationApi::class)
 private fun Modifier.chatRowOpenAndSelectGestures(
     selectionEnabled: Boolean,
@@ -156,11 +157,22 @@ private fun Modifier.chatRowOpenAndSelectGestures(
     onOpen: () -> Unit,
     onEnterSelection: () -> Unit,
     onMouseContextMenu: (localOffset: Offset) -> Unit,
-): Modifier =
-    combinedClickable(
+): Modifier {
+    // combinedClickable fires onClick on the up of the very gesture that just triggered the
+    // selection long-press; onOpen must be skipped there, mirroring combinedClickable's
+    // built-in post-longClick click suppression (in selection mode onOpen toggles
+    // selection, so an un-suppressed click reverts the mode right after entering).
+    val suppressNextClick = remember { mutableStateOf(false) }
+    return combinedClickable(
         interactionSource = interactionSource,
         indication = ripple(),
-        onClick = onOpen,
+        onClick = {
+            if (suppressNextClick.value) {
+                suppressNextClick.value = false
+            } else {
+                onOpen()
+            }
+        },
     ).pointerInput(selectionEnabled) {
         if (!selectionEnabled) return@pointerInput
         awaitEachGesture {
@@ -186,6 +198,7 @@ private fun Modifier.chatRowOpenAndSelectGestures(
                         // Atomic: the entering coroutine dies with this gesture, but the
                         // state flip must complete in one step — otherwise an early release
                         // sees an empty selection and exits before the enter animation begins.
+                        suppressNextClick.value = true
                         scope.launch { onEnterSelection() }
                         waitForUpOrCancellation()
                     }
@@ -194,6 +207,7 @@ private fun Modifier.chatRowOpenAndSelectGestures(
             }
         }
     }
+}
 
 /**
  * Touch/stylus: press feedback + long-press opens the menu.

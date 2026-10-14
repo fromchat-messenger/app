@@ -277,6 +277,7 @@ fun MainScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .background(MaterialTheme.colorScheme.surface)
                 .hazeSource(contextMenuHazeState),
         ) {
             Scaffold(
