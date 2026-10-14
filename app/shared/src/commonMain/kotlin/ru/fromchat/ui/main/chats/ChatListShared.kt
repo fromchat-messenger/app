@@ -51,6 +51,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,6 +77,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastAll
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import ru.fromchat.ui.chat.utils.AttachmentDropHighlightBox
 import ru.fromchat.ui.chat.utils.chatAttachmentDropTarget
@@ -148,6 +151,7 @@ private val ChatListCategoryMargin = PaddingValues(
 @OptIn(ExperimentalFoundationApi::class)
 private fun Modifier.chatRowOpenAndSelectGestures(
     selectionEnabled: Boolean,
+    scope: CoroutineScope,
     interactionSource: MutableInteractionSource,
     onOpen: () -> Unit,
     onEnterSelection: () -> Unit,
@@ -179,7 +183,10 @@ private fun Modifier.chatRowOpenAndSelectGestures(
                             waitForUpOrCancellation()
                         }
                     } catch (_: PointerEventTimeoutCancellationException) {
-                        onEnterSelection()
+                        // Atomic: the entering coroutine dies with this gesture, but the
+                        // state flip must complete in one step — otherwise an early release
+                        // sees an empty selection and exits before the enter animation begins.
+                        scope.launch { onEnterSelection() }
                         waitForUpOrCancellation()
                     }
                 }
@@ -209,6 +216,11 @@ private fun Modifier.chatRowAvatarGestures(
         }
     }
 
+/**
+ * Consumes the touch/stylus [down] so the row-level gesture (combinedClickable + selection
+ * long-press) ignores avatar presses: quick tap still opens the chat (tap fires from the
+ * unconsumed up), long-press opens only the context menu — no dual-mode trigger.
+ */
 private suspend fun AwaitPointerEventScope.handleChatRowAvatarGesture(
     onPressStart: () -> Unit,
     onPressEnd: () -> Unit,
@@ -221,6 +233,7 @@ private suspend fun AwaitPointerEventScope.handleChatRowAvatarGesture(
     val down = downEvent.changes.firstOrNull() ?: return
     if (down.type == PointerType.Mouse) return
     if (down.type != PointerType.Touch && down.type != PointerType.Stylus) return
+    downEvent.changes.forEach { if (it.changedToDown()) it.consume() }
     onPressStart()
     try {
         withTimeout(viewConfiguration.longPressTimeoutMillis) {
@@ -851,6 +864,7 @@ internal fun PublicChatRow(
     val pressScaleAnim = remember { Animatable(1f) }
     val contextMenuScale = chatRowContextMenuScale(rowRevealProgress, contextMenuPressScaleActive)
     val rowInteractionSource = remember { MutableInteractionSource() }
+    val rowScope = rememberCoroutineScope()
     val dropBridge = rememberAttachmentDropBridge()
     val clipShape = listItemClipShape(listItemPosition, groupItemCount)
 
@@ -892,6 +906,7 @@ internal fun PublicChatRow(
                 },
             interactionModifier = Modifier.chatRowOpenAndSelectGestures(
                 selectionEnabled = listMode == ChatsListMode.Normal,
+                scope = rowScope,
                 interactionSource = rowInteractionSource,
                 onOpen = onOpenPublic,
                 onEnterSelection = onBodyLongPress,
@@ -1024,6 +1039,7 @@ internal fun DmConversationRow(
     val pressScaleAnim = remember { Animatable(1f) }
     val contextMenuScale = chatRowContextMenuScale(rowRevealProgress, contextMenuPressScaleActive)
     val rowInteractionSource = remember { MutableInteractionSource() }
+    val rowScope = rememberCoroutineScope()
     val dropBridge = rememberAttachmentDropBridge()
     val clipShape = listItemClipShape(listItemPosition, groupItemCount)
 
@@ -1065,6 +1081,7 @@ internal fun DmConversationRow(
                 },
             interactionModifier = Modifier.chatRowOpenAndSelectGestures(
                 selectionEnabled = listMode == ChatsListMode.Normal,
+                scope = rowScope,
                 interactionSource = rowInteractionSource,
                 onOpen = onOpenConversation,
                 onEnterSelection = onBodyLongPress,
