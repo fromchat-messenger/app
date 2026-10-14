@@ -66,6 +66,7 @@ class DmPanel(
     private val json = Json { ignoreUnknownKeys = true }
     private var otherDisplayName: String = ""
     private var otherProfilePicture: String? = null
+    private var peerTitleApplied = false
     private val dmEnvelopeMutex = Mutex()
     private val loadMessagesMutex = Mutex()
     private var messagesLoaded = false
@@ -167,9 +168,20 @@ class DmPanel(
                     "titleBlank=${displayName.isBlank()}",
             )
             cached?.let { UserStatusStore.update(it.id, it.online, it.lastSeen) }
+            val picture = cached?.profilePicture
+            // Rebuilds merge profile previews for every message in the history: the revision
+            // bumps dozens of times while this peer's cached row stays identical. Only touch
+            // state when the resolved title/avatar actually changed.
+            if (
+                peerTitleApplied &&
+                displayName == otherDisplayName && picture == otherProfilePicture
+            ) {
+                return@launch
+            }
+            peerTitleApplied = true
             withContext(Dispatchers.Main) {
                 if (displayName.isNotBlank()) {
-                    applyPeerTitle(displayName, cached?.profilePicture)
+                    applyPeerTitle(displayName, picture)
                 } else {
                     updateState {
                         it.copy(title = "", titleAvatar = null, profileUserId = otherUserId)

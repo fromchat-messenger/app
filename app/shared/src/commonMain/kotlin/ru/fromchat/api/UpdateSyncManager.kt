@@ -331,22 +331,32 @@ object UpdateSyncManager {
         Logger.i("UpdateSync", "rebuildDmHistories conversations=${conversations.size}")
         for (conversation in conversations) {
             val otherId = conversation.otherUserId
-            MessageCacheStore.clearDmMessages(otherId)
+            val collected = LinkedHashMap<Int, Message>()
             var beforeId: Int? = null
             var pageCount = 0
             repeat(MAX_HISTORY_PAGES) {
                 val page = ApiClient.getDmHistory(otherId, limit = HISTORY_PAGE_SIZE, beforeId = beforeId)
                 if (page.messages.isEmpty()) return@repeat
                 pageCount++
-                for (envelope in page.messages) {
-                    val element = ApiClient.json.encodeToJsonElement(DmEnvelope.serializer(), envelope)
-                    DmInboundMessageProcessor.processNew(element)
-                }
+                DmInboundMessageProcessor.processHistoryPage(page.messages, otherId)
+                    .forEach { collected[it.id] = it }
                 val oldest = page.messages.minByOrNull { it.id } ?: return@repeat
                 if (page.messages.size < HISTORY_PAGE_SIZE) return@repeat
                 beforeId = oldest.id
             }
-            Logger.d("UpdateSync", "rebuildDmHistories otherUserId=$otherId pages=$pageCount")
+            if (pageCount == 0) {
+                MessageCacheStore.clearDmMessages(otherId)
+            } else {
+                // Single batched replace per conversation: one transaction, one DB flow
+                // emission, one chat-list preview sync. The old per-message processNew
+                // path read the entire conversation from disk for every message and
+                // re-emitted the observable per upsert, freezing the UI for 10s+.
+                MessageRepository.replaceDmMessages(otherId, collected.values.toList(), replaceAll = true)
+            }
+            Logger.d(
+                "UpdateSync",
+                "rebuildDmHistories otherUserId=$otherId pages=$pageCount messages=${collected.size}",
+            )
         }
     }
 }

@@ -125,11 +125,11 @@ abstract class ChatPanel(
      * Update state
      */
     protected fun updateState(updates: (ChatPanelState) -> ChatPanelState) {
-        _state = updates(_state)
-        // Notify state change - ensure callback runs on main thread for Compose
+        val newState = updates(_state)
+        if (newState == _state) return
+        _state = newState
+        Logger.d("ChatPanel", "State updated: messages=${newState.messages.size}, callback=${onStateChange != null}")
         val callback = onStateChange
-        val newState = _state.copy()
-        Logger.d("ChatPanel", "State updated: messages=${newState.messages.size}, callback=${callback != null}")
         if (callback != null) {
             if (batchDepth > 0) {
                 pendingBatchedState = newState
