@@ -17,6 +17,7 @@ import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Tab
+import androidx.compose.material.icons.rounded.ViewInAr
 import androidx.compose.material.icons.rounded.Wallpaper
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -46,6 +47,8 @@ import ru.fromchat.appearance_nav_bar_show_titles_d
 import ru.fromchat.appearance_nav_bar_style
 import ru.fromchat.appearance_nav_bar_style_d
 import ru.fromchat.appearance_nav_bar_traditional
+import ru.fromchat.appearance_window_frame
+import ru.fromchat.appearance_window_frame_d
 import ru.fromchat.as_system
 import ru.fromchat.config.NavBarStyle
 import ru.fromchat.config.Settings
@@ -75,6 +78,8 @@ fun AppearanceScreen(onBack: () -> Unit) {
     }
     var enterToSendSwitch by remember { mutableStateOf(Settings.enterToSend) }
     var themeChipIndex by remember { mutableIntStateOf(Settings.theme.ordinal) }
+    val nativeFrameSupported = isDesktopNativeFrameSupported()
+    var nativeFrameSwitch by remember { mutableStateOf(isDesktopNativeFrameEnabled()) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -127,6 +132,19 @@ fun AppearanceScreen(onBack: () -> Unit) {
                         Icon(Icons.AutoMirrored.Rounded.KeyboardReturn, null)
                     }
                 )
+                if (nativeFrameSupported) {
+                    SwitchListItem(
+                        headline = stringResource(Res.string.appearance_window_frame),
+                        supportingText = stringResource(Res.string.appearance_window_frame_d),
+                        checked = nativeFrameSwitch,
+                        onCheckedChange = {
+                            nativeFrameSwitch = it
+                            setDesktopNativeFrameEnabled(it)
+                        },
+                        divider = true,
+                        leadingContent = { Icon(Icons.Rounded.ViewInAr, null) }
+                    )
+                }
                 ListItem(
                     headline = stringResource(Res.string.theme),
                     leadingContent = { Icon(Icons.Rounded.Brush, null) },
@@ -220,3 +238,10 @@ fun AppearanceScreen(onBack: () -> Unit) {
         }
     }
 }
+
+/** True on desktop, where the window frame can be switched to the OS-drawn one. */
+expect fun isDesktopNativeFrameSupported(): Boolean
+
+expect fun isDesktopNativeFrameEnabled(): Boolean
+
+expect fun setDesktopNativeFrameEnabled(enabled: Boolean)

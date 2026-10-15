@@ -12,6 +12,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -309,6 +310,8 @@ fun main(args: Array<String>) {
     }
     if (!DesktopSingleInstance.acquireOrForward(args)) return
     DesktopProtocolRegistration.register()
+    // Detect the WM (Hyprland → native frame) before the window is created.
+    initNativeFrameDefaults()
     if (isWindowsOs()) {
         if (isWindowsArm64()) {
             System.setProperty("skiko.rendering.angle.enabled", "true")
@@ -352,7 +355,25 @@ fun main(args: Array<String>) {
 
         val mac = remember { isMacOs() }
         val windows = remember { isWindowsOs() }
-        val customFrame = remember { usesCustomDesktopFrame() }
+        // AWT forbids changing window decorations once a frame is displayable, so a frame
+        // mode change recreates the window: this key is read once per mount, and the
+        // `key()` below remounts the whole Window (fresh ComposeWindow, same windowState)
+        // when the setting changes. Geometry is preserved via DesktopWindowPrefs
+        // persistence and the shared `windowState`.
+        var nativeFrame by remember { mutableStateOf(DesktopWindowSettings.nativeFrame) }
+        // The remount below loses composition state, so after a frame-mode change we reland
+        // on the Appearance screen instead of restoring any UI state (keeps the toggle
+        // simple: no AWT state transfer).
+        var nativeFrameReland by remember { mutableStateOf(false) }
+        val onNativeFrameChange: (Boolean) -> Unit = {
+            nativeFrame = it
+            nativeFrameReland = true
+        }
+        DisposableEffect(Unit) {
+            DesktopWindowSettings.addNativeFrameListener(onNativeFrameChange)
+            onDispose { DesktopWindowSettings.removeNativeFrameListener(onNativeFrameChange) }
+        }
+        val customFrame = !mac && !nativeFrame
         val windowIcon = remember {
             dockIconImage?.toPainter() ?: loadAppIconPainter(tray = false)
         }
@@ -581,178 +602,183 @@ fun main(args: Array<String>) {
             }
         }
 
-        Window(
-            onCloseRequest = { requestCloseToBackgroundOrQuit() },
-            title = appName,
-            state = windowState,
-            visible = contentReady && (windowVisible || !traySupported),
-            icon = windowIcon,
-            undecorated = customFrame,
-            onPreviewKeyEvent = { event ->
-                // macOS: MenuBar KeyShortcuts handle these. Win/Linux: no menu bar.
-                if (mac || event.type != KeyEventType.KeyDown || !event.isCtrlPressed) {
-                    return@Window false
-                }
-                when {
-                    !event.isShiftPressed && event.key == Key.N -> {
-                        if (!isLoggedIn) return@Window false
-                        showMainWindow()
-                        DesktopMenuCommands.emit(DesktopMenuCommand.NewChat)
-                        true
-                    }
-                    !event.isShiftPressed && event.key == Key.F -> {
-                        if (!isLoggedIn) return@Window false
-                        showMainWindow()
-                        DesktopMenuCommands.emit(DesktopMenuCommand.SearchConversations)
-                        true
-                    }
-                    event.isShiftPressed && event.key == Key.S -> {
-                        showMainWindow()
-                        DesktopMenuCommands.emit(DesktopMenuCommand.EnterChatListSelection)
-                        true
-                    }
-                    event.isShiftPressed && event.key == Key.A -> {
-                        openAbout()
-                        true
-                    }
-                    event.isShiftPressed && event.key == Key.N -> {
-                        showMainWindow()
-                        true
-                    }
-                    event.key == Key.M -> {
-                        windowState.isMinimized = true
-                        true
-                    }
-                    event.key == Key.Q -> {
-                        exitApplication()
-                        true
-                    }
-                    else -> false
-                }
-            },
-        ) {
-            LaunchedEffect(window, appName, windowChrome) {
-                window.title = appName
-                windowChrome.toAwtColor().also {
-                    window.background = it
-                    window.contentPane.background = it
-                    if (customFrame && windows) {
-                        updateWindowsNativeCaptionBackground(window, it)
-                    }
-                }
-
-                if (customFrame && windows) {
-                    installWindowsNativeCaptionChrome(window)
-                    applyWindowsRoundedCorners(window)
-                }
-                applyDesktopEdgeToEdgeChrome(window.rootPane)
-                dockIconImage?.let { image ->
-                    window.iconImages = listOf(image)
-                    applyDockIcon(image)
-                }
-            }
-
-            DisposableEffect(window) {
-                installDesktopWindowExceptionHandler(window)
-                AppForeground.setForeground(true)
-                fun syncWindowFocus(focused: Boolean) {
-                    DesktopAppVisibility.isWindowFocused = focused
-                    AppForeground.setWindowFocused(focused)
-                    if (!focused) MacNotificationCenter.resignActive()
-                    Logger.i(
-                        "DesktopAppVisibility",
-                        "focus=$focused active=${window.isActive} awtFocused=${window.isFocused}",
-                    )
-                }
-                val listener = object : java.awt.event.WindowAdapter() {
-                    override fun windowActivated(e: java.awt.event.WindowEvent?) {
-                        syncWindowFocus(true)
-                    }
-
-                    override fun windowDeactivated(e: java.awt.event.WindowEvent?) {
-                        syncWindowFocus(false)
-                    }
-
-                    override fun windowGainedFocus(e: java.awt.event.WindowEvent?) {
-                        syncWindowFocus(true)
-                    }
-
-                    override fun windowLostFocus(e: java.awt.event.WindowEvent?) {
-                        syncWindowFocus(false)
-                    }
-
-                    override fun windowIconified(e: java.awt.event.WindowEvent?) {
-                        syncWindowFocus(false)
-                    }
-                }
-                syncWindowFocus(window.isActive && window.isFocused)
-                window.addWindowListener(listener)
-                window.addWindowFocusListener(listener)
-                onDispose {
-                    window.removeWindowListener(listener)
-                    window.removeWindowFocusListener(listener)
-                }
-            }
-
-            if (mac) {
-                FromChatMenuBar(
-                    isLoggedIn = isLoggedIn,
-                    onNewChat = {
-                        showMainWindow()
-                        DesktopMenuCommands.emit(DesktopMenuCommand.NewChat)
-                    },
-                    onSearchConversations = {
-                        showMainWindow()
-                        DesktopMenuCommands.emit(DesktopMenuCommand.SearchConversations)
-                    },
-                    onSelectChats = {
-                        showMainWindow()
-                        DesktopMenuCommands.emit(DesktopMenuCommand.EnterChatListSelection)
-                    },
-                    onShow = { showMainWindow() },
-                    onMinimize = { windowState.isMinimized = true },
-                    onZoom = {
-                        windowState.placement =
-                            if (windowState.placement == WindowPlacement.Maximized) {
-                                WindowPlacement.Floating
-                            } else {
-                                WindowPlacement.Maximized
+        key(nativeFrame) {
+                Window(
+                    onCloseRequest = { requestCloseToBackgroundOrQuit() },
+                    title = appName,
+                    state = windowState,
+                    visible = contentReady && (windowVisible || !traySupported),
+                    icon = windowIcon,
+                    undecorated = customFrame,
+                    onPreviewKeyEvent = { event ->
+                        // macOS: MenuBar KeyShortcuts handle these. Win/Linux: no menu bar.
+                        if (mac || event.type != KeyEventType.KeyDown || !event.isCtrlPressed) {
+                            return@Window false
+                        }
+                        when {
+                            !event.isShiftPressed && event.key == Key.N -> {
+                                if (!isLoggedIn) return@Window false
+                                showMainWindow()
+                                DesktopMenuCommands.emit(DesktopMenuCommand.NewChat)
+                                true
                             }
+                            !event.isShiftPressed && event.key == Key.F -> {
+                                if (!isLoggedIn) return@Window false
+                                showMainWindow()
+                                DesktopMenuCommands.emit(DesktopMenuCommand.SearchConversations)
+                                true
+                            }
+                            event.isShiftPressed && event.key == Key.S -> {
+                                showMainWindow()
+                                DesktopMenuCommands.emit(DesktopMenuCommand.EnterChatListSelection)
+                                true
+                            }
+                            event.isShiftPressed && event.key == Key.A -> {
+                                openAbout()
+                                true
+                            }
+                            event.isShiftPressed && event.key == Key.N -> {
+                                showMainWindow()
+                                true
+                            }
+                            event.key == Key.M -> {
+                                windowState.isMinimized = true
+                                true
+                            }
+                            event.key == Key.Q -> {
+                                exitApplication()
+                                true
+                            }
+                            else -> false
+                        }
                     },
-                    onQuit = { exitApplication() },
-                )
-            }
-
-            CompositionLocalProvider(
-                LocalExtraStatusBarTop provides when {
-                    mac -> 28.dp
-                    customFrame -> WindowsTitleBarHeight
-                    else -> 0.dp
-                },
-            ) {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(windowChrome),
                 ) {
-                    App(onContentReady = { contentReady = true })
-                    if (customFrame) {
-                        MaterialTheme(colorScheme = getColorScheme(desktopAppDarkTheme(), dynamicColor = false)) {
-                            WindowsDesktopTitleBar(
-                                title = appName,
-                                windowIcon = windowIcon,
-                                window = window,
-                                windowState = windowState,
-                                onCloseRequest = { requestCloseToBackgroundOrQuit() },
-                                modifier = Modifier
-                                    .align(Alignment.TopStart)
-                                    .fillMaxWidth()
-                                    .zIndex(10_000f),
+                    LaunchedEffect(window, appName, windowChrome) {
+                        window.title = appName
+                        windowChrome.toAwtColor().also {
+                            window.background = it
+                            window.contentPane.background = it
+                            if (customFrame && windows) {
+                                updateWindowsNativeCaptionBackground(window, it)
+                            }
+                        }
+        
+                        if (customFrame && windows) {
+                            installWindowsNativeCaptionChrome(window)
+                            applyWindowsRoundedCorners(window)
+                        }
+                        applyDesktopEdgeToEdgeChrome(window.rootPane)
+                        dockIconImage?.let { image ->
+                            window.iconImages = listOf(image)
+                            applyDockIcon(image)
+                        }
+                    }
+        
+                    DisposableEffect(window) {
+                        installDesktopWindowExceptionHandler(window)
+                        AppForeground.setForeground(true)
+                        fun syncWindowFocus(focused: Boolean) {
+                            DesktopAppVisibility.isWindowFocused = focused
+                            AppForeground.setWindowFocused(focused)
+                            if (!focused) MacNotificationCenter.resignActive()
+                            Logger.i(
+                                "DesktopAppVisibility",
+                                "focus=$focused active=${window.isActive} awtFocused=${window.isFocused}",
                             )
+                        }
+                        val listener = object : java.awt.event.WindowAdapter() {
+                            override fun windowActivated(e: java.awt.event.WindowEvent?) {
+                                syncWindowFocus(true)
+                            }
+        
+                            override fun windowDeactivated(e: java.awt.event.WindowEvent?) {
+                                syncWindowFocus(false)
+                            }
+        
+                            override fun windowGainedFocus(e: java.awt.event.WindowEvent?) {
+                                syncWindowFocus(true)
+                            }
+        
+                            override fun windowLostFocus(e: java.awt.event.WindowEvent?) {
+                                syncWindowFocus(false)
+                            }
+        
+                            override fun windowIconified(e: java.awt.event.WindowEvent?) {
+                                syncWindowFocus(false)
+                            }
+                        }
+                        syncWindowFocus(window.isActive && window.isFocused)
+                        window.addWindowListener(listener)
+                        window.addWindowFocusListener(listener)
+                        onDispose {
+                            window.removeWindowListener(listener)
+                            window.removeWindowFocusListener(listener)
+                        }
+                    }
+        
+                    if (mac) {
+                        FromChatMenuBar(
+                            isLoggedIn = isLoggedIn,
+                            onNewChat = {
+                                showMainWindow()
+                                DesktopMenuCommands.emit(DesktopMenuCommand.NewChat)
+                            },
+                            onSearchConversations = {
+                                showMainWindow()
+                                DesktopMenuCommands.emit(DesktopMenuCommand.SearchConversations)
+                            },
+                            onSelectChats = {
+                                showMainWindow()
+                                DesktopMenuCommands.emit(DesktopMenuCommand.EnterChatListSelection)
+                            },
+                            onShow = { showMainWindow() },
+                            onMinimize = { windowState.isMinimized = true },
+                            onZoom = {
+                                windowState.placement =
+                                    if (windowState.placement == WindowPlacement.Maximized) {
+                                        WindowPlacement.Floating
+                                    } else {
+                                        WindowPlacement.Maximized
+                                    }
+                            },
+                            onQuit = { exitApplication() },
+                        )
+                    }
+        
+                    CompositionLocalProvider(
+                        LocalExtraStatusBarTop provides when {
+                            mac -> 28.dp
+                            customFrame -> WindowsTitleBarHeight
+                            else -> 0.dp
+                        },
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(windowChrome),
+                        ) {
+                            App(
+                                startAtAppearance = nativeFrameReland,
+                                onContentReady = { contentReady = true },
+                            )
+                            if (customFrame) {
+                                MaterialTheme(colorScheme = getColorScheme(desktopAppDarkTheme(), dynamicColor = false)) {
+                                    WindowsDesktopTitleBar(
+                                        title = appName,
+                                        windowIcon = windowIcon,
+                                        window = window,
+                                        windowState = windowState,
+                                        onCloseRequest = { requestCloseToBackgroundOrQuit() },
+                                        modifier = Modifier
+                                            .align(Alignment.TopStart)
+                                            .fillMaxWidth()
+                                            .zIndex(10_000f),
+                                    )
+                                }
+                            }
                         }
                     }
                 }
-            }
         }
     }
 }

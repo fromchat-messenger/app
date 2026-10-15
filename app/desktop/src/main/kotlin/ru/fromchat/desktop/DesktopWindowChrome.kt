@@ -13,8 +13,20 @@ internal fun isWindowsOs(): Boolean =
 internal fun isLinuxOs(): Boolean =
     System.getProperty("os.name").orEmpty().lowercase().contains("linux")
 
-/** Undecorated Compose window with in-app title bar (Windows and Linux; macOS uses native chrome). */
-internal fun usesCustomDesktopFrame(): Boolean = isWindowsOs() || isLinuxOs()
+/**
+ * True when the OS-drawn window frame is in use instead of the in-app custom title bar.
+ * macOS always has native chrome. On Windows and Linux the Appearance → "Native window
+ * frame" setting switches the window between the custom (undecorated) and the OS frame;
+ * it is disabled by default, on Linux it auto-enables when the window manager is Hyprland
+ * (see [ru.fromchat.desktop.initNativeFrameDefaults]).
+ */
+internal fun usesNativeDesktopFrame(): Boolean = isMacOs() || DesktopWindowSettings.nativeFrame
+
+/**
+ * Undecorated Compose window with in-app title bar (Windows and Linux by default).
+ * macOS uses native chrome; Hyprland auto-enables the native frame (see above).
+ */
+internal fun usesCustomDesktopFrame(): Boolean = !isMacOs() && !DesktopWindowSettings.nativeFrame
 
 internal fun isWindowsArm64(): Boolean {
     if (!isWindowsOs()) return false

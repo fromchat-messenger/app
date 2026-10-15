@@ -375,6 +375,8 @@
     <string name="settings_category_appearance_d">Theme and Material You</string>
     <string name="appearance_nav_bar_style">Navigation bar style</string>
     <string name="appearance_nav_bar_style_d">How the bottom navigation bar looks</string>
+    <string name="appearance_window_frame">Native window frame</string>
+    <string name="appearance_window_frame_d">Use the OS-drawn window frame instead of the built-in title bar. The window will reopen.</string>
     <string name="appearance_nav_bar_traditional">Traditional</string>
     <string name="appearance_nav_bar_floating">Floating</string>
     <string name="appearance_nav_bar_show_titles">Show tab titles</string>
