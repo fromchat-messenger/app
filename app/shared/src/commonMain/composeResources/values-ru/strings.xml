@@ -343,6 +343,8 @@
     <string name="settings_category_appearance_d">Тема и Material You</string>
     <string name="appearance_nav_bar_style">Стиль панели навигации</string>
     <string name="appearance_nav_bar_style_d">Как выглядит нижняя панель навигации</string>
+    <string name="appearance_window_frame">Системная рамка окна</string>
+    <string name="appearance_window_frame_d">Использовать рамку окна от системы вместо встроенной панели заголовка. Окно будет открыто заново.</string>
     <string name="appearance_nav_bar_traditional">Классическая</string>
     <string name="appearance_nav_bar_floating">Плавающая</string>
     <string name="appearance_nav_bar_show_titles">Показывать названия вкладок</string>

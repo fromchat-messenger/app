@@ -47,6 +47,7 @@ import com.pr0gramm3r101.utils.rememberSystemBarsController
 import com.pr0gramm3r101.utils.widthSizeClass
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
@@ -122,6 +123,7 @@ import ru.fromchat.ui.components.LocalPaneHazeState
 import ru.fromchat.ui.components.ScreenSurface
 import dev.chrisbanes.haze.rememberHazeState
 import ru.fromchat.utils.NetworkConnectivity
+import kotlin.time.Duration.Companion.milliseconds
 
 val LocalNavController = compositionLocalOf<NavController> { error("NavController not provided") }
 
@@ -234,6 +236,8 @@ fun App(
     startAtDmConversationUserId: Int? = null,
     startAtProfileUserId: Int? = null,
     startAtProfileUsername: String? = null,
+    /** Desktop: after a window frame-mode remount, reland on the Appearance screen (no UI state restored). */
+    startAtAppearance: Boolean = false,
     profileLookupErrorMessage: String? = null,
     onProfileLookupErrorMessageConsumed: () -> Unit = {},
     /** Desktop: fired once [startDestination] is known so the window can show after bootstrap. */
@@ -446,6 +450,40 @@ fun App(
                     chatsDetailNavController.navigateToPublicChat()
                 } else {
                     navController.navigateToPublicChat()
+                }
+            }
+
+            // Reland on the Appearance screen after a frame-mode remount. No UI state is
+            // restored, so this is the only way back to the screen the user was on.
+            // Must not navigate before the detail graph exists: on a fresh mount the first
+            // composition has no graph on the controllers yet, and getGraph() throws.
+            val relandRootEntry by navController.currentBackStackEntryAsState()
+            // Consumed once per composition: a remount recreates this `remember`, so the
+            // reland never re-fires on later root-stack changes (e.g. back from Appearance).
+            var relandDone by remember { mutableStateOf(false) }
+            LaunchedEffect(startDestination, startAtAppearance, relandRootEntry) {
+                if (startDestination == null || startDestination == "welcome") {
+                    return@LaunchedEffect
+                }
+                if (relandDone || !startAtAppearance || relandRootEntry?.destination?.route != "chat") {
+                    return@LaunchedEffect
+                }
+                val controller = if (isDesktopListDetail) {
+                    pendingMainTab = MAIN_PAGE_SETTINGS
+                    settingsDetailNavController
+                } else {
+                    navController
+                }
+                // The detail NavHost composes in the same first frame as startDestination;
+                // retry until its graph exists and the navigation lands.
+                while (true) {
+                    if (runCatching {
+                        controller.navigateReplacingMainDetail(SettingsRoutes.Appearance)
+                    }.isSuccess) {
+                        relandDone = true
+                        break
+                    }
+                    delay(50.milliseconds)
                 }
             }
 
