@@ -18,7 +18,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -27,9 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
-import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -110,7 +107,9 @@ import ru.fromchat.ui.main.LocalDesktopMainTab
 import ru.fromchat.ui.main.LocalDesktopSettingsNavController
 import ru.fromchat.ui.main.MAIN_PAGE_CHATS
 import ru.fromchat.ui.main.MAIN_PAGE_CONTACTS
+import ru.fromchat.ui.main.MAIN_PAGE_PROFILE
 import ru.fromchat.ui.main.MAIN_PAGE_SETTINGS
+import ru.fromchat.ui.main.isCurrentMainDetailRoute
 import ru.fromchat.ui.main.MainScreen
 import ru.fromchat.ui.main.chats.ChatsSearchScreen
 import ru.fromchat.ui.main.conversationDetailDestinations
@@ -118,7 +117,6 @@ import ru.fromchat.ui.main.navigateReplacingMainDetail
 import ru.fromchat.ui.main.profileDetailDestinations
 import ru.fromchat.ui.main.settings.SettingsRoutes
 import ru.fromchat.ui.main.settingsDetailDestinations
-import ru.fromchat.ui.profile.ProfileRoutes
 import ru.fromchat.ui.components.LocalPaneHazeState
 import ru.fromchat.ui.components.ScreenSurface
 import dev.chrisbanes.haze.rememberHazeState
@@ -126,24 +124,6 @@ import ru.fromchat.utils.NetworkConnectivity
 import kotlin.time.Duration.Companion.milliseconds
 
 val LocalNavController = compositionLocalOf<NavController> { error("NavController not provided") }
-
-private fun isStandaloneProfileRoute(route: String?): Boolean =
-    route != null &&
-        route.startsWith("profile/") &&
-        !route.startsWith(ProfileRoutes.Edit.substringBefore("?"))
-
-private fun isEditProfileRoute(route: String?): Boolean =
-    route != null && route.startsWith("profile/edit")
-
-/**
- * Nav destination.route is the pattern (`profile/{userId}…`), not the filled path —
- * read the userId from entry args / saved state.
- */
-private fun standaloneProfileUserId(entry: NavBackStackEntry?): Int? {
-    val route = entry?.destination?.route ?: return null
-    if (!isStandaloneProfileRoute(route)) return null
-    return entry.savedStateHandle.get<String>("userId")?.toIntOrNull()?.takeIf { it > 0 }
-}
 
 /**
  * Root NavHost transitions — scale+fade for the primary
@@ -453,6 +433,58 @@ fun App(
                 }
             }
 
+            // Resize continuity across the desktop/compact boundary. Both MainScreen
+            // sites (bare root screen and the desktop list pane) are recreated in the
+            // same frame isDesktopListDetail flips, so the landing tab must be resolved
+            // SYNCHRONOUSLY during composition: a LaunchedEffect only runs after the
+            // fresh MainScreen already grabbed the stale pendingMainTab as its
+            // rememberPagerState initialPage and landed on Chats.
+            var previousDesktopListDetail by remember { mutableStateOf(isDesktopListDetail) }
+            var openProfileInSettingsAfterExpand by remember { mutableStateOf<String?>(null) }
+            if (previousDesktopListDetail != isDesktopListDetail) {
+                val wasTab = pendingMainTab
+                previousDesktopListDetail = isDesktopListDetail
+                val ownProfileRoute = ApiClient.user?.id?.takeIf { it > 0 }?.let { "profile/$it" }
+                when {
+                    // Shrinking: own profile was open in the settings detail pane —
+                    // land on the compact Profile tab showing the same screen.
+                    !isDesktopListDetail && ownProfileRoute != null &&
+                        wasTab == MAIN_PAGE_SETTINGS &&
+                        settingsDetailNavController.isCurrentMainDetailRoute(ownProfileRoute) -> {
+                        pendingMainTab = MAIN_PAGE_PROFILE
+                        openProfileInSettingsAfterExpand = null
+                    }
+                    // Expanding: the compact Profile tab was showing — land on Settings
+                    // and re-open the own profile in the detail pane.
+                    isDesktopListDetail && ownProfileRoute != null &&
+                        wasTab == MAIN_PAGE_PROFILE -> {
+                        pendingMainTab = MAIN_PAGE_SETTINGS
+                        openProfileInSettingsAfterExpand = ownProfileRoute
+                    }
+                    else -> openProfileInSettingsAfterExpand = null
+                }
+            }
+            // The settings detail NavHost may only just be composing after an expand;
+            // retry until its graph exists and the navigation lands.
+            LaunchedEffect(openProfileInSettingsAfterExpand, isDesktopListDetail) {
+                val routeToOpen = openProfileInSettingsAfterExpand ?: return@LaunchedEffect
+                while (isDesktopListDetail) {
+                    when {
+                        settingsDetailNavController.isCurrentMainDetailRoute(routeToOpen) -> {
+                            openProfileInSettingsAfterExpand = null
+                            break
+                        }
+                        runCatching {
+                            settingsDetailNavController.navigateReplacingMainDetail(routeToOpen)
+                        }.isSuccess -> {
+                            openProfileInSettingsAfterExpand = null
+                            break
+                        }
+                        else -> delay(50.milliseconds)
+                    }
+                }
+            }
+
             // Reland on the Appearance screen after a frame-mode remount. No UI state is
             // restored, so this is the only way back to the screen the user was on.
             // Must not navigate before the detail graph exists: on a fresh mount the first
@@ -650,6 +682,7 @@ fun App(
                                                 animatedVisibilityScope = this,
                                                 snackbarHostState = profileLookupSnackbarHostState,
                                                 initialPage = pendingMainTab,
+                                                onPageChanged = { pendingMainTab = it },
                                             )
                                         }
                                     }
@@ -734,27 +767,6 @@ fun App(
                                 isDesktopListDetail && currentRoute == "chat"
 
                             if (showConversationListDetail) {
-                                var detailNavGraphsReady by remember { mutableStateOf(false) }
-                                var settingsRoute by remember { mutableStateOf<String?>(null) }
-                                var settingsProfileUserId by remember { mutableStateOf<Int?>(null) }
-                                if (detailNavGraphsReady) {
-                                    SettingsDetailBackStackObserver(
-                                        navController = settingsDetailNavController,
-                                        onChanged = { entry ->
-                                            settingsRoute = entry?.destination?.route
-                                            settingsProfileUserId = standaloneProfileUserId(entry)
-                                        },
-                                    )
-                                }
-                                val ownUserId = ApiClient.user?.id
-                                val forceSettingsListTab =
-                                    isEditProfileRoute(settingsRoute) ||
-                                        (
-                                            isStandaloneProfileRoute(settingsRoute) &&
-                                                settingsProfileUserId != null &&
-                                                settingsProfileUserId == ownUserId
-                                            )
-
                                 val listPaneHazeState = rememberHazeState()
                                 CompositionLocalProvider(
                                     LocalPaneHazeState provides listPaneHazeState,
@@ -769,7 +781,6 @@ fun App(
                                                 snackbarHostState = profileLookupSnackbarHostState,
                                                 embeddedInListDetail = true,
                                                 initialPage = pendingMainTab,
-                                                forceSettingsTab = forceSettingsListTab,
                                                 onPageChanged = { pendingMainTab = it },
                                             )
                                         },
@@ -806,7 +817,6 @@ fun App(
                                                     )
                                                 },
                                             )
-                                            SideEffect { detailNavGraphsReady = true }
                                         },
                                     )
                                 }
@@ -824,13 +834,4 @@ fun App(
         }
         }
     }
-}
-
-@Composable
-private fun SettingsDetailBackStackObserver(
-    navController: NavHostController,
-    onChanged: (NavBackStackEntry?) -> Unit,
-) {
-    val entry by navController.currentBackStackEntryAsState()
-    SideEffect { onChanged(entry) }
 }
