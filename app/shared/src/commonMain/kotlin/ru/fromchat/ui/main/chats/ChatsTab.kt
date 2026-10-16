@@ -136,6 +136,7 @@ import ru.fromchat.chat_preview_image
 import ru.fromchat.chat_preview_image_emoji
 import ru.fromchat.chats_selected_count
 import ru.fromchat.config.ServerConfig
+import ru.fromchat.notifications.LocalizedChatTitles
 import ru.fromchat.public_chat
 import ru.fromchat.search_title
 import ru.fromchat.status_connecting
@@ -822,6 +823,14 @@ fun ChatsTab(
     val publicChatFallbackTitle = stringResource(Res.string.public_chat)
     val publicChatTitle = publicChatProfile?.title?.takeIf { it.isNotBlank() }
         ?: publicChatFallbackTitle.takeIf { activeInstanceId.isNotBlank() }
+    // Hand the resolved titles to the desktop notification sinks, which resolve strings outside a
+    // composition and would otherwise fall back to the default (English) resource.
+    SideEffect {
+        LocalizedChatTitles.remember(
+            publicChatProfileTitle = publicChatProfile?.title.orEmpty(),
+            fallback = publicChatFallbackTitle,
+        )
+    }
     val publicChatLink = publicChatProfile?.let { "https://fromchat.ru/chats/${it.id}" }
     val deleteConfirmTitle = stringResource(Res.string.chat_delete_confirm_title)
     val deleteConfirmBody = stringResource(Res.string.chat_delete_confirm_body)
