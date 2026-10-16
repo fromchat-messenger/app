@@ -263,6 +263,25 @@ fun resolvePackagingJdkHome(): String {
         )
     }
 
+    // Compose Desktop's release tasks run ProGuard and jlink on this JDK, and both take the JDK
+    // from <javaHome>/jmods: the plugin builds ProGuard's -libraryjars by walking that directory,
+    // and jlink defaults its --module-path to it. Adoptium stopped shipping the jmods/ directory
+    // with JDK 25 archives, so a jmods-less JDK leaves ProGuard with no java.* classes at all
+    // (a million "can't find superclass or interface java.lang.Object" warnings) and makes
+    // createRuntimeImage fail outright. Fail noisily here rather than in that wall of text.
+    fun withJmods(home: String): String {
+        if (!File(home, "jmods").isDirectory) {
+            project.logger.warn(
+                "Packaging JDK $home ships no jmods/ directory. The release build needs one: " +
+                    "Compose Desktop reads the JDK from <javaHome>/jmods, so ProGuard will " +
+                    "report \"can't find superclass or interface java.lang.Object\" for every " +
+                    "class and jlink will fail in createRuntimeImage. Point FROMCHAT_PACKAGING_JDK " +
+                    "at a JDK that ships jmods (e.g. Azul Zulu $desktopJvmTarget).",
+            )
+        }
+        return home
+    }
+
     System.getenv("FROMCHAT_PACKAGING_JDK")?.takeIf { it.isNotBlank() }?.let { candidate ->
         val major = jdkMajorVersion(File(candidate))
         if (major != null && major < desktopJvmTarget) {
@@ -274,7 +293,7 @@ fun resolvePackagingJdkHome(): String {
                     "FROMCHAT_PACKAGING_JDK must be ARM64 on Windows ARM64 (os.arch=$arch): $candidate"
                 }
             }
-            return candidate
+            return withJmods(candidate)
         }
     }
     System.getenv("JAVA_HOME")?.takeIf { it.isNotBlank() }?.let { home ->
@@ -289,7 +308,7 @@ fun resolvePackagingJdkHome(): String {
                         "JAVA_HOME must be ARM64 on Windows ARM64 (os.arch=$arch): $home"
                     }
                 }
-                return home
+                return withJmods(home)
             }
         }
     }
@@ -351,7 +370,7 @@ fun resolvePackagingJdkHome(): String {
         if (major != null && major < desktopJvmTarget) return@firstOrNull false
         if (!isWindowsArm64Host()) return@firstOrNull true
         jdkReportsArch(File(home, "bin/java.exe")) == "aarch64"
-    }?.let { return it }
+    }?.let { return withJmods(it) }
 
     // Toolchain fallback: foojay provisions the jvmToolchain JDK on every machine that builds
     // this project, and the full JDK ships jpackage — so the bundled runtime always matches the
@@ -372,7 +391,7 @@ fun resolvePackagingJdkHome(): String {
         if (isWindowsArm64Host() && jdkReportsArch(File(jdk, "bin/java.exe")) != "aarch64") {
             return@forEach
         }
-        return jdk.absolutePath.replace('\\', '/')
+        return withJmods(jdk.absolutePath.replace('\\', '/'))
     }
 
     error(
@@ -913,16 +932,43 @@ tasks.register<Copy>("exportReleaseProguardForCi") {
     into(ciProguardExportDir)
 }
 
+/**
+ * Platform-native artifacts resolved for *this* host, e.g. `skiko-awt-runtime-macos-arm64-*.jar`
+ * and `javafx-graphics-27-mac-aarch64.jar`. Skiko and JavaFX each pick their library by
+ * os/arch at runtime, so a bundle simply needs the matching jars on the classpath.
+ */
+private val platformNativeJar = Regex(
+    """^(skiko-awt-runtime-.+|javafx-[a-z]+-\d+-(?:linux|mac|win|windows)(?:-[a-z0-9]+)?)\.jar$""",
+    RegexOption.IGNORE_CASE,
+)
+
+private val hostPlatformNatives = providers.provider {
+    configurations.getByName("runtimeClasspath").files.filter { platformNativeJar.matches(it.name) }
+}
+
 tasks.register<Copy>("stageCiPrebuiltProguard") {
     group = "compose desktop"
     description = "Stage downloaded CI ProGuard jars into compose release tmp before packaging."
     onlyIf { useCiPrebuiltProguard() }
     from(ciPrebuiltProguardDir)
+    // ProGuard runs once, on Linux x64, so the prebuilt jars carry that host's natives
+    // (skiko-awt-runtime-linux-x64, javafx-*-linux) and nothing for any other target. Packaging
+    // that set as-is ships an app with no natives of its own, which dies on startup with
+    // "UnsatisfiedLinkError: Can't load library .../libskiko-<os>-<arch>". Add this host's own
+    // natives alongside them; Skiko and JavaFX load by os/arch, so the foreign copies are inert.
+    from(hostPlatformNatives)
     into(releaseProguardOutputDir)
     doFirst {
         check(ciPrebuiltProguardDir.get().asFile.isDirectory) {
             "Missing prebuilt ProGuard at ${ciPrebuiltProguardDir.get().asFile}"
         }
+        val natives = hostPlatformNatives.get()
+        check(natives.isNotEmpty()) {
+            "No platform-native artifacts on this host's runtimeClasspath; the app would ship " +
+                "without Skiko/JavaFX natives. Looked for ${platformNativeJar.pattern}."
+        }
+        logger.lifecycle("Staged ${natives.size} platform-native jars for this host:")
+        natives.forEach { logger.lifecycle("  ${it.name}") }
     }
 }
 
