@@ -42,7 +42,7 @@ runs:
     - name: Export the jmods-capable desktop JDK
       if: inputs.desktop-jdk != ''
       shell: bash
-      run: echo "FROMCHAT_PACKAGING_JDK=${{ steps.desktop-jdk.outputs.java-path }}" >> "$GITHUB_ENV"
+      run: echo "FROMCHAT_PACKAGING_JDK=${{ steps.desktop-jdk.outputs.path }}" >> "$GITHUB_ENV"
 
     - uses: gradle/actions/setup-gradle@v5
       with:
