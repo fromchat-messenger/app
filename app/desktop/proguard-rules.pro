@@ -39,3 +39,11 @@
     <fields>;
     <init>(...);
 }
+
+# JetBrains Runtime bundles a `jogl.all.jmod` (JOGL, incl. its JavaFX bridge) in its jmods
+# directory, which ProGuard picks up as a library jar. Those JOGL classes extend JavaFX
+# classes that are ProGuard *program* inputs, so ProGuard reports 7x
+# "library class com.jogamp.newt.javafx.* extends or implements program class javafx.*"
+# and then aborts with "Please correct the above warnings first". The app never uses JOGL,
+# so only that JavaFX bridge is ignored (JDKs without the jmod, e.g. Temurin, are unaffected).
+-dontwarn com.jogamp.newt.javafx.**

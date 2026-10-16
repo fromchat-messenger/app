@@ -240,6 +240,18 @@ fun stageWindowsJpackageRuntime(appImageRoot: File) {
 /** Desktop compile target — must stay in sync with `kotlin { jvmToolchain(desktopJvmTarget) }`. */
 private val desktopJvmTarget = 25
 
+/**
+ * ProGuard version used by the Compose release tasks.
+ *
+ * The Compose plugin defaults to 7.8.0, which cannot process the Java 25 class files
+ * produced by `jvmToolchain(desktopJvmTarget)` — ProGuard then fails to load the JDK
+ * itself and reports `can't find referenced class java.lang.Class` /
+ * `the configuration refers to the unknown class 'java.lang.String'`.
+ * 7.9.0 added Java 25 support; 7.10.0 is the first release that also understands the
+ * Kotlin 2.4 metadata this project compiles against.
+ */
+private val proguardVersion = "7.10.0"
+
 fun resolvePackagingJdkHome(): String {
     // The desktop module compiles to jvmToolchain(desktopJvmTarget) classes; jpackage must
     // bundle a runtime >= that or the installed app dies at launch with
@@ -378,6 +390,7 @@ compose.desktop {
         javaHome = resolvePackagingJdkHome()
 
         buildTypes.release.proguard {
+            version = proguardVersion
             configurationFiles.from(project.file("proguard-rules.pro"))
         }
 
