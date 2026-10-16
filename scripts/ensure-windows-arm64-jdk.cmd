@@ -14,11 +14,29 @@ set "JDK_ROOT=C:\Program Files\Eclipse Adoptium"
 set "JDK_HOME="
 set "JDK_FALLBACK=%LOCALAPPDATA%\Programs\Eclipse Adoptium\jdk-21-arm64"
 
-for /d %%D in ("%JDK_ROOT%\jdk-*-arm64") do (
-  if exist "%%D\bin\java.exe" set "JDK_HOME=%%D"
+rem Packaging needs Java 25 (kotlin jvmToolchain(25)): an older bundled runtime crashes the
+rem installed app at launch with UnsupportedClassVersionError. Adoptium ships no Temurin 25
+rem for Windows ARM64, so prefer an installed 25 or the Gradle-provisioned toolchain JDK.
+for /d %%D in ("%JDK_ROOT%\jdk-25*") do (
+  if not defined JDK_HOME if exist "%%D\bin\java.exe" (
+    echo %%D | findstr /i arm64 >nul
+    if not errorlevel 1 set "JDK_HOME=%%D"
+  )
 )
-for /d %%D in ("%JDK_ROOT%\jdk-*aarch64*") do (
-  if exist "%%D\bin\java.exe" set "JDK_HOME=%%D"
+for /d %%D in ("%USERPROFILE%\.gradle\jdks\*-25-*") do (
+  if not defined JDK_HOME if exist "%%D\bin\java.exe" (
+    "%%D\bin\java.exe" -XshowSettings:properties -version 2>&1 | findstr /i /c:"os.arch = aarch64" >nul
+    if not errorlevel 1 set "JDK_HOME=%%D"
+  )
+)
+
+rem Legacy fallback: any ARM64 JDK (Java 21 is fine as the Gradle daemon JVM — build.gradle.kts
+rem then falls back to the Java 25 toolchain JDK for jpackage).
+if not defined JDK_HOME for /d %%D in ("%JDK_ROOT%\jdk-*-arm64") do (
+  if not defined JDK_HOME if exist "%%D\bin\java.exe" set "JDK_HOME=%%D"
+)
+if not defined JDK_HOME for /d %%D in ("%JDK_ROOT%\jdk-*aarch64*") do (
+  if not defined JDK_HOME if exist "%%D\bin\java.exe" set "JDK_HOME=%%D"
 )
 
 if not defined JDK_HOME (
