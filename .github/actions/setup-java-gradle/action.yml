@@ -1,0 +1,28 @@
+name: Setup Java and Gradle
+description: Temurin JDK 17 + Gradle wrapper with dependency and build cache
+
+inputs:
+  java-architecture:
+    description: Optional JDK architecture (x64). Omit for host default.
+    required: false
+    default: ""
+  cache-read-only:
+    description: Restore Gradle User Home only; do not save (avoids parallel cache write races).
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: "17"
+        architecture: ${{ inputs.java-architecture }}
+
+    - uses: gradle/actions/setup-gradle@v5
+      with:
+        gradle-version: wrapper
+        cache-read-only: ${{ inputs.cache-read-only == 'true' }}
+        cache-overwrite-existing: true
+        add-job-summary: on-failure

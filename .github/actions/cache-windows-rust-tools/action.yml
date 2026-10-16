@@ -1,0 +1,24 @@
+name: Restore Windows Rust build cache
+description: Restore Cargo registry, git checkouts, and the windows-setup target directory
+
+outputs:
+  cache-hit:
+    description: Whether an exact cache key match was restored
+    value: ${{ steps.cache.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache/restore@v5
+      id: cache
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          app/desktop/windows-setup/target
+        key: windows-rust-${{ runner.os }}-v3-${{ hashFiles('app/desktop/windows-setup/Cargo.lock') }}
+        restore-keys: |
+          windows-rust-${{ runner.os }}-v3-
+          windows-rust-${{ runner.os }}-v2-
+          windows-rust-tools-v1-
+          cargo-registry-${{ runner.os }}-

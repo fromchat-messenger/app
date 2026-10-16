@@ -1,0 +1,17 @@
+name: Restore git mtimes
+description: Reset tracked file timestamps from git so Gradle incremental builds can be UP-TO-DATE after checkout
+
+runs:
+  using: composite
+  steps:
+    - name: Restore mtimes
+      shell: bash
+      run: |
+        set -euo pipefail
+        if command -v git-restore-mtime >/dev/null 2>&1; then
+          git-restore-mtime
+          exit 0
+        fi
+        script="${RUNNER_TEMP}/git-restore-mtime"
+        curl -fsSL https://raw.githubusercontent.com/MestreLion/git-tools/b5822d297b3ca4a3b6574e78327a464790b14937/git-restore-mtime -o "$script"
+        python3 "$script"
