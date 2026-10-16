@@ -181,6 +181,8 @@ jobs:
         with:
           version: ${{ needs.resolve-version.outputs.version }}
       - uses: ./.github/actions/setup-java-gradle
+        with:
+          desktop-jdk: "25"
       - uses: ./.github/actions/cache-gradle-build
         id: gradle-build-cache
         with:

@@ -263,6 +263,24 @@ fun resolvePackagingJdkHome(): String {
         )
     }
 
+    // Compose Desktop's release tasks run ProGuard on this JDK, and the Compose plugin builds
+    // ProGuard's -libraryjars by walking <javaHome>/jmods. Adoptium stopped shipping the jmods/
+    // directory with JDK 25 archives, so a jmods-less JDK leaves ProGuard with no java.* classes
+    // at all — the build then dies on a million "can't find superclass or interface
+    // java.lang.Object" warnings. Fail noisily here rather than in ProGuard's wall of text.
+    fun withJmods(home: String): String {
+        if (!File(home, "jmods").isDirectory) {
+            project.logger.warn(
+                "Packaging JDK $home ships no jmods/ directory. The release/ProGuard build needs " +
+                    "one: Compose Desktop reads the JDK from <javaHome>/jmods, so ProGuard will " +
+                    "report \"can't find superclass or interface java.lang.Object\" for every " +
+                    "class and abort. Point FROMCHAT_PACKAGING_JDK at a JDK that ships jmods " +
+                    "(e.g. Azul Zulu $desktopJvmTarget).",
+            )
+        }
+        return home
+    }
+
     System.getenv("FROMCHAT_PACKAGING_JDK")?.takeIf { it.isNotBlank() }?.let { candidate ->
         val major = jdkMajorVersion(File(candidate))
         if (major != null && major < desktopJvmTarget) {
@@ -274,7 +292,7 @@ fun resolvePackagingJdkHome(): String {
                     "FROMCHAT_PACKAGING_JDK must be ARM64 on Windows ARM64 (os.arch=$arch): $candidate"
                 }
             }
-            return candidate
+            return withJmods(candidate)
         }
     }
     System.getenv("JAVA_HOME")?.takeIf { it.isNotBlank() }?.let { home ->
@@ -289,7 +307,7 @@ fun resolvePackagingJdkHome(): String {
                         "JAVA_HOME must be ARM64 on Windows ARM64 (os.arch=$arch): $home"
                     }
                 }
-                return home
+                return withJmods(home)
             }
         }
     }
@@ -351,7 +369,7 @@ fun resolvePackagingJdkHome(): String {
         if (major != null && major < desktopJvmTarget) return@firstOrNull false
         if (!isWindowsArm64Host()) return@firstOrNull true
         jdkReportsArch(File(home, "bin/java.exe")) == "aarch64"
-    }?.let { return it }
+    }?.let { return withJmods(it) }
 
     // Toolchain fallback: foojay provisions the jvmToolchain JDK on every machine that builds
     // this project, and the full JDK ships jpackage — so the bundled runtime always matches the
@@ -372,7 +390,7 @@ fun resolvePackagingJdkHome(): String {
         if (isWindowsArm64Host() && jdkReportsArch(File(jdk, "bin/java.exe")) != "aarch64") {
             return@forEach
         }
-        return jdk.absolutePath.replace('\\', '/')
+        return withJmods(jdk.absolutePath.replace('\\', '/'))
     }
 
     error(
