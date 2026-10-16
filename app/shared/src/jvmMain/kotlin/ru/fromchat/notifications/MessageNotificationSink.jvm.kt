@@ -36,7 +36,10 @@ internal actual object MessageNotificationSink {
             title = notification.senderName.ifBlank { "FromChat" }
             subtitle = ""
         } else {
-            title = getString(Res.string.public_chat)
+            // getString() outside a composition resolves against the default resource, which is why
+            // this used to show English "Main chat" under a localized UI. Prefer the titles the
+            // chats screen already resolved for the UI.
+            title = LocalizedChatTitles.publicChatOrNull() ?: getString(Res.string.public_chat)
             subtitle = notification.senderName
         }
         DesktopNotifier.rememberLaunch(notification.identifier, notification.launchTarget)

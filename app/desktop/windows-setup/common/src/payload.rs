@@ -48,12 +48,34 @@ impl EmbeddedBundle {
         if let Some(payload) = host_payload(self) {
             return Ok(payload);
         }
-        bail!("installer has no payload for this CPU ({})", std::env::consts::ARCH)
+        bail!(
+            "installer has no payload for this CPU ({})",
+            host_arch()
+        )
     }
 }
 
+/// The architecture to install for — the *machine's*, not the installer's.
+///
+/// `std::env::consts::ARCH` is fixed when the binary is compiled, and the installer stub is built
+/// once on windows-latest (x64). On Windows ARM64 that stub runs emulated, so it reports
+/// "x86_64" and looks for an x86_64 payload — which the ARM64-only installer does not embed, so it
+/// dies with "installer has no payload for this CPU (x86_64)" before touching the disk.
+/// `PROCESSOR_ARCHITEW6432` carries the real machine architecture for WOW64/emulated processes.
+fn host_arch() -> &'static str {
+    #[cfg(windows)]
+    {
+        if let Ok(native) = std::env::var("PROCESSOR_ARCHITEW6432") {
+            if native.eq_ignore_ascii_case("ARM64") {
+                return "aarch64";
+            }
+        }
+    }
+    std::env::consts::ARCH
+}
+
 fn host_payload(bundle: &EmbeddedBundle) -> Option<&[u8]> {
-    match std::env::consts::ARCH {
+    match host_arch() {
         "x86_64" => bundle
             .payload_x64
             .as_deref()

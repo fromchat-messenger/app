@@ -127,12 +127,29 @@ private fun syncWindowsArm64SkikoNatives(appDir: File, classpath: Iterable<File>
     }
 }
 
-private fun windowsSkikoJvmArgs(): List<String> =
+/**
+ * GPU-path JVM args for the *packaging host*.
+ *
+ * Compose's platform DSL (`windows { }`, `macOS { }`, …) has no `jvmArgs` of its own: an
+ * unqualified `jvmArgs(...)` inside one resolves to [JvmApplication.jvmArgs], the single
+ * application-level list, which the plugin writes into the launcher config of **every** platform
+ * it packages. So these args have to be added here, per host, instead of inside `windows { }`.
+ *
+ * OPENGL is right on Linux and Windows x64, ANGLE (D3D11) is required on Windows ARM64, and
+ * macOS must get nothing: Skiko defaults to Metal there, and asking for OPENGL throws
+ * "MacOS does not support OPENGL rendering API" in SkiaLayer's constructor, killing the app
+ * before the first frame.
+ */
+private fun hostGpuJvmArgs(): List<String> =
     if (isWindowsArm64Host()) {
         // Windows ARM64: OpenGL is unsupported; ANGLE (D3D11) is the supported GPU path in Skiko.
         listOf("-Dskiko.rendering.angle.enabled=true")
-    } else {
+    } else if (System.getProperty("os.name").orEmpty().lowercase().contains("win")) {
         listOf("-Dskiko.renderApi=OPENGL", "-Dsun.java2d.d3d=true")
+    } else if (System.getProperty("os.name").orEmpty().lowercase().contains("mac")) {
+        emptyList()
+    } else {
+        listOf("-Dskiko.renderApi=OPENGL")
     }
 
 private fun jdkReportsArch(javaExe: File): String? {
@@ -407,6 +424,10 @@ compose.desktop {
     application {
         mainClass = "ru.fromchat.desktop.MainKt"
         javaHome = resolvePackagingJdkHome()
+        // Application-level, and per host: an unqualified jvmArgs() inside
+        // nativeDistributions.<platform> { } lands here anyway and then leaks into every platform's
+        // launcher config. See hostGpuJvmArgs().
+        jvmArgs(*hostGpuJvmArgs().toTypedArray())
 
         buildTypes.release.proguard {
             version = proguardVersion
@@ -461,7 +482,6 @@ compose.desktop {
                 iconFile.set(desktopWindowIconIco)
                 packageVersion = nativePackageVersion
                 exePackageVersion = nativePackageVersion
-                jvmArgs(*windowsSkikoJvmArgs().toTypedArray())
             }
             macOS {
                 bundleID = "ru.fromchat.desktop"
@@ -597,8 +617,8 @@ fun JavaExec.configureFromChatDesktopJvm() {
     }
     jvmArgs(
         dockIconArgs + buildList {
-            if (System.getProperty("os.name").orEmpty().lowercase().contains("win")) {
-                addAll(windowsSkikoJvmArgs())
+            if (!System.getProperty("os.name").orEmpty().lowercase().contains("mac")) {
+                addAll(hostGpuJvmArgs())
             }
             addAll(
                 listOf(
