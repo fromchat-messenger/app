@@ -147,6 +147,20 @@ private fun jdkReportsArch(javaExe: File): String? {
     return line?.substringAfter("=")?.trim()
 }
 
+/** Major Java version of a JDK home: release file first, `java -version` fallback. */
+private fun jdkMajorVersion(home: File): Int? {
+    File(home, "release").takeIf { it.isFile }?.readText()?.let { text ->
+        Regex("""JAVA_VERSION="(\d+)""").find(text)?.groupValues?.get(1)?.toIntOrNull()?.let { return it }
+    }
+    val javaExe = sequenceOf(File(home, "bin/java.exe"), File(home, "bin/java"))
+        .firstOrNull { it.isFile } ?: return null
+    val out = runCatching {
+        ProcessBuilder(javaExe.absolutePath, "-version").redirectErrorStream(true)
+            .start().inputStream.bufferedReader().readText()
+    }.getOrNull() ?: return null
+    return Regex("""version "(\d+)""").find(out)?.groupValues?.get(1)?.toIntOrNull()
+}
+
 private val PE_MACHINE_AMD64 = 0x8664
 private val PE_MACHINE_ARM64 = 0xAA64
 
@@ -223,25 +237,48 @@ fun stageWindowsJpackageRuntime(appImageRoot: File) {
     }
 }
 
+/** Desktop compile target — must stay in sync with `kotlin { jvmToolchain(desktopJvmTarget) }`. */
+private val desktopJvmTarget = 25
+
 fun resolvePackagingJdkHome(): String {
+    // The desktop module compiles to jvmToolchain(desktopJvmTarget) classes; jpackage must
+    // bundle a runtime >= that or the installed app dies at launch with
+    // UnsupportedClassVersionError on stderr (invisible: launcher is a GUI process).
+    fun stale(source: String, home: String, major: Int) {
+        project.logger.warn(
+            "Ignoring packaging JDK from $source: $home runs Java $major but desktop targets " +
+                "$desktopJvmTarget — bundling it would break the installed app.",
+        )
+    }
+
     System.getenv("FROMCHAT_PACKAGING_JDK")?.takeIf { it.isNotBlank() }?.let { candidate ->
-        if (isWindowsArm64Host()) {
-            val arch = jdkReportsArch(File(candidate, "bin/java.exe"))
-            check(arch == "aarch64") {
-                "FROMCHAT_PACKAGING_JDK must be ARM64 on Windows ARM64 (os.arch=$arch): $candidate"
+        val major = jdkMajorVersion(File(candidate))
+        if (major != null && major < desktopJvmTarget) {
+            stale("FROMCHAT_PACKAGING_JDK", candidate, major)
+        } else {
+            if (isWindowsArm64Host()) {
+                val arch = jdkReportsArch(File(candidate, "bin/java.exe"))
+                check(arch == "aarch64") {
+                    "FROMCHAT_PACKAGING_JDK must be ARM64 on Windows ARM64 (os.arch=$arch): $candidate"
+                }
             }
+            return candidate
         }
-        return candidate
     }
     System.getenv("JAVA_HOME")?.takeIf { it.isNotBlank() }?.let { home ->
         if (File(home, "bin/jpackage").isFile || File(home, "bin/jpackage.exe").isFile) {
-            if (isWindowsArm64Host()) {
-                val arch = jdkReportsArch(File(home, "bin/java.exe"))
-                check(arch == "aarch64") {
-                    "JAVA_HOME must be ARM64 on Windows ARM64 (os.arch=$arch): $home"
+            val major = jdkMajorVersion(File(home))
+            if (major != null && major < desktopJvmTarget) {
+                stale("JAVA_HOME", home, major)
+            } else {
+                if (isWindowsArm64Host()) {
+                    val arch = jdkReportsArch(File(home, "bin/java.exe"))
+                    check(arch == "aarch64") {
+                        "JAVA_HOME must be ARM64 on Windows ARM64 (os.arch=$arch): $home"
+                    }
                 }
+                return home
             }
-            return home
         }
     }
     val userHome = System.getProperty("user.home")
@@ -294,17 +331,43 @@ fun resolvePackagingJdkHome(): String {
         }
         System.getProperty("java.home")?.let { add(it) }
     }
-    return candidates.firstOrNull { home ->
+    candidates.firstOrNull { home ->
         val jpackage = File(home, "bin/jpackage.exe").takeIf { it.isFile }
             ?: File(home, "bin/jpackage").takeIf { it.isFile }
         if (jpackage == null) return@firstOrNull false
+        val major = jdkMajorVersion(File(home))
+        if (major != null && major < desktopJvmTarget) return@firstOrNull false
         if (!isWindowsArm64Host()) return@firstOrNull true
         jdkReportsArch(File(home, "bin/java.exe")) == "aarch64"
-    } ?: error(
+    }?.let { return it }
+
+    // Toolchain fallback: foojay provisions the jvmToolchain JDK on every machine that builds
+    // this project, and the full JDK ships jpackage — so the bundled runtime always matches the
+    // compiled classes. Layouts differ (flat dir on Windows, nested Contents/Home on macOS), so
+    // search recursively.
+    fun findJdkWithJpackage(dir: File): File? {
+        if (File(dir, "bin/jpackage.exe").isFile || File(dir, "bin/jpackage").isFile) return dir
+        dir.listFiles()?.forEach { child ->
+            if (child.isDirectory) findJdkWithJpackage(child)?.let { return it }
+        }
+        return null
+    }
+    val gradleHome = File(System.getenv("GRADLE_USER_HOME") ?: "$userHome/.gradle", "jdks")
+    gradleHome.listFiles()?.sortedByDescending { it.name }?.forEach { entry ->
+        if (!entry.isDirectory) return@forEach
+        val jdk = findJdkWithJpackage(entry) ?: return@forEach
+        if ((jdkMajorVersion(jdk) ?: 0) < desktopJvmTarget) return@forEach
+        if (isWindowsArm64Host() && jdkReportsArch(File(jdk, "bin/java.exe")) != "aarch64") {
+            return@forEach
+        }
+        return jdk.absolutePath.replace('\\', '/')
+    }
+
+    error(
         if (isWindowsArm64Host()) {
-            "No ARM64 JDK with jpackage found. Run scripts\\ensure-windows-arm64-jdk.cmd or set FROMCHAT_PACKAGING_JDK."
+            "No ARM64 JDK $desktopJvmTarget+ with jpackage found. Run scripts\\ensure-windows-arm64-jdk.cmd or set FROMCHAT_PACKAGING_JDK."
         } else {
-            "No JDK with jpackage found. Install Temurin 17+ or set FROMCHAT_PACKAGING_JDK."
+            "No JDK $desktopJvmTarget+ with jpackage found. Install Temurin $desktopJvmTarget+ or set FROMCHAT_PACKAGING_JDK."
         },
     )
 }
@@ -401,7 +464,7 @@ compose.desktop {
 }
 
 kotlin {
-    jvmToolchain(25)
+    jvmToolchain(desktopJvmTarget)
 }
 
 val macNotificationsSource = layout.projectDirectory.file("src/nativeDarwin/MacNotificationCenter.m")
