@@ -932,16 +932,43 @@ tasks.register<Copy>("exportReleaseProguardForCi") {
     into(ciProguardExportDir)
 }
 
+/**
+ * Platform-native artifacts resolved for *this* host, e.g. `skiko-awt-runtime-macos-arm64-*.jar`
+ * and `javafx-graphics-27-mac-aarch64.jar`. Skiko and JavaFX each pick their library by
+ * os/arch at runtime, so a bundle simply needs the matching jars on the classpath.
+ */
+private val platformNativeJar = Regex(
+    """^(skiko-awt-runtime-.+|javafx-[a-z]+-\d+-(?:linux|mac|win|windows)(?:-[a-z0-9]+)?)\.jar$""",
+    RegexOption.IGNORE_CASE,
+)
+
+private val hostPlatformNatives = providers.provider {
+    configurations.getByName("runtimeClasspath").files.filter { platformNativeJar.matches(it.name) }
+}
+
 tasks.register<Copy>("stageCiPrebuiltProguard") {
     group = "compose desktop"
     description = "Stage downloaded CI ProGuard jars into compose release tmp before packaging."
     onlyIf { useCiPrebuiltProguard() }
     from(ciPrebuiltProguardDir)
+    // ProGuard runs once, on Linux x64, so the prebuilt jars carry that host's natives
+    // (skiko-awt-runtime-linux-x64, javafx-*-linux) and nothing for any other target. Packaging
+    // that set as-is ships an app with no natives of its own, which dies on startup with
+    // "UnsatisfiedLinkError: Can't load library .../libskiko-<os>-<arch>". Add this host's own
+    // natives alongside them; Skiko and JavaFX load by os/arch, so the foreign copies are inert.
+    from(hostPlatformNatives)
     into(releaseProguardOutputDir)
     doFirst {
         check(ciPrebuiltProguardDir.get().asFile.isDirectory) {
             "Missing prebuilt ProGuard at ${ciPrebuiltProguardDir.get().asFile}"
         }
+        val natives = hostPlatformNatives.get()
+        check(natives.isNotEmpty()) {
+            "No platform-native artifacts on this host's runtimeClasspath; the app would ship " +
+                "without Skiko/JavaFX natives. Looked for ${platformNativeJar.pattern}."
+        }
+        logger.lifecycle("Staged ${natives.size} platform-native jars for this host:")
+        natives.forEach { logger.lifecycle("  ${it.name}") }
     }
 }
 
