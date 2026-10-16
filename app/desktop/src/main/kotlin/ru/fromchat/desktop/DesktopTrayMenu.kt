@@ -52,7 +52,10 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberWindowState
 import java.awt.AWTEvent
+import java.awt.GraphicsEnvironment
+import java.awt.MouseInfo
 import java.awt.Point
+import java.awt.Rectangle
 import java.awt.SystemTray
 import java.awt.Toolkit
 import java.awt.TrayIcon
@@ -64,6 +67,7 @@ import java.awt.image.BufferedImage
 import javax.swing.JFrame
 import javax.swing.SwingUtilities
 import kotlin.math.roundToInt
+import ru.fromchat.Logger
 import ru.fromchat.ui.FromChatTheme
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.isInsideWindow
@@ -72,6 +76,70 @@ internal enum class TrayConnectionStatus {
     Connected,
     Connecting,
     Disconnected,
+}
+
+/**
+ * Whether AWT can make a whole window translucent here. The tray popup relies on this to stay
+ * mapped (and therefore laid out and measured) while still painting nothing, which is what makes
+ * the menu open without a delay *and* without flashing.
+ */
+private val trayWindowTranslucencySupported: Boolean by lazy {
+    runCatching {
+        GraphicsEnvironment.getLocalGraphicsEnvironment()
+            .defaultScreenDevice
+            .isWindowTranslucencySupported(
+                java.awt.GraphicsDevice.WindowTranslucency.TRANSLUCENT,
+            )
+    }.getOrDefault(false)
+}
+
+private fun applyMenuOpacity(window: java.awt.Window, alpha: Float) {
+    if (!trayWindowTranslucencySupported) return
+    runCatching { window.opacity = alpha }.onFailure {
+        Logger.w("TrayMenu", "window opacity $alpha failed: ${it.message}")
+    }
+}
+
+/**
+ * `TrayIcon` mouse events on Windows can carry raw physical pixel coordinates while
+ * `GraphicsConfiguration` bounds are expressed in logical pixels, so the point can land outside
+ * every screen. If that happens, try the device scale transform to bring it back into logical
+ * space; if it still does not fit, return it unchanged.
+ */
+private fun normalizeScreenPoint(point: Point): Point {
+    val environment = GraphicsEnvironment.getLocalGraphicsEnvironment()
+    if (environment.screenDevices.any { it.defaultConfiguration.bounds.contains(point) }) return point
+    val transform = environment.defaultScreenDevice.defaultConfiguration.defaultTransform
+    if (transform.scaleX != 1.0 || transform.scaleY != 1.0) {
+        val scaled = Point(
+            (point.x / transform.scaleX).roundToInt(),
+            (point.y / transform.scaleY).roundToInt(),
+        )
+        if (environment.screenDevices.any { it.defaultConfiguration.bounds.contains(scaled) }) {
+            return scaled
+        }
+    }
+    return point
+}
+
+/**
+ * Working area (screen bounds minus the taskbar) of the monitor containing [point], falling back
+ * to the default monitor.
+ */
+private fun usableScreenBoundsFor(point: Point): Rectangle {
+    val environment = GraphicsEnvironment.getLocalGraphicsEnvironment()
+    val configuration =
+        environment.screenDevices.firstOrNull { it.defaultConfiguration.bounds.contains(point) }
+            ?.defaultConfiguration
+            ?: environment.defaultScreenDevice.defaultConfiguration
+    val bounds = configuration.bounds
+    val insets = Toolkit.getDefaultToolkit().getScreenInsets(configuration)
+    return Rectangle(
+        bounds.x + insets.left,
+        bounds.y + insets.top,
+        bounds.width - insets.left - insets.right,
+        bounds.height - insets.top - insets.bottom,
+    )
 }
 
 @Composable
@@ -103,9 +171,11 @@ internal fun DesktopTrayHost(
                 val now = System.currentTimeMillis()
                 if (now - lastMenuOpenAtMs < 250) return
                 lastMenuOpenAtMs = now
-                val screen = event.locationOnScreen
+                val eventPoint = event.locationOnScreen
+                val pointerPoint = runCatching { MouseInfo.getPointerInfo()?.location }.getOrNull()
+                val anchor = normalizeScreenPoint(pointerPoint ?: eventPoint)
                 SwingUtilities.invokeLater {
-                    menuAnchor = screen
+                    menuAnchor = anchor
                     menuOpen = true
                 }
             }
@@ -149,7 +219,7 @@ internal fun DesktopTrayHost(
         val windowState = rememberWindowState(
             width = 220.dp,
             height = 260.dp,
-            position = WindowPosition((-20_000).dp, (-20_000).dp),
+            position = WindowPosition(0.dp, 0.dp),
         )
 
         Window(
@@ -174,14 +244,19 @@ internal fun DesktopTrayHost(
 
             SideEffect {
                 if (!showWindow) {
-                    awtWindow.isVisible = false
+                    applyMenuOpacity(awtWindow, 0f)
                 }
             }
 
             DisposableEffect(awtWindow) {
                 showWindow = false
-                awtWindow.isVisible = false
-                awtWindow.setLocation(-20_000, -20_000)
+                // Keep the window mapped so Compose lays out and reports the content size right
+                // away (that is what removes the open delay), but fully transparent so nothing
+                // paints before we have picked a size and position. Parking it off-screen does not
+                // work: Windows clamps negative coordinates back to (0,0) and paints it there.
+                applyMenuOpacity(awtWindow, 0f)
+                awtWindow.setLocation(0, 0)
+                awtWindow.isVisible = trayWindowTranslucencySupported
 
                 val dismiss = { SwingUtilities.invokeLater { closeMenu.value() } }
                 val toolkit = Toolkit.getDefaultToolkit()
@@ -229,22 +304,24 @@ internal fun DesktopTrayHost(
             LaunchedEffect(contentSizePx, menuAnchor) {
                 val anchor = menuAnchor
                 if (anchor == null || contentSizePx.width < 80 || contentSizePx.height < 40) {
+                    // Still measuring: stay mapped-but-transparent so the first frame is laid out
+                    // without ever being visible.
                     showWindow = false
-                    awtWindow.isVisible = false
+                    applyMenuOpacity(awtWindow, 0f)
+                    if (!trayWindowTranslucencySupported) awtWindow.isVisible = false
                     return@LaunchedEffect
                 }
                 val scale = density.density
                 val awtWidth = (contentSizePx.width / scale).roundToInt().coerceAtLeast(1)
                 val awtHeight = (contentSizePx.height / scale).roundToInt().coerceAtLeast(1)
-                val screen = awtWindow.graphicsConfiguration.bounds
-                val x = (anchor.x - awtWidth).coerceIn(
-                    screen.x,
-                    (screen.x + screen.width - awtWidth).coerceAtLeast(screen.x),
-                )
-                val y = (anchor.y - awtHeight).coerceIn(
-                    screen.y,
-                    (screen.y + screen.height - awtHeight).coerceAtLeast(screen.y),
-                )
+                // Use the monitor the click landed on, not the one this (still unpositioned)
+                // window happens to sit on — they differ on multi-monitor setups. Clamp to the
+                // working area so the menu never ends up hidden behind the taskbar.
+                val usable = usableScreenBoundsFor(anchor)
+                val maxX = (usable.x + usable.width - awtWidth).coerceAtLeast(usable.x)
+                val maxY = (usable.y + usable.height - awtHeight).coerceAtLeast(usable.y)
+                val x = (anchor.x - awtWidth).coerceIn(usable.x, maxX)
+                val y = (anchor.y - awtHeight).coerceIn(usable.y, maxY)
                 awtWindow.setSize(awtWidth, awtHeight)
                 awtWindow.setLocation(x, y)
                 with(density) {
@@ -260,6 +337,9 @@ internal fun DesktopTrayHost(
                 excludeFromWindowsTaskbar(awtWindow)
                 showWindow = true
                 awtWindow.isVisible = true
+                // Sized and positioned while invisible, so revealing it here is the first and only
+                // frame the user sees — no flash, no resize, no jump.
+                applyMenuOpacity(awtWindow, 1f)
                 awtWindow.toFront()
                 awtWindow.requestFocus()
             }
