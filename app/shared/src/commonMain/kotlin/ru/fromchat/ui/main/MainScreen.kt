@@ -231,7 +231,15 @@ fun MainScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surface)
+                .background(
+                    // List–detail panes sit on AppPanel (`surfaceContainerLowest`); compact
+                    // full-screen pager uses `surface`.
+                    if (embeddedInListDetail) {
+                        MaterialTheme.colorScheme.surfaceContainerLowest
+                    } else {
+                        MaterialTheme.colorScheme.surface
+                    },
+                )
                 .hazeSource(contextMenuHazeState),
         ) {
             Scaffold(
