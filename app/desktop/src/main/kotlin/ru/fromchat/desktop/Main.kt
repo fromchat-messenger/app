@@ -973,15 +973,21 @@ private fun loadAppIconPainter(tray: Boolean): Painter {
 
 private fun loadAppIconBufferedImage(tray: Boolean): BufferedImage? {
     val names = if (tray) {
-        listOf("app_icon.png", "app_icon.webp", "app_window_icon.png", "app_window_icon.webp")
+        if (isLinuxOs()) {
+            // app_icon.png is a *white glyph on transparency*, and every fully transparent pixel in
+            // it carries white (255,255,255) RGB. KDE Plasma hands tray icons to the
+            // StatusNotifierItem host, which does not honour the alpha channel, so the whole 22px
+            // tile rendered as a solid white square. The coloured app icon survives a lost alpha
+            // channel, so prefer it here.
+            listOf("app_window_icon.png", "app_window_icon.webp", "app_icon.png", "app_icon.webp")
+        } else {
+            listOf("app_icon.png", "app_icon.webp", "app_window_icon.png", "app_window_icon.webp")
+        }
     } else {
         listOf("app_window_icon.png", "app_window_icon.webp", "app_icon.png", "app_icon.webp")
     }
 
     for (name in names) {
-        if (tray && isLinuxOs() && name.startsWith("app_window_icon")) {
-            continue
-        }
         return ensureArgb(
             (
                 decodeImageBytes(
@@ -1116,9 +1122,11 @@ private fun bufferedImageFromComposeArgb(
 }
 
 private fun prepareTrayIcon(source: BufferedImage): BufferedImage {
-    val transparent = stripTrayMatteBackground(source)
     val size = if (isLinuxOs()) linuxTrayIconSize() else 64
-    return scaleBufferedImage(transparent, size)
+    // Matte-stripping only makes sense for the white-on-black macOS template glyph. The Linux tray
+    // gets the coloured icon, whose white glyph would just be punched out of it.
+    val prepared = if (isLinuxOs()) source else stripTrayMatteBackground(source)
+    return scaleBufferedImage(prepared, size)
 }
 
 private fun linuxTrayIconSize(): Int {
