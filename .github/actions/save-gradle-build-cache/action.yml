@@ -25,8 +25,25 @@ runs:
           utils/shared/build
           utils/android/build
           !app/android/build/outputs
+    - name: Save Build JAR Gradle build cache
+      if: inputs.scope == 'build-jar'
+      uses: actions/cache/save@v5
+      continue-on-error: true
+      with:
+        # compose/tmp is kept only here — it holds ProGuard's output jars, so this is the one scope
+        # where dropping them would make proguardReleaseJars re-run its ~8 minutes every time.
+        key: gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts', 'gradle.properties', 'build.gradle.kts', 'app/desktop/build.gradle.kts', 'app/desktop/proguard-rules.pro', 'app/shared/build.gradle.kts', 'app/android/build.gradle.kts', 'utils/shared/build.gradle.kts', 'utils/android/build.gradle.kts') }}
+        path: |
+          .gradle
+          build
+          app/shared/build
+          utils/shared/build
+          app/desktop/build
+          !app/desktop/build/distributions
+          !app/desktop/build/ci
+          !app/desktop/build/compose/binaries
     - name: Save Gradle build cache
-      if: inputs.scope != 'android'
+      if: inputs.scope != 'android' && inputs.scope != 'build-jar'
       uses: actions/cache/save@v5
       continue-on-error: true
       with:
