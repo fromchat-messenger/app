@@ -406,7 +406,15 @@ fun main(args: Array<String>) {
         val trayIcon = remember(trayIconImage) {
             trayIconImage?.toPainter() ?: loadAppIconPainter(tray = useTemplateTrayIcon)
         }
-        val traySupported = remember { java.awt.SystemTray.isSupported() }
+        val traySupported = remember {
+            java.awt.SystemTray.isSupported().also {
+                Logger.i(
+                    "DesktopTray",
+                    "SystemTray.isSupported=$it on ${System.getProperty("os.name")} " +
+                        "(a false here on Linux means libayatana-appindicator3-1 is missing)",
+                )
+            }
+        }
         val aboutApp = stringResource(Res.string.desktop_about_app)
         val trayShow = stringResource(Res.string.desktop_tray_show)
         val quit = stringResource(Res.string.desktop_quit)
