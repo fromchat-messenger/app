@@ -1,5 +1,7 @@
+import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.file.Files
 import java.util.zip.ZipFile
 
 plugins {
@@ -1098,12 +1100,120 @@ tasks.register("packageReleaseLinux") {
         binaries.walkTopDown()
             .filter { it.isFile && (it.extension == "deb" || it.extension == "rpm") }
             .forEach { file ->
+                if (file.extension == "deb") injectDebRuntimeDependencies(file)
                 val arch = desktopReleaseArchLabel()
                 val renamed = "FromChat-$desktopVersionName-linux-$arch.${file.extension}"
                 file.copyTo(outDir.resolve(renamed), overwrite = true)
             }
     }
 }
+
+/**
+ * Adds the tray runtime dependency to the generated .deb control file.
+ *
+ * AWT's Linux tray is not built into the JDK: it `dlopen`s libappindicator, and when that is
+ * absent `SystemTray.isSupported()` is false — so the tray icon never appears and left/right
+ * clicks do nothing, with nothing in the log. jpackage cannot be told about dependencies through
+ * Compose's `linux { }` DSL, so the control file ships with no `Depends` at all and the package
+ * pulls nothing in. The Ayatana build is the maintained one; the legacy name is kept as an
+ * alternative for older distributions.
+ *
+ * Best effort on purpose: a failure here must not fail the release, it only leaves the deb as
+ * jpackage produced it (status quo, tray broken) instead of shipping a broken package.
+ */
+private fun injectDebRuntimeDependencies(deb: File) {
+    val trayDeps = "libayatana-appindicator3-1 | libappindicator3-1, libdbus-1-3"
+    runCatching {
+        val members = readArMembers(deb.readBytes()).toMutableList()
+        val index = members.indexOfFirst { it.name.startsWith("control.tar") }
+        check(index >= 0) { "no control.tar member in ${deb.name}" }
+        val controlName = members[index].name
+        val work = Files.createTempDirectory("fromchat-deb").toFile()
+        try {
+            val controlTar = work.resolve(controlName)
+            controlTar.writeBytes(members[index].data)
+            val controlDir = File(work, "control").apply { mkdirs() }
+            when {
+                controlName.endsWith(".gz") -> runCommand("tar", "xzf", controlTar.absolutePath, "-C", controlDir.absolutePath)
+                controlName.endsWith(".xz") -> runCommand("tar", "xJf", controlTar.absolutePath, "-C", controlDir.absolutePath)
+                else -> runCommand("tar", "xf", controlTar.absolutePath, "-C", controlDir.absolutePath)
+            }
+            val controlFile = sequenceOf("control", "./control")
+                .map { File(controlDir, it) }.firstOrNull { it.isFile }
+                ?: error("no control file inside $controlName")
+            val patched = controlFile.readText()
+                .replace(Regex("(?m)^Depends:.*$"), "Depends: $trayDeps")
+                .let { if (it.startsWith("Depends:")) it else "Depends: $trayDeps\n$it" }
+            controlFile.writeText(patched)
+            val rebuilt = File(work, "rebuilt-$controlName")
+            when {
+                controlName.endsWith(".gz") -> runCommand("tar", "czf", rebuilt.absolutePath, "-C", controlDir.absolutePath, ".")
+                controlName.endsWith(".xz") -> runCommand("tar", "cJf", rebuilt.absolutePath, "-C", controlDir.absolutePath, ".")
+                else -> runCommand("tar", "cf", rebuilt.absolutePath, "-C", controlDir.absolutePath, ".")
+            }
+            members[index] = members[index].copy(data = rebuilt.readBytes())
+            deb.writeBytes(writeArMembers(members))
+            logger.lifecycle("Injected tray runtime deps into ${deb.name}: $trayDeps")
+        } finally {
+            work.deleteRecursively()
+        }
+    }.onFailure {
+        logger.warn("Could not inject tray deps into ${deb.name} (leaving it as jpackage built it): ${it.message}")
+    }
+}
+
+/** One `ar` member: its 60-byte header (kept verbatim so odd members survive) and payload. */
+private data class ArMember(val name: String, val header: ByteArray, val data: ByteArray) {
+    override fun equals(other: Any?): Boolean =
+        this === other || (other is ArMember && name == other.name && data.contentEquals(other.data))
+
+    override fun hashCode(): Int = 31 * name.hashCode() + data.contentHashCode()
+}
+
+/**
+ * Reads the Debian `ar` container in pure Kotlin. Shelling out to `ar` is not an option: BSD ar
+ * (macOS) injects a `__.SYMDEF SORTED` member while GNU ar (Linux, where this actually runs) does
+ * not, and rewriting a package with the wrong dialect corrupts it. The format is trivial — an
+ * 8-byte magic followed by 60-byte headers — and `dpkg-deb` only needs member order preserved with
+ * `debian-binary` first.
+ */
+private fun readArMembers(raw: ByteArray): List<ArMember> {
+    require(raw.size > 68 && String(raw, 0, 8) == "!<arch>\n") { "not an ar archive" }
+    val members = ArrayList<ArMember>()
+    var offset = 8
+    while (offset + 60 <= raw.size) {
+        val header = raw.copyOfRange(offset, offset + 60)
+        val name = String(header, 0, 16).trim().trimEnd('/')
+        val size = String(header, 48, 10).trim().toIntOrNull()
+            ?: if (name == "/" || name == "//") 0 else error("bad ar size in header for '$name'")
+        val start = offset + 60
+        require(start + size <= raw.size) { "ar member '$name' runs past end of archive" }
+        members += ArMember(name, header, raw.copyOfRange(start, start + size))
+        offset = start + size + (size % 2) // members are 2-byte aligned
+    }
+    check(members.isNotEmpty()) { "empty ar archive" }
+    return members
+}
+
+private fun writeArMembers(members: List<ArMember>): ByteArray {
+    val out = ByteArrayOutputStream()
+    out.write("!<arch>\n".toByteArray())
+    members.forEach { member ->
+        val size = member.data.size.toString()
+        check(size.length <= 10) { "ar member '${member.name}' too large" }
+        val header = member.header.copyOf()
+        // Refresh the size field (bytes 48..58), leaving name/mtime/uid/gid/mode/magic as-is.
+        for (i in 0 until 10) header[48 + i] = ' '.code.toByte()
+        size.forEachIndexed { i, c -> header[48 + i] = c.code.toByte() }
+        out.write(header)
+        out.write(member.data)
+        if (member.data.size % 2 == 1) out.write('\n'.code)
+    }
+    return out.toByteArray()
+}
+
+private fun runCommand(vararg command: String): String =
+    ProcessBuilder(command.asList()).redirectErrorStream(true).start().inputStream.bufferedReader().readText()
 
 val windowsSetupDir = layout.projectDirectory.dir("windows-setup")
 val windowsRustReleaseDir = windowsSetupDir.dir("target/release")
