@@ -9,6 +9,8 @@ inputs:
 runs:
   using: composite
   steps:
+    # Path lists must stay identical to cache-gradle-build: actions/cache skips the save when the
+    # restore and save paths do not match.
     - name: Save Android Gradle build cache
       if: inputs.scope == 'android'
       uses: actions/cache/save@v5
@@ -22,6 +24,7 @@ runs:
           app/android/build
           utils/shared/build
           utils/android/build
+          !app/android/build/outputs
     - name: Save Gradle build cache
       if: inputs.scope != 'android'
       uses: actions/cache/save@v5
@@ -31,8 +34,10 @@ runs:
         path: |
           .gradle
           build
-          app/desktop/build
           app/shared/build
-          app/android/build
           utils/shared/build
-          utils/android/build
+          app/desktop/build
+          !app/desktop/build/distributions
+          !app/desktop/build/ci
+          !app/desktop/build/compose/binaries
+          !app/desktop/build/compose/tmp

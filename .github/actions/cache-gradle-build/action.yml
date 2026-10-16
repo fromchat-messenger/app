@@ -17,6 +17,15 @@ outputs:
 runs:
   using: composite
   steps:
+    # Keep the path lists here and in save-gradle-build-cache identical: actions/cache refuses to
+    # save when the restore and save paths differ.
+    #
+    # Scope: caches are only visible to runs on the same ref (plus the default branch), so a run
+    # for a new release tag never sees the previous tag's cache — see "Restrictions for accessing
+    # a cache". This cache therefore pays off for re-runs of a tag and for warm branch runs, not
+    # across tags. That is why the key must stay stable across releases: everything cached here
+    # is a pure function of these files, and the release version is injected through Gradle
+    # properties (see set-version) rather than by editing a hashed source file.
     - uses: actions/cache/restore@v5
       if: inputs.scope == 'android'
       id: cache-android
@@ -28,6 +37,7 @@ runs:
           app/android/build
           utils/shared/build
           utils/android/build
+          !app/android/build/outputs
         key: gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts', 'gradle.properties', 'build.gradle.kts', 'app/desktop/build.gradle.kts', 'app/desktop/proguard-rules.pro', 'app/shared/build.gradle.kts', 'app/android/build.gradle.kts', 'utils/shared/build.gradle.kts', 'utils/android/build.gradle.kts') }}
         restore-keys: |
           gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-
@@ -37,14 +47,20 @@ runs:
       if: inputs.scope != 'android'
       id: cache
       with:
+        # Desktop scopes never build Android, so the Android module dirs are not archived here.
+        # The negated paths are final artifacts and regenerated intermediates: they are rebuilt for
+        # every version anyway, and archiving them is what pushed this repo past the 10 GB cache
+        # limit and into eviction (see the size of the per-scope entries).
         path: |
           .gradle
           build
-          app/desktop/build
           app/shared/build
-          app/android/build
           utils/shared/build
-          utils/android/build
+          app/desktop/build
+          !app/desktop/build/distributions
+          !app/desktop/build/ci
+          !app/desktop/build/compose/binaries
+          !app/desktop/build/compose/tmp
         key: gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts', 'gradle.properties', 'build.gradle.kts', 'app/desktop/build.gradle.kts', 'app/desktop/proguard-rules.pro', 'app/shared/build.gradle.kts', 'app/android/build.gradle.kts', 'utils/shared/build.gradle.kts', 'utils/android/build.gradle.kts') }}
         restore-keys: |
           gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-
