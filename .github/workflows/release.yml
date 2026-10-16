@@ -434,6 +434,7 @@ jobs:
       - uses: ./.github/actions/setup-java-gradle
         with:
           cache-read-only: "true"
+          desktop-jdk: "25"
       - uses: ./.github/actions/cache-gradle-build
         id: gradle-build-cache
         with:
@@ -457,7 +458,8 @@ jobs:
           echo "APPIMAGETOOL=$TOOL" >> "$GITHUB_ENV"
       - name: Package Linux ${{ matrix.arch }}
         run: |
-          export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
+          # Keep the jmods-capable JDK the setup action exported; fall back to JAVA_HOME.
+          export FROMCHAT_PACKAGING_JDK="${FROMCHAT_PACKAGING_JDK:-$JAVA_HOME}"
           ./gradlew :app:desktop:packageReleaseLinux -PdesktopArch=${{ matrix.arch }} --no-daemon --console=plain
       - uses: actions/upload-artifact@v5
         with:

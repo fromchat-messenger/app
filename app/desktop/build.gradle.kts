@@ -263,19 +263,20 @@ fun resolvePackagingJdkHome(): String {
         )
     }
 
-    // Compose Desktop's release tasks run ProGuard on this JDK, and the Compose plugin builds
-    // ProGuard's -libraryjars by walking <javaHome>/jmods. Adoptium stopped shipping the jmods/
-    // directory with JDK 25 archives, so a jmods-less JDK leaves ProGuard with no java.* classes
-    // at all — the build then dies on a million "can't find superclass or interface
-    // java.lang.Object" warnings. Fail noisily here rather than in ProGuard's wall of text.
+    // Compose Desktop's release tasks run ProGuard and jlink on this JDK, and both take the JDK
+    // from <javaHome>/jmods: the plugin builds ProGuard's -libraryjars by walking that directory,
+    // and jlink defaults its --module-path to it. Adoptium stopped shipping the jmods/ directory
+    // with JDK 25 archives, so a jmods-less JDK leaves ProGuard with no java.* classes at all
+    // (a million "can't find superclass or interface java.lang.Object" warnings) and makes
+    // createRuntimeImage fail outright. Fail noisily here rather than in that wall of text.
     fun withJmods(home: String): String {
         if (!File(home, "jmods").isDirectory) {
             project.logger.warn(
-                "Packaging JDK $home ships no jmods/ directory. The release/ProGuard build needs " +
-                    "one: Compose Desktop reads the JDK from <javaHome>/jmods, so ProGuard will " +
+                "Packaging JDK $home ships no jmods/ directory. The release build needs one: " +
+                    "Compose Desktop reads the JDK from <javaHome>/jmods, so ProGuard will " +
                     "report \"can't find superclass or interface java.lang.Object\" for every " +
-                    "class and abort. Point FROMCHAT_PACKAGING_JDK at a JDK that ships jmods " +
-                    "(e.g. Azul Zulu $desktopJvmTarget).",
+                    "class and jlink will fail in createRuntimeImage. Point FROMCHAT_PACKAGING_JDK " +
+                    "at a JDK that ships jmods (e.g. Azul Zulu $desktopJvmTarget).",
             )
         }
         return home
