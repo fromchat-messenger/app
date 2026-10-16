@@ -289,12 +289,17 @@ jobs:
         if: matrix.arch == 'x64'
         with:
           cache-read-only: "true"
-      - uses: gradle/actions/setup-gradle@v5
+      # JDK-8371740: a LinkedTransferQueue race, fixed only in JDK 26, makes Gradle on Windows
+      # ARM64 hang at build shutdown ("Timeout waiting for concurrent jobs to complete") whenever
+      # it runs on JDK 21+. This runner's ambient JAVA_HOME is Temurin 21.0.12, so pin the Gradle
+      # JVM to 17 — exactly what the x64 job does. Adoptium publishes no Windows aarch64 build
+      # for 17, hence zulu. Packaging is unaffected: resolvePackagingJdkHome() rejects 17 as too
+      # old and falls back to the Java 25 toolchain JDK for jpackage.
+      - uses: ./.github/actions/setup-java-gradle
         if: matrix.arch == 'arm64'
         with:
-          gradle-version: wrapper
-          cache-read-only: true
-          add-job-summary: on-failure
+          cache-read-only: "true"
+          java-distribution: zulu
       - uses: ./.github/actions/cache-gradle-build
         id: gradle-build-cache
         with:

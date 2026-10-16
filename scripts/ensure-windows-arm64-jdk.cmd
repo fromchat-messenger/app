@@ -39,6 +39,18 @@ if not defined JDK_HOME for /d %%D in ("%JDK_ROOT%\jdk-*aarch64*") do (
   if not defined JDK_HOME if exist "%%D\bin\java.exe" set "JDK_HOME=%%D"
 )
 
+rem Hosted Windows ARM64 runners already ship an ARM64 Temurin 21 as JAVA_HOME, but it lives in
+rem the hostedtoolcache, not under JDK_ROOT — so the loops above miss it and fall through to the
+rem download below. Prefer it: Invoke-WebRequest + Expand-Archive of a ~180 MB JDK burns minutes
+rem and can stall long enough to look like a hung job. Java 21 is fine as the Gradle daemon JVM
+rem (build.gradle.kts falls back to the Java 25 toolchain JDK for jpackage).
+if not defined JDK_HOME if defined JAVA_HOME (
+  if exist "%JAVA_HOME%\bin\java.exe" (
+    "%JAVA_HOME%\bin\java.exe" -XshowSettings:properties -version 2>&1 | findstr /i /c:"os.arch = aarch64" >nul
+    if not errorlevel 1 set "JDK_HOME=%JAVA_HOME%"
+  )
+)
+
 if not defined JDK_HOME (
   for /d %%D in ("%JDK_ROOT%\jdk-*") do (
     if not defined JDK_HOME if exist "%%D\bin\java.exe" (

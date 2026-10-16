@@ -6,6 +6,12 @@ inputs:
     description: Optional JDK architecture (x64). Omit for host default.
     required: false
     default: ""
+  java-distribution:
+    description: >
+      Distribution for the Gradle JVM (default temurin). Adoptium publishes no Windows aarch64
+      build for Java 17, so Windows ARM64 has to ask for zulu.
+    required: false
+    default: temurin
   desktop-jdk:
     description: >
       Optional desktop JDK version. When set, a Zulu build of it is installed and exported as
@@ -35,7 +41,7 @@ runs:
 
     - uses: actions/setup-java@v5
       with:
-        distribution: temurin
+        distribution: ${{ inputs.java-distribution }}
         java-version: "17"
         architecture: ${{ inputs.java-architecture }}
 
