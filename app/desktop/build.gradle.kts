@@ -429,7 +429,7 @@ compose.desktop {
         // Application-level, and per host: an unqualified jvmArgs() inside
         // nativeDistributions.<platform> { } lands here anyway and then leaks into every platform's
         // launcher config. See hostGpuJvmArgs().
-        jvmArgs(*hostGpuJvmArgs().toTypedArray())
+        jvmArgs(*(hostGpuJvmArgs() + hostScalingJvmArgs()).toTypedArray())
 
         buildTypes.release.proguard {
             version = proguardVersion
@@ -621,6 +621,7 @@ fun JavaExec.configureFromChatDesktopJvm() {
         dockIconArgs + buildList {
             if (!System.getProperty("os.name").orEmpty().lowercase().contains("mac")) {
                 addAll(hostGpuJvmArgs())
+                addAll(hostScalingJvmArgs())
             }
             addAll(
                 listOf(
@@ -1084,6 +1085,25 @@ val packageLinuxAppImage = tasks.register<Exec>("packageLinuxAppImage") {
             """.trimIndent(),
         )
     }
+}
+
+/**
+ * Linux desktop scale for AWT.
+ *
+ * Compose derives `LocalDensity` from the AWT device configuration, and on a HiDPI or
+ * fractional-scaled desktop Java often still reports 96 DPI — the app then renders at 1:1 and looks
+ * tiny on a 2K screen. GDK exports the real scale as GDK_SCALE (integer) times GDK_DPI_SCALE
+ * (fractional); `sun.java2d.uiScale` is what AWT/Compose pick that up from.
+ *
+ * Only set when it is actually above 1:1, so unscaled setups keep Java's own detection.
+ */
+private fun hostScalingJvmArgs(): List<String> {
+    if (!System.getProperty("os.name").orEmpty().lowercase().contains("linux")) return emptyList()
+    val gdkScale = System.getenv("GDK_SCALE")?.toDoubleOrNull() ?: 1.0
+    val dpiScale = System.getenv("GDK_DPI_SCALE")?.toDoubleOrNull() ?: 1.0
+    val scale = gdkScale * dpiScale
+    if (scale <= 1.0) return emptyList()
+    return listOf("-Dsun.java2d.uiScale=$scale")
 }
 
 tasks.register("packageReleaseLinux") {
