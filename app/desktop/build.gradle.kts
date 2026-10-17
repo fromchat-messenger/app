@@ -1133,7 +1133,11 @@ private fun injectDebRuntimeDependencies(deb: File) {
             val controlTar = work.resolve(controlName)
             controlTar.writeBytes(members[index].data)
             val controlDir = File(work, "control").apply { mkdirs() }
+            // jpackage on a modern dpkg emits **zstd** control/data tars (control.tar.zst), so the
+            // compression has to be detected from the member name and preserved on rebuild — a
+            // plain tar left under a .zst name is a malformed package.
             when {
+                controlName.endsWith(".zst") -> runCommand("tar", "--zstd", "-xf", controlTar.absolutePath, "-C", controlDir.absolutePath)
                 controlName.endsWith(".gz") -> runCommand("tar", "xzf", controlTar.absolutePath, "-C", controlDir.absolutePath)
                 controlName.endsWith(".xz") -> runCommand("tar", "xJf", controlTar.absolutePath, "-C", controlDir.absolutePath)
                 else -> runCommand("tar", "xf", controlTar.absolutePath, "-C", controlDir.absolutePath)
@@ -1141,17 +1145,30 @@ private fun injectDebRuntimeDependencies(deb: File) {
             val controlFile = sequenceOf("control", "./control")
                 .map { File(controlDir, it) }.firstOrNull { it.isFile }
                 ?: error("no control file inside $controlName")
-            val patched = controlFile.readText()
-                .replace(Regex("(?m)^Depends:.*$"), "Depends: $trayDeps")
-                .let { if (it.startsWith("Depends:")) it else "Depends: $trayDeps\n$it" }
+            // Strip *every* Depends line first: jpackage may or may not emit one, and replacing plus
+            // prepending used to leave the control file with two.
+            val patched = "Depends: $trayDeps\n" +
+                controlFile.readText().replace(Regex("(?m)^Depends:.*\\R?"), "")
             controlFile.writeText(patched)
             val rebuilt = File(work, "rebuilt-$controlName")
             when {
+                controlName.endsWith(".zst") -> runCommand("tar", "--zstd", "-cf", rebuilt.absolutePath, "-C", controlDir.absolutePath, ".")
                 controlName.endsWith(".gz") -> runCommand("tar", "czf", rebuilt.absolutePath, "-C", controlDir.absolutePath, ".")
                 controlName.endsWith(".xz") -> runCommand("tar", "cJf", rebuilt.absolutePath, "-C", controlDir.absolutePath, ".")
                 else -> runCommand("tar", "cf", rebuilt.absolutePath, "-C", controlDir.absolutePath, ".")
             }
-            members[index] = members[index].copy(data = rebuilt.readBytes())
+            val rebuiltBytes = rebuilt.readBytes()
+            // Self-check: refuse to write a control member whose compression or content is wrong,
+            // so a mangled package can never leave this task.
+            if (controlName.endsWith(".zst")) {
+                check(
+                    rebuiltBytes.size > 4 &&
+                        rebuiltBytes[0] == 0x28.toByte() && rebuiltBytes[1] == 0xB5.toByte() &&
+                        rebuiltBytes[2] == 0x2F.toByte() && rebuiltBytes[3] == 0xFD.toByte(),
+                ) { "rebuilt $controlName is not zstd-framed" }
+            }
+            check(controlDir.listFiles().orEmpty().isNotEmpty()) { "control tar came out empty" }
+            members[index] = members[index].copy(data = rebuiltBytes)
             deb.writeBytes(writeArMembers(members))
             logger.lifecycle("Injected tray runtime deps into ${deb.name}: $trayDeps")
         } finally {
