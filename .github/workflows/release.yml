@@ -308,7 +308,45 @@ jobs:
         with:
           name: desktop-proguard
           path: app/desktop/build/prebuilt/main-release/proguard
-      - name: Restore Windows Rust installer tools
+      # Two installers, two architectures, two *natively compiled* sets of Rust tooling.
+      # fromchat-pack embeds the app-image payload and the stub picks it with
+      # std::env::consts::ARCH — which is the stub's own compile-time architecture. An x64 stub
+      # running emulated on ARM64 reports "x86_64" and finds no x86_64 payload in the ARM-only
+      # bundle: "installer has no payload for this CPU (x86_64)". So the ARM64 leg builds its own
+      # aarch64 tooling on the ARM runner instead of downloading the x64 artifact.
+      - uses: dtolnay/rust-toolchain@stable
+        if: matrix.arch == 'arm64'
+        with:
+          targets: aarch64-pc-windows-msvc
+      - uses: ./.github/actions/cache-windows-rust-tools
+        if: matrix.arch == 'arm64'
+      - name: Verify Windows ARM64 Rust binaries
+        if: matrix.arch == 'arm64'
+        id: rust-binaries-arm64
+        shell: bash
+        run: |
+          ready=true
+          for exe in \
+            FromChat-Installer.exe \
+            FromChat-Installer-Helper.exe \
+            fromchat-portable-launcher.exe \
+            fromchat-pack.exe \
+            fromchat-icon-patch.exe
+          do
+            if [[ ! -f "app/desktop/windows-setup/target/release/$exe" ]]; then
+              echo "Missing $exe"
+              ready=false
+            fi
+          done
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+      - name: Build Windows ARM64 installer Rust tooling
+        if: matrix.arch == 'arm64' && steps.rust-binaries-arm64.outputs.ready != 'true'
+        shell: bash
+        run: ./gradlew :app:desktop:buildWindowsSetupRust --no-daemon --console=plain
+      - uses: ./.github/actions/save-windows-rust-cache
+        if: always() && matrix.arch == 'arm64'
+      - name: Restore Windows x64 Rust installer tools
+        if: matrix.arch == 'x64'
         uses: actions/download-artifact@v5
         with:
           name: windows-rust-tools
