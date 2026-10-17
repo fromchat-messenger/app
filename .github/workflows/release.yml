@@ -200,28 +200,46 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-  windows-common:
-    name: Windows installer
+  windows-tools:
+    name: Windows tools (${{ matrix.label }})
     needs: [resolve-version, check-build]
     if: needs.check-build.outputs.should_build == 'true'
-    runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            label: x64
+            runner: windows-latest
+            rust-target: x86_64-pc-windows-msvc
+            java-distribution: temurin
+          - arch: arm64
+            label: ARM
+            runner: windows-11-arm
+            rust-target: aarch64-pc-windows-msvc
+            # Adoptium publishes no Windows aarch64 build for 17, hence zulu. See the ARM leg of
+            # windows-package for why the Gradle JVM must not be 21+ on Windows ARM64.
+            java-distribution: zulu
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/restore-git-mtimes
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
+      # This job only needs a JVM to drive cargo; the app image is packaged by windows-package.
       - uses: ./.github/actions/setup-java-gradle
+        with:
+          java-distribution: ${{ matrix.java-distribution }}
       - uses: ./.github/actions/cache-gradle-build
         id: gradle-build-cache
         with:
-          scope: windows-installer
+          scope: windows-tools-${{ matrix.arch }}
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-msvc
+          targets: ${{ matrix.rust-target }}
       - uses: ./.github/actions/cache-windows-rust-tools
-        id: rust-tools-cache
       - name: Verify Windows Rust binaries
         id: rust-binaries
         shell: bash
@@ -240,6 +258,10 @@ jobs:
             fi
           done
           echo "ready=$ready" >> "$GITHUB_OUTPUT"
+      # cargo builds for the host, so each runner produces tooling for its own architecture. That
+      # matters: fromchat-pack picks the embedded payload with std::env::consts::ARCH, the stub's
+      # compile-time arch, so an x64 stub running emulated on ARM64 looks for an x86_64 payload the
+      # ARM64 bundle does not contain ("installer has no payload for this CPU (x86_64)").
       - name: Build Windows installer Rust tooling
         if: steps.rust-binaries.outputs.ready != 'true'
         shell: bash
@@ -248,7 +270,7 @@ jobs:
         if: always()
       - uses: actions/upload-artifact@v5
         with:
-          name: windows-rust-tools
+          name: windows-rust-tools-${{ matrix.arch }}
           path: app/desktop/windows-setup/target/release/*.exe
           if-no-files-found: error
           retention-days: 3
@@ -259,7 +281,7 @@ jobs:
 
   windows-package:
     name: Windows (${{ matrix.label }})
-    needs: [resolve-version, check-build, desktop-proguard, windows-common]
+    needs: [resolve-version, check-build, desktop-proguard, windows-tools]
     if: needs.check-build.outputs.should_build == 'true'
     env:
       FROMCHAT_PREBUILT_PROGUARD: "1"
@@ -270,9 +292,18 @@ jobs:
           - arch: x64
             label: x64
             runner: windows-latest
+            java-distribution: temurin
           - arch: arm64
             label: ARM
             runner: windows-11-arm
+            # JDK-8371740: a LinkedTransferQueue race, fixed only in JDK 26, makes Gradle on
+            # Windows ARM64 hang at build shutdown ("Timeout waiting for concurrent jobs to
+            # complete") whenever it runs on JDK 21+. This runner's ambient JAVA_HOME is Temurin
+            # 21.0.12, so pin the Gradle JVM to 17 — exactly what the x64 leg does. Adoptium
+            # publishes no Windows aarch64 build for 17, hence zulu. Packaging is unaffected:
+            # resolvePackagingJdkHome() rejects 17 as too old and falls back to the Java 25
+            # toolchain JDK for jpackage.
+            java-distribution: zulu
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     steps:
@@ -286,20 +317,9 @@ jobs:
         shell: cmd
         run: call scripts\ensure-windows-arm64-jdk.cmd
       - uses: ./.github/actions/setup-java-gradle
-        if: matrix.arch == 'x64'
         with:
           cache-read-only: "true"
-      # JDK-8371740: a LinkedTransferQueue race, fixed only in JDK 26, makes Gradle on Windows
-      # ARM64 hang at build shutdown ("Timeout waiting for concurrent jobs to complete") whenever
-      # it runs on JDK 21+. This runner's ambient JAVA_HOME is Temurin 21.0.12, so pin the Gradle
-      # JVM to 17 — exactly what the x64 job does. Adoptium publishes no Windows aarch64 build
-      # for 17, hence zulu. Packaging is unaffected: resolvePackagingJdkHome() rejects 17 as too
-      # old and falls back to the Java 25 toolchain JDK for jpackage.
-      - uses: ./.github/actions/setup-java-gradle
-        if: matrix.arch == 'arm64'
-        with:
-          cache-read-only: "true"
-          java-distribution: zulu
+          java-distribution: ${{ matrix.java-distribution }}
       - uses: ./.github/actions/cache-gradle-build
         id: gradle-build-cache
         with:
@@ -308,10 +328,14 @@ jobs:
         with:
           name: desktop-proguard
           path: app/desktop/build/prebuilt/main-release/proguard
+      # Tooling for this architecture, built natively by the windows-tools matrix leg. The two
+      # architectures must not share: fromchat-pack selects the embedded payload with
+      # std::env::consts::ARCH, so an x64 stub on ARM64 reports "x86_64" and finds no x86_64
+      # payload in the ARM-only bundle.
       - name: Restore Windows Rust installer tools
         uses: actions/download-artifact@v5
         with:
-          name: windows-rust-tools
+          name: windows-rust-tools-${{ matrix.arch }}
           path: app/desktop/windows-setup/target/release
       - name: Package Windows ${{ matrix.arch }} installer
         shell: bash
@@ -592,7 +616,7 @@ jobs:
       - resolve-version
       - check-build
       - desktop-proguard
-      - windows-common
+      - windows-tools
       - windows-package
       - macos
       - linux
