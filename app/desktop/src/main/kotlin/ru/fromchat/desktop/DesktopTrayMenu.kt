@@ -203,11 +203,26 @@ internal fun DesktopTrayHost(
                 }
             }
             trayIcon.addMouseListener(listener)
-            val tray = SystemTray.getSystemTray()
-            runCatching { tray.add(trayIcon) }
-            onDispose {
-                trayIcon.removeMouseListener(listener)
-                runCatching { tray.remove(trayIcon) }
+            // getSystemTray() itself throws where isSupported() returned true — e.g. on GNOME,
+            // where AWT's libappindicator bridge cannot reach a StatusNotifierItem host. It used to
+            // be called unguarded, so the throw escaped this DisposableEffect as an uncaught
+            // exception and the tray silently never appeared.
+            val tray = runCatching { SystemTray.getSystemTray() }
+                .onFailure {
+                    Logger.w(
+                        "TrayMenu",
+                        "System tray unavailable: ${it.javaClass.simpleName}: ${it.message}",
+                    )
+                }
+                .getOrNull()
+            if (tray != null) {
+                runCatching { tray.add(trayIcon) }
+                onDispose {
+                    trayIcon.removeMouseListener(listener)
+                    runCatching { tray.remove(trayIcon) }
+                }
+            } else {
+                onDispose {}
             }
         }
     }
