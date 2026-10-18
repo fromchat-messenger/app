@@ -93,6 +93,9 @@ private val trayWindowTranslucencySupported: Boolean by lazy {
     }.getOrDefault(false)
 }
 
+/** Gap between the cursor and the flipped menu edge, in logical pixels. */
+private const val trayMenuCursorGapPx = 4
+
 private fun applyMenuOpacity(window: java.awt.Window, alpha: Float) {
     if (!trayWindowTranslucencySupported) return
     runCatching { window.opacity = alpha }.onFailure {
@@ -335,8 +338,22 @@ internal fun DesktopTrayHost(
                 val usable = usableScreenBoundsFor(anchor)
                 val maxX = (usable.x + usable.width - awtWidth).coerceAtLeast(usable.x)
                 val maxY = (usable.y + usable.height - awtHeight).coerceAtLeast(usable.y)
-                val x = (anchor.x - awtWidth).coerceIn(usable.x, maxX)
-                val y = (anchor.y - awtHeight).coerceIn(usable.y, maxY)
+                // Prefer up-and-left of the cursor, but a top-bar tray has no room above it, so
+                // clamping alone would shove the menu into an odd spot. Flip to below the cursor
+                // when there is not enough space above, and to the right when there is not enough
+                // space to the left.
+                val aboveY = anchor.y - awtHeight
+                val y = if (aboveY >= usable.y) {
+                    aboveY
+                } else {
+                    (anchor.y + trayMenuCursorGapPx).coerceAtMost(maxY)
+                }
+                val leftX = anchor.x - awtWidth
+                val x = if (leftX >= usable.x) {
+                    leftX
+                } else {
+                    (anchor.x + trayMenuCursorGapPx).coerceAtMost(maxX)
+                }
                 awtWindow.setSize(awtWidth, awtHeight)
                 awtWindow.setLocation(x, y)
                 with(density) {
