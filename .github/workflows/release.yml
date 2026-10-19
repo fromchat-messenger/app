@@ -1,18 +1,16 @@
+# Release builds run on workflow_dispatch only — never on tag pushes.
+#
+# Why: workflow-run caches are scoped by ref. A run can only restore caches saved for its own ref
+# or for the default branch ("Restrictions for accessing a cache"), and a save made during a
+# tag-triggered run is pinned to that tag and reusable by nobody — every release tag would start
+# cold and never warm another build. Dispatching from the default branch makes every save land in
+# the default-branch scope, which all future runs can restore. The tag does not have to exist
+# beforehand: the publish step creates it (pointing at the commit that was built). Dispatch from a
+# non-default branch still works (hotfix betas), but its saves are scoped to that branch only,
+# so it never warms and never reuses the shared cache — resolve-version warns about it.
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
-    paths:
-      - "app/**"
-      - "utils/**"
-      - "gradle/**"
-      - "build.gradle.kts"
-      - "settings.gradle.kts"
-      - "gradle.properties"
-      - ".github/workflows/release.yml"
-      - ".github/actions/**"
   workflow_dispatch:
     inputs:
       version:
@@ -56,7 +54,7 @@ env:
 
 jobs:
   resolve-version:
-    name: Resolve version
+    name: Resolve version and check build inputs
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -66,16 +64,17 @@ jobs:
       prerelease: ${{ steps.ver.outputs.prerelease }}
       release_label: ${{ steps.ver.outputs.release_label }}
       force_update_release: ${{ steps.ver.outputs.force_update_release }}
+      should_build: ${{ steps.decide.outputs.should_build }}
+      inputs_hash: ${{ steps.hash.outputs.hash }}
     steps:
       - id: ver
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            V="${{ github.event.inputs.version }}"
-          else
-            V="${GITHUB_REF_NAME#v}"
+          V="${{ github.event.inputs.version }}"
+          if [ "${{ github.ref_name }}" != "${{ github.event.repository.default_branch }}" ]; then
+            echo "::warning::Dispatched from '${{ github.ref_name }}' instead of the default branch ('${{ github.event.repository.default_branch }}'). Caches saved by this run are scoped to '${{ github.ref_name }}' and invisible to future runs — dispatch from '${{ github.event.repository.default_branch }}' to keep the build caches reusable."
           fi
           if [[ ! "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]]; then
             echo "Invalid version: $V" >&2
@@ -102,38 +101,20 @@ jobs:
             *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
           esac
           if gh release view "$TAG" >/dev/null 2>&1; then
-            case "${{ github.event_name }}" in
-              workflow_dispatch)
-                if [ "${{ github.event.inputs.force_update_release }}" = "true" ]; then
-                  echo "Release $TAG exists; force_update_release enabled."
-                  echo "force_update_release=true" >> "$GITHUB_OUTPUT"
-                elif [ "${{ github.event.inputs.skip_publish }}" = "true" ]; then
-                  echo "Release $TAG exists; skip_publish enabled — build only."
-                  echo "force_update_release=false" >> "$GITHUB_OUTPUT"
-                else
-                  echo "Release $TAG already exists. Use force_update_release=true to republish or skip_publish=true to build only." >&2
-                  exit 1
-                fi
-                ;;
-              *)
-                echo "Release $TAG already exists. Delete it first, then push the tag again." >&2
-                exit 1
-                ;;
-            esac
+            if [ "${{ github.event.inputs.force_update_release }}" = "true" ]; then
+              echo "Release $TAG exists; force_update_release enabled."
+              echo "force_update_release=true" >> "$GITHUB_OUTPUT"
+            elif [ "${{ github.event.inputs.skip_publish }}" = "true" ]; then
+              echo "Release $TAG exists; skip_publish enabled — build only."
+              echo "force_update_release=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "Release $TAG already exists. Use force_update_release=true to republish or skip_publish=true to build only." >&2
+              exit 1
+            fi
           else
             echo "force_update_release=false" >> "$GITHUB_OUTPUT"
           fi
 
-  check-build:
-    name: Check build inputs
-    needs: resolve-version
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    outputs:
-      should_build: ${{ steps.decide.outputs.should_build }}
-      inputs_hash: ${{ steps.hash.outputs.hash }}
-    steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/hash-release-build-inputs
         id: hash
@@ -141,16 +122,16 @@ jobs:
         id: built
         with:
           path: .release-built-marker
-          key: release-built-${{ needs.resolve-version.outputs.tag }}-${{ steps.hash.outputs.hash }}
+          key: release-built-${{ steps.ver.outputs.tag }}-${{ steps.hash.outputs.hash }}
           lookup-only: true
       - id: decide
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.resolve-version.outputs.tag }}
+          TAG: ${{ steps.ver.outputs.tag }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.rebuild }}" = "true" ]; then
+          if [ "${{ github.event.inputs.rebuild }}" = "true" ]; then
             echo "should_build=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -168,8 +149,8 @@ jobs:
 
   desktop-proguard:
     name: Build JAR
-    needs: [resolve-version, check-build]
-    if: needs.check-build.outputs.should_build == 'true'
+    needs: resolve-version
+    if: needs.resolve-version.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -202,8 +183,8 @@ jobs:
 
   windows-tools:
     name: Windows tools (${{ matrix.label }})
-    needs: [resolve-version, check-build]
-    if: needs.check-build.outputs.should_build == 'true'
+    needs: resolve-version
+    if: needs.resolve-version.outputs.should_build == 'true'
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -281,8 +262,8 @@ jobs:
 
   windows-package:
     name: Windows (${{ matrix.label }})
-    needs: [resolve-version, check-build, desktop-proguard, windows-tools]
-    if: needs.check-build.outputs.should_build == 'true'
+    needs: [resolve-version, desktop-proguard, windows-tools]
+    if: needs.resolve-version.outputs.should_build == 'true'
     env:
       FROMCHAT_PREBUILT_PROGUARD: "1"
     strategy:
@@ -365,8 +346,8 @@ jobs:
 
   macos:
     name: macOS (${{ matrix.label }})
-    needs: [resolve-version, check-build, desktop-proguard]
-    if: needs.check-build.outputs.should_build == 'true'
+    needs: [resolve-version, desktop-proguard]
+    if: needs.resolve-version.outputs.should_build == 'true'
     env:
       FROMCHAT_PREBUILT_PROGUARD: "1"
     strategy:
@@ -436,8 +417,8 @@ jobs:
 
   linux:
     name: Linux (${{ matrix.label }})
-    needs: [resolve-version, check-build, desktop-proguard]
-    if: needs.check-build.outputs.should_build == 'true'
+    needs: [resolve-version, desktop-proguard]
+    if: needs.resolve-version.outputs.should_build == 'true'
     env:
       FROMCHAT_PREBUILT_PROGUARD: "1"
     strategy:
@@ -505,8 +486,8 @@ jobs:
 
   android:
     name: Android
-    needs: [resolve-version, check-build]
-    if: needs.check-build.outputs.should_build == 'true'
+    needs: resolve-version
+    if: needs.resolve-version.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -575,39 +556,20 @@ jobs:
           path: release-staging/*.apk
           if-no-files-found: error
 
-  record-build:
-    name: Record successful build
-    needs:
-      - resolve-version
-      - check-build
-      - desktop-proguard
-      - windows-tools
-      - windows-package
-      - macos
-      - linux
-      - android
-    if: needs.check-build.outputs.should_build == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - run: mkdir -p .release-built-marker && touch .release-built-marker/built
-      - uses: actions/cache/save@v5
-        continue-on-error: true
-        with:
-          path: .release-built-marker
-          key: release-built-${{ needs.resolve-version.outputs.tag }}-${{ needs.check-build.outputs.inputs_hash }}
-
   publish:
     if: >-
       always() &&
-      (github.event_name != 'workflow_dispatch' || github.event.inputs.skip_publish != 'true') &&
+      github.event.inputs.skip_publish != 'true' &&
       (
-        (needs.check-build.outputs.should_build == 'true' && needs.record-build.result == 'success') ||
-        (needs.check-build.outputs.should_build != 'true' && needs.resolve-version.outputs.force_update_release == 'true')
+        (needs.resolve-version.outputs.should_build == 'true' &&
+          !contains(needs.*.result, 'failure') &&
+          !contains(needs.*.result, 'cancelled') &&
+          !contains(needs.*.result, 'skipped')) ||
+        (needs.resolve-version.outputs.should_build != 'true' &&
+          needs.resolve-version.outputs.force_update_release == 'true')
       )
     needs:
       - resolve-version
-      - check-build
-      - record-build
       - windows-package
       - macos
       - linux
@@ -621,25 +583,37 @@ jobs:
           sparse-checkout: |
             RELEASE_NOTES.md
           sparse-checkout-cone-mode: false
+      # Save the build-success marker before publishing: a later step failing must not cause a
+      # re-run to rebuild identical inputs. If the release itself is still missing, decide will
+      # rebuild regardless of a marker hit.
+      - name: Record successful build
+        if: needs.resolve-version.outputs.should_build == 'true'
+        run: mkdir -p .release-built-marker && touch .release-built-marker/built
+      - uses: actions/cache/save@v5
+        if: needs.resolve-version.outputs.should_build == 'true'
+        continue-on-error: true
+        with:
+          path: .release-built-marker
+          key: release-built-${{ needs.resolve-version.outputs.tag }}-${{ needs.resolve-version.outputs.inputs_hash }}
       - name: Update release notes only
-        if: needs.check-build.outputs.should_build != 'true'
+        if: needs.resolve-version.outputs.should_build != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.resolve-version.outputs.tag }}
         run: gh release edit "$TAG" --notes-file RELEASE_NOTES.md
       - uses: actions/download-artifact@v5
-        if: needs.check-build.outputs.should_build == 'true'
+        if: needs.resolve-version.outputs.should_build == 'true'
         with:
           pattern: "{windows,macos,linux}-*"
           merge-multiple: true
           path: artifacts
       - uses: actions/download-artifact@v5
-        if: needs.check-build.outputs.should_build == 'true'
+        if: needs.resolve-version.outputs.should_build == 'true'
         with:
           name: android
           path: artifacts
       - name: Collect release assets
-        if: needs.check-build.outputs.should_build == 'true'
+        if: needs.resolve-version.outputs.should_build == 'true'
         env:
           LABEL: ${{ needs.resolve-version.outputs.release_label }}
         run: |
@@ -680,7 +654,7 @@ jobs:
           fi
           ls -la release-assets
       - name: Publish GitHub Release
-        if: needs.check-build.outputs.should_build == 'true'
+        if: needs.resolve-version.outputs.should_build == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.resolve-version.outputs.tag }}
@@ -689,7 +663,10 @@ jobs:
           draft: false
           prerelease: ${{ needs.resolve-version.outputs.prerelease == 'true' }}
           generate_release_notes: false
-          overwrite_existing: ${{ needs.resolve-version.outputs.force_update_release == 'true' }}
+          # Re-upload assets to an existing release (force_update_release path). Note: the input
+          # is literally named overwrite_files; overwrite_existing is not a valid input of this
+          # action and used to be silently ignored by GitHub.
+          overwrite_files: true
           files: |
             release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}.apk
             release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}-x64.exe

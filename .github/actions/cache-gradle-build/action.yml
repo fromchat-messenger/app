@@ -20,12 +20,14 @@ runs:
     # Keep the path lists here and in save-gradle-build-cache identical: actions/cache refuses to
     # save when the restore and save paths differ.
     #
-    # Scope: caches are only visible to runs on the same ref (plus the default branch), so a run
-    # for a new release tag never sees the previous tag's cache — see "Restrictions for accessing
-    # a cache". This cache therefore pays off for re-runs of a tag and for warm branch runs, not
-    # across tags. That is why the key must stay stable across releases: everything cached here
-    # is a pure function of these files, and the release version is injected through Gradle
-    # properties (see set-version) rather than by editing a hashed source file.
+    # Scope: caches are only visible to runs on the same ref (plus the default branch) — see
+    # "Restrictions for accessing a cache" in the GitHub docs. Release builds never run on a tag
+    # ref (release.yml dispatches only, from the default branch), so saves land in the
+    # default-branch scope and every later run from any ref can restore them; the build cache
+    # warms across releases instead of dying with each tag. That is why the key must stay stable
+    # across releases: everything cached here is a pure function of these files, and the release
+    # version is injected through Gradle properties (see set-version) rather than by editing a
+    # hashed source file.
     - uses: actions/cache/restore@v5
       if: inputs.scope == 'android'
       id: cache-android
