@@ -340,10 +340,12 @@ fun main(args: Array<String>) {
     Runtime.getRuntime().addShutdownHook(Thread { DatabaseLockGate.releaseRuntimeLock() })
     MessageDatabaseRuntimeLock.tryAcquire()
 
+    // Before `application {}`, not inside it: the remembered window size is computed during the
+    // first composition, so a scale that is only detected one frame later leaves it wrong.
+    DesktopScale.startWatching()
+
     application {
         UtilsLibrary.init()
-        // Re-reads the desktop scale on Linux so changing scaling applies without a restart.
-        LaunchedEffect(Unit) { DesktopScale.startWatching(this) }
         var bootstrapStarted by remember { mutableStateOf(false) }
         val databaseBlocked by DatabaseLockGate.blocked.collectAsState()
         val lockingProcesses by DatabaseLockGate.processes.collectAsState()
@@ -403,14 +405,7 @@ fun main(args: Array<String>) {
         // reads as "ignores scaling" (CMP-6857, still open: JetBrains declined to change this).
         // Pre-multiplying the dp size keeps the window's pixel size consistent with the content.
         val forcedScale by DesktopScale.forcedScale.collectAsState()
-        val awtScale = remember {
-            runCatching {
-                java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment()
-                    .defaultScreenDevice.defaultConfiguration
-                    .defaultTransform.scaleX.toFloat()
-            }.getOrDefault(1f).takeIf { it > 0f } ?: 1f
-        }
-        val sizeRatio = forcedScale?.div(awtScale) ?: 1f
+        val sizeRatio = remember(forcedScale) { DesktopScale.sizeRatio }
         val windowState = rememberWindowState(
             size = remember { DesktopWindowPrefs.loadSize() * sizeRatio },
             position = remember { DesktopWindowPrefs.loadPosition() },
@@ -419,10 +414,11 @@ fun main(args: Array<String>) {
         var contentReady by remember { mutableStateOf(false) }
         var windowVisible by remember { mutableStateOf(true) }
         val trayState = rememberTrayState()
-        val useTemplateTrayIcon = mac
-        val trayIconImage = remember { loadAppIconBufferedImage(tray = useTemplateTrayIcon) }
+        // Which resource and which post-processing apply is decided per platform inside
+        // loadAppIconBufferedImage, so the call sites only have to say "this one goes to the tray".
+        val trayIconImage = remember { loadAppIconBufferedImage(tray = true) }
         val trayIcon = remember(trayIconImage) {
-            trayIconImage?.toPainter() ?: loadAppIconPainter(tray = useTemplateTrayIcon)
+            trayIconImage?.toPainter() ?: loadAppIconPainter(tray = true)
         }
         val traySupported = remember {
             java.awt.SystemTray.isSupported().also {
@@ -466,6 +462,10 @@ fun main(args: Array<String>) {
 
         val windowChrome = remember { desktopThemeBackgroundCompose() }
 
+        // Armed once the restored geometry has had time to settle; until then nothing is
+        // persisted. See the LaunchedEffect below.
+        var geometryUserDriven by remember { mutableStateOf(false) }
+
         LaunchedEffect(Unit) {
             // Safety: never leave the window stuck hidden if bootstrap hangs.
             delay(8_000.milliseconds)
@@ -474,6 +474,26 @@ fun main(args: Array<String>) {
 
         LaunchedEffect(windowState.size, windowState.position) {
             delay(3_000.milliseconds)
+            // This also fires for the geometry that was just restored, and the window manager may
+            // have clamped that (a window remembered on a bigger screen no longer fits). Writing
+            // the clamped size straight back would replace a good remembered size with a bad one,
+            // permanently and on every launch, so the first quiet pass only arms the saver.
+            if (!geometryUserDriven) {
+                geometryUserDriven = true
+                Logger.i(
+                    "WindowPrefs",
+                    "restored size=${windowState.size} position=${windowState.position} " +
+                        "sizeRatio=$sizeRatio stored=${windowState.size / sizeRatio}",
+                )
+                return@LaunchedEffect
+            }
+            // A maximised window is not the size to remember, or un-maximising would restore it.
+            if (windowState.placement == WindowPlacement.Maximized) return@LaunchedEffect
+            Logger.i(
+                "WindowPrefs",
+                "save size=${windowState.size} position=${windowState.position} " +
+                    "sizeRatio=$sizeRatio stored=${windowState.size / sizeRatio}",
+            )
             // Undo the pre-multiplication before persisting, otherwise every launch grows the
             // stored window by the scale factor.
             DesktopWindowPrefs.save(windowState.size / sizeRatio, windowState.position)
@@ -1014,17 +1034,13 @@ private fun loadAppIconPainter(tray: Boolean): Painter {
 }
 
 private fun loadAppIconBufferedImage(tray: Boolean): BufferedImage? {
-    val names = if (tray) {
-        if (isLinuxOs()) {
-            // app_icon.png is a *white glyph on transparency*, and every fully transparent pixel in
-            // it carries white (255,255,255) RGB. KDE Plasma hands tray icons to the
-            // StatusNotifierItem host, which does not honour the alpha channel, so the whole 22px
-            // tile rendered as a solid white square. The coloured app icon survives a lost alpha
-            // channel, so prefer it here.
-            listOf("app_window_icon.png", "app_window_icon.webp", "app_icon.png", "app_icon.webp")
-        } else {
-            listOf("app_icon.png", "app_icon.webp", "app_window_icon.png", "app_window_icon.webp")
-        }
+    // Only the macOS tray wants the white glyph, because that is the one build that marks the icon
+    // as a template image and lets the system recolour it. Everywhere else the tray host wants the
+    // coloured window icon — and specifically not `app_icon.png`, whose fully transparent pixels
+    // all carry white RGB: a tray host that ignores the alpha channel turns that into a solid
+    // white square as well.
+    val names = if (tray && isMacOs()) {
+        listOf("app_icon.png", "app_icon.webp", "app_window_icon.png", "app_window_icon.webp")
     } else {
         listOf("app_window_icon.png", "app_window_icon.webp", "app_icon.png", "app_icon.webp")
     }
@@ -1164,17 +1180,24 @@ private fun bufferedImageFromComposeArgb(
 }
 
 private fun prepareTrayIcon(source: BufferedImage): BufferedImage {
-    val size = if (isLinuxOs()) linuxTrayIconSize() else 64
     // Matte-stripping only makes sense for the white-on-black macOS template glyph. The Linux tray
     // gets the coloured icon, whose white glyph would just be punched out of it.
-    val prepared = if (isLinuxOs()) source else stripTrayMatteBackground(source)
-    return scaleBufferedImage(prepared, size)
+    val prepared = if (isMacOs()) stripTrayMatteBackground(source) else source
+    return scaleBufferedImage(prepared, trayIconSize())
 }
 
-private fun linuxTrayIconSize(): Int {
-    val scale = System.getenv("GDK_SCALE")?.toFloatOrNull() ?: 1f
-    return (22f * scale).toInt().coerceIn(22, 48)
-}
+/**
+ * Pixel size the tray host is asked for.
+ *
+ * A tray icon is not laid out, it is drawn once into whatever box the host gives it, so it has to
+ * be pre-sized to that box. AWT's Linux tray is xembed — `XTrayIconPeer` hard-codes a 24x24 canvas
+ * and ignores the desktop scale entirely — so the only thing that matters is being small enough to
+ * scale down into it cleanly, which is why this is no longer derived from the desktop scale: a
+ * 44px source bought no extra sharpness and only invited a crop. `setImageAutoSize(true)` does the
+ * final resize.
+ */
+private fun trayIconSize(): Int =
+    if (isLinuxOs()) 48 else 64
 
 private fun stripTrayMatteBackground(source: BufferedImage): BufferedImage {
     val argb = ensureArgb(source)

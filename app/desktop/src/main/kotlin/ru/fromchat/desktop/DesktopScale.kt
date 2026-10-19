@@ -2,6 +2,7 @@ package ru.fromchat.desktop
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -51,16 +52,61 @@ internal object DesktopScale {
 
     val forcedScale: StateFlow<Float?> = forced.asStateFlow()
 
+    /** Process-lifetime scope: the watcher must outlive whatever composition started it. */
+    private val watcherScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     /** Scale in effect, for logging and for sizing decisions outside composition. */
     val factor: Float? get() = forced.value
+
+    /**
+     * Scale AWT applies to every coordinate it is given: `window.setSize(w)` covers `w * awtScale`
+     * device pixels, and Compose sizes windows from the very same transform.
+     *
+     * This is the other half of [contentDensity] and the reason a forced scale needs a
+     * pre-multiplied window size at all. It is 1.0 on the X11 setups this file exists for, but it
+     * is read from the live `GraphicsConfiguration` rather than assumed, so a display that *does*
+     * report a transform is not double-scaled.
+     */
+    val awtScale: Float by lazy {
+        runCatching {
+            java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment()
+                .defaultScreenDevice
+                .defaultConfiguration
+                .defaultTransform
+                .scaleX
+                .toFloat()
+        }.getOrDefault(1f).takeIf { it.isFinite() && it > 0f } ?: 1f
+    }
+
+    /**
+     * Density the app's content is laid out and measured at: the detected desktop scale where there
+     * is one, otherwise whatever Compose derived from [awtScale].
+     *
+     * Every place that has to turn a measured or `dp` size into an AWT call must divide by
+     * [awtScale], never by this — the two only differ on exactly the setups that need fixing.
+     */
+    val contentDensity: Float get() = factor ?: awtScale
+
+    /**
+     * How much larger a window must be than its `dp` size for the content to fit, i.e.
+     * [contentDensity] / [awtScale]. Compose sizes the AWT window from `WindowState.size` using
+     * [awtScale] while the content is laid out at [contentDensity], so this factor reconciles them.
+     */
+    val sizeRatio: Float get() = contentDensity / awtScale
 
     fun isSupportedPlatform(): Boolean = isLinuxOs()
 
     /**
-     * Poll the desktop's scale so a change takes effect without a restart. Cheap: the only real
-     * work is a stat plus a small read of a config file, and it stops as soon as [scope] dies.
+     * Watch the desktop's scale so a change takes effect without a restart. Cheap: the only real
+     * work is a stat plus a small read of a config file, and it stops when the process exits.
+     *
+     * Deliberately callable *before* the first composition rather than from a `LaunchedEffect`.
+     * The first composition is where the main window reads its remembered size, and doing the
+     * first detection one frame later meant that size was computed against a null scale — the
+     * window then opened at the wrong size and nothing corrected it, because a remembered
+     * `WindowState` keeps whatever it was constructed with.
      */
-    fun startWatching(scope: CoroutineScope) {
+    fun startWatching(scope: CoroutineScope = watcherScope) {
         if (!isLinuxOs()) return
         forced.value = detect()
         scope.launch(Dispatchers.IO) {

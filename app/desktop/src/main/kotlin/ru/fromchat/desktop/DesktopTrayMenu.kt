@@ -27,9 +27,11 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +47,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -93,8 +96,8 @@ private val trayWindowTranslucencySupported: Boolean by lazy {
     }.getOrDefault(false)
 }
 
-/** Gap between the cursor and the flipped menu edge, in logical pixels. */
-private const val trayMenuCursorGapPx = 4
+/** Gap between the cursor and the flipped menu edge, in dp. */
+private const val trayMenuCursorGapDp = 4
 
 private fun applyMenuOpacity(window: java.awt.Window, alpha: Float) {
     if (!trayWindowTranslucencySupported) return
@@ -103,6 +106,11 @@ private fun applyMenuOpacity(window: java.awt.Window, alpha: Float) {
     }
 }
 
+private fun isOnSomeScreen(point: Point): Boolean =
+    GraphicsEnvironment.getLocalGraphicsEnvironment()
+        .screenDevices
+        .any { it.defaultConfiguration.bounds.contains(point) }
+
 /**
  * `TrayIcon` mouse events on Windows can carry raw physical pixel coordinates while
  * `GraphicsConfiguration` bounds are expressed in logical pixels, so the point can land outside
@@ -110,19 +118,46 @@ private fun applyMenuOpacity(window: java.awt.Window, alpha: Float) {
  * space; if it still does not fit, return it unchanged.
  */
 private fun normalizeScreenPoint(point: Point): Point {
+    if (isOnSomeScreen(point)) return point
     val environment = GraphicsEnvironment.getLocalGraphicsEnvironment()
-    if (environment.screenDevices.any { it.defaultConfiguration.bounds.contains(point) }) return point
     val transform = environment.defaultScreenDevice.defaultConfiguration.defaultTransform
     if (transform.scaleX != 1.0 || transform.scaleY != 1.0) {
         val scaled = Point(
             (point.x / transform.scaleX).roundToInt(),
             (point.y / transform.scaleY).roundToInt(),
         )
-        if (environment.screenDevices.any { it.defaultConfiguration.bounds.contains(scaled) }) {
-            return scaled
-        }
+        if (isOnSomeScreen(scaled)) return scaled
     }
     return point
+}
+
+/**
+ * Where to hang the menu, in AWT coordinates.
+ *
+ * Under Wayland the pointer belongs to the compositor, and XWayland only tracks it while it is over
+ * an X client surface. Clicking the tray icon lands on GNOME shell's own top bar, so nothing moves
+ * the X pointer and [MouseInfo] goes on reporting wherever it last was — over the app window, a few
+ * hundred pixels to the left of where the menu then appeared.
+ *
+ * The `TrayIcon` event carries the indicator's own geometry, which does not move, so it is
+ * preferred. The pointer is only the fallback, and is still logged either way because the two
+ * disagreeing is exactly the bug this replaced.
+ */
+private fun resolveMenuAnchor(event: MouseEvent): Point {
+    val fromEvent = normalizeScreenPoint(event.locationOnScreen)
+    // (0,0) is what AWT hands back for an event synthesised without real geometry; taking it as
+    // valid would park the menu in the top-left corner instead.
+    val eventUsable = isOnSomeScreen(fromEvent) && (fromEvent.x != 0 || fromEvent.y != 0)
+    val fromPointer = runCatching { MouseInfo.getPointerInfo()?.location }.getOrNull()
+        ?.let { normalizeScreenPoint(it) }
+    val anchor = if (eventUsable) fromEvent else (fromPointer ?: fromEvent)
+    Logger.i(
+        "TrayMenu",
+        "anchor=$anchor from=${if (eventUsable) "event" else "pointer"} " +
+            "event=$fromEvent pointer=$fromPointer id=${event.id} button=${event.button} " +
+            "awtScale=${DesktopScale.awtScale} contentDensity=${DesktopScale.contentDensity}",
+    )
+    return anchor
 }
 
 /**
@@ -186,15 +221,20 @@ internal fun DesktopTrayHost(
             onDispose {}
         } else {
             val trayIcon = TrayIcon(trayImage, tooltip)
-            trayIcon.isImageAutoSize = !isLinuxOs()
+            // Always auto-size. AWT's Linux tray is XEmbed, not StatusNotifierItem, and
+            // `XTrayIconPeer` hard-codes a 24x24 canvas with no HiDPI awareness at all
+            // (JDK-8341144 is the tracking bug: AWT kept the xembed protocol after every distro
+            // moved to SNI). With auto-size off it composites the image 1:1 into a buffer of the
+            // *image's* size and clips that to the canvas, so the oversized source the rest of the
+            // app uses rendered as its top-left 24x24 corner over an opaque background — the solid
+            // white square. Auto-sizing scales the whole logo into the canvas instead of cropping.
+            trayIcon.isImageAutoSize = true
             var lastMenuOpenAtMs = 0L
             fun openMenu(event: MouseEvent) {
                 val now = System.currentTimeMillis()
                 if (now - lastMenuOpenAtMs < 250) return
                 lastMenuOpenAtMs = now
-                val eventPoint = event.locationOnScreen
-                val pointerPoint = runCatching { MouseInfo.getPointerInfo()?.location }.getOrNull()
-                val anchor = normalizeScreenPoint(pointerPoint ?: eventPoint)
+                val anchor = resolveMenuAnchor(event)
                 SwingUtilities.invokeLater {
                     menuAnchor = anchor
                     menuOpen = true
@@ -249,7 +289,6 @@ internal fun DesktopTrayHost(
     }
 
     if (menuOpen) {
-        val density = LocalDensity.current
         var contentSizePx by remember { mutableStateOf(IntSize.Zero) }
         var showWindow by remember { mutableStateOf(false) }
         val windowState = rememberWindowState(
@@ -347,15 +386,23 @@ internal fun DesktopTrayHost(
                     if (!trayWindowTranslucencySupported) awtWindow.isVisible = false
                     return@LaunchedEffect
                 }
-                val scale = density.density
-                val awtWidth = (contentSizePx.width / scale).roundToInt().coerceAtLeast(1)
-                val awtHeight = (contentSizePx.height / scale).roundToInt().coerceAtLeast(1)
+                // Compose sets an AWT window's size/position from `WindowState` by treating the dp number as the
+                // AWT number, so the conversion that matters here is scene px -> AWT units. Use
+                // [DesktopScale.awtScale] for that explicitly rather than whatever `LocalDensity`
+                // happens to read at this point in the tree: this block sits outside the tray
+                // `Window`, so it is not even the tray scene's density.
+                val awtScale = DesktopScale.awtScale
+                val awtWidth = (contentSizePx.width / awtScale).roundToInt().coerceAtLeast(1)
+                val awtHeight = (contentSizePx.height / awtScale).roundToInt().coerceAtLeast(1)
                 // Use the monitor the click landed on, not the one this (still unpositioned)
                 // window happens to sit on — they differ on multi-monitor setups. Clamp to the
                 // working area so the menu never ends up hidden behind the taskbar.
                 val usable = usableScreenBoundsFor(anchor)
                 val maxX = (usable.x + usable.width - awtWidth).coerceAtLeast(usable.x)
                 val maxY = (usable.y + usable.height - awtHeight).coerceAtLeast(usable.y)
+                // The gap is a dp distance, but `setLocation` takes AWT units, which are only
+                // device pixels while awtScale is 1.
+                val gap = (trayMenuCursorGapDp * DesktopScale.sizeRatio).roundToInt()
                 // Prefer up-and-left of the cursor, but a top-bar tray has no room above it, so
                 // clamping alone would shove the menu into an odd spot. Flip to below the cursor
                 // when there is not enough space above, and to the right when there is not enough
@@ -364,26 +411,29 @@ internal fun DesktopTrayHost(
                 val y = if (aboveY >= usable.y) {
                     aboveY
                 } else {
-                    (anchor.y + trayMenuCursorGapPx).coerceAtMost(maxY)
+                    (anchor.y + gap).coerceAtMost(maxY)
                 }
                 val leftX = anchor.x - awtWidth
                 val x = if (leftX >= usable.x) {
                     leftX
                 } else {
-                    (anchor.x + trayMenuCursorGapPx).coerceAtMost(maxX)
+                    (anchor.x + gap).coerceAtMost(maxX)
                 }
                 awtWindow.setSize(awtWidth, awtHeight)
                 awtWindow.setLocation(x, y)
-                with(density) {
-                    windowState.position = WindowPosition(
-                        x = (x / density.density).dp,
-                        y = (y / density.density).dp,
-                    )
-                    windowState.size = DpSize(
-                        width = contentSizePx.width.toDp(),
-                        height = contentSizePx.height.toDp(),
-                    )
-                }
+                Logger.i(
+                    "TrayMenu",
+                    "place at $x,$y size ${awtWidth}x$awtHeight (AWT units, awtScale=$awtScale) " +
+                        "contentPx=${contentSizePx.width}x${contentSizePx.height} anchor=$anchor",
+                )
+                windowState.position = WindowPosition(
+                    x = (x / awtScale).dp,
+                    y = (y / awtScale).dp,
+                )
+                windowState.size = DpSize(
+                    width = (contentSizePx.width / awtScale).dp,
+                    height = (contentSizePx.height / awtScale).dp,
+                )
                 excludeFromWindowsTaskbar(awtWindow)
                 showWindow = true
                 awtWindow.isVisible = true
@@ -394,46 +444,58 @@ internal fun DesktopTrayHost(
                 awtWindow.requestFocus()
             }
 
-            Box(
-                modifier = Modifier
-                    .wrapContentSize(unbounded = true)
-                    .onSizeChanged { size ->
-                        if (size.width > 0 && size.height > 0) {
-                            contentSizePx = size
-                        }
-                    },
+            // This `Window` is a separate Compose scene, so it starts from the *scene* density that
+            // Compose derived from the AWT transform — never from the override the main window
+            // installs. On the X11 setups DesktopScale exists for those disagree, and the menu came
+            // out at half size. Re-apply the same override here so the popup matches the app.
+            val forcedScale by DesktopScale.forcedScale.collectAsState()
+            CompositionLocalProvider(
+                LocalDensity provides Density(
+                    forcedScale ?: LocalDensity.current.density,
+                    LocalDensity.current.fontScale,
+                ),
             ) {
-                FromChatTheme(darkTheme = desktopAppDarkTheme(), dynamicColor = false) {
-                    val surfaceColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                    SideEffect {
-                        val awtColor = java.awt.Color(
-                            surfaceColor.red,
-                            surfaceColor.green,
-                            surfaceColor.blue,
-                            surfaceColor.alpha,
+                Box(
+                    modifier = Modifier
+                        .wrapContentSize(unbounded = true)
+                        .onSizeChanged { size ->
+                            if (size.width > 0 && size.height > 0) {
+                                contentSizePx = size
+                            }
+                        },
+                ) {
+                    FromChatTheme(darkTheme = desktopAppDarkTheme(), dynamicColor = false) {
+                        val surfaceColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                        SideEffect {
+                            val awtColor = java.awt.Color(
+                                surfaceColor.red,
+                                surfaceColor.green,
+                                surfaceColor.blue,
+                                surfaceColor.alpha,
+                            )
+                            awtWindow.background = awtColor
+                            (awtWindow as? JFrame)?.contentPane?.background = awtColor
+                        }
+                        DesktopTrayMenuContent(
+                            statusLabel = statusLabel,
+                            connectionStatus = connectionStatus,
+                            showLabel = showLabel,
+                            aboutLabel = aboutLabel,
+                            quitLabel = quitLabel,
+                            onShow = {
+                                menuOpen = false
+                                onShow()
+                            },
+                            onAbout = {
+                                menuOpen = false
+                                onAbout()
+                            },
+                            onQuit = {
+                                menuOpen = false
+                                onQuit()
+                            },
                         )
-                        awtWindow.background = awtColor
-                        (awtWindow as? JFrame)?.contentPane?.background = awtColor
                     }
-                    DesktopTrayMenuContent(
-                        statusLabel = statusLabel,
-                        connectionStatus = connectionStatus,
-                        showLabel = showLabel,
-                        aboutLabel = aboutLabel,
-                        quitLabel = quitLabel,
-                        onShow = {
-                            menuOpen = false
-                            onShow()
-                        },
-                        onAbout = {
-                            menuOpen = false
-                            onAbout()
-                        },
-                        onQuit = {
-                            menuOpen = false
-                            onQuit()
-                        },
-                    )
                 }
             }
         }
