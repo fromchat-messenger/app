@@ -70,10 +70,13 @@ import java.awt.image.BufferedImage
 import javax.swing.JFrame
 import javax.swing.SwingUtilities
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import ru.fromchat.Logger
 import ru.fromchat.ui.FromChatTheme
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.isInsideWindow
+import ru.fromchat.desktop.tray.SniTrayController
 
 internal enum class TrayConnectionStatus {
     Connected,
@@ -215,9 +218,48 @@ internal fun DesktopTrayHost(
     var menuAnchor by remember { mutableStateOf<Point?>(null) }
     val closeMenu = rememberUpdatedState { menuOpen = false }
     val onShowState = rememberUpdatedState(onShow)
+    val sniController = remember { mutableStateOf<SniTrayController?>(null) }
+    val sniActive = sniController.value != null
 
-    DisposableEffect(trayImage, tooltip) {
-        if (!SystemTray.isSupported()) {
+    // StatusNotifierItem comes first on Linux: GNOME (45+) has no XEmbed tray host any more — the
+    // AWT icon only works behind Ubuntu's `legacy-tray-enabled` switch — and the KDE Plasma tray
+    // speaks SNI too. When SNI is absent (no session bus, no watcher), the AWT/XEmbed fallback
+    // below stays fully operational.
+    LaunchedEffect(trayImage, tooltip) {
+        if (!isLinuxOs()) return@LaunchedEffect
+        sniController.value = withContext(Dispatchers.IO) {
+            SniTrayController.tryInstall(
+                trayImage = trayImage,
+                appName = tooltip,
+                statusLabel = statusLabel,
+                showLabel = showLabel,
+                aboutLabel = aboutLabel,
+                quitLabel = quitLabel,
+                onShow = onShow,
+                onAbout = onAbout,
+                onQuit = onQuit,
+            )
+        }
+    }
+    // Connection status moves with the backend; the disabled status row is the only mutable
+    // bit of the SNI menu tree, so push it down as a plain property update.
+    LaunchedEffect(sniController.value, statusLabel, connectionStatus) {
+        val controller = sniController.value ?: return@LaunchedEffect
+        withContext(Dispatchers.IO) {
+            controller.updateStatus(statusLabel)
+        }
+    }
+    DisposableEffect(sniController.value) {
+        val controller = sniController.value
+        onDispose {
+            if (controller != null) {
+                Thread { controller.close() }.apply { isDaemon = true }.start()
+            }
+        }
+    }
+
+    DisposableEffect(trayImage, tooltip, sniActive) {
+        if (sniActive || !SystemTray.isSupported()) {
             onDispose {}
         } else {
             val trayIcon = TrayIcon(trayImage, tooltip)
@@ -288,7 +330,7 @@ internal fun DesktopTrayHost(
         }
     }
 
-    if (menuOpen) {
+    if (menuOpen && !sniActive) {
         var contentSizePx by remember { mutableStateOf(IntSize.Zero) }
         var showWindow by remember { mutableStateOf(false) }
         val windowState = rememberWindowState(

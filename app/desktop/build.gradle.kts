@@ -30,6 +30,11 @@ dependencies {
     implementation(project(":utils:shared"))
     implementation(libs.kotlinx.coroutines.swing)
     implementation(libs.jna.platform)
+    // StatusNotifierItem tray on Linux: pure-Java D-Bus client (no GTK/JNA), plus an slf4j
+    // provider so dbus-java's internal logging does not just print a "no provider" notice.
+    implementation(libs.dbus.java.core)
+    implementation(libs.dbus.java.transport.native.unixsocket)
+    implementation(libs.slf4j.jdk14)
     // OpenJFX publishes empty jars without a classifier; declare every module
     // with the host classifier and exclude transitive stubs.
     javafxModules.forEach { module ->
