@@ -145,6 +145,24 @@ private fun usableScreenBoundsFor(point: Point): Rectangle {
     )
 }
 
+/**
+ * Logs what Compose and AWT each believe the display scale is. Compose derives its density
+ * independently of AWT's device transform, so on Linux the two can disagree — and the UI is laid
+ * out at Compose's density while the window is sized by AWT.
+ */
+@Composable
+internal fun DesktopScaleDiagnostics() {
+    val density = LocalDensity.current
+    SideEffect {
+        Logger.i(
+            "DesktopScale",
+            "compose density=${density.density} fontScale=${density.fontScale} " +
+                "awt uiScale=${System.getProperty("sun.java2d.uiScale") ?: "unset"} " +
+                "detected=${DesktopScale.factor}",
+        )
+    }
+}
+
 @Composable
 internal fun DesktopTrayHost(
     trayImage: BufferedImage,
