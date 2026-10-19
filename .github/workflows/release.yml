@@ -405,6 +405,18 @@ jobs:
         run: |
           export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
           ./gradlew :app:desktop:packageReleaseMac -PdesktopArch=${{ matrix.arch }} --no-daemon --console=plain
+      # jpackage only reports its error text in files on the runner surface — surface them.
+      - name: Dump jpackage logs on failure
+        if: failure()
+        run: |
+          for t in createReleaseDistributable createDmgOther; do
+            D="app/desktop/build/compose/logs/$t"
+            [[ -d "$D" ]] || continue
+            for f in "$D"/*.txt; do
+              echo "===== $f"
+              cat "$f"
+            done
+          done
       - uses: actions/upload-artifact@v5
         with:
           name: macos-${{ matrix.arch }}
