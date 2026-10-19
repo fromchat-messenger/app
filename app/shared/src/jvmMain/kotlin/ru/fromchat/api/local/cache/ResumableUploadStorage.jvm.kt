@@ -75,7 +75,15 @@ private fun atomicReplace(part: File, final: File) {
 
 private fun resolveLocalPath(fileUri: String): String? =
     when {
-        fileUri.startsWith("file:") -> runCatching { URI(fileUri).path }.getOrNull()
+        // URI parsing rejects characters that are legal in filesystem paths (spaces in
+        // "Application Support" or "FromChat Beta" broke every image persist), so fall
+        // back to the raw path when the URI is not strictly encoded.
+        fileUri.startsWith("file://") ->
+            runCatching { URI(fileUri).path }.getOrNull()
+                ?: fileUri.removePrefix("file://").takeIf { it.isNotBlank() }
+        fileUri.startsWith("file:") ->
+            runCatching { URI(fileUri).path }.getOrNull()
+                ?: fileUri.removePrefix("file:").takeIf { it.isNotBlank() }
         else -> fileUri
     }
 

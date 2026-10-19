@@ -2,7 +2,7 @@ package ru.fromchat.ui.main.settings.account.changeyandex
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
@@ -38,7 +38,7 @@ fun ChangeYandexDoneScreen(onDone: () -> Unit) {
         pages = listOf(
             ExpressiveStepPage(
                 hero = ExpressiveHeroSpec(
-                    icon = Icons.Filled.CheckCircle,
+                    icon = Icons.Rounded.CheckCircle,
                     polygon = MaterialShapes.Cookie9Sided.normalized(),
                     containerColor = colorScheme.tertiaryContainer,
                     contentColor = colorScheme.onTertiaryContainer,

@@ -8,6 +8,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -44,7 +45,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Reply
 import androidx.compose.material.icons.rounded.ArrowUpward
-import androidx.compose.material.icons.rounded.AttachFile
+import androidx.compose.material.icons.rounded.Attachment
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.GraphicEq
@@ -93,6 +94,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.pr0gramm3r101.utils.conditional
+import com.pr0gramm3r101.utils.currentDeviceInfo
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.blur.hazeBlur
@@ -102,6 +104,7 @@ import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.chat_drop_attachment_hint
+import ru.fromchat.chat_drop_not_a_file
 import ru.fromchat.cd_close
 import ru.fromchat.cd_emoji
 import ru.fromchat.cd_pick_file
@@ -119,7 +122,9 @@ import ru.fromchat.suspend_chat_banner_message
 import ru.fromchat.ui.chat.utils.SelectedAttachment
 import ru.fromchat.ui.chat.utils.TypingHandler
 import ru.fromchat.ui.chat.utils.AttachmentDropBridge
+import ru.fromchat.ui.chat.utils.AttachmentDropRejection
 import ru.fromchat.ui.chat.utils.GlobalAttachmentDropRouter
+import ru.fromchat.ui.chat.utils.GlobalTextDropInsertRouter
 import ru.fromchat.ui.chat.utils.chatAttachmentDropTarget
 import ru.fromchat.ui.chat.utils.getFilenameFromUri
 import ru.fromchat.ui.chat.utils.isDropHighlightActive
@@ -132,6 +137,9 @@ import kotlin.time.Clock
 private val ChatInputChromeHeight = 54.dp
 private val ChatInputLineVerticalPadding = 12.dp
 private val ChatInputTextLineHeight = 22.sp
+
+/** True on JVM/desktop targets (the image picker button is hidden there). */
+private val isDesktopPlatform: Boolean = currentDeviceInfo().deviceType == "desktop"
 
 private val ChatInputIconSlotSize = 36.dp
 private val ChatInputIconSlotVerticalInset =
@@ -270,7 +278,7 @@ private fun AttachmentChip(
             )
         } else {
             Icon(
-                imageVector = Icons.Rounded.AttachFile,
+                imageVector = Icons.Rounded.Attachment,
                 contentDescription = null,
                 modifier = Modifier.size(16.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -326,21 +334,60 @@ fun ChatInput(
     val composerHazeStyle = rememberChatSurfaceContainerHazeStyle().then { blurEnabled(hazeBlurEnabled) }
     val dropScrimColor = lerp(MaterialTheme.colorScheme.primary, Color.Black, 0.62f)
     val attachmentDropEnabled = supportsAttachments && !isReadOnly
-    val dropHighlightActive =
-        attachmentDropEnabled && attachmentDropBridge.isDropHighlightActive()
+    val dropRejecting = AttachmentDropRejection.isRejecting(attachmentDropBridge)
+    // Keep the overlay (and the rejection flash) visible after the drag ends.
+    val dropHighlightActive = attachmentDropEnabled && (
+        attachmentDropBridge.isDropHighlightActive() || dropRejecting
+        )
+    val dropNotAFileText = stringResource(Res.string.chat_drop_not_a_file)
     val dropAnimMs = 220
+    // Rejection feedback: one brief rattle of the composer element itself (not the text),
+    // replayed each time a new rejection (hover-reject start or post-release flash) begins.
+    // The rejected element stays scaled back for about a second, then returns to full size.
+    val dropRejectShake = remember { Animatable(0f) }
+    var dropScaleHeld by remember { mutableStateOf(false) }
+    LaunchedEffect(AttachmentDropRejection.epoch) {
+        if (!AttachmentDropRejection.isRejecting(attachmentDropBridge)) {
+            dropScaleHeld = false
+            dropRejectShake.snapTo(0f)
+            return@LaunchedEffect
+        }
+        dropScaleHeld = true
+        dropRejectShake.snapTo(0f)
+        launch {
+            dropRejectShake.animateTo(
+                targetValue = 0f,
+                animationSpec = keyframes {
+                    durationMillis = 460
+                    0f at 0
+                    -9f at 75 using FastOutSlowInEasing
+                    9f at 150 using FastOutSlowInEasing
+                    -7f at 225 using FastOutSlowInEasing
+                    7f at 300 using FastOutSlowInEasing
+                    -4f at 375 using FastOutSlowInEasing
+                    0f at 460 using FastOutSlowInEasing
+                },
+            )
+        }
+        delay(1_000)
+        if (AttachmentDropRejection.isRejecting(attachmentDropBridge)) {
+            dropScaleHeld = false
+        }
+    }
     val dropScale by animateFloatAsState(
-        targetValue = if (dropHighlightActive) 0.96f else 1f,
+        targetValue = if (dropHighlightActive && (!dropRejecting || dropScaleHeld)) 0.96f else 1f,
         animationSpec = tween(durationMillis = dropAnimMs, easing = FastOutSlowInEasing),
         label = "chat_input_drop_scale",
     )
     val dropOverlayAlpha by animateFloatAsState(
-        targetValue = if (dropHighlightActive) 1f else 0f,
+        targetValue = if (dropHighlightActive && (!dropRejecting || dropScaleHeld)) 1f else 0f,
         animationSpec = tween(durationMillis = dropAnimMs, easing = FastOutSlowInEasing),
         label = "chat_input_drop_overlay_alpha",
     )
+    // Same blur treatment as the "drop file here" overlay — it releases together with the
+    // tint, exactly when the element scales back up after the 1 s hold.
     val dropBlurRadius by animateDpAsState(
-        targetValue = if (dropHighlightActive) 18.dp else 0.dp,
+        targetValue = if (dropHighlightActive && (!dropRejecting || dropScaleHeld)) 18.dp else 0.dp,
         animationSpec = tween(durationMillis = dropAnimMs, easing = FastOutSlowInEasing),
         label = "chat_input_drop_blur",
     )
@@ -380,9 +427,18 @@ fun ChatInput(
         }
         attachmentDropBridge.consumer = ::acceptUris
         GlobalAttachmentDropRouter.setConsumer(::acceptUris)
+        GlobalTextDropInsertRouter.setHandler { droppedText ->
+            if (!attachmentDropEnabled || droppedText.isBlank()) return@setHandler
+            // Append the dropped text to the composer, separated from any existing draft.
+            val prefix = text.takeIf { it.isNotBlank() }
+                ?.let { if (it.endsWith("\n")) it else "$it " }
+                .orEmpty()
+            onTextChange(prefix + droppedText.trim())
+        }
         onDispose {
             attachmentDropBridge.consumer = null
             GlobalAttachmentDropRouter.setConsumer(null)
+            GlobalTextDropInsertRouter.setHandler(null)
         }
     }
 
@@ -487,6 +543,8 @@ fun ChatInput(
                             .graphicsLayer {
                                 scaleX = dropScale
                                 scaleY = dropScale
+                                // The element shakes, not the error text.
+                                translationX = dropRejectShake.value.dp.toPx()
                             }
                             .clip(pillShape),
                     ) {
@@ -657,19 +715,23 @@ fun ChatInput(
                             )
 
                             if (supportsAttachments) {
-                                Box(
-                                    modifier = Modifier
-                                        .padding(vertical = ChatInputIconSlotVerticalInset)
-                                        .size(ChatInputIconSlotSize)
-                                        .clip(CircleShape)
-                                        .clickable { launchImagePicker() },
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Image,
-                                        contentDescription = cdPickImage,
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
+                                // Desktop: the image button opens the same picker menu as the
+                                // attachment button — show only the attachment button there.
+                                if (!isDesktopPlatform) {
+                                    Box(
+                                        modifier = Modifier
+                                            .padding(vertical = ChatInputIconSlotVerticalInset)
+                                            .size(ChatInputIconSlotSize)
+                                            .clip(CircleShape)
+                                            .clickable { launchImagePicker() },
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Image,
+                                            contentDescription = cdPickImage,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
                                 }
                                 Box(
                                     modifier = Modifier
@@ -680,7 +742,7 @@ fun ChatInput(
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Rounded.AttachFile,
+                                        imageVector = Icons.Rounded.Attachment,
                                         contentDescription = cdPickFile,
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -694,13 +756,23 @@ fun ChatInput(
                                 .matchParentSize()
                                 .graphicsLayer { alpha = dropOverlayAlpha }
                                 .clip(pillShape)
-                                .background(dropScrimColor.copy(alpha = 0.78f)),
+                                .background(
+                                    if (dropRejecting) {
+                                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.92f)
+                                    } else {
+                                        dropScrimColor.copy(alpha = 0.78f)
+                                    },
+                                ),
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
-                                text = dropAttachmentHint,
+                                text = if (dropRejecting) dropNotAFileText else dropAttachmentHint,
                                 style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurface,
+                                color = if (dropRejecting) {
+                                    MaterialTheme.colorScheme.onErrorContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.padding(horizontal = 16.dp),
                             )

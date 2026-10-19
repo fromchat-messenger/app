@@ -4,7 +4,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
@@ -59,7 +59,7 @@ internal fun finalWarningStepPage(
 
     return ExpressiveStepPage(
         hero = ExpressiveHeroSpec(
-            icon = Icons.Filled.Warning,
+            icon = Icons.Rounded.Warning,
             polygon = MaterialShapes.Cookie7Sided.normalized(),
             containerColor = scheme.tertiaryContainer,
             contentColor = scheme.onTertiaryContainer,

@@ -3,7 +3,7 @@ package ru.fromchat.ui.main.settings.account.delete
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
@@ -57,7 +57,7 @@ internal fun passwordVerifyStepPage(
 
     return ExpressiveStepPage(
         hero = ExpressiveHeroSpec(
-            icon = Icons.Filled.Lock,
+            icon = Icons.Rounded.Lock,
             polygon = MaterialShapes.Cookie6Sided.normalized(),
             containerColor = scheme.secondaryContainer,
             contentColor = scheme.onSecondaryContainer,

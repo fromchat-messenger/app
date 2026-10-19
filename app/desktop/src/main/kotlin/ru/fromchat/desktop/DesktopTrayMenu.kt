@@ -17,12 +17,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.CloudSync
-import androidx.compose.material.icons.filled.DesktopWindows
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.rounded.CloudDone
+import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.CloudSync
+import androidx.compose.material.icons.rounded.DesktopWindows
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -556,9 +556,9 @@ private fun DesktopTrayMenuContent(
     onQuit: () -> Unit,
 ) {
     val statusIcon = when (connectionStatus) {
-        TrayConnectionStatus.Connected -> Icons.Filled.CloudDone
-        TrayConnectionStatus.Connecting -> Icons.Filled.CloudSync
-        TrayConnectionStatus.Disconnected -> Icons.Filled.CloudOff
+        TrayConnectionStatus.Connected -> Icons.Rounded.CloudDone
+        TrayConnectionStatus.Connecting -> Icons.Rounded.CloudSync
+        TrayConnectionStatus.Disconnected -> Icons.Rounded.CloudOff
     }
     val statusTint = when (connectionStatus) {
         TrayConnectionStatus.Connected -> MaterialTheme.colorScheme.primary
@@ -583,18 +583,18 @@ private fun DesktopTrayMenuContent(
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         DesktopTrayMenuRow(
             text = showLabel,
-            icon = Icons.Filled.DesktopWindows,
+            icon = Icons.Rounded.DesktopWindows,
             onClick = onShow,
         )
         DesktopTrayMenuRow(
             text = aboutLabel,
-            icon = Icons.Filled.Info,
+            icon = Icons.Rounded.Info,
             onClick = onAbout,
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         DesktopTrayMenuRow(
             text = quitLabel,
-            icon = Icons.AutoMirrored.Filled.Logout,
+            icon = Icons.AutoMirrored.Rounded.Logout,
             textColor = MaterialTheme.colorScheme.error,
             iconTint = MaterialTheme.colorScheme.error,
             onClick = onQuit,

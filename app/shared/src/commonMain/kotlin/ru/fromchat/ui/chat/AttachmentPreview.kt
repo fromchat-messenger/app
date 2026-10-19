@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -57,6 +58,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInWindow
@@ -834,7 +836,7 @@ private fun ChatImageTileContent(
                                     AttachmentDownloadScheduler.cancel(decryptCacheKey)
                                 }
                             },
-                            showCloseScrim = true,
+                            iconSize = 22.dp,
                             modifier = Modifier.size(48.dp),
                         )
                     }
@@ -999,7 +1001,7 @@ private fun UploadingImageOverlay(
                 CancellableAttachmentProgressIndicator(
                     progress = uploadProgress,
                     onCancel = onCancelUpload,
-                    showCloseScrim = false,
+                    iconSize = 24.dp,
                     modifier = Modifier.size(56.dp),
                 )
             } else {
@@ -1214,32 +1216,27 @@ private fun AttachmentImageLoadFailedOverlay(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val failedText = stringResource(Res.string.attachment_image_load_failed)
-    val retryText = stringResource(Res.string.attachment_retry)
     val retryCd = stringResource(Res.string.cd_attachment_retry)
-    val headlineColor = messageBubbleContentColor(isAuthor)
+    val scheme = MaterialTheme.colorScheme
+    // Same tonal background a quoted reply uses inside the bubble.
+    val background = if (isAuthor) {
+        lerp(scheme.primary, scheme.onPrimary, 0.18f)
+    } else {
+        scheme.surfaceVariant
+    }
+    val iconTint = messageBubbleContentColor(isAuthor)
     Box(
-        modifier = modifier
-            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.35f)),
+        modifier = modifier.background(background),
         contentAlignment = Alignment.Center,
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.padding(horizontal = 12.dp),
-        ) {
-            Text(
-                text = failedText,
-                style = MaterialTheme.typography.bodySmall,
-                color = headlineColor,
-            )
-            TextButton(
-                onClick = onRetry,
-                modifier = Modifier.semantics { contentDescription = retryCd },
-            ) {
-                Text(text = retryText, color = headlineColor)
-            }
-        }
+        Icon(
+            imageVector = Icons.Rounded.ErrorOutline,
+            contentDescription = retryCd,
+            modifier = Modifier
+                .size(48.dp)
+                .scaleOnPress(scale = 0.9f, onClick = onRetry, indication = null),
+            tint = iconTint,
+        )
     }
 }
 

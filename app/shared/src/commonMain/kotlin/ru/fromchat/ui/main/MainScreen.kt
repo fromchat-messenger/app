@@ -21,10 +21,10 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Chat
-import androidx.compose.material.icons.filled.Contacts
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.automirrored.rounded.Chat
+import androidx.compose.material.icons.rounded.Contacts
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -150,7 +150,6 @@ fun MainScreen(
     val chatContextMenuOverlay = remember { ChatContextMenuOverlayController() }
     var chatListSelectionRequestId by remember { mutableStateOf(0L) }
     var paneSearchOpen by remember { mutableStateOf(false) }
-
     fun openConversationSearch() {
         if (embeddedInListDetail) {
             paneSearchOpen = true
@@ -225,6 +224,20 @@ fun MainScreen(
     val profileLabel = stringResource(Res.string.profile)
     val navBarStyle = navBarStyle
 
+    // 2-pane: the chats tab is hosted in an always-visible AnimatedVisibility so the in-list
+    // search bar carries a shared-element scope; the search overlay (below) morphs from it
+    // exactly like the compact navigation route does.
+    val chatsTabContent: @Composable (AnimatedVisibilityScope?) -> Unit = { scope ->
+        ChatsTab(
+            isVisible = isChatsPage,
+            onOpenSearch = { openConversationSearch() },
+            chatContextMenuOverlay = chatContextMenuOverlay,
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = scope ?: animatedVisibilityScope,
+            enterSelectionRequestId = chatListSelectionRequestId,
+        )
+    }
+
     BoxWithConstraints(
         Modifier.fillMaxSize(),
     ) {
@@ -268,14 +281,18 @@ fun MainScreen(
                             userScrollEnabled = widthClass == WindowWidthSizeClass.COMPACT,
                         ) { page ->
                             when (page) {
-                                PAGE_CHATS -> ChatsTab(
-                                    isVisible = isChatsPage,
-                                    onOpenSearch = { openConversationSearch() },
-                                    chatContextMenuOverlay = chatContextMenuOverlay,
-                                    sharedTransitionScope = sharedTransitionScope,
-                                    animatedVisibilityScope = animatedVisibilityScope,
-                                    enterSelectionRequestId = chatListSelectionRequestId,
-                                )
+                                PAGE_CHATS ->
+                                    if (embeddedInListDetail) {
+                                        AnimatedVisibility(
+                                            visible = true,
+                                            enter = fadeIn(),
+                                            exit = fadeOut(),
+                                        ) {
+                                            chatsTabContent(this)
+                                        }
+                                    } else {
+                                        chatsTabContent(null)
+                                    }
                                 PAGE_CONTACTS -> ContactsTab()
                                 PAGE_SETTINGS -> SettingsTab()
                                 PAGE_PROFILE -> {
@@ -337,11 +354,11 @@ fun MainScreen(
                         modifier = Modifier.fillMaxWidth(),
                         items =
                             buildList {
-                                add(FloatingNavItemSpec(PAGE_CHATS.toString(), Icons.AutoMirrored.Filled.Chat, chatsLabel))
-                                add(FloatingNavItemSpec(PAGE_CONTACTS.toString(), Icons.Filled.Contacts, contactsLabel))
-                                add(FloatingNavItemSpec(PAGE_SETTINGS.toString(), Icons.Filled.Settings, settingsLabel))
+                                add(FloatingNavItemSpec(PAGE_CHATS.toString(), Icons.AutoMirrored.Rounded.Chat, chatsLabel))
+                                add(FloatingNavItemSpec(PAGE_CONTACTS.toString(), Icons.Rounded.Contacts, contactsLabel))
+                                add(FloatingNavItemSpec(PAGE_SETTINGS.toString(), Icons.Rounded.Settings, settingsLabel))
                                 if (isCompact) {
-                                    add(FloatingNavItemSpec(PAGE_PROFILE.toString(), Icons.Filled.Person, profileLabel))
+                                    add(FloatingNavItemSpec(PAGE_PROFILE.toString(), Icons.Rounded.Person, profileLabel))
                                 }
                             },
                         selectedId = selectedPage.toString(),
@@ -385,7 +402,7 @@ fun MainScreen(
                         label = { Text(chatsLabel) },
                         icon = {
                             Icon(
-                                Icons.AutoMirrored.Filled.Chat,
+                                Icons.AutoMirrored.Rounded.Chat,
                                 contentDescription = null,
                             )
                         },
@@ -401,7 +418,7 @@ fun MainScreen(
                         },
                         label = { Text(contactsLabel) },
                         icon = {
-                            Icon(Icons.Filled.Contacts, contentDescription = null)
+                            Icon(Icons.Rounded.Contacts, contentDescription = null)
                         },
                     )
                     NavigationBarItem(
@@ -415,7 +432,7 @@ fun MainScreen(
                         },
                         label = { Text(settingsLabel) },
                         icon = {
-                            Icon(Icons.Filled.Settings, contentDescription = null)
+                            Icon(Icons.Rounded.Settings, contentDescription = null)
                         },
                     )
                     if (isCompact) {
@@ -430,7 +447,7 @@ fun MainScreen(
                             },
                             label = { Text(profileLabel) },
                             icon = {
-                                Icon(Icons.Filled.Person, contentDescription = null)
+                                Icon(Icons.Rounded.Person, contentDescription = null)
                             },
                         )
                     }
@@ -471,6 +488,8 @@ fun MainScreen(
                     onBack = { paneSearchOpen = false },
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = this,
+                    // Same background as the chats tab panel in 2-pane mode.
+                    surfaceColor = MaterialTheme.colorScheme.surfaceContainerLowest,
                     onOpenProfile = { userId: Int ->
                         if (userId == 0) return@ChatsSearchScreen
                         paneSearchOpen = false

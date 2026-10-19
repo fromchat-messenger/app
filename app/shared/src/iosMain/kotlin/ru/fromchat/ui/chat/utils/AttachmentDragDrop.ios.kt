@@ -12,6 +12,11 @@ actual fun rememberAttachmentDropPermissionsHost(): AttachmentDropPermissionsHos
 
 actual fun dragPointerInWindow(event: DragAndDropEvent): Offset? = null
 
+actual fun attachmentDropKind(event: DragAndDropEvent): AttachmentDropKind =
+    AttachmentDropKind.Unknown
+
+actual fun extractDroppedText(event: DragAndDropEvent): String? = null
+
 actual fun acceptsAttachmentDrop(event: DragAndDropEvent): Boolean = false
 
 actual fun handleAttachmentDrop(

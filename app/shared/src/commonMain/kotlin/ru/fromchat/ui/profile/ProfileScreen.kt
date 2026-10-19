@@ -21,7 +21,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Surface
@@ -2084,7 +2084,7 @@ private fun ProfileFloatingBackBar(
             ),
         ) {
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                 contentDescription = stringResource(Res.string.back),
                 modifier = Modifier.size(24.dp),
                 tint = MaterialTheme.colorScheme.onSurface,

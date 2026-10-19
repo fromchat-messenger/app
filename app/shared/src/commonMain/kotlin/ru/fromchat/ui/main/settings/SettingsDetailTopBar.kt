@@ -4,7 +4,7 @@ import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.animate
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -81,7 +81,7 @@ fun SettingsDetailTopBar(
         if (settingsDetailShowBackButton()) {
             IconButton(onClick = onBack) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                     contentDescription = stringResource(Res.string.back),
                 )
             }

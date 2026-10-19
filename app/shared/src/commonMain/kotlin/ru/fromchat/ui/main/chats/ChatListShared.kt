@@ -903,6 +903,7 @@ internal fun PublicChatRow(
     AttachmentDropHighlightBox(
         active = dropBridge.isDropHighlightActive(),
         shape = clipShape,
+        bridge = dropBridge,
         modifier = Modifier
             .fillMaxWidth()
             .chatAttachmentDropTarget(
@@ -1078,6 +1079,7 @@ internal fun DmConversationRow(
     AttachmentDropHighlightBox(
         active = dropBridge.isDropHighlightActive(),
         shape = clipShape,
+        bridge = dropBridge,
         modifier = Modifier
             .fillMaxWidth()
             .chatAttachmentDropTarget(

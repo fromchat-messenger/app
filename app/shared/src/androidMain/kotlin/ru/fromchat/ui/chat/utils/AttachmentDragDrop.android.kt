@@ -40,6 +40,28 @@ actual fun dragPointerInWindow(event: DragAndDropEvent): Offset? {
     return Offset(androidEvent.x, androidEvent.y)
 }
 
+actual fun attachmentDropKind(event: DragAndDropEvent): AttachmentDropKind {
+    val mimeTypes = event.mimeTypes()
+    return when {
+        mimeTypes.any { it == ClipDescription.MIMETYPE_TEXT_URILIST } -> AttachmentDropKind.Files
+        mimeTypes.any { it.startsWith("image/") || it.startsWith("video/") } ->
+            AttachmentDropKind.Files
+        mimeTypes.any { it == ClipDescription.MIMETYPE_TEXT_PLAIN } -> AttachmentDropKind.Text
+        mimeTypes.any { it.startsWith("application/") || it == "*/*" } -> AttachmentDropKind.Unknown
+        else -> AttachmentDropKind.NotAFile
+    }
+}
+
+actual fun extractDroppedText(event: DragAndDropEvent): String? =
+    runCatching {
+        val clip = event.toAndroidDragEvent().clipData ?: return@runCatching null
+        if (clip.itemCount <= 0) {
+            null
+        } else {
+            clip.getItemAt(0).text?.toString()
+        }
+    }.getOrNull()?.takeIf { it.isNotBlank() }
+
 actual fun acceptsAttachmentDrop(event: DragAndDropEvent): Boolean {
     val mimeTypes = event.mimeTypes()
     if (mimeTypes.any { it == ClipDescription.MIMETYPE_TEXT_URILIST }) return true

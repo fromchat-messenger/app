@@ -24,11 +24,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Dns
-import androidx.compose.material.icons.filled.FlashOn
-import androidx.compose.material.icons.filled.RestartAlt
-import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.FlashOn
+import androidx.compose.material.icons.rounded.RestartAlt
+import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -346,7 +346,7 @@ fun ServerConfigScreen() {
                             if (settingsDetailShowBackButton()) {
                                 IconButton(onClick = navController::navigateUp) {
                                     Icon(
-                                        Icons.AutoMirrored.Filled.ArrowBack,
+                                        Icons.AutoMirrored.Rounded.ArrowBack,
                                         contentDescription = stringResource(Res.string.back)
                                     )
                                 }
@@ -419,7 +419,7 @@ fun ServerConfigScreen() {
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                     ) {
                                         ExpressiveIconFrame(
-                                            icon = Icons.Filled.Storage,
+                                            icon = Icons.Rounded.Storage,
                                             containerSize = 96.dp,
                                             iconSize = 34.dp,
                                             containerColor = scheme.primaryContainer,
@@ -478,7 +478,7 @@ fun ServerConfigScreen() {
                                     imeAction = ImeAction.Done,
                                 ),
                                 leadingIcon = {
-                                    Icon(Icons.Filled.Dns, null)
+                                    Icon(Icons.Rounded.Dns, null)
                                 }
                             )
                         }
@@ -529,7 +529,7 @@ fun ServerConfigScreen() {
                                     contentPadding = contentPadding
                                 ) {
                                     ActionButtonContent(
-                                        imageVector = Icons.Filled.FlashOn,
+                                        imageVector = Icons.Rounded.FlashOn,
                                         text = stringResource(Res.string.server_config_action_check),
                                     )
                                 }
@@ -545,7 +545,7 @@ fun ServerConfigScreen() {
                                     contentPadding = contentPadding
                                 ) {
                                     ActionButtonContent(
-                                        imageVector = Icons.Filled.RestartAlt,
+                                        imageVector = Icons.Rounded.RestartAlt,
                                         text = stringResource(Res.string.server_config_action_reset)
                                     )
                                 }

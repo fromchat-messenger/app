@@ -117,6 +117,7 @@ import javax.swing.JRootPane
 import javax.swing.SwingUtilities
 import javax.swing.UIManager
 import javax.swing.plaf.ColorUIResource
+import kotlin.math.roundToInt
 import javax.swing.text.DefaultEditorKit
 import kotlin.concurrent.thread
 import kotlin.time.Duration.Companion.milliseconds
@@ -218,11 +219,14 @@ private object DesktopProtocolRegistration {
         val javaHome = System.getProperty("java.home")
         val javaBin = if (isWindowsOs()) "$javaHome\\bin\\javaw.exe" else "$javaHome/bin/java"
         val classPath = System.getProperty("java.class.path")
-        val main = "ru.fromchat.desktop.MainKt"
+        val main = "FromChat"
+        // Keep relaunches on the same render pipeline (see mesaGlVersionOverridePrefix).
+        val mesaPrefix =
+            if (isWindowsOs()) "" else mesaGlVersionOverridePrefix()
         return if (isWindowsOs()) {
             "\"$javaBin\" -cp \"$classPath\" $main"
         } else {
-            "$javaBin -cp ${shellQuote(classPath)} $main"
+            "$mesaPrefix$javaBin -cp ${shellQuote(classPath)} $main"
         }
     }
 
@@ -333,6 +337,8 @@ fun main(args: Array<String>) {
 
     val dockIconImage = loadAppIconBufferedImage(tray = false)
     applyDockIcon(dockIconImage)
+    // Ensure the shell (GNOME taskbar/dock) has a desktop entry matching this app's identity.
+    LinuxAppIdentity.register(dockIconImage)
     // Re-apply after AWT is fully up — Taskbar can ignore early sets on macOS :run.
     SwingUtilities.invokeLater { applyDockIcon(dockIconImage) }
 
@@ -966,6 +972,122 @@ private fun configureDesktopAppDataName() {
 }
 
 /**
+ * Skia for linux/arm64 is GLES-only, so against Mesa-run GL it must see version 3.0
+ * (see the skiko-virgl patch in app/desktop/build.gradle.kts). Applied by generated
+ * launcher entries via Exec=env MESA_GL_VERSION_OVERRIDE=3.0 <program>.
+ */
+private fun mesaGlVersionOverridePrefix(): String =
+    if (isLinuxOs() && System.getProperty("os.arch") == "aarch64") {
+        "env MESA_GL_VERSION_OVERRIDE=3.0 "
+    } else {
+        ""
+    }
+
+/**
+ * GNOME/Wayland app identity for Linux.
+ *
+ * The JVM derives WM_CLASS from the entry-point class (dots → dashes), which for this app is
+ * the default-package [FromChat] wrapper — the launcher name is exactly "FromChat" and matches
+ * the installed desktop file's should-match one. But XDG dirs typically have no FromChat
+ * desktop entry (the deb only ships it under /opt/fromchat/lib, without matching the runtime
+ * WM_CLASS hint), so the shell shows the raw window class with no icon. This installs a
+ * user-level entry matching our identity, the way the app itself already registers handlers
+ * for other desktops.
+ */
+private object LinuxAppIdentity {
+    fun register(dockIcon: BufferedImage?) {
+        if (!isLinuxOs() || dockIcon == null) return
+        runCatching {
+            val dataHome = env("XDG_DATA_HOME")
+                ?.takeIf { it.isNotBlank() }
+                ?: File(System.getProperty("user.home"), ".local/share").absolutePath
+
+            val iconFile = File(dataHome, "icons/fromchat.png").let { file ->
+                file.parentFile?.mkdirs()
+                val image = dockIcon.scaleToAppIconMaxEdge()
+                runCatching { ImageIO.write(image, "png", file) }
+                    .onFailure { error ->
+                        Logger.w("DesktopIcon", "Linux identity icon write failed: ${error.message}")
+                    }
+                file
+            }
+            val applicationsDir = File(dataHome, "applications").apply { mkdirs() }
+            val entry = File(applicationsDir, "fromchat.desktop")
+            val script = buildString {
+                appendLine("[Desktop Entry]")
+                appendLine("Type=Application")
+                appendLine("Name=${desktopAppName()}")
+                appendLine("Comment=${desktopAppName()}")
+                appendLine("Exec=${desktopExec()}")
+                appendLine("Icon=${iconFile.absolutePath}")
+                appendLine("StartupWMClass=FromChat")
+                appendLine("Terminal=false")
+                appendLine("Categories=Network;InstantMessaging;Chat;")
+            }
+            entry.writeText(script)
+            Logger.i("DesktopIcon", "Linux desktop entry installed: ${entry.absolutePath}")
+        }.onFailure { error ->
+            Logger.w("DesktopIcon", "Linux identity registration failed: ${error.message}")
+        }
+    }
+
+    private fun desktopAppName() =
+        if (AppBuildInfo.isDebug) "FromChat Beta" else "FromChat"
+
+    /**
+     * Current invocation as an Exec= value. Under a jpackage app-image this is the launcher
+     * binary; a dev run re-launches through the same java/classpath wrapper main.
+     */
+    private fun desktopExec(): String {
+        val launcher = ProcessHandle.current().info().command().orElse("").takeIf { it.isNotBlank() }
+        val mesaEnvPrefix = mesaGlVersionOverridePrefix()
+        if (launcher != null && launcher.endsWith("bin/java").not()) {
+            return mesaEnvPrefix + desktopQuote(launcher)
+        }
+        val javaBin = File(
+            System.getProperty("java.home"),
+            File.separator + "bin" + File.separator + "java",
+        ).absolutePath
+        val cp = System.getProperty("java.class.path").orEmpty()
+        return desktopQuote(javaBin).let { java ->
+            if (cp.isNotBlank()) {
+                desktopQuote(java) + " -cp " + desktopQuote(cp) + " FromChat"
+            } else {
+                java
+            }
+        }.let { exec -> mesaEnvPrefix + exec }
+    }
+
+    /** Desktop spec Exec quoting: wrap in double quotes and escape backslash/quote. */
+    private fun desktopQuote(value: String) =
+        if (value.any { it.isWhitespace() || it == '"' || it == '\\' } || value.isEmpty()) {
+            "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+        } else {
+            value
+        }
+
+    private fun env(key: String): String? = System.getenv(key)
+
+    private fun BufferedImage.scaleToAppIconMaxEdge(): BufferedImage {
+        val maxEdge = 128
+        if (width <= maxEdge && height <= maxEdge) return this
+        val scale = maxEdge.toFloat() / maxOf(width, height).toFloat()
+        val w = (width * scale).roundToInt().coerceAtLeast(1)
+        val h = (height * scale).roundToInt().coerceAtLeast(1)
+        val scaled = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
+        val graphics = scaled.createGraphics()
+        graphics.setRenderingHint(
+            RenderingHints.KEY_INTERPOLATION,
+            RenderingHints.VALUE_INTERPOLATION_BICUBIC,
+        )
+        graphics.drawImage(this, 0, 0, w, h, null)
+        graphics.dispose()
+        return scaled
+    }
+}
+
+
+/**
  * JFrame uses UIManager "control" as its default background before Compose draws.
  * Set it to the app theme background so dark theme never flashes white (CMP #1794).
  *
@@ -1180,10 +1302,11 @@ private fun bufferedImageFromComposeArgb(
 }
 
 private fun prepareTrayIcon(source: BufferedImage): BufferedImage {
-    // Matte-stripping only makes sense for the white-on-black macOS template glyph. The Linux tray
-    // gets the coloured icon, whose white glyph would just be punched out of it.
-    val prepared = if (isMacOs()) stripTrayMatteBackground(source) else source
-    return scaleBufferedImage(prepared, trayIconSize())
+    // The macOS tray source (`app_icon.png`) is a template-ready white-on-transparent
+    // glyph; the menu bar recolors it. Stripping near-white or near-black pixels used to
+    // punch the entire glyph out (blank/transparent tray) — the icon already carries its
+    // own alpha, so nothing needs stripping. The Linux tray gets the coloured icon.
+    return scaleBufferedImage(ensureArgb(source), trayIconSize())
 }
 
 /**
@@ -1198,28 +1321,6 @@ private fun prepareTrayIcon(source: BufferedImage): BufferedImage {
  */
 private fun trayIconSize(): Int =
     if (isLinuxOs()) 48 else 64
-
-private fun stripTrayMatteBackground(source: BufferedImage): BufferedImage {
-    val argb = ensureArgb(source)
-    val out = BufferedImage(argb.width, argb.height, BufferedImage.TYPE_INT_ARGB)
-    for (y in 0 until argb.height) {
-        for (x in 0 until argb.width) {
-            val pixel = argb.getRGB(x, y)
-            val alpha = pixel ushr 24 and 0xFF
-            val red = pixel ushr 16 and 0xFF
-            val green = pixel ushr 8 and 0xFF
-            val blue = pixel and 0xFF
-            val replacementAlpha = when {
-                alpha < 16 -> 0
-                red < 20 && green < 20 && blue < 20 -> 0
-                red > 245 && green > 245 && blue > 245 -> 0
-                else -> alpha
-            }
-            out.setRGB(x, y, (replacementAlpha shl 24) or (pixel and 0x00FFFFFF))
-        }
-    }
-    return out
-}
 
 private fun scaleBufferedImage(source: BufferedImage, size: Int): BufferedImage {
     if (source.width == size && source.height == size) return source

@@ -28,15 +28,15 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Archive
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.History
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -442,7 +442,7 @@ fun LogFilesScreen(
                 alpha = fabReveal,
                 onClick = { showClearAllConfirm = true },
                 contentDescription = clearAllCd,
-                icon = Icons.Default.DeleteSweep,
+                icon = Icons.Rounded.DeleteSweep,
             )
         },
         topBar = {
@@ -458,7 +458,7 @@ fun LogFilesScreen(
                             enabled = selectionProgress < 1f,
                         ) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                                 contentDescription = stringResource(Res.string.back),
                             )
                         }
@@ -482,7 +482,7 @@ fun LogFilesScreen(
                                 enabled = selectionProgress > 0f,
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Close,
+                                    imageVector = Icons.Rounded.Close,
                                     contentDescription = closeSelectionCd,
                                 )
                             }
@@ -601,13 +601,13 @@ fun LogFilesScreen(
                             },
                             enabled = canOpenSingleFile,
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.OpenInNew, openLabel)
+                            Icon(Icons.AutoMirrored.Rounded.OpenInNew, openLabel)
                         }
                         IconButton(
                             onClick = { showRotateConfirm = true },
                             enabled = canRotateCurrentLog,
                         ) {
-                            Icon(Icons.Default.Sync, rotateLabel)
+                            Icon(Icons.Rounded.Sync, rotateLabel)
                         }
                         IconButton(
                             onClick = {
@@ -621,7 +621,7 @@ fun LogFilesScreen(
                             },
                             enabled = selectedFilePaths.isNotEmpty(),
                         ) {
-                            Icon(Icons.Default.Share, shareLabel)
+                            Icon(Icons.Rounded.Share, shareLabel)
                         }
                         IconButton(
                             onClick = {

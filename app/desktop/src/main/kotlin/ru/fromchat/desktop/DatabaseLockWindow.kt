@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -109,7 +109,7 @@ private fun DatabaseLockContent(
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         ExpressiveIconFrame(
-            icon = Icons.Default.Warning,
+            icon = Icons.Rounded.Warning,
             containerSize = 56.dp,
             iconSize = 28.dp,
             containerColor = MaterialTheme.colorScheme.errorContainer,
@@ -193,7 +193,7 @@ private fun LockingProcessRow(
             )
         } else {
             Icon(
-                imageVector = Icons.Default.Warning,
+                imageVector = Icons.Rounded.Warning,
                 contentDescription = null,
                 modifier = Modifier.size(36.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,

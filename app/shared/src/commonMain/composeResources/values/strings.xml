@@ -132,6 +132,7 @@
     <string name="search_not_found_message">Nothing found here. Try rephrasing your query.</string>
     <string name="message_placeholder">Write a message…</string>
     <string name="chat_drop_attachment_hint">Drop file here</string>
+    <string name="chat_drop_not_a_file">This isn't a file</string>
 
     <!-- Connection / chat chrome -->
     <string name="status_connecting">Connecting</string>

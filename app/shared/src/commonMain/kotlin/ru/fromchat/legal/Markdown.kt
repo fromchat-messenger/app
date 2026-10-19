@@ -23,22 +23,22 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Article
-import androidx.compose.material.icons.automirrored.filled.Chat
-import androidx.compose.material.icons.filled.Block
-import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PersonAdd
-import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.PrivacyTip
-import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.automirrored.rounded.Article
+import androidx.compose.material.icons.automirrored.rounded.Chat
+import androidx.compose.material.icons.rounded.Block
+import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PersonAdd
+import androidx.compose.material.icons.rounded.Phone
+import androidx.compose.material.icons.rounded.PrivacyTip
+import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialShapes
@@ -101,22 +101,22 @@ private val LEGAL_MATERIAL_ICON_ALIASES = mapOf(
 fun materialIconName(iconKey: String) = LEGAL_MATERIAL_ICON_ALIASES[iconKey] ?: iconKey
 
 fun materialIconVector(iconKey: String): ImageVector = when (materialIconName(iconKey)) {
-    "privacy_tip" -> Icons.Filled.PrivacyTip
-    "contract" -> Icons.AutoMirrored.Filled.Article
-    "person_add" -> Icons.Filled.PersonAdd
-    "chat" -> Icons.AutoMirrored.Filled.Chat
-    "storage" -> Icons.Filled.Storage
-    "shield" -> Icons.Filled.Shield
-    "visibility_off" -> Icons.Filled.VisibilityOff
-    "block" -> Icons.Filled.Block
-    "call" -> Icons.Filled.Call
-    "delete" -> Icons.Filled.Delete
-    "description" -> Icons.Filled.Description
-    "lock" -> Icons.Filled.Lock
-    "notifications" -> Icons.Filled.Notifications
-    "person" -> Icons.Filled.Person
-    "phone" -> Icons.Filled.Phone
-    else -> Icons.Filled.Info
+    "privacy_tip" -> Icons.Rounded.PrivacyTip
+    "contract" -> Icons.AutoMirrored.Rounded.Article
+    "person_add" -> Icons.Rounded.PersonAdd
+    "chat" -> Icons.AutoMirrored.Rounded.Chat
+    "storage" -> Icons.Rounded.Storage
+    "shield" -> Icons.Rounded.Shield
+    "visibility_off" -> Icons.Rounded.VisibilityOff
+    "block" -> Icons.Rounded.Block
+    "call" -> Icons.Rounded.Call
+    "delete" -> Icons.Rounded.Delete
+    "description" -> Icons.Rounded.Description
+    "lock" -> Icons.Rounded.Lock
+    "notifications" -> Icons.Rounded.Notifications
+    "person" -> Icons.Rounded.Person
+    "phone" -> Icons.Rounded.Phone
+    else -> Icons.Rounded.Info
 }
 
 data class SectionDirective(
