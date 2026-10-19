@@ -758,6 +758,51 @@ fun ChatScreen(
         }
     }
 
+    LaunchedEffect(panel, panelId) {
+        var lastRequestedOldestId = -1
+        snapshotFlow {
+            OlderHistoryPaginationSnapshot(
+                shouldLoad = listState.shouldLoadOlderChatHistory(),
+                hasMore = panel.getState().hasMoreMessages,
+                loading = panel.getState().isLoadingMore,
+                oldestId = panel.getState().messages.firstOrNull { it.id > 0 }?.id ?: -1,
+                messageCount = panel.getState().messages.size,
+            )
+        }.collect { snap ->
+            if (!snap.shouldLoad || !snap.hasMore || snap.loading || snap.messageCount == 0) return@collect
+            if (snap.oldestId <= 0 || snap.oldestId == lastRequestedOldestId) return@collect
+
+            lastRequestedOldestId = snap.oldestId
+            val anchorIndex = listState.firstVisibleItemIndex
+            val anchorOffset = listState.firstVisibleItemScrollOffset
+            val lazyItemsBefore = listState.layoutInfo.totalItemsCount
+            val messagesBefore = snap.messageCount
+
+            panel.loadMoreMessages()
+            while (panel.getState().isLoadingMore) {
+                withFrameNanos { }
+            }
+
+            if (panel.getState().messages.size <= messagesBefore) {
+                lastRequestedOldestId = -1
+                return@collect
+            }
+
+            runCatching {
+                snapshotFlow { listState.layoutInfo.totalItemsCount }
+                    .first { it > lazyItemsBefore }
+            }.onSuccess {
+                val added = it - lazyItemsBefore
+                if (added > 0) {
+                    listState.scrollToItem(
+                        (anchorIndex + added).coerceAtMost(listState.layoutInfo.totalItemsCount - 1),
+                        anchorOffset,
+                    )
+                }
+            }
+        }
+    }
+
     val clipboard = supportClipboardManagerImpl
 
     LaunchedEffect(contextMenuState.isOpen, contextMenuState.message, panelState.messages, currentUserId, isReadOnly) {
@@ -1410,6 +1455,19 @@ fun ChatScreen(
                         item { Spacer(modifier.height(floatingHeaderClearance)) }
                         }
 
+                        if (panelState.isLoadingMore) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .padding(top = floatingHeaderClearance + 8.dp),
+                            ) {
+                                ExpressiveUploadIndicator(
+                                    uploadProgress = null,
+                                    modifier = Modifier.size(32.dp),
+                                )
+                            }
+                        }
+
                         val showScrollToBottomFab = !isNearBottom &&
                             panelState.messages.isNotEmpty() &&
                             !contextMenuState.isOpen
@@ -1715,6 +1773,14 @@ private fun ChatDateSeparator(
         }
     }
 }
+
+private data class OlderHistoryPaginationSnapshot(
+    val shouldLoad: Boolean,
+    val hasMore: Boolean,
+    val loading: Boolean,
+    val oldestId: Int,
+    val messageCount: Int,
+)
 
 private val ChatScrollToBottomButtonSize = 44.dp
 private val ChatScrollToBottomIconSize = 24.dp

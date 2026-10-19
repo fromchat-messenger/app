@@ -29,3 +29,57 @@ buildscript {
         classpath(libs.google.services)
     }
 }
+
+/**
+ * Packaging jobs restore JVM outputs from the Linux Build JAR artifact. Gradle has no local
+ * execution history for those outputs on macOS/Windows, so it would re-run compileKotlinJvm unless
+ * we skip it when the restored tree is already present.
+ */
+fun Project.useCiPrebuiltJvm(): Boolean =
+    providers.environmentVariable("FROMCHAT_PREBUILT_JVM").orNull == "1"
+
+fun Project.hasFilesUnder(relativeDir: String, extension: String): Boolean {
+    val root = layout.buildDirectory.dir(relativeDir).get().asFile
+    return root.isDirectory && root.walk().any { it.isFile && it.extension == extension }
+}
+
+subprojects {
+    afterEvaluate {
+        if (!useCiPrebuiltJvm()) return@afterEvaluate
+        when (path) {
+            ":app:shared", ":utils:shared" -> {
+                tasks.matching { it.name == "compileKotlinJvm" }.configureEach {
+                    onlyIf {
+                        val skip = hasFilesUnder("classes/kotlin/jvm/main", "class")
+                        if (skip) {
+                            logger.lifecycle("$path compileKotlinJvm skipped — CI prebuilt JVM classes")
+                        }
+                        !skip
+                    }
+                }
+            }
+            ":app:desktop" -> {
+                tasks.matching { it.name == "compileKotlin" }.configureEach {
+                    onlyIf {
+                        val skip = hasFilesUnder("classes/kotlin/main", "class")
+                        if (skip) {
+                            logger.lifecycle("$path compileKotlin skipped — CI prebuilt JVM classes")
+                        }
+                        !skip
+                    }
+                }
+            }
+        }
+        if (path == ":app:shared") {
+            tasks.named("generateAppBuildInfo").configure {
+                onlyIf {
+                    val skip = hasFilesUnder("generated/sources/appBuildInfo/kotlin", "kt")
+                    if (skip) {
+                        logger.lifecycle("generateAppBuildInfo skipped — CI prebuilt output")
+                    }
+                    !skip
+                }
+            }
+        }
+    }
+}

@@ -174,6 +174,7 @@ jobs:
     timeout-minutes: 45
     env:
       FROMCHAT_PREBUILT_PROGUARD: "0"
+      ORG_GRADLE_PROJECT_org.gradle.workers.max: "4"
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/restore-git-mtimes
@@ -197,6 +198,16 @@ jobs:
         with:
           name: desktop-proguard
           path: app/desktop/build/ci/proguard/
+          if-no-files-found: error
+          retention-days: 3
+      - uses: actions/upload-artifact@v5
+        with:
+          name: jvm-compile-outputs
+          path: |
+            app/shared/build
+            utils/shared/build
+            app/desktop/build/classes
+            app/desktop/build/libs
           if-no-files-found: error
           retention-days: 3
 
@@ -285,6 +296,7 @@ jobs:
     if: needs.check-build.outputs.should_build == 'true'
     env:
       FROMCHAT_PREBUILT_PROGUARD: "1"
+      FROMCHAT_PREBUILT_JVM: "1"
     strategy:
       fail-fast: false
       matrix:
@@ -328,6 +340,11 @@ jobs:
         with:
           name: desktop-proguard
           path: app/desktop/build/prebuilt/main-release/proguard
+      - uses: actions/download-artifact@v5
+        with:
+          name: jvm-compile-outputs
+          path: .
+      - uses: ./.github/actions/restore-jvm-compile-outputs
       # Tooling for this architecture, built natively by the windows-tools matrix leg. The two
       # architectures must not share: fromchat-pack selects the embedded payload with
       # std::env::consts::ARCH, so an x64 stub on ARM64 reports "x86_64" and finds no x86_64
@@ -369,15 +386,20 @@ jobs:
     if: needs.check-build.outputs.should_build == 'true'
     env:
       FROMCHAT_PREBUILT_PROGUARD: "1"
+      FROMCHAT_PREBUILT_JVM: "1"
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: arm64
             label: Apple Silicon
+            runner: macos-latest
+          # jpackage cannot cross-build: on an arm64 runner this job silently ships
+          # arm64 binaries under the -intel.dmg name (beta18 did exactly that).
           - arch: x64
             label: Intel
-    runs-on: macos-latest
+            runner: macos-26-intel
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
@@ -402,28 +424,56 @@ jobs:
         with:
           name: desktop-proguard
           path: app/desktop/build/prebuilt/main-release/proguard
+      - uses: actions/download-artifact@v5
+        with:
+          name: jvm-compile-outputs
+          path: .
+      - uses: ./.github/actions/restore-jvm-compile-outputs
       - name: Cache DMG background tooling
         uses: actions/cache@v5
         with:
           path: |
             app/desktop/dmg-background/node_modules
-            ~/.cache/ms-playwright
+            app/desktop/dmg-background/.playwright-browsers
           key: dmg-tools-${{ runner.arch }}-${{ hashFiles('app/desktop/dmg-background/package-lock.json') }}
           restore-keys: dmg-tools-${{ runner.arch }}-
+      - name: Cache DMG export output
+        uses: actions/cache@v5
+        with:
+          path: app/desktop/build/dmg-background/dist
+          key: dmg-export-${{ runner.arch }}-${{ hashFiles('app/desktop/dmg-background/**', 'app/shared/src/commonMain/composeResources/drawable/logo_square.png') }}
+          restore-keys: dmg-export-${{ runner.arch }}-
       - name: Install macOS packaging tools
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/app/desktop/dmg-background/.playwright-browsers
         run: |
           if ! command -v create-dmg >/dev/null 2>&1; then
             brew install create-dmg
           fi
           DMG_DIR="app/desktop/dmg-background"
+          mkdir -p "$PLAYWRIGHT_BROWSERS_PATH"
           if [[ ! -f "$DMG_DIR/node_modules/playwright/package.json" ]]; then
             npm --prefix "$DMG_DIR" ci --no-fund --no-audit
           fi
           npm --prefix "$DMG_DIR" exec playwright install chromium
+          echo "FROMCHAT_DMG_TOOLS_READY=1" >> "$GITHUB_ENV"
+          echo "PLAYWRIGHT_BROWSERS_PATH=$PLAYWRIGHT_BROWSERS_PATH" >> "$GITHUB_ENV"
       - name: Package macOS ${{ matrix.arch }}
         run: |
           export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
           ./gradlew :app:desktop:packageReleaseMac -PdesktopArch=${{ matrix.arch }} --no-daemon --console=plain
+      # jpackage only reports its error text in files on the runner surface — surface them.
+      - name: Dump jpackage logs on failure
+        if: failure()
+        run: |
+          for t in createReleaseDistributable createDmgOther; do
+            D="app/desktop/build/compose/logs/$t"
+            [[ -d "$D" ]] || continue
+            for f in "$D"/*.txt; do
+              echo "===== $f"
+              cat "$f"
+            done
+          done
       - uses: actions/upload-artifact@v5
         with:
           name: macos-${{ matrix.arch }}
@@ -440,6 +490,7 @@ jobs:
     if: needs.check-build.outputs.should_build == 'true'
     env:
       FROMCHAT_PREBUILT_PROGUARD: "1"
+      FROMCHAT_PREBUILT_JVM: "1"
     strategy:
       fail-fast: false
       matrix:
@@ -472,6 +523,11 @@ jobs:
         with:
           name: desktop-proguard
           path: app/desktop/build/prebuilt/main-release/proguard
+      - uses: actions/download-artifact@v5
+        with:
+          name: jvm-compile-outputs
+          path: .
+      - uses: ./.github/actions/restore-jvm-compile-outputs
       - name: Install Linux packaging tools
         run: |
           sudo apt-get update
@@ -489,6 +545,9 @@ jobs:
         run: |
           # Keep the jmods-capable JDK the setup action exported; fall back to JAVA_HOME.
           export FROMCHAT_PACKAGING_JDK="${FROMCHAT_PACKAGING_JDK:-$JAVA_HOME}"
+          # packageReleaseDeb/rpm are the slow, quiet parts of this invocation (profiled 2026-10-20:
+          # ~45s/~23s single-threaded jpackage compression) — candidates for parallel-invocation
+          # packaging if we ever want to shorten this leg.
           ./gradlew :app:desktop:packageReleaseLinux -PdesktopArch=${{ matrix.arch }} --no-daemon --console=plain
       - uses: actions/upload-artifact@v5
         with:

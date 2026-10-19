@@ -25,10 +25,11 @@ import ru.fromchat.api.local.db.isSqliteBusy
 import ru.fromchat.ui.FromChatTheme
 import ru.fromchat.ui.LocalExtraStatusBarTop
 import ru.fromchat.ui.getColorScheme
+import ru.fromchat.ui.isAppInDarkTheme
 import java.awt.image.BufferedImage
 
-internal fun desktopThemeBackgroundCompose(): Color =
-    if (desktopAppDarkTheme()) Color(0xFF1C1B1F) else Color(0xFFFFFBFE)
+internal fun desktopThemeBackgroundCompose(darkTheme: Boolean): Color =
+    if (darkTheme) Color(0xFF1C1B1F) else Color(0xFFFFFBFE)
 
 @OptIn(ExperimentalComposeUiApi::class)
 internal fun installDesktopWindowExceptionHandler(window: ComposeWindow) {
@@ -53,7 +54,8 @@ internal fun FrameWindowScope.DesktopRootSurface(
     onCloseRequest: () -> Unit,
     content: @Composable () -> Unit,
 ) {
-    val windowChrome = desktopThemeBackgroundCompose()
+    val appInDarkTheme = isAppInDarkTheme()
+    val windowChrome = desktopThemeBackgroundCompose(appInDarkTheme)
 
     LaunchedEffect(window, appName, windowChrome) {
         window.title = appName
@@ -81,7 +83,7 @@ internal fun FrameWindowScope.DesktopRootSurface(
         onDispose {}
     }
 
-    FromChatTheme(darkTheme = desktopAppDarkTheme()) {
+    FromChatTheme(darkTheme = appInDarkTheme) {
         CompositionLocalProvider(
             LocalExtraStatusBarTop provides when {
                 customFrame -> WindowsTitleBarHeight
@@ -95,7 +97,7 @@ internal fun FrameWindowScope.DesktopRootSurface(
             ) {
                 content()
                 if (customFrame) {
-                    MaterialTheme(colorScheme = getColorScheme(desktopAppDarkTheme(), dynamicColor = false)) {
+                    MaterialTheme(colorScheme = getColorScheme(appInDarkTheme, dynamicColor = false)) {
                         WindowsDesktopTitleBar(
                             title = appName,
                             windowIcon = windowIcon,

@@ -63,15 +63,12 @@ fun WindowScope.WindowsDesktopTitleBar(
     val windowActive = rememberWindowsFrameActive(window)
     val isMaximized = windowState.placement == WindowPlacement.Maximized
     val scheme = MaterialTheme.colorScheme
-    val titleColor = Color.White
+    val titleColor = scheme.onSurface
     val titleAlpha = if (windowActive) 1f else 0.63f
-    val barBackground = Color.Transparent
-
     Row(
         modifier
             .fillMaxWidth()
-            .height(WindowsTitleBarHeight)
-            .background(barBackground),
+            .height(WindowsTitleBarHeight),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         WindowDraggableArea(
@@ -154,8 +151,8 @@ private fun TitleBarWindowButton(
     )
     val iconTint = when {
         isClose && hoverTarget -> scheme.onError
-        windowActive -> Color.White
-        else -> Color.White.copy(alpha = 0.63f)
+        windowActive -> scheme.onSurface
+        else -> scheme.onSurface.copy(alpha = 0.63f)
     }
     val hoverColor =
         if (isClose && hoverTarget) {

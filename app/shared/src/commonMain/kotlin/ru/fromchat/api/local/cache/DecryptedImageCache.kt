@@ -20,6 +20,7 @@ import ru.fromchat.ui.chat.utils.AttachmentDownloadVisibility
 import ru.fromchat.api.local.cache.DecryptedImageCache.storageKey
 import ru.fromchat.api.local.download.LocalDecodedImageCache
 import ru.fromchat.api.local.download.ChatPreviewDecodeSize
+import ru.fromchat.api.local.download.decodeImageBytes
 import ru.fromchat.api.local.download.decodeLocalImageFile
 
 /**
@@ -142,18 +143,35 @@ object DecryptedImageCache {
         }
     }
 
+    /** Decode embedded thumbnail bytes synchronously for first frame (no network). */
+    fun decodeEmbeddedPlaceholderThumb(memoryKey: String, serverThumbBytes: ByteArray?): androidx.compose.ui.graphics.ImageBitmap? {
+        LocalDecodedImageCache.peekThumb(memoryKey)?.let { return it }
+        val thumbBytes = serverThumbBytes?.takeIf { it.isNotEmpty() } ?: return null
+        val target = ChatPreviewDecodeSize(
+            ATTACHMENT_DISK_THUMB_MAX_EDGE_PX,
+            ATTACHMENT_DISK_THUMB_MAX_EDGE_PX,
+        )
+        return decodeImageBytes(thumbBytes, target.widthPx, target.heightPx)?.also { bitmap ->
+            LocalDecodedImageCache.putThumb(memoryKey, bitmap)
+        }
+    }
+
     suspend fun decodePlaceholderThumb(
         memoryKey: String,
         messageId: Int,
         fileIndex: Int,
         clientMessageId: String?,
         serverThumbBytes: ByteArray?,
+        publicNormalFilePath: String? = null,
     ): androidx.compose.ui.graphics.ImageBitmap? = withContext(Dispatchers.Default) {
         peekPlaceholderThumb(memoryKey, messageId, fileIndex, clientMessageId)?.let {
             return@withContext it
         }
         // Prefer server base64 before generating a disk thumb from a huge full file.
-        val thumbBytes = serverThumbBytes?.takeIf { it.isNotEmpty() }
+        var thumbBytes = serverThumbBytes?.takeIf { it.isNotEmpty() }
+        if (thumbBytes == null && !publicNormalFilePath.isNullOrBlank()) {
+            thumbBytes = ApiClient.fetchPublicThumbnailBytes(publicNormalFilePath)
+        }
         if (thumbBytes != null) {
             val target = ChatPreviewDecodeSize(
                 ATTACHMENT_DISK_THUMB_MAX_EDGE_PX,

@@ -4,10 +4,15 @@ description: Save Cargo registry, git checkouts, and the windows-setup target di
 runs:
   using: composite
   steps:
+    # The save key MUST match cache-windows-rust-tools' exact restore key byte for byte: it has to
+    # carry runner.arch — the two matrix legs race to save the same key otherwise (actions/cache
+    # rejects the second with "another job may be creating this cache"), and a saved entry without
+    # the arch can never be restored because no restore key matches its shape. v3 was an archless
+    # relic: every entry it ever wrote was dead on arrival.
     - uses: actions/cache/save@v5
       continue-on-error: true
       with:
-        key: windows-rust-${{ runner.os }}-v3-${{ hashFiles('app/desktop/windows-setup/Cargo.lock') }}
+        key: windows-rust-${{ runner.os }}-${{ runner.arch }}-v5-${{ hashFiles('app/desktop/windows-setup/Cargo.lock') }}
         path: |
           ~/.cargo/registry
           ~/.cargo/git

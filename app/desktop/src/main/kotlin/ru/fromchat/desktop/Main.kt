@@ -48,6 +48,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.sun.jna.Library
+import com.sun.jna.Native
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.AppBuildInfo
 import ru.fromchat.AppForeground
@@ -93,6 +95,7 @@ import ru.fromchat.ui.App
 import ru.fromchat.ui.LocalExtraStatusBarTop
 import ru.fromchat.ui.Theme
 import ru.fromchat.ui.getColorScheme
+import ru.fromchat.ui.isAppInDarkTheme
 import java.awt.Desktop
 import java.awt.Image
 import java.awt.KeyboardFocusManager
@@ -280,6 +283,7 @@ private object DesktopProtocolRegistration {
 }
 
 fun main(args: Array<String>) {
+    LinuxArm64MesaEnvironment.applyIfNeeded()
     Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
         if (isSqliteBusy(throwable)) {
             if (!DatabaseLockGate.onSqliteBusy(throwable)) {
@@ -466,7 +470,8 @@ fun main(args: Array<String>) {
             TrayConnectionStatus.Connecting -> stringResource(Res.string.status_connecting)
         }
 
-        val windowChrome = remember { desktopThemeBackgroundCompose() }
+        val appInDarkTheme = isAppInDarkTheme()
+        val windowChrome = desktopThemeBackgroundCompose(appInDarkTheme)
 
         // Armed once the restored geometry has had time to settle; until then nothing is
         // persisted. See the LaunchedEffect below.
@@ -830,7 +835,7 @@ fun main(args: Array<String>) {
                                 onContentReady = { contentReady = true },
                             )
                             if (customFrame) {
-                                MaterialTheme(colorScheme = getColorScheme(desktopAppDarkTheme(), dynamicColor = false)) {
+                                MaterialTheme(colorScheme = getColorScheme(appInDarkTheme, dynamicColor = false)) {
                                     WindowsDesktopTitleBar(
                                         title = appName,
                                         windowIcon = windowIcon,
@@ -973,9 +978,29 @@ private fun configureDesktopAppDataName() {
 
 /**
  * Skia for linux/arm64 is GLES-only, so against Mesa-run GL it must see version 3.0
- * (see the skiko-virgl patch in app/desktop/build.gradle.kts). Applied by generated
- * launcher entries via Exec=env MESA_GL_VERSION_OVERRIDE=3.0 <program>.
+ * (see the skiko-virgl patch in app/desktop/build.gradle.kts). Set before Skiko loads
+ * (here and in the AppImage AppRun) and in generated desktop entries via
+ * [mesaGlVersionOverridePrefix].
  */
+private object LinuxArm64MesaEnvironment {
+    private interface LibC : Library {
+        fun setenv(name: String, value: String, overwrite: Int): Int
+    }
+
+    private val libc: LibC? =
+        if (isLinuxOs() && System.getProperty("os.arch") == "aarch64") {
+            runCatching { Native.load("c", LibC::class.java) }.getOrNull()
+        } else {
+            null
+        }
+
+    fun applyIfNeeded() {
+        if (!isLinuxOs() || System.getProperty("os.arch") != "aarch64") return
+        if (!System.getenv("MESA_GL_VERSION_OVERRIDE").isNullOrBlank()) return
+        libc?.setenv("MESA_GL_VERSION_OVERRIDE", "3.0", 1)
+    }
+}
+
 private fun mesaGlVersionOverridePrefix(): String =
     if (isLinuxOs() && System.getProperty("os.arch") == "aarch64") {
         "env MESA_GL_VERSION_OVERRIDE=3.0 "
@@ -1094,7 +1119,10 @@ private object LinuxAppIdentity {
  * Colors match Material3 [darkColorScheme]/[lightColorScheme] defaults used by [ru.fromchat.ui.getColorScheme].
  */
 private fun applyDesktopWindowChromeBackground() {
-    UIManager.put("control", ColorUIResource(desktopThemeBackgroundCompose().toAwtColor()))
+    UIManager.put(
+        "control",
+        ColorUIResource(desktopThemeBackgroundCompose(desktopAppDarkTheme()).toAwtColor()),
+    )
 }
 
 private fun Color.toAwtColor() =

@@ -32,6 +32,7 @@ import io.ktor.client.request.post
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.readRawBytes
 import io.ktor.http.ContentType
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
@@ -987,6 +988,24 @@ object ApiClient {
 
     /** Plain public-chat attachment URL (same path resolution as [encryptedFileUrl]). */
     fun normalFileUrl(path: String): String = encryptedFileUrl(path)
+
+    /** JPEG thumbnail URL for a public normal attachment (`THUMBS_DIR/{stem}.jpg`). */
+    fun publicThumbnailUrl(normalFilePath: String): String? {
+        val basename = normalFilePath.substringAfterLast('/').takeIf { it.isNotEmpty() } ?: return null
+        val stem = basename.substringBeforeLast('.').takeIf { it.isNotEmpty() } ?: return null
+        return encryptedFileUrl("/uploads/files/thumbs/$stem.jpg")
+    }
+
+    /** Best-effort fetch when [Message.fileThumbnails] is empty but the thumb exists on the server. */
+    suspend fun fetchPublicThumbnailBytes(normalFilePath: String): ByteArray? {
+        val url = publicThumbnailUrl(normalFilePath) ?: return null
+        return runCatching {
+            http.get(url) {
+                token?.let { bearerAuth(it) }
+                header(HttpHeaders.UserAgent, currentDownloadUserAgent())
+            }.readRawBytes()
+        }.getOrNull()?.takeIf { it.isNotEmpty() }
+    }
 
     /** Encrypted ciphertext stored on disk after a resumable download. */
     data class EncryptedFileOnDisk(

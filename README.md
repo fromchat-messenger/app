@@ -42,7 +42,7 @@ Desktop заменяет бывший Electron-клиент в репозито�
 
 Результаты: `app/desktop/build/distributions/release/`.
 
-**CI:** `.github/workflows/desktop-release.yml` на тегах `v*` и `workflow_dispatch` (обязательный input `version`), затем загрузка в GitHub Release.
+**CI:** `.github/workflows/release.yml` запускается только через `workflow_dispatch` (обязательный input `version`; тег `v*` создавать заранее не нужно — publish создаёт его сам), затем загрузка в GitHub Release.
 
 **Windows portable:** в папке виден только `FromChat Portable.exe`; остальной runtime — Hidden. Данные в Hidden `fromchat-data/` рядом с EXE.
 

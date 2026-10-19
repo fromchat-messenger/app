@@ -256,6 +256,35 @@ fun LazyListState.isChatNearBottom(threshold: Int = 2): Boolean {
     return firstVisibleItemIndex <= threshold
 }
 
+/** Lazy indices from the top spacer through the oldest rows (visual top of reversed chat). */
+const val CHAT_OLDER_HISTORY_PREFETCH_THRESHOLD = 14
+
+/** Whether the user has scrolled up near the oldest messages (visual top of the chat). */
+fun LazyListState.isChatNearOldest(threshold: Int = CHAT_OLDER_HISTORY_PREFETCH_THRESHOLD): Boolean =
+    shouldLoadOlderChatHistory(threshold)
+
+/**
+ * True when any visible row is within [threshold] of the oldest lazy index.
+ * More reliable than only checking the last visible index during flings.
+ */
+fun LazyListState.shouldLoadOlderChatHistory(threshold: Int = CHAT_OLDER_HISTORY_PREFETCH_THRESHOLD): Boolean {
+    val total = layoutInfo.totalItemsCount
+    if (total <= 1) return false
+    val visible = layoutInfo.visibleItemsInfo
+    if (visible.isEmpty()) return false
+    val triggerIndex = (total - 1 - threshold).coerceAtLeast(1)
+    return visible.any { it.index >= triggerIndex }
+}
+
+fun LazyListState.topmostVisibleLazyIndex(): Int? =
+    layoutInfo.visibleItemsInfo.maxOfOrNull { it.index }
+
+fun messageIdAtLazyListIndex(listItems: List<ChatListItem>, lazyIndex: Int): Int? {
+    if (lazyIndex <= 0) return null
+    val item = listItems.getOrNull(lazyIndex - 1) ?: return null
+    return (item as? ChatListItem.MessageRow)?.message?.id
+}
+
 /** Scrolls a reversed chat list to the visual bottom (newest messages). */
 suspend fun LazyListState.scrollChatToBottom() {
     if (layoutInfo.totalItemsCount == 0) return

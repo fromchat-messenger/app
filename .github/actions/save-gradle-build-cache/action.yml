@@ -42,8 +42,29 @@ runs:
           !app/desktop/build/distributions
           !app/desktop/build/ci
           !app/desktop/build/compose/binaries
-    - name: Save Gradle build cache
-      if: inputs.scope != 'android' && inputs.scope != 'build-jar'
+    # Restore-only for the desktop packaging scopes (linux-*, windows-package-*,
+    # macos-*): measurements showed their build trees are ~1.3–2 GB each and are
+    # dominated by installer outputs (deb/rpm/AppImage/DMG/Setup.exe), the jpackage
+    # runtime image copied up to four times, and staged ProGuard jars — all of which
+    # regenerate from the Build JAR artifact in a few minutes. Saving six 1.3–2 GB
+    # entries per run kept the repo pinned at the 10 GB cache cap and LRU-evicted
+    # the entries that actually matter (build-jar, android, windows-rust) within
+    # minutes. Their restores now fall back to the build-jar scope via restore-keys.
+    # (Note: actions/cache negated path patterns cannot exclude subtrees of an
+    # included parent directory — actions/toolkit#713 — so "!distributions" style
+    # exclusions are no-ops here; not saving at all is the only reliable trim.)
+    - name: Save Gradle build cache (windows-tools only)
+      if: >-
+        inputs.scope != 'android' && inputs.scope != 'build-jar' &&
+        !startsWith(inputs.scope, 'linux-') &&
+        !startsWith(inputs.scope, 'windows-package-') &&
+        !startsWith(inputs.scope, 'macos-')
+      # Path list must stay byte-identical to the generic restore list in
+      # cache-gradle-build: actions/cache refuses to save when the restore and save
+      # paths differ, and the version stamp (hash of the path list) gates any later
+      # restore — including cross-scope restore-key fallbacks. compose/tmp is kept
+      # here on purpose (holds ProGuard's output jars; small); see the matching
+      # comment in cache-gradle-build.
       uses: actions/cache/save@v5
       continue-on-error: true
       with:
@@ -57,4 +78,3 @@ runs:
           !app/desktop/build/distributions
           !app/desktop/build/ci
           !app/desktop/build/compose/binaries
-          !app/desktop/build/compose/tmp

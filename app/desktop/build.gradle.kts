@@ -2,6 +2,7 @@ import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.file.Files
+import java.nio.file.Path
 import java.util.zip.ZipFile
 
 plugins {
@@ -778,16 +779,24 @@ private fun openjfxClassifier(): String {
 
 val runningOnMacOs = System.getProperty("os.name").orEmpty().lowercase().contains("mac")
 
+private val ciDmgToolsReady =
+    providers.environmentVariable("FROMCHAT_DMG_TOOLS_READY").map { it == "1" }.orElse(false)
+
+val dmgPlaywrightBrowsersDir = dmgBackgroundDir.dir(".playwright-browsers")
+
 val installDmgBackgroundTools = tasks.register<Exec>("installDmgBackgroundTools") {
-    onlyIf { runningOnMacOs }
+    onlyIf { runningOnMacOs && !ciDmgToolsReady.get() }
     workingDir = dmgBackgroundDir.asFile
     inputs.file(dmgBackgroundDir.file("package.json"))
     inputs.file(dmgBackgroundDir.file("package-lock.json"))
     outputs.dir(dmgBackgroundDir.dir("node_modules/playwright"))
+    outputs.dir(dmgPlaywrightBrowsersDir)
     commandLine(
         "bash",
         "-lc",
         """
+        export PLAYWRIGHT_BROWSERS_PATH="${dmgPlaywrightBrowsersDir.asFile.absolutePath}"
+        mkdir -p "${'$'}PLAYWRIGHT_BROWSERS_PATH"
         if [ ! -f node_modules/playwright/package.json ]; then
           npm install --no-fund --no-audit
         fi
@@ -825,11 +834,18 @@ val exportDmgBackground = tasks.register<Exec>("exportDmgBackground") {
     val stage = dmgStageDir.get().asFile.absolutePath
     val dist = dmgDistDir.get().asFile.absolutePath
     inputs.dir(dmgStageDir)
+    inputs.file(dmgBackgroundDir.file("export.mjs"))
+    inputs.file(dmgBackgroundDir.file("dmg-config.json"))
     outputs.dir(dmgDistDir)
+    outputs.file(dmgDistDir.map { it.file("icon-positions.json") })
+    outputs.file(dmgDistDir.map { it.file("dmg-background@2x.png") })
     commandLine(
         "bash",
         "-lc",
-        "node export.mjs '${stage}' '${dist}'",
+        """
+        export PLAYWRIGHT_BROWSERS_PATH="${dmgPlaywrightBrowsersDir.asFile.absolutePath}"
+        node export.mjs '${stage}' '${dist}'
+        """.trimIndent(),
     )
 }
 
@@ -963,6 +979,39 @@ if (runningOnLinux && skikoVirglWorkaround.get()) {
 }
 
 
+/** AppDir icons for appimagetool (file manager + embedded AppImage icon). */
+private fun stageLinuxAppImageIcons(stage: File, iconSrc: File) {
+    if (!iconSrc.isFile) {
+        logger.warn("AppImage icon missing at ${iconSrc.absolutePath}")
+        return
+    }
+    val rootIcon = stage.resolve("fromchat.png")
+    iconSrc.copyTo(rootIcon, overwrite = true)
+    stage.resolve(".DirIcon").let { link ->
+        link.delete()
+        Files.createSymbolicLink(link.toPath(), Path.of("fromchat.png"))
+    }
+    for (size in listOf("256x256", "512x512")) {
+        val dest = stage.resolve("usr/share/icons/hicolor/$size/apps/fromchat.png")
+        dest.parentFile.mkdirs()
+        iconSrc.copyTo(dest, overwrite = true)
+    }
+}
+
+private fun writeLinuxAppImageDesktopFile(stage: File) {
+    stage.resolve("fromchat.desktop").writeText(
+        """
+        [Desktop Entry]
+        Name=FromChat
+        Exec=AppRun
+        Icon=fromchat
+        Type=Application
+        Categories=Network;InstantMessaging;
+        StartupWMClass=FromChat
+        """.trimIndent() + "\n",
+    )
+}
+
 val releaseAppImageDir = layout.buildDirectory.dir("compose/binaries/main-release/app/FromChat")
 val debugAppImageDir = layout.buildDirectory.dir("compose/binaries/main/app/FromChat")
 val linuxAppImageOutput = desktopDistDir.map {
@@ -1086,28 +1135,23 @@ val packageLinuxAppImage = tasks.register<Exec>("packageLinuxAppImage") {
         val appRun = stage.resolve("AppRun")
         val rel = stage.toPath().relativize(nestedExe.toPath()).toString()
         appRun.writeText(
-            $$"""
+            """
             #!/bin/sh
-            SELF="$(dirname "$(readlink -f "$0")")"
-            exec "$SELF/$$rel" "$@"
+            SELF="${'$'}(dirname "${'$'}(readlink -f "${'$'}0")")"
+            case "${'$'}(uname -m)" in
+              aarch64|arm64)
+                if [ -z "${'$'}MESA_GL_VERSION_OVERRIDE" ]; then
+                  export MESA_GL_VERSION_OVERRIDE=3.0
+                fi
+                ;;
+            esac
+            exec "${'$'}SELF/$rel" "${'$'}@"
             """.trimIndent() + "\n",
         )
         appRun.setExecutable(true)
         nestedExe.setExecutable(true)
-        stage.resolve("fromchat.desktop").writeText(
-            """
-            [Desktop Entry]
-            Name=FromChat
-            Exec=AppRun
-            Icon=fromchat
-            Type=Application
-            Categories=Network;InstantMessaging;
-            """.trimIndent() + "\n",
-        )
-        val iconSrc = desktopWindowIconPng.asFile
-        if (iconSrc.isFile) {
-            iconSrc.copyTo(stage.resolve("fromchat.png"), overwrite = true)
-        }
+        writeLinuxAppImageDesktopFile(stage)
+        stageLinuxAppImageIcons(stage, desktopWindowIconPng.asFile)
         commandLine(
             "bash",
             "-lc",

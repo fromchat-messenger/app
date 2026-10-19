@@ -1,0 +1,27 @@
+name: Restore JVM compile outputs
+description: Verify JVM compile outputs from the Build JAR artifact are present before packaging
+
+runs:
+  using: composite
+  steps:
+    - name: Verify JVM compile outputs
+      shell: bash
+      run: |
+        set -euo pipefail
+        missing=false
+        for path in \
+          app/shared/build/classes/kotlin/jvm/main \
+          app/shared/build/generated/sources/appBuildInfo/kotlin \
+          utils/shared/build/classes/kotlin/jvm/main \
+          app/desktop/build/classes/kotlin/main
+        do
+          if [[ ! -d "$path" ]]; then
+            echo "Missing $path" >&2
+            missing=true
+          fi
+        done
+        if [[ "$missing" == "true" ]]; then
+          echo "JVM compile outputs artifact is incomplete" >&2
+          exit 1
+        fi
+        echo "JVM compile outputs verified"

@@ -46,7 +46,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -96,7 +95,6 @@ import ru.fromchat.attachment_upload_failed_too_large
 import ru.fromchat.cd_attachment_retry
 import ru.fromchat.cd_attachment_upload_retry
 import ru.fromchat.ui.chat.MessageGroupInfo
-import ru.fromchat.ui.chat.components.AttachmentLeadingTransitionMs
 import ru.fromchat.ui.chat.components.CancellableAttachmentProgressIndicator
 import ru.fromchat.ui.chat.components.ChatFileAttachmentTile
 import ru.fromchat.ui.chat.components.FileAttachmentLeadingSlot
@@ -111,12 +109,7 @@ import ru.fromchat.ui.components.Text
 import com.pr0gramm3r101.utils.scaleOnPress
 
 private const val BLUR_FADE_MS = 450
-
-private enum class AttachmentTileVisual {
-    Empty,
-    Thumb,
-    Full,
-}
+private const val TILE_OVERLAY_FADE_MS = 180
 
 internal fun isImageFilename(name: String): Boolean =
     name.endsWith(".png", true) || name.endsWith(".jpg", true) ||
@@ -368,42 +361,64 @@ private fun ChatImageTileContent(
     val thumbnailBytes = remember(thumbnailBase64) {
         thumbnailBase64?.let { decodeAttachmentThumbnailBase64(it) }
     }
-    val initialPlaceholder = remember(bitmapStateKey) {
+    val publicThumbFilePath = remember(serverFile, envelope) {
+        if (envelope != null) null
+        else serverFile?.path?.takeIf { path ->
+            path.contains("/normal/") || path.contains("/uploads/")
+        }
+    }
+    val initialPlaceholder = remember(
+        bitmapStateKey,
+        placeholderMemoryKey,
+        thumbnailBytes,
+        messageId,
+        fileIndex,
+        cacheClientId,
+    ) {
         DecryptedImageCache.peekPlaceholderThumb(
             memoryKey = placeholderMemoryKey,
             messageId = messageId,
             fileIndex = fileIndex,
             clientMessageId = cacheClientId,
-        )
+        ) ?: DecryptedImageCache.decodeEmbeddedPlaceholderThumb(placeholderMemoryKey, thumbnailBytes)
     }
-    val placeholderBitmap by produceState(
-        initialValue = initialPlaceholder,
+    var placeholderBitmap by remember(bitmapStateKey) {
+        mutableStateOf(initialPlaceholder)
+    }
+    var placeholderResolveAttempted by remember(bitmapStateKey) {
+        mutableStateOf(initialPlaceholder != null)
+    }
+    LaunchedEffect(
         placeholderMemoryKey,
-        decryptCacheKey,
         thumbnailBytes,
+        publicThumbFilePath,
         messageId,
         fileIndex,
         cacheClientId,
-        diskCacheUri,
-        displayLocalUri,
     ) {
-        value = DecryptedImageCache.decodePlaceholderThumb(
-            memoryKey = placeholderMemoryKey,
-            messageId = messageId,
-            fileIndex = fileIndex,
-            clientMessageId = cacheClientId,
-            serverThumbBytes = thumbnailBytes,
-        ) ?: initialPlaceholder
+        if (placeholderBitmap != null) {
+            placeholderResolveAttempted = true
+            return@LaunchedEffect
+        }
+        val decoded = withContext(Dispatchers.Default) {
+            DecryptedImageCache.decodePlaceholderThumb(
+                memoryKey = placeholderMemoryKey,
+                messageId = messageId,
+                fileIndex = fileIndex,
+                clientMessageId = cacheClientId,
+                serverThumbBytes = thumbnailBytes,
+                publicNormalFilePath = publicThumbFilePath,
+            )
+        }
+        if (decoded != null) {
+            placeholderBitmap = decoded
+        }
+        placeholderResolveAttempted = true
     }
     val hasFullPreview = fullBitmap != null
     val hasPlaceholder = placeholderBitmap != null
     var decryptFinished by remember(bitmapStateKey) {
         mutableStateOf(fullBitmap != null || placeholderBitmap != null)
-    }
-    val tileVisual = when {
-        fullBitmap != null -> AttachmentTileVisual.Full
-        placeholderBitmap != null -> AttachmentTileVisual.Thumb
-        else -> AttachmentTileVisual.Empty
     }
     val showOutboundBlurOverlay = (isOutboundPending || isUploading || awaitingServerAck) &&
         (hasLocalSource || hasFullPreview || hasPlaceholder)
@@ -478,6 +493,19 @@ private fun ChatImageTileContent(
             "diskCache" to (DecryptedImageCache.getCached(messageId, fileIndex, cacheClientId)?.take(48) ?: "null"),
             "target" to "${decodeTarget.widthPx}x${decodeTarget.heightPx}",
         )
+
+        if (placeholderBitmap == null && !isOutboundPending && !isUploading && !awaitingServerAck) {
+            withContext(Dispatchers.Default) {
+                DecryptedImageCache.decodePlaceholderThumb(
+                    memoryKey = placeholderMemoryKey,
+                    messageId = messageId,
+                    fileIndex = fileIndex,
+                    clientMessageId = cacheClientId,
+                    serverThumbBytes = thumbnailBytes,
+                    publicNormalFilePath = publicThumbFilePath,
+                )
+            }?.let { placeholderBitmap = it }
+        }
 
         fun acceptFull(bitmap: ImageBitmap, path: String?) {
             fullBitmap = bitmap
@@ -726,18 +754,22 @@ private fun ChatImageTileContent(
     val isDownloadingFullImage = !treatAsOutbound && fullBitmap == null &&
         (downloadProgress != null || isAwaitingNetworkFull) && !suppressNetworkChrome
     val showDownloadProgressOverlay = isDownloadingFullImage && !showOutboundBlurOverlay &&
-        !downloadCancelled && !hasLocalSource && placeholderBitmap == null
+        !downloadCancelled && !hasLocalSource &&
+        placeholderResolveAttempted && placeholderBitmap == null
     val showDownloadCancelledOverlay = downloadCancelled && fullBitmap == null && !treatAsOutbound &&
         !suppressNetworkChrome
     val showLoadFailedOverlay = decryptFailed && fullBitmap == null && !treatAsOutbound &&
         !downloadCancelled && !suppressNetworkChrome
-    val showSpinnerOnly = fullBitmap == null && placeholderBitmap == null && !hasLocalSource &&
+    val showSpinnerOnly = treatAsOutbound &&
+        fullBitmap == null &&
+        placeholderBitmap == null &&
+        !hasLocalSource &&
         !suppressNetworkChrome &&
         !showLoadFailedOverlay &&
         !showOutboundBlurOverlay &&
         !showDownloadProgressOverlay &&
         !showDownloadCancelledOverlay &&
-        (!decryptFinished && !treatAsOutbound)
+        !decryptFinished
 
     Box(
         modifier = Modifier
@@ -755,68 +787,57 @@ private fun ChatImageTileContent(
     ) {
         when {
             else -> {
-                AnimatedContent(
-                    targetState = tileVisual,
-                    modifier = Modifier.fillMaxSize(),
-                    transitionSpec = {
-                        fadeIn(tween(BLUR_FADE_MS, easing = FastOutSlowInEasing))
-                            .togetherWith(fadeOut(tween(BLUR_FADE_MS, easing = FastOutSlowInEasing)))
-                    },
-                    label = "attachment_tile_image",
-                ) { visual ->
-                    when (visual) {
-                        AttachmentTileVisual.Empty -> {
-                            Box(
+                Box(modifier = Modifier.fillMaxSize()) {
+                    if (fullBitmap == null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(tilePlaceholderColor),
+                        )
+                    }
+                    if (fullBitmap == null) {
+                        placeholderBitmap?.let { thumb ->
+                            val blurWhileLoadingFull = isDownloadingFullImage || isAwaitingNetworkFull
+                            CachedAttachmentImage(
+                                bitmap = thumb,
+                                contentDescription = serverFile?.name,
+                                contentScale = imageContentScale,
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .background(tilePlaceholderColor),
+                                    .then(
+                                        if (blurWhileLoadingFull) {
+                                            Modifier.hazeSource(thumbHazeState)
+                                        } else {
+                                            Modifier
+                                        },
+                                    ),
                             )
-                        }
-                        AttachmentTileVisual.Thumb -> {
-                            placeholderBitmap?.let { thumb ->
-                                Box(modifier = Modifier.fillMaxSize()) {
-                                    CachedAttachmentImage(
-                                        bitmap = thumb,
-                                        contentDescription = serverFile?.name,
-                                        contentScale = imageContentScale,
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .hazeSource(thumbHazeState),
-                                    )
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .hazeBlur(
-                                                input = HazeInput.Backdrop(thumbHazeState),
-                                                style = thumbOverlayHazeStyle,
-                                            ),
-                                    )
-                                }
-                            }
-                        }
-                        AttachmentTileVisual.Full -> {
-                            fullBitmap?.let { full ->
-                                CachedAttachmentImage(
-                                    bitmap = full,
-                                    contentDescription = serverFile?.name,
-                                    contentScale = imageContentScale,
-                                    modifier = Modifier.fillMaxSize(),
+                            if (blurWhileLoadingFull) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .hazeBlur(
+                                            input = HazeInput.Backdrop(thumbHazeState),
+                                            style = thumbOverlayHazeStyle,
+                                        ),
                                 )
-                                LaunchedEffect(full) { onFullyLoaded(true) }
                             }
                         }
+                    }
+                    fullBitmap?.let { full ->
+                        CachedAttachmentImage(
+                            bitmap = full,
+                            contentDescription = serverFile?.name,
+                            contentScale = imageContentScale,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        LaunchedEffect(full) { onFullyLoaded(true) }
                     }
                 }
                 AnimatedVisibility(
                     visible = showDownloadProgressOverlay,
-                    enter = scaleIn(
-                        initialScale = 0.82f,
-                        animationSpec = tween(AttachmentLeadingTransitionMs, easing = FastOutSlowInEasing),
-                    ) + fadeIn(tween(AttachmentLeadingTransitionMs, easing = FastOutSlowInEasing)),
-                    exit = scaleOut(
-                        targetScale = 0.82f,
-                        animationSpec = tween(AttachmentLeadingTransitionMs, easing = FastOutSlowInEasing),
-                    ) + fadeOut(tween(AttachmentLeadingTransitionMs, easing = FastOutSlowInEasing)),
+                    enter = fadeIn(tween(TILE_OVERLAY_FADE_MS, easing = FastOutSlowInEasing)),
+                    exit = fadeOut(tween(TILE_OVERLAY_FADE_MS, easing = FastOutSlowInEasing)),
                 ) {
                     Box(
                         modifier = Modifier
@@ -843,14 +864,8 @@ private fun ChatImageTileContent(
                 }
                 AnimatedVisibility(
                     visible = showDownloadCancelledOverlay,
-                    enter = scaleIn(
-                        initialScale = 0.82f,
-                        animationSpec = tween(AttachmentLeadingTransitionMs, easing = FastOutSlowInEasing),
-                    ) + fadeIn(tween(AttachmentLeadingTransitionMs, easing = FastOutSlowInEasing)),
-                    exit = scaleOut(
-                        targetScale = 0.82f,
-                        animationSpec = tween(AttachmentLeadingTransitionMs, easing = FastOutSlowInEasing),
-                    ) + fadeOut(tween(AttachmentLeadingTransitionMs, easing = FastOutSlowInEasing)),
+                    enter = fadeIn(tween(TILE_OVERLAY_FADE_MS, easing = FastOutSlowInEasing)),
+                    exit = fadeOut(tween(TILE_OVERLAY_FADE_MS, easing = FastOutSlowInEasing)),
                 ) {
                     DownloadCancelledImageOverlay(
                         isAuthor = isAuthor,
@@ -879,6 +894,7 @@ private fun ChatImageTileContent(
                             ApiClient.clearPartialEncryptedDownload(decryptCacheKey)
                             loadAttempt++
                         },
+                        obscureContent = placeholderBitmap == null,
                         modifier = Modifier.matchParentSize(),
                     )
                 }
@@ -1214,6 +1230,7 @@ private fun AttachmentUploadFailedOverlay(
 private fun AttachmentImageLoadFailedOverlay(
     isAuthor: Boolean,
     onRetry: () -> Unit,
+    obscureContent: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val retryCd = stringResource(Res.string.cd_attachment_retry)
@@ -1225,8 +1242,13 @@ private fun AttachmentImageLoadFailedOverlay(
         scheme.surfaceVariant
     }
     val iconTint = messageBubbleContentColor(isAuthor)
+    val overlayBackground = if (obscureContent) {
+        background
+    } else {
+        scheme.scrim.copy(alpha = 0.42f)
+    }
     Box(
-        modifier = modifier.background(background),
+        modifier = modifier.background(overlayBackground),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

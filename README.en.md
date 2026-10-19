@@ -42,7 +42,7 @@ Build release packages on the matching OS (or via CI):
 
 Outputs land under `app/desktop/build/distributions/release/`.
 
-**CI:** `.github/workflows/desktop-release.yml` runs on `v*` tags and `workflow_dispatch` (required `version` input), then uploads assets to a GitHub Release.
+**CI:** `.github/workflows/release.yml` runs on `workflow_dispatch` only (required `version` input; the `v*` tag does not need to exist beforehand — the publish step creates it), then uploads assets to a GitHub Release.
 
 **Windows portable:** extracts into a folder where only `FromChat Portable.exe` is visible; other runtime files are Hidden. Data is stored in a Hidden `fromchat-data/` next to that EXE (`-Dfromchat.portable=true`).
 

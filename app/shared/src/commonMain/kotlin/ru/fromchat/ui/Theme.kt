@@ -1,7 +1,6 @@
 package ru.fromchat.ui
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
@@ -57,12 +56,11 @@ expect fun getColorScheme(darkTheme: Boolean, dynamicColor: Boolean): ColorSchem
 expect fun ApplySystemBarTheme(darkTheme: Boolean, surfaceColor: Color)
 
 @Composable
+expect fun rememberPlatformSystemDarkTheme(): Boolean
+
+@Composable
 fun FromChatTheme(
-    darkTheme: Boolean = when (theme) {
-        Theme.AsSystem -> isSystemInDarkTheme()
-        Theme.Light -> false
-        Theme.Dark -> true
-    },
+    darkTheme: Boolean = isAppInDarkTheme(),
     dynamicColor: Boolean = dynamicThemeEnabled,
     content: @Composable () -> Unit
 ) {
@@ -154,8 +152,9 @@ fun FromChatTheme(
 
 @Composable
 fun isAppInDarkTheme(): Boolean {
+    val systemDark = rememberPlatformSystemDarkTheme()
     return when (theme) {
-        Theme.AsSystem -> isSystemInDarkTheme()
+        Theme.AsSystem -> systemDark
         Theme.Light -> false
         Theme.Dark -> true
     }
