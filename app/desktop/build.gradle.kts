@@ -429,7 +429,7 @@ fun resolvePackagingJdkHome(): String {
 
 compose.desktop {
     application {
-        mainClass = "ru.fromchat.desktop.MainKt"
+        mainClass = "FromChat"
         javaHome = resolvePackagingJdkHome()
         // Application-level, and per host: an unqualified jvmArgs() inside
         // nativeDistributions.<platform> { } lands here anyway and then leaks into every platform's
@@ -928,6 +928,40 @@ val desktopVersionName = rootProject.extra["versionName"] as String
 val desktopDistDir = layout.buildDirectory.dir("distributions/release")
 val runningOnLinux = System.getProperty("os.name").orEmpty().lowercase().contains("linux")
 val runningOnWindows = System.getProperty("os.name").orEmpty().lowercase().contains("win")
+
+/**
+ * Skiko's Skia is built GLES-only for linux/arm64 (skia_gl_standard="gles"), so its
+ * GPU blacklist rejects working hardware contexts (notably Parallels virgl). The launch
+ * environment caps the reported Mesa GL version (MESA_GL_VERSION_OVERRIDE=3.0, set by
+ * [ru.fromchat.desktop.MainKt]); this build-time patch additionally shadows the checker
+ * inside this app's own jar, which precedes skiko-awt.jar on the jpackage classpath.
+ * The VM/dev environment needs it and real-Linux users gain a working GPU path, so it
+ * is on by default on Linux; opt out with -PskikoVirglWorkaround=false.
+ */
+val skikoVirglWorkaround =
+    providers.gradleProperty("skikoVirglWorkaround").map { it != "false" }.orElse(true)
+
+if (runningOnLinux && skikoVirglWorkaround.get()) {
+    val skikoPatchClasses = layout.buildDirectory.dir("skiko-virgl-patch-classes")
+    val compileSkikoVirglPatch = tasks.register<JavaCompile>("compileSkikoVirglPatch") {
+        // The patch class shadows org.jetbrains.skiko.GraphicsApi_jvmKt; compiling against
+        // the real skiko jar fails the build if a future skiko changes its signature.
+        description = "Compile the shadowed skiko GPU-check for the linux/arm64 GLES Skia."
+        source = fileTree("skiko-patch")
+        classpath = configurations
+            .getByName("runtimeClasspath")
+            .filter { it.name.startsWith("skiko-awt-") }
+        destinationDirectory.set(skikoPatchClasses)
+        options.release.set(17)
+    }
+    tasks.named<org.gradle.jvm.tasks.Jar>("jar").configure {
+        // desktop-*.jar is the FIRST app.classpath entry a jpackage deb writes, so a
+        // class of the same FQ-name wins over the copy inside skiko-awt.jar.
+        dependsOn(compileSkikoVirglPatch)
+        from(skikoPatchClasses)
+    }
+}
+
 
 val releaseAppImageDir = layout.buildDirectory.dir("compose/binaries/main-release/app/FromChat")
 val debugAppImageDir = layout.buildDirectory.dir("compose/binaries/main/app/FromChat")

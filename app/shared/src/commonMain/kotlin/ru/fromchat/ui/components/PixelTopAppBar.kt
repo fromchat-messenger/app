@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -111,7 +111,7 @@ fun PixelTopAppBar(
     title: String,
     modifier: Modifier = Modifier,
     topPadding: Dp = 0.dp,
-    leadingIcon: ImageVector = Icons.Default.Menu,
+    leadingIcon: ImageVector = Icons.Rounded.Menu,
     leadingTint: Color = MaterialTheme.colorScheme.surfaceBright,
     leadingSubTint: Color = MaterialTheme.colorScheme.onSurface,
     onLeadingAction: (() -> Unit)? = null,

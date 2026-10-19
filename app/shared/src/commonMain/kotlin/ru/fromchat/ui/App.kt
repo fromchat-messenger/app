@@ -45,6 +45,7 @@ import com.pr0gramm3r101.utils.widthSizeClass
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
+import kotlin.time.Clock
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
@@ -92,6 +93,8 @@ import ru.fromchat.ui.chat.ChatFullscreenImageController
 import ru.fromchat.ui.chat.ChatFullscreenImageHost
 import ru.fromchat.ui.chat.LocalChatFullscreenImageController
 import ru.fromchat.ui.calls.CallOverlay
+import ru.fromchat.ui.chat.panels.dm.currentDmChatUserId
+import ru.fromchat.ui.chat.panels.dm.isCurrentDmChat
 import ru.fromchat.ui.chat.panels.dm.navigateToDmChat
 import ru.fromchat.ui.chat.panels.publicchat.PublicChatNav
 import ru.fromchat.ui.chat.panels.publicchat.navigateToPublicChat
@@ -111,8 +114,11 @@ import ru.fromchat.ui.main.MAIN_PAGE_PROFILE
 import ru.fromchat.ui.main.MAIN_PAGE_SETTINGS
 import ru.fromchat.ui.main.isCurrentMainDetailRoute
 import ru.fromchat.ui.main.MainScreen
+import ru.fromchat.ui.main.NavTransitionMuting
 import ru.fromchat.ui.main.chats.ChatsSearchScreen
 import ru.fromchat.ui.main.conversationDetailDestinations
+import ru.fromchat.ui.main.mutedEnterTransition
+import ru.fromchat.ui.main.mutedExitTransition
 import ru.fromchat.ui.main.navigateReplacingMainDetail
 import ru.fromchat.ui.main.profileDetailDestinations
 import ru.fromchat.ui.main.settings.SettingsRoutes
@@ -441,6 +447,8 @@ fun App(
             // rememberPagerState initialPage and landed on Chats.
             var previousDesktopListDetail by remember { mutableStateOf(isDesktopListDetail) }
             var openProfileInSettingsAfterExpand by remember { mutableStateOf<String?>(null) }
+            // Open DM chat carried over across the 2-pane ⇆ compact switch. 0 = none.
+            var carryOpenChatAfterModeSwitch by remember { mutableIntStateOf(0) }
             if (previousDesktopListDetail != isDesktopListDetail) {
                 val wasTab = pendingMainTab
                 previousDesktopListDetail = isDesktopListDetail
@@ -463,6 +471,54 @@ fun App(
                     }
                     else -> openProfileInSettingsAfterExpand = null
                 }
+
+                // Chat continuity across the mode switch: an open DM keeps its place,
+                // opening the way it does on the target mode but without transitions.
+                val rootOpenDm = navController.currentDmChatUserId()
+                val detailOpenDm = chatsDetailNavController.currentDmChatUserId()
+                when {
+                    // Shrinking with a chat open in the detail pane — open it full-screen.
+                    !isDesktopListDetail && rootOpenDm == null && detailOpenDm != null -> {
+                        NavTransitionMuting.mute()
+                        carryOpenChatAfterModeSwitch = detailOpenDm
+                    }
+                    // Expanding with a chat open full-screen — re-open it in the pane.
+                    isDesktopListDetail && rootOpenDm != null && rootOpenDm != detailOpenDm -> {
+                        pendingMainTab = MAIN_PAGE_CHATS
+                        NavTransitionMuting.mute()
+                        carryOpenChatAfterModeSwitch = rootOpenDm
+                    }
+                    else -> carryOpenChatAfterModeSwitch = 0
+                }
+            }
+            // The detail NavHost / graph may need a few frames to exist after an expand;
+            // retry until the navigation lands (same pattern as the profile carry-over).
+            LaunchedEffect(carryOpenChatAfterModeSwitch, isDesktopListDetail) {
+                val userId = carryOpenChatAfterModeSwitch
+                if (userId <= 0) return@LaunchedEffect
+                val deadline = Clock.System.now() + 3_000.milliseconds
+                while (Clock.System.now() < deadline) {
+                    val landed = if (isDesktopListDetail) {
+                        runCatching {
+                            if (navController.currentBackStackEntry?.destination?.route != "chat") {
+                                navController.popBackStack("chat", inclusive = false)
+                            }
+                        }.isSuccess &&
+                            runCatching {
+                                chatsDetailNavController.navigateToDmChat(userId)
+                            }.isSuccess && chatsDetailNavController.isCurrentDmChat(userId)
+                    } else {
+                        runCatching {
+                            navController.navigateToDmChat(userId)
+                        }.isSuccess && navController.isCurrentDmChat(userId)
+                    }
+                    if (landed) {
+                        carryOpenChatAfterModeSwitch = 0
+                        break
+                    }
+                    delay(50.milliseconds)
+                }
+                carryOpenChatAfterModeSwitch = 0
             }
             // The settings detail NavHost may only just be composing after an expand;
             // retry until its graph exists and the navigation lands.
@@ -621,10 +677,18 @@ fun App(
                                     navController = navController,
                                     startDestination = startDestination!!,
                                     modifier = modifier,
-                                    enterTransition = { rootNavEnterTransition() },
-                                    exitTransition = { rootNavExitTransition() },
-                                    popEnterTransition = { rootNavPopEnterTransition() },
-                                    popExitTransition = { rootNavPopExitTransition() },
+                                    enterTransition = {
+                                        mutedEnterTransition(rootNavEnterTransition())
+                                    },
+                                    exitTransition = {
+                                        mutedExitTransition(rootNavExitTransition())
+                                    },
+                                    popEnterTransition = {
+                                        mutedEnterTransition(rootNavPopEnterTransition())
+                                    },
+                                    popExitTransition = {
+                                        mutedExitTransition(rootNavPopExitTransition())
+                                    },
                                 ) {
                                     composable("welcome") {
                                         WelcomeScreen(

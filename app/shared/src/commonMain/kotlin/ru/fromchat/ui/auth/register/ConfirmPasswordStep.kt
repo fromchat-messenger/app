@@ -3,9 +3,9 @@ package ru.fromchat.ui.auth.register
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.VerifiedUser
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.rounded.VerifiedUser
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -78,7 +78,7 @@ internal fun confirmPasswordStepPage(
 
     return ExpressiveStepPage(
         hero = ExpressiveHeroSpec(
-            icon = Icons.Filled.VerifiedUser,
+            icon = Icons.Rounded.VerifiedUser,
             polygon = MaterialShapes.VerySunny.normalized(),
             containerColor = colorScheme.tertiaryContainer,
             contentColor = colorScheme.onTertiaryContainer,
@@ -107,7 +107,7 @@ internal fun confirmPasswordStepPage(
                 trailingIcon = {
                     IconButton(onClick = { visible = !visible }) {
                         Icon(
-                            imageVector = if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                            imageVector = if (visible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
                             contentDescription = stringResource(
                                 if (visible) Res.string.hide_password else Res.string.show_password,
                             ),

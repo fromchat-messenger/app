@@ -3,17 +3,16 @@ package ru.fromchat.ui.chat.components
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
@@ -21,6 +20,10 @@ import ru.fromchat.cd_close
 import ru.fromchat.ui.chat.ExpressiveUploadIndicator
 import com.pr0gramm3r101.utils.scaleOnPress
 
+/**
+ * Cancellable image-attachment download / upload progress. The cancel icon sits inside
+ * the progress circle with no scrim behind it.
+ */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun CancellableAttachmentProgressIndicator(
@@ -29,11 +32,9 @@ internal fun CancellableAttachmentProgressIndicator(
     modifier: Modifier = Modifier,
     indicatorColor: Color? = null,
     trackColorOverride: Color? = null,
-    /** Dark circle behind the close icon — only for image attachment download UI. */
-    showCloseScrim: Boolean = false,
+    iconSize: Dp = 24.dp,
 ) {
     val closeLabel = stringResource(Res.string.cd_close)
-    val scrim = MaterialTheme.colorScheme.scrim.copy(alpha = 0.42f)
     Box(
         modifier = modifier
             .scaleOnPress(
@@ -49,31 +50,11 @@ internal fun CancellableAttachmentProgressIndicator(
             indicatorColor = indicatorColor,
             trackColorOverride = trackColorOverride,
         )
-        if (showCloseScrim) {
-            Surface(
-                shape = CircleShape,
-                color = scrim,
-                modifier = Modifier.size(28.dp),
-            ) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Close,
-                        contentDescription = closeLabel,
-                        modifier = Modifier.size(18.dp),
-                        tint = Color.White,
-                    )
-                }
-            }
-        } else {
-            Icon(
-                imageVector = Icons.Rounded.Close,
-                contentDescription = closeLabel,
-                modifier = Modifier.size(22.dp),
-                tint = indicatorColor ?: MaterialTheme.colorScheme.primary,
-            )
-        }
+        Icon(
+            imageVector = Icons.Rounded.Close,
+            contentDescription = closeLabel,
+            modifier = Modifier.size(iconSize),
+            tint = indicatorColor ?: MaterialTheme.colorScheme.primary,
+        )
     }
 }

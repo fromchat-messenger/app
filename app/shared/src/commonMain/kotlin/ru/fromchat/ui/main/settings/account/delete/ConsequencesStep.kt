@@ -5,7 +5,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.AlternateEmail
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Delete
@@ -47,7 +47,7 @@ internal fun consequencesStepPage(
 
     return ExpressiveStepPage(
         hero = ExpressiveHeroSpec(
-            icon = Icons.Filled.DeleteForever,
+            icon = Icons.Rounded.DeleteForever,
             polygon = MaterialShapes.Cookie4Sided.normalized(),
             containerColor = scheme.errorContainer,
             contentColor = scheme.onErrorContainer,

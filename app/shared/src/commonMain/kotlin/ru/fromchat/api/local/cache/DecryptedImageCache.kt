@@ -453,9 +453,18 @@ object DecryptedImageCache {
 
         ensureAttachmentDownloadActive(key)
         if (downloaded.path != outputPath) {
+            // Pass the plain path: a "file://" URI requires percent-encoded paths and the
+            // data dir often contains spaces ("Application Support", "FromChat Beta").
             runCatching {
-                copyOutboundFileToPath("file://${downloaded.path}", outputPath)
+                copyOutboundFileToPath(downloaded.path, outputPath)
             }.onFailure {
+                AttachmentMediaLog.download(
+                    "plain_persist_copy_failed",
+                    "key" to key,
+                    "src" to downloaded.path,
+                    "dst" to outputPath,
+                    "err" to (it.message ?: it::class.simpleName),
+                )
                 ApiClient.clearPartialEncryptedDownload(key)
                 AttachmentDownloadNotifier.emit(
                     AttachmentDownloadProgress.Failed(key, "cache_write_failed"),

@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Contacts
+import androidx.compose.material.icons.rounded.Contacts
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -110,7 +110,7 @@ fun ContactsTab() {
                         }
                     }
                     Icon(
-                        imageVector = Icons.Filled.Contacts,
+                        imageVector = Icons.Rounded.Contacts,
                         contentDescription = null,
                         modifier = Modifier.size(88.dp),
                         tint = tonal.contentColor

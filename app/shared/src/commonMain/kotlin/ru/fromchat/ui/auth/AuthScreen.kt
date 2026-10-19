@@ -3,7 +3,7 @@ package ru.fromchat.ui.auth
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
@@ -229,7 +229,7 @@ internal fun ChangeServerButton(modifier: Modifier = Modifier) {
     TextCta(
         onClick = { navController.navigate("serverConfig") },
         modifier = Modifier.padding(horizontal = SettingsStepHorizontalPadding).then(modifier),
-        leadingIcon = Icons.Filled.Storage,
+        leadingIcon = Icons.Rounded.Storage,
     ) {
         Text(stringResource(Res.string.change_server))
     }

@@ -45,25 +45,25 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
-import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.CleaningServices
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Compress
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Report
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.automirrored.filled.Subject
-import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.CleaningServices
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Compress
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Error
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Report
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.automirrored.rounded.Subject
+import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DropdownMenu
@@ -755,7 +755,7 @@ fun LogsScreen() {
                     alpha = fabReveal,
                     onClick = { scrollToLatestLogs() },
                     contentDescription = scrollToBottomCd,
-                    icon = Icons.Default.KeyboardArrowDown,
+                    icon = Icons.Rounded.KeyboardArrowDown,
                     small = true,
                 )
                 LogsAnimatedFab(
@@ -763,7 +763,7 @@ fun LogsScreen() {
                     alpha = fabReveal,
                     onClick = { navController.navigate(SettingsRoutes.LogFiles) },
                     contentDescription = stringResource(Res.string.logs_browse_files_cd),
-                    icon = Icons.Default.Folder,
+                    icon = Icons.Rounded.Folder,
                 )
             }
         },
@@ -783,7 +783,7 @@ fun LogsScreen() {
                                 enabled = selectionProgress < 1f && searchProgress < 1f,
                             ) {
                                 Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                                     contentDescription = stringResource(Res.string.back),
                                 )
                             }
@@ -813,7 +813,7 @@ fun LogsScreen() {
                                 },
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Share,
+                                    imageVector = Icons.Rounded.Share,
                                     contentDescription = shareLabel,
                                 )
                             }
@@ -824,7 +824,7 @@ fun LogsScreen() {
                                 enabled = searchProgress < 1f,
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.MoreVert,
+                                    imageVector = Icons.Rounded.MoreVert,
                                     contentDescription = stringResource(Res.string.more),
                                 )
                             }
@@ -835,7 +835,7 @@ fun LogsScreen() {
                                 DropdownMenuItem(
                                     text = { Text(logsSearchLabel) },
                                     leadingIcon = {
-                                        Icon(Icons.Default.Search, contentDescription = null)
+                                        Icon(Icons.Rounded.Search, contentDescription = null)
                                     },
                                     onClick = {
                                         menuExpanded = false
@@ -846,7 +846,7 @@ fun LogsScreen() {
                                     DropdownMenuItem(
                                         text = { Text(stringResource(Res.string.logs_rotate)) },
                                         leadingIcon = {
-                                            Icon(Icons.Default.Sync, contentDescription = null)
+                                            Icon(Icons.Rounded.Sync, contentDescription = null)
                                         },
                                         onClick = {
                                             menuExpanded = false
@@ -856,7 +856,7 @@ fun LogsScreen() {
                                     DropdownMenuItem(
                                         text = { Text(stringResource(Res.string.logs_clean)) },
                                         leadingIcon = {
-                                            Icon(Icons.Default.CleaningServices, contentDescription = null)
+                                            Icon(Icons.Rounded.CleaningServices, contentDescription = null)
                                         },
                                         onClick = {
                                             menuExpanded = false
@@ -867,7 +867,7 @@ fun LogsScreen() {
                                     DropdownMenuItem(
                                         text = { Text(deleteLabel) },
                                         leadingIcon = {
-                                            Icon(Icons.Default.Delete, contentDescription = null)
+                                            Icon(Icons.Rounded.Delete, contentDescription = null)
                                         },
                                         onClick = {
                                             menuExpanded = false
@@ -894,7 +894,7 @@ fun LogsScreen() {
                                 enabled = searchProgress > 0f,
                             ) {
                                 Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                                     contentDescription = stringResource(Res.string.back),
                                 )
                             }
@@ -936,7 +936,7 @@ fun LogsScreen() {
                                     enabled = searchProgress > 0f,
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Close,
+                                        imageVector = Icons.Rounded.Close,
                                         contentDescription = stringResource(Res.string.cancel),
                                     )
                                 }
@@ -954,7 +954,7 @@ fun LogsScreen() {
                                 enabled = selectionProgress > 0f,
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Close,
+                                    imageVector = Icons.Rounded.Close,
                                     contentDescription = closeSelectionCd,
                                 )
                             }
@@ -980,7 +980,7 @@ fun LogsScreen() {
                                 },
                                 enabled = selectionProgress > 0f && selectedEntryIds.isNotEmpty(),
                             ) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = copyLabel)
+                                Icon(Icons.Rounded.ContentCopy, contentDescription = copyLabel)
                             }
                             IconButton(
                                 onClick = {
@@ -993,7 +993,7 @@ fun LogsScreen() {
                                 },
                                 enabled = selectionProgress > 0f && selectedEntryIds.isNotEmpty(),
                             ) {
-                                Icon(Icons.Default.Share, contentDescription = shareLabel)
+                                Icon(Icons.Rounded.Share, contentDescription = shareLabel)
                             }
                         },
                     )
@@ -1206,7 +1206,7 @@ internal fun LogsShareBottomSheet(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Compress,
+                        imageVector = Icons.Rounded.Compress,
                         contentDescription = null,
                         modifier = Modifier.size(48.dp),
                         tint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1267,7 +1267,7 @@ private fun LogsCleanBottomSheet(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         ExpressiveIconFrame(
-            icon = Icons.Default.CleaningServices,
+            icon = Icons.Rounded.CleaningServices,
             materialPolygon = MaterialShapes.Cookie7Sided,
             containerSize = 88.dp,
             iconSize = 40.dp,
@@ -1662,12 +1662,12 @@ private fun logLevelChipColors(level: AppLogLevel): Pair<Color, Color> {
 }
 
 private fun AppLogLevel.icon(): ImageVector = when (this) {
-    AppLogLevel.Verbose -> Icons.AutoMirrored.Filled.Subject
-    AppLogLevel.Debug -> Icons.Default.BugReport
-    AppLogLevel.Info -> Icons.Default.Info
-    AppLogLevel.Warn -> Icons.Default.Warning
-    AppLogLevel.Error -> Icons.Default.Error
-    AppLogLevel.Fatal -> Icons.Default.Report
+    AppLogLevel.Verbose -> Icons.AutoMirrored.Rounded.Subject
+    AppLogLevel.Debug -> Icons.Rounded.BugReport
+    AppLogLevel.Info -> Icons.Rounded.Info
+    AppLogLevel.Warn -> Icons.Rounded.Warning
+    AppLogLevel.Error -> Icons.Rounded.Error
+    AppLogLevel.Fatal -> Icons.Rounded.Report
 }
 
 @Composable

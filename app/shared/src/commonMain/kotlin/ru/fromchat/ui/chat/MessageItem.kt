@@ -33,7 +33,7 @@ import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Timer
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -1218,7 +1218,7 @@ fun MessageItem(
                                         }
                                     } else {
                                         Icon(
-                                            imageVector = Icons.Outlined.Timer,
+                                            imageVector = Icons.Rounded.Timer,
                                             contentDescription = null,
                                             modifier = Modifier
                                                 .size(14.dp)

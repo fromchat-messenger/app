@@ -61,6 +61,66 @@ private fun awtClientPointToComposeRoot(window: java.awt.Window, point: Point): 
     return Offset(point.x * scaleX, point.y * scaleY)
 }
 
+actual fun attachmentDropKind(event: DragAndDropEvent): AttachmentDropKind = runCatching {
+    when (event.dragData()) {
+        is DragData.FilesList -> attachmentDropKindForFilesPayload(event)
+        is DragData.Image -> AttachmentDropKind.Files
+        is DragData.Text -> AttachmentDropKind.Text
+        else -> {
+            val transferable = event.awtTransferable
+            val flavors = transferable.transferDataFlavors
+            when {
+                flavors.any { flavor ->
+                    flavor.isFlavorJavaFileListType ||
+                        flavor.mimeType.orEmpty().startsWith("text/uri-list") ||
+                        flavor.mimeType.orEmpty().startsWith("image/") ||
+                        flavor.mimeType.orEmpty().startsWith("application/octet-stream")
+                } -> attachmentDropKindForFilesPayload(event)
+                flavors.any { it.isFlavorTextType || it == DataFlavor.stringFlavor } ->
+                    AttachmentDropKind.Text
+                else -> AttachmentDropKind.NotAFile
+            }
+        }
+    }
+}.getOrDefault(AttachmentDropKind.Unknown)
+
+/**
+ * URI-list drags (shortcuts, dock items) may carry no single `file://` entry at all — they are
+ * not real file payloads even though AWT advertises a file-list flavor. Reading the payload
+ * here (before release) lets hovering such drags show the rejection immediately.
+ */
+private fun attachmentDropKindForFilesPayload(event: DragAndDropEvent): AttachmentDropKind {
+    val hasFileEntry = runCatching { extractFileEntries(event) }.getOrDefault(emptyList()).isNotEmpty()
+    return if (hasFileEntry) {
+        AttachmentDropKind.Files
+    } else {
+        // Payload not readable yet (place its data on release) — leave it to the drop.
+        AttachmentDropKind.Unknown
+    }
+}
+
+/**
+ * Every local file path the payload resolves to. Non-file URI schemes (application://,
+ * x-scheme-handler://…) and desired-but-vanished targets do not produce entries here.
+ */
+private fun extractFileEntries(event: DragAndDropEvent): List<String> = extractAttachmentDropUris(event).filter { entry ->
+    File(entry).isFile
+}
+
+actual fun extractDroppedText(event: DragAndDropEvent): String? = runCatching {
+    when (val data = event.dragData()) {
+        is DragData.Text -> data.readText()
+        else -> {
+            val transferable = event.awtTransferable
+            if (transferable.isDataFlavorSupported(DataFlavor.stringFlavor)) {
+                transferable.getTransferData(DataFlavor.stringFlavor) as? String
+            } else {
+                null
+            }
+        }
+    }
+}.getOrNull()?.takeIf { it.isNotBlank() }
+
 actual fun acceptsAttachmentDrop(event: DragAndDropEvent): Boolean {
     return runCatching {
         when (val data = event.dragData()) {
@@ -86,7 +146,8 @@ actual fun handleAttachmentDrop(
     event: DragAndDropEvent,
     onUris: (List<String>) -> Unit,
 ): Boolean {
-    val uris = runCatching { extractAttachmentDropUris(event) }.getOrDefault(emptyList())
+    // Final veto: only entries that resolve to real, regular files may become attachments.
+    val uris = runCatching { extractFileEntries(event) }.getOrDefault(emptyList())
     if (uris.isEmpty()) return false
     onUris(uris)
     return true
@@ -149,18 +210,23 @@ private fun extractAttachmentDropUris(event: DragAndDropEvent): List<String> {
     return emptyList()
 }
 
-/** Accepts `file://` URIs, plain absolute paths, and Windows paths; returns a local filesystem path. */
+/**
+ * Resolves a dropped entry to a local filesystem path. Only `file://` URIs and plain real
+ * paths qualify, and the file must still exist at drop time: launcher shortcuts and other
+ * pseudo-URIs must not become attachments.
+ */
 private fun uriStringToLocalPath(text: String): String? {
     val trimmed = text.trim().takeIf { it.isNotBlank() } ?: return null
-    if (trimmed.startsWith("file:")) {
-        val path = runCatching { URI(trimmed).path }.getOrNull()?.takeIf { it.isNotBlank() }
-            ?: trimmed.removePrefix("file://")
-        return path.takeIf { File(it).isFile || File(it).exists() } ?: path.takeIf { it.isNotBlank() }
+    val path = when {
+        trimmed.startsWith("file:") ->
+            runCatching { URI(trimmed).path }.getOrNull()?.takeIf { it.isNotBlank() }
+                ?: trimmed.removePrefix("file://")
+        trimmed.startsWith("/") || looksLikeWindowsPath(trimmed) -> trimmed
+        else -> return null
     }
-    if (trimmed.startsWith("/") || looksLikeWindowsPath(trimmed)) {
-        return trimmed
-    }
-    return null
+    // The drop has to be backed by a real, regular file at release time; shortcuts,
+    // directories and vanished targets are rejected here.
+    return path.takeIf { path -> File(path).isFile }
 }
 
 private fun looksLikeWindowsPath(text: String): Boolean =

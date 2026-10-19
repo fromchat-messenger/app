@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
@@ -118,7 +118,7 @@ fun ChangeYandexOAuthScreen(onBack: () -> Unit) {
                     contentColor = MaterialTheme.colorScheme.onSurface,
                 ),
             ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = backLabel)
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = backLabel)
             }
         }
     }

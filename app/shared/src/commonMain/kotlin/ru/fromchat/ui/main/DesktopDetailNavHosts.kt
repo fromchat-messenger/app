@@ -24,21 +24,25 @@ import ru.fromchat.ui.LocalNavController
 
 private val detailNavTween = tween<Float>(durationMillis = 250, easing = FastOutSlowInEasing)
 
-private fun detailNavEnter(): EnterTransition =
+private fun detailNavEnter(): EnterTransition = mutedEnterTransition(
     scaleIn(initialScale = 0.9f, animationSpec = detailNavTween) +
-        fadeIn(animationSpec = detailNavTween)
+        fadeIn(animationSpec = detailNavTween),
+)
 
-private fun detailNavExit(): ExitTransition =
+private fun detailNavExit(): ExitTransition = mutedExitTransition(
     scaleOut(targetScale = 1.1f, animationSpec = detailNavTween) +
-        fadeOut(animationSpec = detailNavTween)
+        fadeOut(animationSpec = detailNavTween),
+)
 
-private fun detailNavPopEnter(): EnterTransition =
+private fun detailNavPopEnter(): EnterTransition = mutedEnterTransition(
     scaleIn(initialScale = 1.1f, animationSpec = detailNavTween) +
-        fadeIn(animationSpec = detailNavTween)
+        fadeIn(animationSpec = detailNavTween),
+)
 
-private fun detailNavPopExit(): ExitTransition =
+private fun detailNavPopExit(): ExitTransition = mutedExitTransition(
     scaleOut(targetScale = 0.9f, animationSpec = detailNavTween) +
-        fadeOut(animationSpec = detailNavTween)
+        fadeOut(animationSpec = detailNavTween),
+)
 
 /**
  * Independent Chats-tab detail [NavHost] for desktop list–detail.

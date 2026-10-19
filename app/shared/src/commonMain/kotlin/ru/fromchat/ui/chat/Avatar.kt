@@ -5,7 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.PersonOff
+import androidx.compose.material.icons.rounded.PersonOff
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -52,7 +52,7 @@ fun Avatar(
                 )
             }
             Icon(
-                imageVector = Icons.Outlined.PersonOff,
+                imageVector = Icons.Rounded.PersonOff,
                 contentDescription = displayName,
                 modifier = Modifier.fillMaxSize(0.55f),
                 tint = Color.White,

@@ -82,7 +82,6 @@ internal fun FileAttachmentLeadingSlot(
                 CancellableAttachmentProgressIndicator(
                     progress = uploadProgress,
                     onCancel = onCancelProgress,
-                    showCloseScrim = false,
                     modifier = Modifier.fillMaxSize(),
                     indicatorColor = if (isAuthor) onPrimary else null,
                     trackColorOverride = if (isAuthor) {

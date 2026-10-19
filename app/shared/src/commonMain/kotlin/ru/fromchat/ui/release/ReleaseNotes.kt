@@ -14,7 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.NewReleases
+import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialShapes
@@ -89,7 +89,7 @@ fun ReleaseNotesDialog(
                     modifier = Modifier.padding(bottom = 16.dp),
                 ) {
                     ExpressiveIconFrame(
-                        icon = Icons.Outlined.NewReleases,
+                        icon = Icons.Rounded.NewReleases,
                         containerSize = 48.dp,
                         iconSize = 24.dp,
                         materialPolygon = MaterialShapes.SoftBurst,

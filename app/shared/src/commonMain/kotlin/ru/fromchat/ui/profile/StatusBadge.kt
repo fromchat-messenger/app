@@ -2,8 +2,8 @@ package ru.fromchat.ui.profile
 
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Verified
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -27,14 +27,14 @@ fun StatusBadge(
 ) {
     when (verificationStatus) {
         VerificationStatus.Verified -> Icon(
-            imageVector = Icons.Filled.Verified,
+            imageVector = Icons.Rounded.Verified,
             contentDescription = stringResource(Res.string.cd_verified_account),
             modifier = modifier.size(size),
             tint = MaterialTheme.colorScheme.primary,
         )
 
         VerificationStatus.Warning -> Icon(
-            imageVector = Icons.Filled.Warning,
+            imageVector = Icons.Rounded.Warning,
             contentDescription = stringResource(Res.string.cd_similar_verified),
             modifier = modifier.size(size),
             tint = Color(0xFFFFA000),

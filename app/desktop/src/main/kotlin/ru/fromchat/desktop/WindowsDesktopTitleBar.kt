@@ -1,5 +1,8 @@
 package ru.fromchat.desktop
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -29,6 +32,8 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.unit.dp
@@ -133,19 +138,27 @@ private fun TitleBarWindowButton(
     val hovered by interactionSource.collectIsHoveredAsState()
     val pressed by interactionSource.collectIsPressedAsState()
     val scheme = MaterialTheme.colorScheme
-    val iconTint = when {
-        isClose && (hovered || pressed) -> scheme.onError
-        windowActive -> Color.White
-        else -> Color.White.copy(alpha = 0.63f)
-    }
-    val hoverAlpha = when {
-        isClose && (hovered || pressed) -> TitleBarCloseHoverAlpha
+    val hoverTarget = hovered || pressed
+    val targetHoverAlpha = when {
+        isClose && hoverTarget -> TitleBarCloseHoverAlpha
         pressed -> TitleBarPressAlpha
         hovered -> TitleBarHoverAlpha
         else -> 0f
     }
+    // Animate the background (and the close button's error/state change) so hovering
+    // cross-fades instead of snapping.
+    val animatedHoverAlpha by animateFloatAsState(
+        targetValue = targetHoverAlpha,
+        animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
+        label = "titleBarButtonHover",
+    )
+    val iconTint = when {
+        isClose && hoverTarget -> scheme.onError
+        windowActive -> Color.White
+        else -> Color.White.copy(alpha = 0.63f)
+    }
     val hoverColor =
-        if (isClose && (hovered || pressed)) {
+        if (isClose && hoverTarget) {
             scheme.error
         } else {
             scheme.onSurface
@@ -157,7 +170,7 @@ private fun TitleBarWindowButton(
             .fillMaxHeight()
             .clip(RoundedCornerShape(0.dp))
             .hoverable(interactionSource)
-            .background(hoverColor.copy(alpha = hoverAlpha))
+            .background(hoverColor.copy(alpha = animatedHoverAlpha))
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -210,26 +223,56 @@ private fun TitleBarMaximizeIcon(tint: Color) {
     }
 }
 
-/** Restored-from-maximize: overlapping rounded tiles. */
+/** Windows 11-style restore: a small tile tucked behind a larger overlapping tile. */
 @Composable
 private fun TitleBarRestoreIcon(tint: Color) {
     Canvas(Modifier.size(16.dp)) {
-        val stroke = size.height * 0.06f
-        val corner = size.width * 0.1f
-        val backSize = size.width * 0.46f
-        val frontSize = size.width * 0.52f
-        drawRoundRect(
+        val stroke = size.height * 0.07f
+        val corner = size.width * 0.14f
+        // Back tile: upper-right, mostly hidden behind the front tile.
+        val backInset = size.width * 0.10f
+        val backSize = size.width * 0.56f
+        val back = Path().apply {
+            addRoundRect(
+                androidx.compose.ui.geometry.RoundRect(
+                    rect = androidx.compose.ui.geometry.Rect(
+                        offset = Offset(size.width - backInset - backSize, backInset),
+                        size = Size(backSize, backSize),
+                    ),
+                    topLeft = CornerRadius(corner, corner),
+                    topRight = CornerRadius(corner, corner),
+                    bottomLeft = CornerRadius(corner, corner),
+                    bottomRight = CornerRadius(corner, corner),
+                ),
+            )
+        }
+        // Front tile: lower-left, overlapping the back tile.
+        val frontInset = size.width * 0.36f
+        val frontSize = size.width * 0.54f
+        val front = Path().apply {
+            addRoundRect(
+                androidx.compose.ui.geometry.RoundRect(
+                    rect = androidx.compose.ui.geometry.Rect(
+                        offset = Offset(size.width - frontInset - frontSize, frontInset),
+                        size = Size(frontSize, frontSize),
+                    ),
+                    topLeft = CornerRadius(corner, corner),
+                    topRight = CornerRadius(corner, corner),
+                    bottomLeft = CornerRadius(corner, corner),
+                    bottomRight = CornerRadius(corner, corner),
+                ),
+            )
+        }
+        // Only the visible part of the back tile is stroked, so its outline never
+        // criss-crosses the front tile.
+        drawPath(
+            path = Path.combine(PathOperation.Difference, back, front),
             color = tint,
-            topLeft = Offset(size.width * 0.28f, size.height * 0.16f),
-            size = Size(backSize, backSize),
-            cornerRadius = CornerRadius(corner, corner),
             style = Stroke(width = stroke),
         )
-        drawRoundRect(
+        drawPath(
+            path = front,
             color = tint,
-            topLeft = Offset(size.width * 0.2f, size.height * 0.28f),
-            size = Size(frontSize, frontSize),
-            cornerRadius = CornerRadius(corner, corner),
             style = Stroke(width = stroke),
         )
     }

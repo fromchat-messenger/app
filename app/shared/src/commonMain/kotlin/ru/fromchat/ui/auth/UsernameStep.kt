@@ -3,7 +3,7 @@ package ru.fromchat.ui.auth
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
@@ -115,7 +115,7 @@ internal fun usernameStepPage(
 
     return ExpressiveStepPage(
         hero = ExpressiveHeroSpec(
-            icon = Icons.Filled.Person,
+            icon = Icons.Rounded.Person,
             polygon = MaterialShapes.Cookie4Sided.normalized(),
             containerColor = colorScheme.primaryContainer,
             contentColor = colorScheme.onPrimaryContainer,

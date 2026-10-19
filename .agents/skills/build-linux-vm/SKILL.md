@@ -192,6 +192,65 @@ The deb lands in the project's `desktopDistDir` as
 
 ---
 
+## The fast iteration loop (host → deb → running app)
+
+After the first full setup, iterating should take ~2 minutes per cycle. The battle-tested
+loop, in this exact order:
+
+1. **Sanity-compile on the Mac first** (~15 s): `./gradlew :app:shared:compileKotlinJvm :app:desktop:compileKotlin`.
+   Do not upload to the VM until this is green.
+2. **Tar and serve once**: `COPYFILE_DISABLE=1 tar -czf /tmp/opencode/src.tar.gz …` from the host.
+   Keep a detached `python3 -m http.server 18080/18081` running on the host; the guest
+   `wget`s from `10.211.55.2` (Parallels gateway).
+3. **Build in the VM with ONE job at a time.** Repeated MCP `exec_start` calls spawn
+   concurrent builds that race and wipe each other's output (`builddeb-inner.sh` deletes the
+   src dir at start, so the deb vanishes mid-cycle). Before starting a build, verify no
+   stale `builddeb`/`GradleDaemon` processes remain; if one is root-owned, kill it
+   **elevated** (`sudo -S` with the user's password) — plain `pkill` as `parallels`
+   silently fails and leaves a zombie daemon that breaks the next run.
+4. **Completion signal is TWO conditions**: `grep "Dev deb" builddeb.log` **and** zero
+   `builddeb-inner` processes. The log line alone can be a leftover from the previous cycle,
+   and the deb file existing is not a signal at all (a fresh build wipes the output dir
+   first). Don't trust `ps -ef | grep -c` counts — the grep matches itself; the clean
+   pattern is running the check inside a script file.
+5. **Install + relaunch via prepared script files** in `/home/parallels/tmp/`
+   (`install2.sh` = dpkg -i + relaunch with GUI env + env verification;
+   `final-check.sh` = window identity via `wmctrl -lx` + `/proc/<pid>/environ` env grep +
+   `.desktop` Exec line + jar-payload check). Write them on the host, serve over HTTP, run
+   in one `prlctl exec` call. Never inline this logic into the exec string — it will be
+   word-split and mangled.
+6. **Verify the payload, not the install**: `dpkg` reports success for *any* deb. Confirm
+   the change you just built actually shipped, e.g.
+   `unzip -l /opt/fromchat/lib/app/shared-*.jar | grep <NewClassMarker>` or
+   `unzip -l /opt/fromchat/lib/app/desktop-*.jar | grep GraphicsApi_jvmKt.class`, plus
+   `tr '\0' '\n' < /proc/$(pgrep -x FromChat)/environ | grep -E 'MESA|vblank'` for runtime
+   env. Identity check: `wmctrl -lx` should show `FromChat.FromChat — FromChat Beta`.
+
+Runtime-environment fixes are **baked into the app itself**, not applied around it:
+
+- The skiko/virgl workaround is a **build-time patch**:
+  `app/desktop/skiko-patch/org/jetbrains/skiko/GraphicsApi_jvmKt.java` (always-true
+  `isVideoCardSupported`) is compiled by a Linux-only `compileSkikoVirglPatch` Gradle task
+  into `desktop.jar` (first on the jpackage app classpath → shadows skiko-awt's copy).
+  Opt-out: `-PskikoVirglWorkaround=false`. This survives every reinstall — there is no
+  runtime repatch script to re-run after `dpkg -i`.
+- `MESA_GL_VERSION_OVERRIDE=3.0` (+ experimentally `vblank_mode=3`) is baked by
+  `mesaGlVersionOverridePrefix()` (`app/desktop/.../Main.kt`, ARM64 Linux only) into the
+  app-generated `.desktop` files, so `Exec=env MESA_GL_VERSION_OVERRIDE=3.0
+  /opt/fromchat/bin/FromChat`. No `/usr/local/bin` wrapper. When relaunching by hand,
+  replicate that env via the launcher script (`launch2.sh`).
+- Recurring gotcha: `XAUTHORITY` filename (`.mutter-Xwaylandauth.*`) changes between
+  sessions — always re-derive with a glob, never hardcode.
+- If the Gradle daemon dies mid-build (`Gradle build daemon disappeared`) — usually
+  collateral from killing stale processes — just rerun; with warm caches a dev deb
+  takes ~1.5 min.
+
+Log path note: the dev app's directory literally contains a wildcard
+(`~/.local/share/FromChat*/fromchat/logs/current.log`) — glob it, and quote it
+(`the space`) when grepping.
+
+---
+
 ## Installing
 
 `sudo -n` fails (`interactive authentication is required`), so the password must
@@ -301,4 +360,10 @@ also reports exactly 1.0, so they carry no information.
   dependency.
 - Kotlin init scripts cannot reference plugin classes (`Unresolved reference
   'compose'`) because the plugin is not on the init script's compile classpath.
+- `ps -ef | grep -c builddeb` returned via `prlctl exec` counts the grep itself — a
+  "3" can mean zero real builds. Use `pgrep -f` inside a script file, or accept the
+  ambiguity and rely on the log marker instead.
+- Don't run a persistence/repatch hack after installing: if a fix needs to be re-applied
+  by hand after every `dpkg -i`, move it into the build instead (see the skiko patch and
+  the baked `MESA_*` Exec env above).
 - Never `sleep` waiting on a background job; wait for the completion notification.

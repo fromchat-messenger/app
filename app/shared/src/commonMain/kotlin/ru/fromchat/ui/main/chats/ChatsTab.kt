@@ -33,12 +33,12 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Block
 import com.pr0gramm3r101.components.ListItem
 import com.pr0gramm3r101.components.ListItemPosition
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -458,7 +458,7 @@ private fun ChatsNormalTopBar(
                 },
             ) {
                 Icon(
-                    imageVector = Icons.Default.Search,
+                    imageVector = Icons.Rounded.Search,
                     contentDescription = searchContentDescription,
                 )
             }
@@ -494,7 +494,7 @@ private fun ChatsSelectionTopBar(
         navigationIcon = {
             IconButton(onClick = onClose) {
                 Icon(
-                    imageVector = Icons.Default.Close,
+                    imageVector = Icons.Rounded.Close,
                     contentDescription = closeSelectionCd,
                 )
             }
@@ -520,7 +520,7 @@ private fun ChatsSelectionTopBar(
                 Box {
                     IconButton(onClick = { overflowOpen = true }) {
                         Icon(
-                            imageVector = Icons.Filled.MoreVert,
+                            imageVector = Icons.Rounded.MoreVert,
                             contentDescription = moreActionsCd,
                         )
                     }

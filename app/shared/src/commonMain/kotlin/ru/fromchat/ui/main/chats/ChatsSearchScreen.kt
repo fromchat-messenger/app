@@ -23,9 +23,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Clear
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -89,6 +89,8 @@ fun ChatsSearchScreen(
     onOpenConversation: (Int) -> Unit,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
+    /** Overrides the screen background (2-pane list pane uses the chats-panel color). */
+    surfaceColor: Color? = null,
 ) {
     var searchText by remember { mutableStateOf("") }
     val searchListState = rememberLazyListState()
@@ -235,7 +237,7 @@ fun ChatsSearchScreen(
         }
     }
 
-    ScreenSurface {
+    ScreenSurface(color = surfaceColor ?: MaterialTheme.colorScheme.background) {
         Scaffold(
             modifier = Modifier.imePadding(),
             containerColor = Color.Transparent,
@@ -255,13 +257,13 @@ fun ChatsSearchScreen(
                         hideIme()
                         onBack()
                     }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = null)
                     }
                 },
                 trailingIcon = {
                     if (searchText.isNotBlank()) {
                         IconButton(onClick = { searchText = "" }) {
-                            Icon(imageVector = Icons.Filled.Clear, contentDescription = null)
+                            Icon(imageVector = Icons.Rounded.Clear, contentDescription = null)
                         }
                     }
                 },
@@ -408,7 +410,7 @@ private fun SearchScreenInfo(
 
             if (showSearchIcon) {
                 Icon(
-                    imageVector = Icons.Filled.Search,
+                    imageVector = Icons.Rounded.Search,
                     contentDescription = null,
                     modifier = Modifier.size(88.dp),
                     tint = tonal.contentColor

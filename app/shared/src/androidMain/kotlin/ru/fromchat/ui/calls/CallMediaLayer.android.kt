@@ -51,12 +51,12 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CallEnd
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.MicOff
-import androidx.compose.material.icons.filled.PresentToAll
-import androidx.compose.material.icons.filled.Videocam
-import androidx.compose.material.icons.filled.VideocamOff
+import androidx.compose.material.icons.rounded.CallEnd
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.MicOff
+import androidx.compose.material.icons.rounded.PresentToAll
+import androidx.compose.material.icons.rounded.Videocam
+import androidx.compose.material.icons.rounded.VideocamOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
@@ -1364,7 +1364,7 @@ private fun CallInlineControlBar(
                 ),
             ) {
                 Icon(
-                    imageVector = if (micOn) Icons.Filled.Mic else Icons.Filled.MicOff,
+                    imageVector = if (micOn) Icons.Rounded.Mic else Icons.Rounded.MicOff,
                     contentDescription = stringResource(Res.string.cd_call_mic),
                 )
             }
@@ -1393,7 +1393,7 @@ private fun CallInlineControlBar(
                 ),
             ) {
                 Icon(
-                    imageVector = if (camOn) Icons.Filled.Videocam else Icons.Filled.VideocamOff,
+                    imageVector = if (camOn) Icons.Rounded.Videocam else Icons.Rounded.VideocamOff,
                     contentDescription = stringResource(Res.string.cd_call_camera),
                 )
             }
@@ -1437,7 +1437,7 @@ private fun CallInlineControlBar(
                 ),
             ) {
                 Icon(
-                    imageVector = Icons.Filled.PresentToAll,
+                    imageVector = Icons.Rounded.PresentToAll,
                     contentDescription = stringResource(Res.string.cd_call_screenshare),
                 )
             }
@@ -1452,7 +1452,7 @@ private fun CallInlineControlBar(
                 ),
             ) {
                 Icon(
-                    imageVector = Icons.Filled.CallEnd,
+                    imageVector = Icons.Rounded.CallEnd,
                     contentDescription = stringResource(Res.string.cd_call_end),
                 )
             }
