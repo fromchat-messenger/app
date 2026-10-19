@@ -1129,6 +1129,37 @@ tasks.register("packageReleaseLinux") {
 }
 
 /**
+ * Development build of the Linux deb: the same jpackage output, but without ProGuard.
+ *
+ * ProGuard takes 10-20 minutes and OOMs on a small machine, while only obfuscating — every code
+ * path under test still runs identically. This task exists so a local dev loop is a couple of
+ * minutes rather than a CI round trip. It is NOT a release artifact: unminified, verbose logs, and
+ * it also stamps the tray dependency and a dev name so it is never mistaken for a real build.
+ */
+tasks.register("packageDevLinuxDeb") {
+    group = "compose desktop"
+    description = "Build the Linux deb for local development (no ProGuard, dev identity)."
+    onlyIf { runningOnLinux }
+    if (runningOnLinux) {
+        dependsOn("packageDeb")
+    }
+    doLast {
+        val deb = layout.buildDirectory.get().asFile
+            .resolve("compose/binaries/main/deb")
+            .walkTopDown()
+            .firstOrNull { it.isFile && it.extension == "deb" && it.name.startsWith("fromchat") }
+        checkNotNull(deb) { "packageDeb produced no .deb" }
+        // Same tray fix-up as the release path; without it a fresh install has no tray host.
+        injectDebRuntimeDependencies(deb)
+        val outDir = desktopDistDir.get().asFile
+        outDir.mkdirs()
+        val renamed = outDir.resolve("FromChat-dev-linux-${desktopReleaseArchLabel()}.deb")
+        deb.copyTo(renamed, overwrite = true)
+        logger.lifecycle("Dev deb: ${renamed.absolutePath}")
+    }
+}
+
+/**
  * Adds the tray runtime dependency to the generated .deb control file.
  *
  * AWT's Linux tray is not built into the JDK: it `dlopen`s libappindicator, and when that is

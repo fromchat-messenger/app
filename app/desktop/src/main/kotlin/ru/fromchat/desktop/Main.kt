@@ -30,6 +30,8 @@ import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.FrameWindowScope
 import androidx.compose.ui.window.MenuBar
@@ -340,6 +342,8 @@ fun main(args: Array<String>) {
 
     application {
         UtilsLibrary.init()
+        // Re-reads the desktop scale on Linux so changing scaling applies without a restart.
+        LaunchedEffect(Unit) { DesktopScale.startWatching(this) }
         var bootstrapStarted by remember { mutableStateOf(false) }
         val databaseBlocked by DatabaseLockGate.blocked.collectAsState()
         val lockingProcesses by DatabaseLockGate.processes.collectAsState()
@@ -393,8 +397,22 @@ fun main(args: Array<String>) {
             return@application
         }
 
+        // Compose sizes the AWT window from GraphicsConfiguration.defaultTransform.scaleX, which on X11
+        // is an int (1.0 here) and is NOT affected by the LocalDensity override inside Window.
+        // So a forced density lays the content out larger than the window that holds it, which
+        // reads as "ignores scaling" (CMP-6857, still open: JetBrains declined to change this).
+        // Pre-multiplying the dp size keeps the window's pixel size consistent with the content.
+        val forcedScale by DesktopScale.forcedScale.collectAsState()
+        val awtScale = remember {
+            runCatching {
+                java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment()
+                    .defaultScreenDevice.defaultConfiguration
+                    .defaultTransform.scaleX.toFloat()
+            }.getOrDefault(1f).takeIf { it > 0f } ?: 1f
+        }
+        val sizeRatio = forcedScale?.div(awtScale) ?: 1f
         val windowState = rememberWindowState(
-            size = remember { DesktopWindowPrefs.loadSize() },
+            size = remember { DesktopWindowPrefs.loadSize() * sizeRatio },
             position = remember { DesktopWindowPrefs.loadPosition() },
         )
         // Hide until App bootstrap sets startDestination (avoids ~2s empty/white window).
@@ -456,7 +474,9 @@ fun main(args: Array<String>) {
 
         LaunchedEffect(windowState.size, windowState.position) {
             delay(3_000.milliseconds)
-            DesktopWindowPrefs.save(windowState.size, windowState.position)
+            // Undo the pre-multiplication before persisting, otherwise every launch grows the
+            // stored window by the scale factor.
+            DesktopWindowPrefs.save(windowState.size / sizeRatio, windowState.position)
         }
 
         DisposableEffect(trayState) {
@@ -753,13 +773,27 @@ fun main(args: Array<String>) {
                         )
                     }
         
+                    // Linux only: macOS and Windows already report HiDPI correctly, and forcing a
+                    // value there would override a correct native density (a 1.0 fallback would
+                    // flatten every Retina display).
+                    val forcedScale by DesktopScale.forcedScale.collectAsState()
                     CompositionLocalProvider(
-                        LocalExtraStatusBarTop provides when {
+                            // AWT and Compose disagree on Linux (AWT read Xft.dpi=192 -> 2.0 while
+                            // Compose sat at 1.0), so the value that drives layout and text is
+                            // Compose's density. null = keep whatever Compose decided.
+                            LocalDensity provides Density(
+                                forcedScale ?: LocalDensity.current.density,
+                                forcedScale?.let { LocalDensity.current.fontScale } ?: 1f,
+                            ),
+                            LocalExtraStatusBarTop provides when {
                             mac -> 28.dp
                             customFrame -> WindowsTitleBarHeight
                             else -> 0.dp
                         },
                     ) {
+                        // Inside the provider on purpose: it reports the density actually in
+                        // effect for the app, not the ambient one Compose chose.
+                        DesktopScaleDiagnostics()
                         Box(
                             Modifier
                                 .fillMaxSize()
