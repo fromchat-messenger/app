@@ -51,6 +51,7 @@ env:
     -Dorg.gradle.jvmargs=-Xmx6g
     -Dkotlin.daemon.jvm.options=-Xmx6g
     -Dorg.gradle.parallel=true
+    -Dorg.gradle.configuration-cache=true
 
 jobs:
   resolve-version:
@@ -482,7 +483,16 @@ jobs:
         run: |
           # Keep the jmods-capable JDK the setup action exported; fall back to JAVA_HOME.
           export FROMCHAT_PACKAGING_JDK="${FROMCHAT_PACKAGING_JDK:-$JAVA_HOME}"
-          ./gradlew :app:desktop:packageReleaseLinux -PdesktopArch=${{ matrix.arch }} --no-daemon --console=plain
+          # TEMPORARY --profile: diagnostic for the silent ~30s inter-task gaps; remove once read.
+          ./gradlew :app:desktop:packageReleaseLinux -PdesktopArch=${{ matrix.arch }} --no-daemon --console=plain --profile
+      - name: Upload Gradle profile report
+        if: matrix.arch == 'x64'
+        uses: actions/upload-artifact@v5
+        with:
+          name: gradle-profile-linux-x64
+          path: build/reports/profile/
+          if-no-files-found: error
+          retention-days: 3
       - uses: actions/upload-artifact@v5
         with:
           name: linux-${{ matrix.arch }}
