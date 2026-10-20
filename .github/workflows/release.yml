@@ -51,7 +51,6 @@ env:
     -Dorg.gradle.jvmargs=-Xmx6g
     -Dkotlin.daemon.jvm.options=-Xmx6g
     -Dorg.gradle.parallel=true
-    -Dorg.gradle.configuration-cache=true
 
 jobs:
   resolve-version:
@@ -484,6 +483,9 @@ jobs:
           # Keep the jmods-capable JDK the setup action exported; fall back to JAVA_HOME.
           export FROMCHAT_PACKAGING_JDK="${FROMCHAT_PACKAGING_JDK:-$JAVA_HOME}"
           # TEMPORARY --profile: diagnostic for the silent ~30s inter-task gaps; remove once read.
+          # (CC was tried via GRADLE_OPTS in 23fe6a7 and reverted: the desktop build script uses
+          # script-closure task config that Gradle 9.6.1 CC cannot serialize — full CC compliance
+          # would mean rewriting ~10 tasks as classes for a ~20s saving on same-version reruns.)
           ./gradlew :app:desktop:packageReleaseLinux -PdesktopArch=${{ matrix.arch }} --no-daemon --console=plain --profile
       - name: Upload Gradle profile report
         if: matrix.arch == 'x64'
