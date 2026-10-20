@@ -1,0 +1,120 @@
+# TEMPORARY diagnostic workflow: restore the current caches onto a runner and
+# report their on-disk composition (du). Delete this file once cache trimming
+# is done. See the cache-trimming discussion around release.yml.
+name: Cache inspect
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cache-inspect
+  cancel-in-progress: true
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve current cache keys
+        id: keys
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api repos/"$GITHUB_REPOSITORY"/actions/caches?per_page=100 > caches.json
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, re
+          data = json.load(open('caches.json'))
+          pats = {
+              'linux_x64':    r'gradle-build-Linux-X64-v2-linux-x64-[0-9a-f]{60}',
+              'win_package':  r'gradle-build-Windows-X64-v2-windows-package-x64-[0-9a-f]{60}',
+              'macos_arm':    r'gradle-build-macOS-ARM64-v2-macos-arm64-[0-9a-f]{60}',
+              'android':      r'gradle-build-Linux-X64-v2-android-[0-9a-f]{60}',
+              'build_jar':    r'gradle-build-Linux-X64-v2-build-jar-[0-9a-f]{60}',
+              'rust_x64':     r'windows-rust-Windows-X64-v5-[0-9a-f]{60}',
+              'toolchains':   r'gradle-java-toolchains-v1-[0-9a-f]{32}',
+          }
+          for fam, pat in pats.items():
+              sel = next((c for c in data['actions_caches'] if re.match(pat, c['cache_key'])), None)
+              print(fam + '=' + (sel['cache_key'] if sel else ''))
+          PY
+
+      - name: Restore linux-x64
+        if: steps.keys.outputs.linux_x64 != ''
+        uses: actions/cache/restore@v5
+        with:
+          key: ${{ steps.keys.outputs.linux_x64 }}
+          path: inspect/linux-x64
+
+      - name: Restore windows-package-x64
+        if: steps.keys.outputs.win_package != ''
+        uses: actions/cache/restore@v5
+        with:
+          key: ${{ steps.keys.outputs.win_package }}
+          path: inspect/win-package
+
+      - name: Restore macos-arm64
+        if: steps.keys.outputs.macos_arm != ''
+        uses: actions/cache/restore@v5
+        with:
+          key: ${{ steps.keys.outputs.macos_arm }}
+          path: inspect/macos-arm
+
+      - name: Restore android
+        if: steps.keys.outputs.android != ''
+        uses: actions/cache/restore@v5
+        with:
+          key: ${{ steps.keys.outputs.android }}
+          path: inspect/android
+
+      - name: Restore build-jar
+        if: steps.keys.outputs.build_jar != ''
+        uses: actions/cache/restore@v5
+        with:
+          key: ${{ steps.keys.outputs.build_jar }}
+          path: inspect/build-jar
+
+      - name: Restore windows-rust-x64
+        if: steps.keys.outputs.rust_x64 != ''
+        uses: actions/cache/restore@v5
+        with:
+          key: ${{ steps.keys.outputs.rust_x64 }}
+          path: inspect/rust-x64
+
+      - name: Restore GUH java-toolchains
+        if: steps.keys.outputs.toolchains != ''
+        uses: actions/cache/restore@v5
+        with:
+          key: ${{ steps.keys.outputs.toolchains }}
+          path: inspect/guh-toolchains
+
+      - name: Disk usage report
+        run: |
+          set -euo pipefail
+          B=du.txt
+          echo "==== per family: top children ====" | tee "$B"
+          for D in inspect/*; do
+            {
+              echo "---- $D ($(du -sh "$D" | cut -f1))"
+              du -h -d 2 "$D" 2>/dev/null | sort -h | tail -12
+            } | tee -a "$B"
+          done
+          echo "==== top 30 dirs overall (depth<=3) ====" | tee -a "$B"
+          find inspect -maxdepth 3 -type d -exec du -sm {} + 2>/dev/null \
+            | sort -rn | head -30 | tee -a "$B"
+          echo "==== top 30 files overall ====" | tee -a "$B"
+          find inspect -type f -exec du -sm {} + 2>/dev/null \
+            | sort -rn | head -30 | tee -a "$B"
+
+      - name: Upload du report
+        uses: actions/upload-artifact@v5
+        with:
+          name: cache-du-report
+          path: du.txt
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Print report inline
+        run: cat du.txt
