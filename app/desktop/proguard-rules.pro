@@ -14,6 +14,18 @@
 }
 -keep class org.sqlite.** { *; }
 
+# JNA resolves some Java methods *from native code* by name (jnidispatch looks up
+# com.sun.jna.Native#dispose via GetStaticMethodID during initIDs), and the app's
+# Win32 mappings / WindowProc callbacks / Structures are loaded reflectively.
+# ProGuard must not strip or rename any of it — stripping Native#dispose made every
+# Windows package die at JVM start with "Failed to launch JVM"
+# (UnsatisfiedLinkError: Can't obtain static method dispose from class com.sun.jna.Native,
+# thrown from com.sun.jna.platform.win32.Shell32.<clinit> in Main.kt; Linux/macOS never
+# load Shell32, which is why only the Windows builds were affected).
+-keep class com.sun.jna.** { *; }
+-keep class * extends com.sun.jna.** { *; }
+-keep class * implements com.sun.jna.** { *; }
+
 # BouncyCastle security providers (ServiceLoader java.security.Provider).
 -keep class org.bouncycastle.jce.provider.BouncyCastleProvider { *; }
 -keep class org.bouncycastle.pqc.jcajce.provider.BouncyCastlePQCProvider { *; }
