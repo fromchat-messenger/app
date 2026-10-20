@@ -482,19 +482,10 @@ jobs:
         run: |
           # Keep the jmods-capable JDK the setup action exported; fall back to JAVA_HOME.
           export FROMCHAT_PACKAGING_JDK="${FROMCHAT_PACKAGING_JDK:-$JAVA_HOME}"
-          # TEMPORARY --profile: diagnostic for the silent ~30s inter-task gaps; remove once read.
-          # (CC was tried via GRADLE_OPTS in 23fe6a7 and reverted: the desktop build script uses
-          # script-closure task config that Gradle 9.6.1 CC cannot serialize — full CC compliance
-          # would mean rewriting ~10 tasks as classes for a ~20s saving on same-version reruns.)
-          ./gradlew :app:desktop:packageReleaseLinux -PdesktopArch=${{ matrix.arch }} --no-daemon --console=plain --profile
-      - name: Upload Gradle profile report
-        if: matrix.arch == 'x64'
-        uses: actions/upload-artifact@v5
-        with:
-          name: gradle-profile-linux-x64
-          path: build/reports/profile/
-          if-no-files-found: error
-          retention-days: 3
+          # packageReleaseDeb/rpm are the slow, quiet parts of this invocation (profiled 2026-10-20:
+          # ~45s/~23s single-threaded jpackage compression) — candidates for parallel-invocation
+          # packaging if we ever want to shorten this leg.
+          ./gradlew :app:desktop:packageReleaseLinux -PdesktopArch=${{ matrix.arch }} --no-daemon --console=plain
       - uses: actions/upload-artifact@v5
         with:
           name: linux-${{ matrix.arch }}
