@@ -4,6 +4,9 @@
 name: Cache inspect
 
 on:
+  push:
+    branches:
+      - feature/desktop
   workflow_dispatch:
 
 permissions:
