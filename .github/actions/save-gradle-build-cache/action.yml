@@ -59,6 +59,12 @@ runs:
         !startsWith(inputs.scope, 'linux-') &&
         !startsWith(inputs.scope, 'windows-package-') &&
         !startsWith(inputs.scope, 'macos-')
+      # Path list must stay byte-identical to the generic restore list in
+      # cache-gradle-build: actions/cache refuses to save when the restore and save
+      # paths differ, and the version stamp (hash of the path list) gates any later
+      # restore — including cross-scope restore-key fallbacks. compose/tmp is kept
+      # here on purpose (holds ProGuard's output jars; small); see the matching
+      # comment in cache-gradle-build.
       uses: actions/cache/save@v5
       continue-on-error: true
       with:
@@ -72,4 +78,3 @@ runs:
           !app/desktop/build/distributions
           !app/desktop/build/ci
           !app/desktop/build/compose/binaries
-          !app/desktop/build/compose/tmp

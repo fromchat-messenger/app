@@ -70,15 +70,16 @@ runs:
       if: inputs.scope != 'android' && inputs.scope != 'build-jar'
       id: cache
       with:
-        # Desktop packaging scopes never build Android and never run ProGuard — they stage the
-        # Build JAR artifact's jars instead — so their copy of compose/tmp is redundant and is not
-        # archived. Everything else here is either regenerated per version (distributions, the
-        # exported jars, the jpackage runtime image) or irrelevant (Android modules): archiving
-        # them is what pushed this repo past the 10 GB limit and into eviction.
-        # WARNING: the negations below are no-ops with actions/cache — included directories are
-        # tared whole and negated subtrees cannot be carved out (actions/toolkit#713). The real
-        # trim is done by not saving the packaging scopes at all (see save-gradle-build-cache);
-        # restore still falls back through the prefixes below to the build-jar scope.
+        # All non-android scopes must share ONE identical path list: actions/cache matches
+        # restore-keys only among entries with the same version stamp (a hash of the path
+        # list), so a build-jar entry can only warm a packaging job's restore if both lists
+        # are byte-identical. compose/tmp stays included everywhere: it holds ProGuard's
+        # output jars (~50-100 MB), which package jobs re-stage, and is small next to what
+        # a working cross-scope fallback saves in time. (Note: negations like
+        # "!app/desktop/build/distributions" are no-ops with actions/cache — included
+        # directories are tared whole and negated subtrees cannot be carved out,
+        # actions/toolkit#713; the real trim is done by not saving the packaging scopes at
+        # all, see save-gradle-build-cache.)
         path: |
           .gradle
           build
@@ -88,7 +89,6 @@ runs:
           !app/desktop/build/distributions
           !app/desktop/build/ci
           !app/desktop/build/compose/binaries
-          !app/desktop/build/compose/tmp
         key: gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts', 'gradle.properties', 'build.gradle.kts', 'app/desktop/build.gradle.kts', 'app/desktop/proguard-rules.pro', 'app/shared/build.gradle.kts', 'app/android/build.gradle.kts', 'utils/shared/build.gradle.kts', 'utils/android/build.gradle.kts') }}
         restore-keys: |
           gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-
