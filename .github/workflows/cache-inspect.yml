@@ -40,8 +40,8 @@ jobs:
               'toolchains':   r'gradle-java-toolchains-v1-[0-9a-f]{32}',
           }
           for fam, pat in pats.items():
-              sel = next((c for c in data['actions_caches'] if re.match(pat, c['cache_key'])), None)
-              print(fam + '=' + (sel['cache_key'] if sel else ''))
+              sel = next((c for c in data.get('actions_caches', data.get('caches', [])) if re.match(pat, c.get('cache_key', c.get('key', '')))), None)
+              print(fam + '=' + ((sel.get('cache_key') or sel.get('key')) if sel else ''))
           PY
 
       - name: Restore linux-x64
