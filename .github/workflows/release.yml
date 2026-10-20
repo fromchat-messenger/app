@@ -356,9 +356,13 @@ jobs:
         include:
           - arch: arm64
             label: Apple Silicon
+            runner: macos-latest
+          # jpackage cannot cross-build: on an arm64 runner this job silently ships
+          # arm64 binaries under the -intel.dmg name (beta18 did exactly that).
           - arch: x64
             label: Intel
-    runs-on: macos-latest
+            runner: macos-26-intel
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
