@@ -75,6 +75,10 @@ runs:
         # archived. Everything else here is either regenerated per version (distributions, the
         # exported jars, the jpackage runtime image) or irrelevant (Android modules): archiving
         # them is what pushed this repo past the 10 GB limit and into eviction.
+        # WARNING: the negations below are no-ops with actions/cache — included directories are
+        # tared whole and negated subtrees cannot be carved out (actions/toolkit#713). The real
+        # trim is done by not saving the packaging scopes at all (see save-gradle-build-cache);
+        # restore still falls back through the prefixes below to the build-jar scope.
         path: |
           .gradle
           build
