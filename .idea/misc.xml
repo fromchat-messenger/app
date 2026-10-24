@@ -2,6 +2,7 @@
 <project version="4">
   <component name="CidrRootsConfiguration">
     <excludeRoots>
+      <file path="$PROJECT_DIR$/.kotlin" />
       <file path="$PROJECT_DIR$/app/android/keys" />
     </excludeRoots>
   </component>
