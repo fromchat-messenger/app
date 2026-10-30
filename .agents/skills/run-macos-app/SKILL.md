@@ -15,13 +15,13 @@ From the app repo root, after UI or desktop changes:
    export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
    ```
 
-2. Build the release distributable:
+2. Build the app bundle (debug distributable — no ProGuard; much faster for local UI checks):
 
    ```bash
-   ./gradlew :app:desktop:createReleaseDistributable
+   ./gradlew :app:desktop:createDistributable
    ```
 
-3. Bundle path: `app/desktop/build/compose/binaries/main-release/app/FromChat.app`
+3. Bundle path: `app/desktop/build/compose/binaries/main/app/FromChat.app`
 
 4. Quit any running instance:
 
@@ -33,7 +33,7 @@ From the app repo root, after UI or desktop changes:
 5. Install to Applications:
 
    ```bash
-   ditto "app/desktop/build/compose/binaries/main-release/app/FromChat.app" /Applications/FromChat.app
+   ditto "app/desktop/build/compose/binaries/main/app/FromChat.app" /Applications/FromChat.app
    ```
 
 6. Launch:
