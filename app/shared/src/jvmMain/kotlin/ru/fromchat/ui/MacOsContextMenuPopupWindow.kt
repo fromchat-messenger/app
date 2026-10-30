@@ -42,7 +42,8 @@ internal fun MacOsContextMenuPopupWindow(
     content: @Composable () -> Unit,
 ) {
     val ownerWindow = LocalAwtWindow.current
-    val composeContainer = LocalWindowInfo.current.containerSize
+    // Owner metrics must be read before [Window]; inside the popup, LocalWindowInfo is the popup.
+    val ownerComposeContainer = LocalWindowInfo.current.containerSize
     val density = LocalDensity.current
     val dismiss = rememberUpdatedState(onDismissRequest)
     var contentSizePx by remember { mutableStateOf(IntSize.Zero) }
@@ -74,7 +75,6 @@ internal fun MacOsContextMenuPopupWindow(
 
         DisposableEffect(awtWindow, ownerWindow) {
             applyTransparentComposeWindow(awtWindow)
-            awtWindow.isVisible = false
             val disposeDismiss = installOsPopupDismissOnClickOutside(
                 popupWindow = awtWindow,
                 onDismiss = { dismiss.value() },
@@ -90,14 +90,20 @@ internal fun MacOsContextMenuPopupWindow(
             }
         }
 
-        LaunchedEffect(revealWindow, contentSizePx, ownerWindow, composeContainer) {
-            if (!revealWindow || contentSizePx.width <= 0 || contentSizePx.height <= 0) {
+        LaunchedEffect(revealWindow, contentSizePx, ownerWindow, ownerComposeContainer) {
+            if (!revealWindow) {
                 awtWindow.isVisible = false
+                return@LaunchedEffect
+            }
+            if (contentSizePx.width <= 0 || contentSizePx.height <= 0) {
+                // macOS does not reliably lay out fully hidden windows; keep a tiny
+                // transparent window so menu content can measure.
+                awtWindow.isVisible = true
                 return@LaunchedEffect
             }
             val anchor = popupScreenAnchor(
                 owner = ownerWindow,
-                composeContainer = composeContainer,
+                composeContainer = ownerComposeContainer,
                 positionProvider = positionProvider,
                 popupSize = contentSizePx,
             )
@@ -174,11 +180,10 @@ private fun popupScreenAnchor(
         layoutDirection = LayoutDirection.Ltr,
         popupContentSize = popupSize,
     )
-    val width = composeContainer.width.coerceAtLeast(1)
-    val height = composeContainer.height.coerceAtLeast(1)
+    // [composeOffset] is already in the owner window's root coordinate space (localToWindow).
     return Point(
-        ownerLocation.x + composeOffset.x * owner.width / width,
-        ownerLocation.y + composeOffset.y * owner.height / height,
+        ownerLocation.x + composeOffset.x,
+        ownerLocation.y + composeOffset.y,
     )
 }
 

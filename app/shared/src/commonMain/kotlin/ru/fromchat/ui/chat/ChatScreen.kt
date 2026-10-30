@@ -66,8 +66,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -75,6 +77,7 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import kotlinx.datetime.LocalDate
+import kotlin.math.roundToInt
 import ru.fromchat.api.local.messages.formatChatDateSeparator
 import ru.fromchat.chat_date_today
 import ru.fromchat.chat_date_yesterday
@@ -103,7 +106,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Logger
 import ru.fromchat.AppForeground
-import ru.fromchat.supportsMouseMessageInteraction
 import ru.fromchat.ui.main.ConversationDetailContentPadding
 import ru.fromchat.ui.main.LocalConversationListDetailActive
 import ru.fromchat.ui.main.detailPaneShowBackButton
@@ -562,6 +564,7 @@ fun ChatScreen(
             )
         )
     }
+    var chatMenuAreaOriginInWindow by remember { mutableStateOf(IntOffset.Zero) }
     var expandedImage by remember { mutableStateOf<Pair<Message, Int>?>(null) }
     var isImageClosing by remember { mutableStateOf(false) }
     val imageThumbBounds = remember { mutableStateMapOf<String, Rect>() }
@@ -1192,7 +1195,7 @@ fun ChatScreen(
                         bridge = attachmentDropBridge,
                     )
                     .then(
-                        if (contextMenuState.isOpen && !supportsMouseMessageInteraction()) {
+                        if (contextMenuState.isOpen) {
                             Modifier.pointerInput(Unit) {
                                 detectTapGestures {
                                     contextMenuState =
@@ -1374,7 +1377,6 @@ fun ChatScreen(
                                             panel.finishDissolveAnimation(messageDissolveKey(message))
                                         },
                                         modifier = Modifier.padding(top = item.spacingAbove),
-                                        isContextMenuOpen = contextMenuState.isOpen,
                                         isContextMenuForThisMessage =
                                             contextMenuState.isOpen && run {
                                                 val menu = contextMenuState.message
@@ -1572,7 +1574,19 @@ fun ChatScreen(
                     }
                 }
 
-                BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                BoxWithConstraints(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .onGloballyPositioned { coords ->
+                            if (coords.isAttached) {
+                                val topLeft = coords.localToWindow(Offset.Zero)
+                                chatMenuAreaOriginInWindow = IntOffset(
+                                    topLeft.x.roundToInt(),
+                                    topLeft.y.roundToInt(),
+                                )
+                            }
+                        },
+                ) {
                     val density = LocalDensity.current
                     val screenWidthPx = with(density) { maxWidth.toPx().toInt() }
                     val screenHeightPx = with(density) { maxHeight.toPx().toInt() }
@@ -1585,6 +1599,7 @@ fun ChatScreen(
                         isReadOnly = isReadOnly,
                         screenWidthPx = screenWidthPx,
                         screenHeightPx = screenHeightPx,
+                        hostOriginInWindow = chatMenuAreaOriginInWindow,
                         onDismiss = { contextMenuState = contextMenuState.copy(isOpen = false) },
                         onReply = { message ->
                             replyTo = message

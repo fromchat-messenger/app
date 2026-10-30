@@ -21,6 +21,10 @@ import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.channels.Channel
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -109,20 +113,23 @@ private val contextMenuEnterSpec = spring<Float>(
 internal fun clampContextMenuOffset(
     position: IntOffset,
     popupSize: IntSize,
-    screenWidthPx: Int,
-    screenHeightPx: Int,
+    hostOriginInWindow: IntOffset,
+    hostWidthPx: Int,
+    hostHeightPx: Int,
     paddingPx: Int,
     allowOutsideWindow: Boolean,
 ): IntOffset {
     if (allowOutsideWindow || popupSize == IntSize.Zero) return position
+    val minX = hostOriginInWindow.x + paddingPx
+    val minY = hostOriginInWindow.y + paddingPx
+    val maxX = hostOriginInWindow.x + hostWidthPx - paddingPx
+    val maxY = hostOriginInWindow.y + hostHeightPx - paddingPx
     var x = position.x
     var y = position.y
-    val rightEdge = screenWidthPx - paddingPx
-    val bottomEdge = screenHeightPx - paddingPx
-    if (x + popupSize.width > rightEdge) x = rightEdge - popupSize.width
-    if (y + popupSize.height > bottomEdge) y = bottomEdge - popupSize.height
-    if (x < paddingPx) x = paddingPx
-    if (y < paddingPx) y = paddingPx
+    if (x + popupSize.width > maxX) x = maxX - popupSize.width
+    if (y + popupSize.height > maxY) y = maxY - popupSize.height
+    if (x < minX) x = minX
+    if (y < minY) y = minY
     return IntOffset(x, y)
 }
 
@@ -142,6 +149,8 @@ fun MessageContextMenu(
     isReadOnly: Boolean = false,
     screenWidthPx: Int,
     screenHeightPx: Int,
+    /** Top-left of the menu host in window coordinates (list–detail chat pane). */
+    hostOriginInWindow: IntOffset = IntOffset.Zero,
     modifier: Modifier = Modifier,
 ) {
     if (isReadOnly && state.isOpen) {
@@ -164,6 +173,39 @@ fun MessageContextMenu(
     }
     var lockedMenuWidthPx by remember(state.message) { mutableIntStateOf(0) }
     val offscreenMacMenu = usesMacOsOffscreenContextMenu()
+    val measuredSizes = remember(state.message) { Channel<IntSize>(Channel.CONFLATED) }
+    val density = LocalDensity.current
+    val paddingPx = with(density) { 16.dp.toPx().toInt() }
+
+    LaunchedEffect(
+        state.message,
+        state.position,
+        hostOriginInWindow,
+        screenWidthPx,
+        screenHeightPx,
+        paddingPx,
+    ) {
+        for (size in measuredSizes) {
+            if (size == IntSize.Zero) continue
+            lockedMenuWidthPx = size.width
+            val adjusted = clampContextMenuOffset(
+                position = state.position,
+                popupSize = size,
+                hostOriginInWindow = hostOriginInWindow,
+                hostWidthPx = screenWidthPx,
+                hostHeightPx = screenHeightPx,
+                paddingPx = paddingPx,
+                allowOutsideWindow = offscreenMacMenu,
+            )
+            frozenOrigin = TransformOrigin(
+                pivotFractionX = ((state.position.x - adjusted.x).toFloat() / size.width)
+                    .coerceIn(0f, 1f),
+                pivotFractionY = ((state.position.y - adjusted.y).toFloat() / size.height)
+                    .coerceIn(0f, 1f),
+            )
+            enterLaidOut = true
+        }
+    }
 
     LaunchedEffect(state.isOpen) {
         if (!state.isOpen) {
@@ -203,13 +245,9 @@ fun MessageContextMenu(
     }
 
     if (shouldShowPopup && state.message != null) {
-        val density = LocalDensity.current
-        val paddingPx = with(density) { 16.dp.toPx().toInt() }
-
-        // Clamp with popupContentSize — do not SubcomposeLayout-measure under
-        // SharedTransitionLayout (writes state during LookaheadMeasuring).
         val positionProvider = remember(
             state.position,
+            hostOriginInWindow,
             screenWidthPx,
             screenHeightPx,
             paddingPx,
@@ -223,8 +261,9 @@ fun MessageContextMenu(
                 ): IntOffset = clampContextMenuOffset(
                     position = state.position,
                     popupSize = popupContentSize,
-                    screenWidthPx = screenWidthPx,
-                    screenHeightPx = screenHeightPx,
+                    hostOriginInWindow = hostOriginInWindow,
+                    hostWidthPx = screenWidthPx,
+                    hostHeightPx = screenHeightPx,
                     paddingPx = paddingPx,
                     allowOutsideWindow = offscreenMacMenu,
                 )
@@ -234,14 +273,28 @@ fun MessageContextMenu(
         val scale = 0.5f + 0.5f * animationProgress.floatValue
         val alpha = animationProgress.floatValue.coerceIn(0f, 1f)
 
-        // [state.position] is window coordinates (see MessageItem localToWindow).
-        // Alignment+offset would add the popup parent’s window origin again (double offset
-        // in list–detail panes). Place with an absolute provider instead.
+        if (!enterLaidOut) {
+            MessageContextMenuMeasurer(
+                message = state.message,
+                isAuthor = isAuthor,
+                canDelete = canDelete,
+                isReadOnly = isReadOnly,
+                maxWidthPx = screenWidthPx,
+                maxHeightPx = screenHeightPx,
+                onMeasured = { measuredSizes.trySend(it) },
+            )
+        }
+
+        // [state.position] is in window coordinates (localToWindow). Clamp to the chat pane.
+        if (!enterLaidOut) {
+            return
+        }
+
         MessageContextMenuPopup(
             onDismissRequest = onDismiss,
             positionProvider = positionProvider,
             reserveOvershoot = reserveOvershoot,
-            deferReveal = !offscreenMacMenu || enterLaidOut,
+            deferReveal = true,
         ) {
             ContextMenuContent(
                 message = state.message,
@@ -287,22 +340,6 @@ fun MessageContextMenu(
                         if (size.width > 0 && size.width > lockedMenuWidthPx) {
                             lockedMenuWidthPx = size.width
                         }
-                        if (size.width <= 0 || size.height <= 0 || enterLaidOut) return@onSizeChanged
-                        val adjusted = clampContextMenuOffset(
-                            position = state.position,
-                            popupSize = size,
-                            screenWidthPx = screenWidthPx,
-                            screenHeightPx = screenHeightPx,
-                            paddingPx = paddingPx,
-                            allowOutsideWindow = offscreenMacMenu,
-                        )
-                        frozenOrigin = TransformOrigin(
-                            pivotFractionX = ((state.position.x - adjusted.x).toFloat() / size.width)
-                                .coerceIn(0f, 1f),
-                            pivotFractionY = ((state.position.y - adjusted.y).toFloat() / size.height)
-                                .coerceIn(0f, 1f),
-                        )
-                        enterLaidOut = true
                     },
                 animated = true,
                 scale = scale,
@@ -311,6 +348,51 @@ fun MessageContextMenu(
                 transformOriginY = frozenOrigin.pivotFractionY,
                 isReadOnly = isReadOnly,
             )
+        }
+    }
+}
+
+@Composable
+private fun MessageContextMenuMeasurer(
+    message: Message,
+    isAuthor: Boolean,
+    canDelete: Boolean,
+    isReadOnly: Boolean,
+    maxWidthPx: Int,
+    maxHeightPx: Int,
+    onMeasured: (IntSize) -> Unit,
+) {
+    SubcomposeLayout(Modifier.size(0.dp)) { _ ->
+        val looseConstraints = Constraints(
+            minWidth = 0,
+            minHeight = 0,
+            maxWidth = maxWidthPx.coerceAtLeast(1),
+            maxHeight = maxHeightPx.coerceAtLeast(1),
+        )
+        val placeables = subcompose("measure") {
+            ContextMenuContent(
+                message = message,
+                isAuthor = isAuthor,
+                canDelete = canDelete,
+                onReply = {},
+                onEdit = {},
+                onDelete = {},
+                onCopy = {},
+                onSave = {},
+                onCancelSend = {},
+                onRetrySend = {},
+                isReadOnly = isReadOnly,
+                modifier = Modifier.graphicsLayer(alpha = 0f),
+                animated = false,
+                withShadow = false,
+            )
+        }.map { it.measure(looseConstraints) }
+        val measured = placeables.firstOrNull()?.let { IntSize(it.width, it.height) } ?: IntSize.Zero
+        if (measured != IntSize.Zero) {
+            onMeasured(measured)
+        }
+        layout(0, 0) {
+            placeables.forEach { it.placeRelative(-10000, -10000) }
         }
     }
 }

@@ -228,7 +228,6 @@ fun MessageItem(
     currentUserId: Int? = null,
     expandedImageKey: String? = null,
     isImageClosing: Boolean = false,
-    isContextMenuOpen: Boolean = false,
     isContextMenuForThisMessage: Boolean = false,
     onCancelOutboundAttachment: ((Message) -> Unit)? = null,
     onRetryOutboundAttachment: ((Message) -> Unit)? = null,
@@ -284,8 +283,8 @@ fun MessageItem(
         }
     }
     val scaleTarget = if (isPressed) 0.96f else 1f
-    val avatarScaleTarget = if (avatarPressed && !isContextMenuOpen) 0.96f else 1f
-    val replyScaleTarget = if (replyPressed && !isContextMenuOpen) 0.96f else 1f
+    val avatarScaleTarget = if (avatarPressed && !isContextMenuForThisMessage) 0.96f else 1f
+    val replyScaleTarget = if (replyPressed && !isContextMenuForThisMessage) 0.96f else 1f
     val scale by animateFloatAsState(
         targetValue = scaleTarget,
         animationSpec = spring(
@@ -498,7 +497,7 @@ fun MessageItem(
         }
 
         val rowLongPress =
-            if (isContextMenuOpen) Modifier
+            if (isContextMenuForThisMessage) Modifier
             else if (mouseMessageUi) {
                 Modifier.onMouseSecondaryClick(message.id, enabled = true) { localOffset ->
                     openMessageMenu(rowLayoutCoords, localOffset)
@@ -547,14 +546,14 @@ fun MessageItem(
                                 scaleY = avatarScale,
                                 transformOrigin = TransformOrigin.Center
                             )
-                            .pointerInput(onUsernameClick, isContextMenuOpen) {
+                            .pointerInput(onUsernameClick, isContextMenuForThisMessage) {
                                 detectTapGestures(
                                     onPress = {
-                                        if (!isContextMenuOpen) avatarPressed = true
+                                        if (!isContextMenuForThisMessage) avatarPressed = true
                                         try {
                                             awaitRelease()
                                         } finally {
-                                            if (!isContextMenuOpen) avatarPressed = false
+                                            if (!isContextMenuForThisMessage) avatarPressed = false
                                         }
                                     },
                                     onTap = { onUsernameClick?.invoke() }
@@ -621,7 +620,7 @@ fun MessageItem(
                         !isFilenameOnlyMessageCaption(message)
 
                     val bubbleBodyGestures =
-                        if (isContextMenuOpen) Modifier
+                        if (isContextMenuForThisMessage) Modifier
                         else Modifier
                             .onGloballyPositioned { bubbleContentCoords = it }
                             .then(
@@ -707,7 +706,7 @@ fun MessageItem(
                                             Modifier
                                                 .onMouseSecondaryClick(
                                                     message.id,
-                                                    enabled = !isContextMenuOpen,
+                                                    enabled = !isContextMenuForThisMessage,
                                                 ) { localOffset ->
                                                     openMessageMenu(
                                                         rowLayoutCoords,
@@ -838,7 +837,7 @@ fun MessageItem(
                                                 replyScale = replyScale,
                                                 replyJumpCd = replyJumpCd,
                                                 photoLabel = replyPhotoLabel,
-                                                isContextMenuOpen = isContextMenuOpen,
+                                                isContextMenuOpen = isContextMenuForThisMessage,
                                                 onReplyClick = onReplyClick,
                                                 onReplyPressedChange = { replyPressed = it },
                                                 inImageBubble = primaryIsImageContent,

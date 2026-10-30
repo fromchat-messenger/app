@@ -133,8 +133,9 @@ private object ChatStyleTextContextMenuRepresentation : ContextMenuRepresentatio
                     clampContextMenuOffset(
                         position = anchor,
                         popupSize = popupContentSize,
-                        screenWidthPx = windowSize.width,
-                        screenHeightPx = windowSize.height,
+                        hostOriginInWindow = IntOffset.Zero,
+                        hostWidthPx = windowSize.width,
+                        hostHeightPx = windowSize.height,
                         paddingPx = paddingPx,
                         allowOutsideWindow = false,
                     )
@@ -180,7 +181,7 @@ private object ChatStyleTextContextMenuRepresentation : ContextMenuRepresentatio
                     state.status = FoundationContextMenuState.Status.Closed
                 },
                 positionProvider = positionProvider,
-                revealWindow = enterLaidOut,
+                revealWindow = true,
                 content = menuContent,
             )
         } else {
