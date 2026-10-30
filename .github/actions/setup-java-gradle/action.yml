@@ -3,7 +3,7 @@ description: Temurin JDK 17 + Gradle wrapper with dependency and build cache
 
 inputs:
   java-architecture:
-    description: Optional JDK architecture (x64). Omit or use none for host default.
+    description: Optional JDK architecture (x64). Omit for host default.
     required: false
     default: ""
   java-distribution:
@@ -40,16 +40,10 @@ runs:
         java-version: ${{ inputs.desktop-jdk }}
 
     - uses: actions/setup-java@v5
-      if: ${{ inputs.java-architecture != '' && inputs.java-architecture != 'none' }}
       with:
         distribution: ${{ inputs.java-distribution }}
         java-version: "17"
         architecture: ${{ inputs.java-architecture }}
-    - uses: actions/setup-java@v5
-      if: ${{ inputs.java-architecture == '' || inputs.java-architecture == 'none' }}
-      with:
-        distribution: temurin
-        java-version: "17"
 
     - name: Export the jmods-capable desktop JDK
       if: inputs.desktop-jdk != ''

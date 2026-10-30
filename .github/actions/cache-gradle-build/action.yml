@@ -6,12 +6,6 @@ inputs:
     description: Unique id for this job (part of the cache key; use restore-keys to reuse other scopes)
     required: true
 
-inputs:
-  save:
-    description: Save cache at job end. Use false on parallel jobs that share the same cache key.
-    required: false
-    default: "true"
-
 outputs:
   cache-hit:
     description: Whether an exact cache key match was restored
@@ -23,6 +17,17 @@ outputs:
 runs:
   using: composite
   steps:
+    # Keep the path lists here and in save-gradle-build-cache identical: actions/cache refuses to
+    # save when the restore and save paths differ.
+    #
+    # Scope: caches are only visible to runs on the same ref (plus the default branch) — see
+    # "Restrictions for accessing a cache" in the GitHub docs. Release builds never run on a tag
+    # ref (release.yml dispatches only, from the default branch), so saves land in the
+    # default-branch scope and every later run from any ref can restore them; the build cache
+    # warms across releases instead of dying with each tag. That is why the key must stay stable
+    # across releases: everything cached here is a pure function of these files, and the release
+    # version is injected through Gradle properties (see set-version) rather than by editing a
+    # hashed source file.
     - uses: actions/cache/restore@v5
       if: inputs.scope == 'android'
       id: cache-android
@@ -34,26 +39,57 @@ runs:
           app/android/build
           utils/shared/build
           utils/android/build
-        key: gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts', 'gradle.properties', 'build.gradle.kts', 'app/desktop/build.gradle.kts', 'app/desktop/proguard-rules.pro', 'app/shared/build.gradle.kts', 'app/android/build.gradle.kts', 'utils/shared/build.gradle.kts', 'utils/android/build.gradle.kts') }}
+          !app/android/build/outputs
+        key: gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts', 'gradle.properties', 'build.gradle.kts', 'app/desktop/build.gradle.kts', 'app/desktop/proguard-rules.pro', 'app/shared/build.gradle.kts', 'app/android/build.gradle.kts') }}
         restore-keys: |
           gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-
           gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-build-jar-
           gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-
     - uses: actions/cache/restore@v5
-      if: inputs.scope != 'android'
-      id: cache
+      if: inputs.scope == 'build-jar'
+      id: cache-build-jar
       with:
-        lookup-only: ${{ inputs.save != 'true' }}
-        save-always: ${{ inputs.save == 'true' }}
+        # The one scope that actually runs ProGuard, so compose/tmp is kept here: its jars are the
+        # task outputs, and without them Gradle can never consider proguardReleaseJars up-to-date
+        # and re-runs its ~8 minutes on every re-run.
         path: |
           .gradle
           build
-          app/desktop/build
           app/shared/build
-          app/android/build
           utils/shared/build
-          utils/android/build
-        key: gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts', 'gradle.properties', 'build.gradle.kts', 'app/desktop/build.gradle.kts', 'app/desktop/proguard-rules.pro', 'app/shared/build.gradle.kts', 'app/android/build.gradle.kts', 'utils/shared/build.gradle.kts', 'utils/android/build.gradle.kts') }}
+          app/desktop/build
+          !app/desktop/build/distributions
+          !app/desktop/build/ci
+          !app/desktop/build/compose/binaries
+        key: gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts', 'gradle.properties', 'build.gradle.kts', 'app/desktop/build.gradle.kts', 'app/desktop/proguard-rules.pro', 'app/shared/build.gradle.kts', 'app/android/build.gradle.kts') }}
+        restore-keys: |
+          gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-
+          gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-build-jar-
+          gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-
+    - uses: actions/cache/restore@v5
+      if: inputs.scope != 'android' && inputs.scope != 'build-jar'
+      id: cache
+      with:
+        # All non-android scopes must share ONE identical path list: actions/cache matches
+        # restore-keys only among entries with the same version stamp (a hash of the path
+        # list), so a build-jar entry can only warm a packaging job's restore if both lists
+        # are byte-identical. compose/tmp stays included everywhere: it holds ProGuard's
+        # output jars (~50-100 MB), which package jobs re-stage, and is small next to what
+        # a working cross-scope fallback saves in time. (Note: negations like
+        # "!app/desktop/build/distributions" are no-ops with actions/cache — included
+        # directories are tared whole and negated subtrees cannot be carved out,
+        # actions/toolkit#713; the real trim is done by not saving the packaging scopes at
+        # all, see save-gradle-build-cache.)
+        path: |
+          .gradle
+          build
+          app/shared/build
+          utils/shared/build
+          app/desktop/build
+          !app/desktop/build/distributions
+          !app/desktop/build/ci
+          !app/desktop/build/compose/binaries
+        key: gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts', 'gradle.properties', 'build.gradle.kts', 'app/desktop/build.gradle.kts', 'app/desktop/proguard-rules.pro', 'app/shared/build.gradle.kts', 'app/android/build.gradle.kts') }}
         restore-keys: |
           gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-
           gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-build-jar-

@@ -3,33 +3,35 @@ package ru.fromchat.api.local.download
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import java.io.File
-import javax.swing.JFileChooser
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.awt.LocalAwtWindow
 import kotlinx.coroutines.launch
 import ru.fromchat.api.local.cache.DecryptedFileCache
 import ru.fromchat.api.local.cache.PendingFileSaveEntry
 import ru.fromchat.api.local.cache.PendingFileSaveRegistry
+import ru.fromchat.utils.files.showJvmSaveFileDialog
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 actual fun rememberPlatformSaveMessageFile(
     onComplete: (Boolean) -> Unit,
 ): (SavableMessageFile) -> Unit {
     val scope = rememberCoroutineScope()
-    return remember(onComplete) {
+    val owner = LocalAwtWindow.current
+    return remember(onComplete, owner) {
         { savable: SavableMessageFile ->
             scope.launch {
-                val chooser = JFileChooser().apply {
-                    dialogType = JFileChooser.SAVE_DIALOG
-                    selectedFile = File(savable.filename)
-                }
-                if (chooser.showSaveDialog(null) != JFileChooser.APPROVE_OPTION) {
+                val destination = showJvmSaveFileDialog(
+                    defaultFilename = savable.filename,
+                    owner = owner,
+                ) ?: run {
                     onComplete(false)
                     return@launch
                 }
                 PendingFileSaveRegistry.schedule(
                     PendingFileSaveEntry(
                         storageKey = savable.storageKey,
-                        destinationUri = chooser.selectedFile.absolutePath,
+                        destinationUri = destination.absolutePath,
                         filename = savable.filename,
                         mimeType = savable.mimeType,
                     ),
