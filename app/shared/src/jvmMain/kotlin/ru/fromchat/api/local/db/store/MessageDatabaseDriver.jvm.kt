@@ -2,7 +2,7 @@ package ru.fromchat.api.local.db.store
 
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import com.pr0gramm3r101.utils.files.PlatformFileSystem
+import ru.fromchat.utils.files.PlatformFileSystem
 import java.io.File
 import ru.fromchat.db.MessageDatabase
 

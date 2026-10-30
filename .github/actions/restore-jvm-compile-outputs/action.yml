@@ -12,7 +12,6 @@ runs:
         for path in \
           app/shared/build/classes/kotlin/jvm/main \
           app/shared/build/generated/sources/appBuildInfo/kotlin \
-          utils/shared/build/classes/kotlin/jvm/main \
           app/desktop/build/classes/kotlin/main
         do
           if [[ ! -d "$path" ]]; then

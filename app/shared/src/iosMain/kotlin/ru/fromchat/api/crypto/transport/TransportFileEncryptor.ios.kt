@@ -4,8 +4,8 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import platform.Foundation.NSFileManager
-import com.pr0gramm3r101.utils.iosAppendFile
-import com.pr0gramm3r101.utils.iosFileSize
+import ru.fromchat.utils.iosAppendFile
+import ru.fromchat.utils.iosFileSize
 
 @OptIn(ExperimentalForeignApi::class)
 actual object TransportFileEncryptor {

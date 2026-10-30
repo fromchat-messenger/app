@@ -2,7 +2,7 @@ package ru.fromchat.desktop.tray
 
 import org.freedesktop.dbus.types.UInt32
 import org.freedesktop.dbus.types.Variant
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 
 /**
  * The exported `com.canonical.dbusmenu` object: a fixed menu tree
@@ -127,7 +127,7 @@ internal class SniMenuImpl(
     }
 
     companion object {
-        private val LOG_TAG = "SniTray"
+        private const val LOG_TAG = "SniTray"
         private const val REVISION = 1
         private const val DBUSMENU_VERSION = 2L
         private const val ICON_THEME_PATH_WIRE_SIG = "as"

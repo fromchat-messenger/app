@@ -6,6 +6,18 @@ Contributors are **not required** to follow this guide — but sticking to it sa
 
 This file is created mostly for AI agents to write good and readable code.
 
+## Contents
+
+1. [Inline single-use bindings](#1-inline-single-use-bindings)
+2. [Merge small screen helpers into the main file](#2-merge-small-screen-helpers-into-the-main-file)
+3. [Kotlin idioms](#3-kotlin-idioms)
+4. [Packages for related files](#4-packages-for-related-files)
+5. [Reuse project abstractions](#5-reuse-project-abstractions)
+6. [User-visible strings](#6-user-visible-strings)
+7. [Compose layout and formatting](#7-compose-layout-and-formatting)
+8. [Function bodies](#8-function-bodies)
+9. [General principles](#9-general-principles)
+
 ---
 
 ## 1. Inline single-use bindings
@@ -121,11 +133,38 @@ ui/profile/bio/ProfileBioMarkdown.kt
 ui/profile/edit/EditProfileScreen.kt
 ```
 
-Rules:
+**File names**
 
-- One primary type per file; file name matches the primary type.
-- Sub-packages for sub-features (e.g. `edit`, `bio`, `panels/dm`).
+- One primary type per file; **file name matches the primary type** (e.g. `ProfileScreen.kt` → `ProfileScreen`).
+- Renames are rare — only when called out explicitly (e.g. `Utils.kt` → `ApiUtils.kt` when the type is renamed).
 - Do not create a package for a single tiny file that only exists to be merged per §2.
+
+**Sub-packages**
+
+- Use sub-packages for sub-features (`edit`, `bio`, `menu`, `overlay`, …).
+- Keep entry/bootstrap types at sensible roots when they are not feature-local (e.g. desktop `FromChat.kt` default package for WM_CLASS).
+
+**Target layout (shared `ru.fromchat` — move files to match when touching packages)**
+
+| Area | Package / folder | Notes |
+|------|------------------|--------|
+| Logging | `ru.fromchat.logging` | `Logger*` types |
+| Local API / WS | `ru.fromchat.api.local` | e.g. `WebSocketManager`, keep-alive helpers |
+| API sync | `ru.fromchat.api.sync` | `*Sync*`, deferred startup network, update sync |
+| Push | `ru.fromchat.api.push` | FCM registration |
+| API helpers | `ru.fromchat.api.util` | shared API utilities (`ApiUtils.kt`) |
+| API client | `ru.fromchat.api` | `ApiClient.kt` stays at package root |
+| Chat message UI | `ru.fromchat.ui.chat.message` | message rows, mouse interaction helpers |
+| UI theme | `ru.fromchat.ui.theme` | |
+| UI welcome | `ru.fromchat.ui.welcome` | |
+| JVM popups | `ru.fromchat.ui.popup.jvm` | |
+| Main shell | `ru.fromchat.ui.main` | screen shells; `desktop/`, `nav/` subdirs |
+| Chat chrome | `ru.fromchat.ui.chat` | `menu/`, `message/`, `chrome/`, `media/`; root e.g. `Avatar.kt` |
+| Calls | `ru.fromchat.ui.calls` | `overlay/`, `web/`; root e.g. incoming notify |
+| Profile | `ru.fromchat.ui.profile` | `edit/`; badges/widgets; root screens/routes |
+| App root | `ru.fromchat.ui` | `App.kt` at package root |
+
+**Stay at `ru.fromchat` root (for now):** `AppForeground`; iOS `MainViewController`, `IosApplicationBootstrap`.
 
 ---
 
@@ -133,8 +172,7 @@ Rules:
 
 Prefer existing project components and utilities over new wrappers:
 
-- `com.pr0gramm3r101.utils` — clipboard, `Modifier.conditional`, etc.
-- `com.pr0gramm3r101.components` — `Category`, `ListItem`, etc.
+- `ru.fromchat.utils` — clipboard, `Modifier.conditional`, settings, crypto helpers, list UI (`Category`, `ListItem`, …)
 - `ru.fromchat.ui.components` — shared UI primitives.
 - `apiRequest` / existing API client patterns.
 
@@ -214,3 +252,6 @@ private fun normalized(input: String) = input.trim().takeIf { it.isNotEmpty() }?
 - Do not introduce abstractions used only once (same rule as §1).
 - When a convention is ambiguous, match neighboring files in the same package.
 
+---
+
+For automated style cleanup on an existing diff, use the **`adapt-to-style`** skill (`.agents/skills/adapt-to-style/`). User-visible copy: §6.

@@ -1,8 +1,7 @@
 package ru.fromchat.desktop
 
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import java.io.File
-import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
 
 /** Native libnotify banners via `notify-send` (Freedesktop Notifications). */

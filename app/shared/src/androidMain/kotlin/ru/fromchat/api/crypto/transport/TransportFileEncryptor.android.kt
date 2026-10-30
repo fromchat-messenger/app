@@ -4,7 +4,6 @@ import java.io.File
 import java.io.FileOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import ru.fromchat.api.crypto.transport.encryptPlaintextFileToFcaeBlob
 
 actual object TransportFileEncryptor {
     actual suspend fun encryptPlaintextFileToTransportBlob(

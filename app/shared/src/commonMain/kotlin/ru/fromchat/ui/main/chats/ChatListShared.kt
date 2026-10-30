@@ -11,7 +11,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -37,7 +36,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -79,18 +77,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastAll
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeout
 import ru.fromchat.ui.chat.utils.AttachmentDropHighlightBox
 import ru.fromchat.ui.chat.utils.chatAttachmentDropTarget
 import ru.fromchat.ui.chat.utils.isDropHighlightActive
 import ru.fromchat.ui.chat.utils.rememberAttachmentDropBridge
 import ru.fromchat.ui.components.SearchBar
 import ru.fromchat.ui.components.SearchBarSharedElement
-import com.pr0gramm3r101.components.Category
-import com.pr0gramm3r101.components.ListItem
-import com.pr0gramm3r101.components.ListItemPosition
-import com.pr0gramm3r101.components.listItemClipShape
-import com.pr0gramm3r101.components.listItemPositionInGroup
+import ru.fromchat.utils.components.Category
+import ru.fromchat.utils.components.ListItem
+import ru.fromchat.utils.components.ListItemPosition
+import ru.fromchat.utils.components.listItemClipShape
+import ru.fromchat.utils.components.listItemPositionInGroup
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
@@ -105,16 +102,15 @@ import ru.fromchat.cd_chat_preview_sending
 import ru.fromchat.cd_chat_preview_uploading
 import ru.fromchat.cd_chat_selected
 import ru.fromchat.ui.chat.Avatar
-import ru.fromchat.ui.profile.DisplayName
-import ru.fromchat.ui.profile.resolveVerificationStatus
-import ru.fromchat.ui.chat.ExpressiveUploadIndicator
-import ru.fromchat.ui.chat.TypingIndicator
+import ru.fromchat.ui.profile.widget.DisplayName
+import ru.fromchat.ui.profile.widget.resolveVerificationStatus
+import ru.fromchat.ui.chat.media.ExpressiveUploadIndicator
+import ru.fromchat.ui.chat.chrome.TypingIndicator
 import ru.fromchat.ui.components.Text
 import ru.fromchat.unread_count_badge
 import ru.fromchat.unread_count_overflow
-import ru.fromchat.ui.profile.deletedUserDisplayNameForUi
-import ru.fromchat.ui.profile.displayNameForUi
-import ru.fromchat.ui.profile.peerIsDeleted
+import ru.fromchat.ui.profile.widget.deletedUserDisplayNameForUi
+import ru.fromchat.ui.profile.widget.peerIsDeleted
 
 internal object ChatListLayout {
     const val SEARCH_BAR_ROW = 0
@@ -149,7 +145,6 @@ private val ChatListCategoryMargin = PaddingValues(
  * Mouse primary long-press does not enter selection.
  */
 @Composable
-@OptIn(ExperimentalFoundationApi::class)
 private fun Modifier.chatRowOpenAndSelectGestures(
     selectionEnabled: Boolean,
     scope: CoroutineScope,
@@ -817,7 +812,6 @@ internal fun ChatRowAvatar(
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun ChatUnreadBadge(
     count: Int,
@@ -851,7 +845,6 @@ internal fun ChatUnreadBadge(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun PublicChatRow(
     publicChatTitle: String?,
@@ -1026,7 +1019,6 @@ internal fun PublicChatRowContent(
     )
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun DmConversationRow(
     conversation: CachedConversation,
@@ -1276,7 +1268,6 @@ internal fun chatContextMenuClampedMenuX(
 
 internal const val ChatRowContextMenuPressScale = 0.96f
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun ChatListPreviewSupportingText(
     preview: String,

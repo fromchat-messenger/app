@@ -7,7 +7,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
-import com.pr0gramm3r101.utils.UtilsLibrary
+import ru.fromchat.utils.UtilsLibrary
 import ru.fromchat.api.local.download.cachedAttachmentFileSize
 import ru.fromchat.ui.chat.copyCachedFileToDestinationUri
 

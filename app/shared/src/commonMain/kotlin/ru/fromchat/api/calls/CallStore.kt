@@ -17,9 +17,10 @@ import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.db.store.ProfileCache
 import ru.fromchat.api.local.db.store.visibleDisplayName
 import ru.fromchat.api.schema.websocket.WebSocketMessage
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.notifications.notifyIncomingCallIfBackground
+import kotlin.time.Duration.Companion.milliseconds
 
 private const val TAG = "CallStore"
 
@@ -53,7 +54,7 @@ object CallStore {
     private fun peerLabel(peerUserId: Int): String {
         val me = ApiClient.user?.id
         val p = ProfileCache.get(peerUserId)
-        val label = p?.visibleDisplayName(me)?.orEmpty()?.ifBlank { null }
+        val label = p?.visibleDisplayName(me).orEmpty().ifBlank { null }
         return label ?: p?.username?.takeIf { it.isNotBlank() }.orEmpty()
     }
 
@@ -69,7 +70,7 @@ object CallStore {
         }
     }
 
-    private suspend fun handleSignalingPayload(data: JsonElement) {
+    private fun handleSignalingPayload(data: JsonElement) {
         val obj = data.jsonObject
         val kind = obj["kind"]?.jsonPrimitive?.contentOrNull
         val fromUserId = obj["fromUserId"]?.jsonPrimitive?.content?.toIntOrNull()
@@ -151,7 +152,7 @@ object CallStore {
             }.onFailure { e ->
                 Logger.e(TAG, "startOutgoingCall failed", e)
                 _ui.value = CallUiState.Failed(e.message ?: "Error")
-                delay(2500)
+                delay(2500.milliseconds)
                 if (_ui.value is CallUiState.Failed) clearToIdle()
             }
         }
@@ -170,7 +171,7 @@ object CallStore {
                     ApiClient.sendLiveKitControl(inc.fromUserId, "accept", inc.roomName)
                     val label = peerLabel(inc.fromUserId)
                     val display =
-                        if (inc.fromUsername.isNotBlank()) inc.fromUsername else label
+                        inc.fromUsername.ifBlank { label }
                     LiveKitConnectSession(
                         serverUrl = ServerConfig.liveKitWsUrl(),
                         token = tok.token,
@@ -189,7 +190,7 @@ object CallStore {
                 Logger.e(TAG, "acceptIncoming failed", e)
                 clearToIdle()
                 _ui.value = CallUiState.Failed(e.message ?: "Error")
-                delay(2500)
+                delay(2500.milliseconds)
                 if (_ui.value is CallUiState.Failed) clearToIdle()
             }
         }

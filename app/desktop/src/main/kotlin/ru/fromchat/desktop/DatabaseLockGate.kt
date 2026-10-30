@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.api.local.db.store.MessageDatabasePaths
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -32,14 +32,11 @@ object DatabaseLockGate {
     fun startMonitoring(scope: CoroutineScope, onUnlocked: () -> Unit) {
         monitorJob?.cancel()
         monitorJob = scope.launch {
-            var bootstrapDelivered = false
             while (isActive) {
-                val blocked = refreshBlockedState()
-                if (!blocked && !bootstrapDelivered) {
-                    bootstrapDelivered = true
+                if (!refreshBlockedState()) {
                     onUnlocked()
+                    return@launch
                 }
-                if (!blocked && bootstrapDelivered) return@launch
                 delay(750.milliseconds)
             }
         }

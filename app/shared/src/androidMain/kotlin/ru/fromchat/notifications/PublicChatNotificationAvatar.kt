@@ -7,6 +7,7 @@ import android.graphics.Paint
 import android.graphics.Shader
 import android.graphics.Typeface
 import kotlin.math.abs
+import androidx.core.graphics.createBitmap
 
 /**
  * Builds a circular initials avatar matching the in-app public-chat row (title initials +
@@ -32,7 +33,7 @@ internal object PublicChatNotificationAvatar {
             (b + 50).coerceIn(0, 255),
         )
 
-        val bitmap = Bitmap.createBitmap(SIZE_PX, SIZE_PX, Bitmap.Config.ARGB_8888)
+        val bitmap = createBitmap(SIZE_PX, SIZE_PX)
         val canvas = Canvas(bitmap)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             shader = LinearGradient(

@@ -2,7 +2,6 @@ package ru.fromchat.desktop
 
 import java.io.ByteArrayInputStream
 import java.io.File
-import java.io.InputStream
 import javax.imageio.ImageIO
 
 /** Writes a window/tray icon PNG for native notification APIs (toast, libnotify). */

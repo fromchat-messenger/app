@@ -42,9 +42,8 @@ import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberTrayState
 import androidx.compose.ui.window.rememberWindowState
-import com.pr0gramm3r101.utils.UtilsLibrary
+import ru.fromchat.utils.UtilsLibrary
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -53,7 +52,7 @@ import com.sun.jna.Native
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.AppBuildInfo
 import ru.fromchat.AppForeground
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.Res
 import ru.fromchat.action_copy
 import ru.fromchat.action_select
@@ -85,17 +84,13 @@ import ru.fromchat.desktop_zoom
 import ru.fromchat.status_connected
 import ru.fromchat.status_connecting
 import ru.fromchat.status_disconnected
-import ru.fromchat.desktop.DesktopAppVisibility
-import ru.fromchat.desktop.DesktopNotificationSettings
-import ru.fromchat.desktop.DesktopNotifier
-import ru.fromchat.desktop.DesktopTaskbarBadge
-import ru.fromchat.desktop.MacNotificationCenter
 import ru.fromchat.notifications.MessageNotificationCoordinator
 import ru.fromchat.ui.App
-import ru.fromchat.ui.LocalExtraStatusBarTop
-import ru.fromchat.ui.Theme
-import ru.fromchat.ui.getColorScheme
-import ru.fromchat.ui.isAppInDarkTheme
+import ru.fromchat.ui.main.handleAppMenuShortcutKeyEvent
+import ru.fromchat.ui.theme.LocalExtraStatusBarTop
+import ru.fromchat.ui.theme.Theme
+import ru.fromchat.ui.theme.getColorScheme
+import ru.fromchat.ui.theme.isAppInDarkTheme
 import java.awt.Desktop
 import java.awt.Image
 import java.awt.KeyboardFocusManager
@@ -116,7 +111,6 @@ import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.imageio.ImageIO
 import javax.swing.JComponent
-import javax.swing.JRootPane
 import javax.swing.SwingUtilities
 import javax.swing.UIManager
 import javax.swing.plaf.ColorUIResource
@@ -670,32 +664,17 @@ fun main(args: Array<String>) {
                     icon = windowIcon,
                     undecorated = customFrame,
                     onPreviewKeyEvent = { event ->
-                        // macOS: MenuBar KeyShortcuts handle these. Win/Linux: no menu bar.
-                        if (mac || event.type != KeyEventType.KeyDown || !event.isCtrlPressed) {
+                        // macOS: menu bar KeyShortcuts call DesktopMenuCommands directly.
+                        if (mac || event.type != KeyEventType.KeyDown) {
                             return@Window false
                         }
+                        if (handleAppMenuShortcutKeyEvent(event)) {
+                            if (!isLoggedIn) return@Window false
+                            showMainWindow()
+                            return@Window true
+                        }
+                        if (!event.isCtrlPressed) return@Window false
                         when {
-                            !event.isShiftPressed && event.key == Key.N -> {
-                                if (!isLoggedIn) return@Window false
-                                showMainWindow()
-                                DesktopMenuCommands.emit(DesktopMenuCommand.NewChat)
-                                true
-                            }
-                            !event.isShiftPressed && event.key == Key.F -> {
-                                if (!isLoggedIn) return@Window false
-                                showMainWindow()
-                                DesktopMenuCommands.emit(DesktopMenuCommand.SearchConversations)
-                                true
-                            }
-                            event.isShiftPressed && event.key == Key.S -> {
-                                showMainWindow()
-                                DesktopMenuCommands.emit(DesktopMenuCommand.EnterChatListSelection)
-                                true
-                            }
-                            event.isShiftPressed && event.key == Key.A -> {
-                                openAbout()
-                                true
-                            }
                             event.isShiftPressed && event.key == Key.N -> {
                                 showMainWindow()
                                 true

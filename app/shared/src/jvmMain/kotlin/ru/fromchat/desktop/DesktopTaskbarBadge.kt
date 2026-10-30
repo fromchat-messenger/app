@@ -1,7 +1,7 @@
 package ru.fromchat.desktop
 
 import java.awt.Taskbar
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 
 /** Best-effort dock / taskbar unread badge (macOS when supported; no-op elsewhere). */
 object DesktopTaskbarBadge {

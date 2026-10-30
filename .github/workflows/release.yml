@@ -205,7 +205,6 @@ jobs:
           name: jvm-compile-outputs
           path: |
             app/shared/build
-            utils/shared/build
             app/desktop/build/classes
             app/desktop/build/libs
           if-no-files-found: error

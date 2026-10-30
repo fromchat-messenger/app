@@ -13,13 +13,13 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import ru.fromchat.ui.components.ChromeOverflowIconButton
+import ru.fromchat.ui.components.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,10 +32,8 @@ import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.about
 import ru.fromchat.logs_title
-import ru.fromchat.more
 import ru.fromchat.ui.LocalNavController
-import ru.fromchat.ui.components.Text
-import ru.fromchat.ui.extraStatusBars
+import ru.fromchat.ui.theme.extraStatusBars
 import ru.fromchat.ui.main.settings.SettingsRoutes
 
 /** Margin between the window edge and the wide [AuthContentFrame] panel. */
@@ -84,13 +82,7 @@ fun PreAuthOverflowMenu() {
     var menuExpanded by remember { mutableStateOf(false) }
 
     Box {
-        IconButton(onClick = { menuExpanded = true }) {
-            Icon(
-                imageVector = Icons.Rounded.MoreVert,
-                contentDescription = stringResource(Res.string.more),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        ChromeOverflowIconButton(onClick = { menuExpanded = true })
         DropdownMenu(
             expanded = menuExpanded,
             onDismissRequest = { menuExpanded = false },

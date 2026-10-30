@@ -12,6 +12,14 @@ actual fun createPlatformHttpClient(
     block: HttpClientConfig<*>.() -> Unit
 ): HttpClient {
     return HttpClient(Darwin) {
+        engine {
+            configureRequest {
+                setAllowsCellularAccess(true)
+                setAllowsExpensiveNetworkAccess(true)
+                setAllowsConstrainedNetworkAccess(true)
+            }
+        }
+
         defaultRequest {
             contentType(ContentType.Application.Json)
 

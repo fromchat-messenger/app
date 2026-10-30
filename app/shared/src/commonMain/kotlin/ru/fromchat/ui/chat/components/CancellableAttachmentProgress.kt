@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -17,14 +16,13 @@ import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.cd_close
-import ru.fromchat.ui.chat.ExpressiveUploadIndicator
-import com.pr0gramm3r101.utils.scaleOnPress
+import ru.fromchat.ui.chat.media.ExpressiveUploadIndicator
+import ru.fromchat.utils.scaleOnPress
 
 /**
  * Cancellable image-attachment download / upload progress. The cancel icon sits inside
  * the progress circle with no scrim behind it.
  */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun CancellableAttachmentProgressIndicator(
     progress: Int?,

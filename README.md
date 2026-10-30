@@ -4,6 +4,8 @@
 
 FromChat — 100% бесплатный и открытый мессенджер. В этом репозитории — кроссплатформенный клиент (Android, Desktop на Compose Multiplatform и iOS).
 
+Агентам: [AGENTS.md](./AGENTS.md) и [`.agents/skills/`](./.agents/skills/) (релиз — skill **`release`**, `/release`); людям — [политика ИИ](./AI_POLICY.md).
+
 [📥 Скачать](https://github.com/fromchat-messenger/android/releases/latest) • [💬 Telegram-канал](https://t.me/fromchat_ch) • [🖥️ Сервер](https://github.com/fromchat-messenger/backend)
 
 ## ✨ Возможности
@@ -131,9 +133,7 @@ android/
 │       ├── commonMain/
 │       ├── androidMain/
 │       └── iosMain/      # ещё не готово
-├── utils/                # переиспользуемые утилиты
-│   ├── android/
-│   └── shared/
+│           └── …/ru/fromchat/utils/  # общие утилиты (settings, crypto, UI helpers)
 └── gradle/libs.versions.toml
 ```
 

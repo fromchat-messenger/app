@@ -1,6 +1,6 @@
 package ru.fromchat.desktop
 
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
@@ -56,10 +56,8 @@ object MacNotificationCenter {
         return granted
     }
 
-    fun isAuthorized(): Boolean {
-        if (!available) return true
-        return runCatching { nativeAuthorizationStatus() }.getOrDefault(0) >= 2
-    }
+    fun isAuthorized(): Boolean =
+        !available || runCatching { nativeAuthorizationStatus() }.getOrDefault(0) >= 2
 
     fun isAppFrontmost(): Boolean =
         available && runCatching { nativeIsAppFrontmost() }.getOrDefault(false)

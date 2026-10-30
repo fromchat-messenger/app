@@ -72,10 +72,10 @@ import javax.swing.SwingUtilities
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import ru.fromchat.Logger
-import ru.fromchat.ui.FromChatTheme
+import ru.fromchat.logging.Logger
+import ru.fromchat.ui.theme.FromChatTheme
 import ru.fromchat.ui.components.Text
-import ru.fromchat.ui.isInsideWindow
+import ru.fromchat.ui.popup.jvm.isInsideWindow
 import ru.fromchat.desktop.tray.SniTrayController
 
 internal enum class TrayConnectionStatus {

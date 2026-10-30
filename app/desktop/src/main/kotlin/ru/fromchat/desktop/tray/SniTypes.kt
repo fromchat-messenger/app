@@ -1,8 +1,8 @@
-package ru.fromchat.desktop.tray
+@file:Suppress("unused", "UnusedSymbol")
 
+package ru.fromchat.desktop.tray
 import org.freedesktop.dbus.Struct
 import org.freedesktop.dbus.annotations.Position
-import org.freedesktop.dbus.exceptions.DBusException
 import org.freedesktop.dbus.interfaces.DBusSerializable
 import org.freedesktop.dbus.types.UInt32
 import org.freedesktop.dbus.types.Variant

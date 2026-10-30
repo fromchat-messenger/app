@@ -24,6 +24,7 @@ import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.schema.core.ErrorResponse
+import ru.fromchat.logging.Logger
 import ru.fromchat.auth_server_connect_failed
 import ru.fromchat.auth_step_username_body
 import ru.fromchat.auth_step_username_title
@@ -49,6 +50,8 @@ import ru.fromchat.username_chars_error
 import ru.fromchat.username_length_error
 
 /** Matches backend `is_valid_username`: English letters, digits, hyphen, underscore. */
+private const val USERNAME_STEP_TAG = "AuthUsernameStep"
+
 private fun isAllowedUsernameChar(ch: Char) =
     ch in 'a'..'z' || ch in 'A'..'Z' || ch in '0'..'9' || ch == '_' || ch == '-'
 
@@ -87,14 +90,23 @@ internal fun usernameStepPage(
         onUsernameChange(trimmed)
         scope.launch {
             busy = true
+            Logger.i(USERNAME_STEP_TAG, "submit start username=$trimmed")
             try {
                 if (!probeCurrentServer()) {
+                    Logger.w(USERNAME_STEP_TAG, "submit aborted: server probe failed username=$trimmed")
                     onSnackbar(serverFail, null)
                 } else {
                     try {
+                        Logger.i(USERNAME_STEP_TAG, "auth username step request username=$trimmed")
                         ApiClient.authUsernameStep(trimmed)
+                        Logger.i(USERNAME_STEP_TAG, "auth username step ok → password username=$trimmed")
                         onContinue()
                     } catch (e: ClientRequestException) {
+                        Logger.w(
+                            USERNAME_STEP_TAG,
+                            "auth username step HTTP ${e.response.status.value} username=$trimmed",
+                            e,
+                        )
                         val detail = if (e.response.status.value == 400) {
                             runCatching { e.response.body<ErrorResponse>().detail }
                                 .getOrNull()
@@ -104,6 +116,7 @@ internal fun usernameStepPage(
                         }
                         onSnackbar(detail ?: unexpected, e)
                     } catch (e: Exception) {
+                        Logger.e(USERNAME_STEP_TAG, "auth username step error username=$trimmed", e)
                         onSnackbar(unexpected, e)
                     }
                 }

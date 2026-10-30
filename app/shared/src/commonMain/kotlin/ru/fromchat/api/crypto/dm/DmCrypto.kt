@@ -1,6 +1,5 @@
 package ru.fromchat.api.crypto.dm
 
-import com.pr0gramm3r101.utils.crypto.Base64
 
 /**
  * Platform-specific DM (Direct Message) crypto operations

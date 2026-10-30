@@ -8,9 +8,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.useContents
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import ru.fromchat.api.local.download.readLocalImageDimensions
 import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSLock
@@ -25,7 +25,6 @@ import platform.PhotosUI.PHPickerViewController
 import platform.PhotosUI.PHPickerViewControllerDelegateProtocol
 import platform.UIKit.UIDocumentPickerDelegateProtocol
 import platform.UIKit.UIDocumentPickerViewController
-import platform.UIKit.UIImage
 import platform.UniformTypeIdentifiers.UTTypeImage
 import platform.UniformTypeIdentifiers.UTTypeItem
 import platform.darwin.NSObject
@@ -98,17 +97,7 @@ actual suspend fun getImageDimensions(uri: String): Pair<Int, Int>? = withContex
         uri.startsWith("file://") -> NSURL.URLWithString(uri)?.path
         else -> uri
     } ?: return@withContext null
-    runCatching {
-        val image = UIImage.imageWithContentsOfFile(path) ?: return@runCatching null
-        pixelSize(image)
-    }.getOrNull()
-}
-
-private fun pixelSize(image: UIImage): Pair<Int, Int>? {
-    val w = (image.size.useContents { width } * image.scale).toInt()
-    val h = (image.size.useContents { height } * image.scale).toInt()
-    if (w <= 0 || h <= 0) return null
-    return w to h
+    readLocalImageDimensions(path)
 }
 
 private fun pickerCacheDirectory(): String {

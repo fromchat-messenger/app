@@ -13,6 +13,12 @@ abstract class FixComposeResTask : DefaultTask() {
     @get:InputFiles abstract val inputFiles: ConfigurableFileCollection
     @get:OutputDirectory abstract val outputDirectory: DirectoryProperty
 
+    init {
+        group = "build"
+        description =
+            "Relayouts shared composeResources output for Android asset packaging (ru.fromchat namespace)."
+    }
+
     @TaskAction
     fun action() {
         val outDir = outputDirectory.get().asFile.apply {
@@ -32,6 +38,9 @@ abstract class FixComposeResTask : DefaultTask() {
 }
 
 val fixComposeResourcesStructure = tasks.register<FixComposeResTask>("fixComposeResourcesStructure") {
+    group = "build"
+    description =
+        "Relayouts shared composeResources output for Android asset packaging (ru.fromchat namespace)."
     val sharedProject = rootProject.project(":app:shared")
 
     inputFiles.from(
@@ -180,6 +189,7 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.splashscreen)
+    implementation("androidx.dynamicanimation:dynamicanimation:1.1.0")
     implementation(libs.androidx.adaptive.android)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.core)
@@ -189,5 +199,4 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     implementation(project(":app:shared"))
-    implementation(project(":utils:shared"))
 }

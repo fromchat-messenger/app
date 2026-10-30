@@ -8,7 +8,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -23,16 +22,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
-import com.pr0gramm3r101.components.Category
-import com.pr0gramm3r101.components.ListItem
-import com.pr0gramm3r101.components.SwitchListItem
-import com.pr0gramm3r101.utils.conditional
+import ru.fromchat.utils.components.Category
+import ru.fromchat.utils.components.ListItem
+import ru.fromchat.utils.components.SwitchListItem
+import ru.fromchat.utils.conditional
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
-import ru.fromchat.api.ensureFcmTokenRegistered
-import ru.fromchat.api.isFcmPushRegisteredLocally
-import ru.fromchat.api.unregisterFcmTokenFromServer
+import ru.fromchat.api.push.ensureFcmTokenRegistered
+import ru.fromchat.api.push.isFcmPushRegisteredLocally
+import ru.fromchat.api.push.unregisterFcmTokenFromServer
 import ru.fromchat.error_unexpected
 import ru.fromchat.settings_notification_settings
 import ru.fromchat.settings_notification_settings_d
@@ -45,11 +44,11 @@ import ru.fromchat.settings_desktop_notifications
 import ru.fromchat.settings_desktop_notifications_d
 import ru.fromchat.ui.components.FromChatSnackbarHost
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotificationsScreen(onBack: () -> Unit) {
     val useCollapsing = settingsDetailUseCollapsingTopBar()
     val scrollBehavior = rememberSettingsCollapsingScrollBehavior()
+    val hazeState = rememberSettingsDetailHazeState()
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var notificationsEnabled by remember { mutableStateOf(false) }
@@ -69,6 +68,7 @@ fun NotificationsScreen(onBack: () -> Unit) {
             SettingsDetailTopBar(
                 title = stringResource(Res.string.settings_notifications_title),
                 onBack = onBack,
+                hazeState = hazeState,
                 scrollBehavior = scrollBehavior,
             )
         }
@@ -76,6 +76,7 @@ fun NotificationsScreen(onBack: () -> Unit) {
         Column(
             Modifier
                 .fillMaxWidth()
+                .settingsDetailHazeSource(hazeState)
                 .conditional(useCollapsing) {
                     Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
                 }

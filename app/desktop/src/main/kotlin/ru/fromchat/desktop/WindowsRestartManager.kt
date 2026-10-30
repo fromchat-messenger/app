@@ -3,7 +3,7 @@ package ru.fromchat.desktop
 import com.sun.jna.Native
 import com.sun.jna.Structure
 import com.sun.jna.platform.win32.WinBase
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import com.sun.jna.platform.win32.WinDef.DWORD
 import com.sun.jna.platform.win32.WinNT
 import com.sun.jna.ptr.IntByReference

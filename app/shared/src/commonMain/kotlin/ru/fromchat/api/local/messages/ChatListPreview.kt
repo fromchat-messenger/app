@@ -5,8 +5,8 @@ import ru.fromchat.api.local.db.parseDmMessageContent
 import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.api.schema.messages.dm.DmEnvelope
 import ru.fromchat.api.schema.messages.dm.DmFile
-import ru.fromchat.ui.chat.isFilenameOnlyMessageCaption
-import ru.fromchat.ui.chat.isImageFilename
+import ru.fromchat.ui.chat.message.isFilenameOnlyMessageCaption
+import ru.fromchat.ui.chat.media.isImageFilename
 
 enum class ChatListPreviewPendingIndicator {
     None,

@@ -36,7 +36,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import com.pr0gramm3r101.utils.scaleOnPress
+import ru.fromchat.utils.scaleOnPress
 import kotlinx.coroutines.channels.Channel
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res

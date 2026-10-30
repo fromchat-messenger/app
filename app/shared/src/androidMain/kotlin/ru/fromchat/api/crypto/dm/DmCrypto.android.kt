@@ -1,6 +1,6 @@
 package ru.fromchat.api.crypto.dm
 
-import com.pr0gramm3r101.utils.crypto.Base64
+import ru.fromchat.utils.crypto.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import ru.fromchat.api.crypto.DmCiphertextCorruptedException

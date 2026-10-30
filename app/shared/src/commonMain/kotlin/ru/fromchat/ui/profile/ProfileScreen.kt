@@ -21,7 +21,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import ru.fromchat.ui.components.ChromeBackIconButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Surface
@@ -35,8 +35,8 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.navigation.NavController
-import com.pr0gramm3r101.components.ListItemPosition
-import com.pr0gramm3r101.utils.SupportClipboardManager
+import ru.fromchat.utils.components.ListItemPosition
+import ru.fromchat.utils.SupportClipboardManager
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.HazeState
@@ -49,7 +49,7 @@ import ru.fromchat.api.local.db.store.PublicChatProfileCache
 import ru.fromchat.api.schema.chats.publicchat.PublicChatProfile
 import ru.fromchat.back
 import ru.fromchat.chat_members_count
-import ru.fromchat.legal.MarkdownPlain
+import ru.fromchat.ui.main.settings.about.legal.MarkdownPlain
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -108,11 +108,11 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
-import com.pr0gramm3r101.components.Category
-import com.pr0gramm3r101.components.ContextMenuPressable
-import com.pr0gramm3r101.components.ListItem
-import com.pr0gramm3r101.components.listItemPositionInGroup
-import com.pr0gramm3r101.utils.supportClipboardManagerImpl
+import ru.fromchat.utils.components.Category
+import ru.fromchat.utils.components.ContextMenuPressable
+import ru.fromchat.utils.components.ListItem
+import ru.fromchat.utils.components.listItemPositionInGroup
+import ru.fromchat.utils.supportClipboardManagerImpl
 import io.ktor.client.plugins.ClientRequestException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
@@ -122,13 +122,13 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.Res
 import ru.fromchat.action_copy
 import ru.fromchat.action_edit
 import ru.fromchat.api.ApiClient
-import ru.fromchat.api.StatusSubscriptionCoordinator
-import ru.fromchat.api.PublicChatProfileSync
+import ru.fromchat.api.sync.StatusSubscriptionCoordinator
+import ru.fromchat.api.sync.PublicChatProfileSync
 import ru.fromchat.api.local.WebSocketManager
 import ru.fromchat.api.local.db.store.ConnectionStateStore
 import ru.fromchat.api.local.db.store.ConnectionStatus
@@ -177,21 +177,23 @@ import ru.fromchat.profile_invalid_link
 import ru.fromchat.profile_load_failed
 import ru.fromchat.profile_not_found
 import ru.fromchat.profile_verified_support
-import ru.fromchat.ui.profile.deletedUserDisplayNameForUi
-import ru.fromchat.ui.profile.avatarLabelForInitials
-import ru.fromchat.ui.profile.displayNameForUi
-import ru.fromchat.ui.profile.effectiveVerificationStatus
-import ru.fromchat.ui.profile.isDeletedAccount
-import ru.fromchat.ui.profile.peerIsDeleted
+import ru.fromchat.ui.profile.badge.StatusBadge
+import ru.fromchat.ui.profile.widget.deletedUserDisplayNameForUi
+import ru.fromchat.ui.profile.widget.avatarLabelForInitials
+import ru.fromchat.ui.profile.widget.displayNameForUi
+import ru.fromchat.ui.profile.widget.effectiveVerificationStatus
+import ru.fromchat.ui.profile.widget.isDeletedAccount
+import ru.fromchat.ui.profile.widget.peerIsDeleted
 import ru.fromchat.ui.LocalNavController
+import ru.fromchat.ui.main.ConversationDetailContentPadding
 import ru.fromchat.ui.chat.Avatar
-import ru.fromchat.ui.chat.TypingIndicator
+import ru.fromchat.ui.chat.chrome.TypingIndicator
 import ru.fromchat.ui.components.FromChatSnackbarHost
 import ru.fromchat.ui.components.ScreenSurface
 import ru.fromchat.ui.components.ShimmerBox
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.showReplacingSnackbar
-import ru.fromchat.ui.extraStatusBars
+import ru.fromchat.ui.theme.extraStatusBars
 import ru.fromchat.utils.RegistrationDateFormatStrings
 import ru.fromchat.utils.formatLastSeen
 import ru.fromchat.utils.formatProfileRegistrationDate
@@ -246,7 +248,6 @@ private fun rememberLiveProfile(userId: Int?): UserProfile? {
         ?.takeUnless { it.isClientPreviewOnly }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
     userId: Int?,
@@ -875,7 +876,6 @@ fun ProfileScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PublicChatProfileScreen(
     onBack: () -> Unit,
@@ -2074,21 +2074,17 @@ private fun ProfileFloatingBackBar(
                     },
                 ),
         )
-        IconButton(
+        ChromeBackIconButton(
             onClick = onBack,
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .windowInsetsPadding(WindowInsets.extraStatusBars),
-            colors = IconButtonDefaults.iconButtonColors(
-                contentColor = MaterialTheme.colorScheme.onSurface,
-            ),
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                contentDescription = stringResource(Res.string.back),
-                modifier = Modifier.size(24.dp),
-                tint = MaterialTheme.colorScheme.onSurface,
-            )
-        }
+                .windowInsetsPadding(WindowInsets.extraStatusBars)
+                .padding(
+                    start = ConversationDetailContentPadding - 2.dp,
+                    top = 6.dp,
+                    end = ConversationDetailContentPadding,
+                    bottom = 8.dp,
+                ),
+        )
     }
 }

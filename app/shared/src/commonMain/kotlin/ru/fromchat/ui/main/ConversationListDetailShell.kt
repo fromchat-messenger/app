@@ -45,8 +45,8 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import ru.fromchat.ui.components.AppPanel
-import ru.fromchat.ui.extraStatusBars
-import com.pr0gramm3r101.utils.settings.Settings as PlatformSettings
+import ru.fromchat.ui.theme.extraStatusBars
+import ru.fromchat.utils.settings.Settings as PlatformSettings
 
 /**
  * Horizontal inset for chat detail content (messages, top-bar pills, input) in list–detail

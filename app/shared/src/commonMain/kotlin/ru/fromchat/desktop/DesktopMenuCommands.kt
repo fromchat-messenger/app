@@ -14,8 +14,8 @@ enum class DesktopMenuCommand {
 }
 
 /**
- * Desktop menu / hotkey actions → UI (MainScreen, ChatsTab).
- * No-ops on mobile when nothing emits.
+ * App menu / keyboard actions → UI ([ru.fromchat.ui.main.MainScreen], [ru.fromchat.ui.App]).
+ * Emitted from desktop menu bar, window shortcuts, and hardware keyboards (DeX, iPad, etc.).
  */
 object DesktopMenuCommands {
     private val commandsFlow = MutableSharedFlow<DesktopMenuCommand>(

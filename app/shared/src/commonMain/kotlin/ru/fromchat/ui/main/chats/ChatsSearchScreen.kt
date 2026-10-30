@@ -20,10 +20,9 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import ru.fromchat.ui.components.ChromeBackIconButton
 import androidx.compose.material.icons.rounded.Clear
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.ButtonDefaults
@@ -53,14 +52,15 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.pr0gramm3r101.utils.resetFocus
+import ru.fromchat.utils.resetFocus
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
+import ru.fromchat.back
 import ru.fromchat.api.ApiClient
-import ru.fromchat.api.StatusSubscriptionCoordinator
+import ru.fromchat.api.sync.StatusSubscriptionCoordinator
 import ru.fromchat.api.local.db.store.CachedConversation
 import ru.fromchat.api.local.db.store.MessageCacheStore
 import ru.fromchat.api.local.db.store.MessageRepository
@@ -81,7 +81,6 @@ import ru.fromchat.ui.components.SearchBarSharedElement
 import ru.fromchat.ui.components.ScreenSurface
 import ru.fromchat.ui.components.Text
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ChatsSearchScreen(
     onBack: () -> Unit,
@@ -152,24 +151,23 @@ fun ChatsSearchScreen(
         }
         isSearchInFlight = true
         delay(300)
-        val querySnapshot = searchQuery
-        if (querySnapshot != searchText.trim().lowercase().trimStart('@')) {
+        if (searchQuery != searchText.trim().lowercase().trimStart('@')) {
             return@LaunchedEffect
         }
         try {
-            val users = ApiClient.searchUsers(querySnapshot)
-            if (querySnapshot == searchText.trim().lowercase().trimStart('@')) {
+            val users = ApiClient.searchUsers(searchQuery)
+            if (searchQuery == searchText.trim().lowercase().trimStart('@')) {
                 users.forEach { ProfileCache.mergeFromUser(it) }
                 remoteUsers = users
-                lastCompletedSearchQuery = querySnapshot
+                lastCompletedSearchQuery = searchQuery
             }
         } catch (_: Throwable) {
-            if (querySnapshot == searchText.trim().lowercase().trimStart('@')) {
+            if (searchQuery == searchText.trim().lowercase().trimStart('@')) {
                 remoteUsers = emptyList()
-                lastCompletedSearchQuery = querySnapshot
+                lastCompletedSearchQuery = searchQuery
             }
         } finally {
-            if (querySnapshot == searchText.trim().lowercase().trimStart('@')) {
+            if (searchQuery == searchText.trim().lowercase().trimStart('@')) {
                 isSearchInFlight = false
             }
         }
@@ -253,12 +251,13 @@ fun ChatsSearchScreen(
                     .statusBarsPadding()
                     .padding(12.dp),
                 leadingIcon = {
-                    IconButton(onClick = {
-                        hideIme()
-                        onBack()
-                    }) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = null)
-                    }
+                    ChromeBackIconButton(
+                        onClick = {
+                            hideIme()
+                            onBack()
+                        },
+                        contentDescription = stringResource(Res.string.back),
+                    )
                 },
                 trailingIcon = {
                     if (searchText.isNotBlank()) {

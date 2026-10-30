@@ -9,15 +9,16 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.annotation.RequiresPermission
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
 import androidx.core.app.RemoteInput
 import androidx.core.content.ContextCompat
-import com.pr0gramm3r101.utils.UtilsLibrary
+import ru.fromchat.utils.UtilsLibrary
 import org.jetbrains.compose.resources.getString
 import ru.fromchat.AppForeground
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.Res
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.db.store.PublicChatProfileCache
@@ -52,6 +53,7 @@ internal actual object MessageNotificationSink {
     actual fun shouldSuppressDm(peerUserId: Int): Boolean =
         AppForeground.isInForeground.value && ActiveDmChatTracker.isActive(peerUserId)
 
+    @RequiresPermission(Manifest.permission.POST_NOTIFICATIONS)
     actual suspend fun present(notification: PresentedMessageNotification) {
         val context = appContext() ?: return
         createChannel(context)
@@ -123,7 +125,7 @@ internal actual object MessageNotificationSink {
         runCatching {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             NotificationManagerCompat.from(context).cancel(1_000_000)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (Build.VERSION.SDK_INT >= 26) {
                 manager.activeNotifications
                     .filter { it.notification.channelId == CHANNEL_ID }
                     .forEach { NotificationManagerCompat.from(context).cancel(it.tag, it.id) }

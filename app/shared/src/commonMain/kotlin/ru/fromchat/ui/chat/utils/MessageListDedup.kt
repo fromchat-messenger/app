@@ -47,17 +47,16 @@ internal fun dropSupersededOptimisticMessages(
     if (messages.none { it.id < 0 }) return messages
     val confirmed = messages.filter { it.id > 0 }
     val confirmedClientIds = confirmed.mapNotNull { it.client_message_id?.trim()?.takeIf { it.isNotEmpty() } }.toSet()
-    val self = currentUserId
     val usedConfirmedIds = mutableSetOf<Int>()
     return messages.filter { msg ->
         if (msg.id >= 0) return@filter true
         val cid = msg.client_message_id?.trim().orEmpty()
         if (cid.isNotEmpty() && cid in confirmedClientIds) return@filter false
-        if (self == null || msg.user_id != self) return@filter true
+        if (currentUserId == null || msg.user_id != currentUserId) return@filter true
 
         // Match confirmed acks that omitted client_message_id (phantom duplicate).
         if (cid.isNotEmpty()) {
-            val matched = findNearOwnConfirmedWithoutClientId(msg, confirmed, self, usedConfirmedIds)
+            val matched = findNearOwnConfirmedWithoutClientId(msg, confirmed, currentUserId, usedConfirmedIds)
             if (matched != null) {
                 usedConfirmedIds.add(matched.id)
                 return@filter false
@@ -68,14 +67,14 @@ internal fun dropSupersededOptimisticMessages(
         // Legacy: no client id on pending — time-based near-dup.
         if (msg.pendingFileUri != null || !msg.uploadJobId.isNullOrBlank()) return@filter true
         val msgTime = parseMessageTimestampMillis(msg.timestamp)
-        val nearOwnConfirmed = confirmed.filter { it.user_id == self && it.id !in usedConfirmedIds }.any { confirmedMsg ->
+        val nearOwnConfirmed = confirmed.filter { it.user_id == currentUserId && it.id !in usedConfirmedIds }.any { confirmedMsg ->
             val confirmedTime = parseMessageTimestampMillis(confirmedMsg.timestamp)
             msgTime != null && confirmedTime != null &&
                 abs(msgTime - confirmedTime) <= NEAR_DUPLICATE_MS
         }
         if (!nearOwnConfirmed) return@filter true
         val pendingIsAttachment = !msg.files.isNullOrEmpty()
-        val confirmedHasAttachment = confirmed.any { it.user_id == self && !it.files.isNullOrEmpty() }
+        val confirmedHasAttachment = confirmed.any { it.user_id == currentUserId && !it.files.isNullOrEmpty() }
         when {
             pendingIsAttachment && confirmedHasAttachment -> false
             !pendingIsAttachment && !confirmedHasAttachment -> false

@@ -1,6 +1,6 @@
 package ru.fromchat.api.local.cache
 
-import com.pr0gramm3r101.utils.files.PlatformFileSystem
+import ru.fromchat.utils.files.PlatformFileSystem
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream

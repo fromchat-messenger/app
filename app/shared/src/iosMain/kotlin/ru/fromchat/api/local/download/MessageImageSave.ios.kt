@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalForeignApi::class)
+@file:OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 
 package ru.fromchat.api.local.download
 
@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
@@ -27,18 +28,16 @@ import ru.fromchat.utils.iosTopViewController
 
 private const val EXPORT_SUBDIR = "save_export"
 
-internal fun sanitizeExportFilename(filename: String): String {
-    val trimmed = filename.trim().replace('/', '_').replace('\\', '_')
-    return trimmed.ifBlank { "image.jpg" }
-}
+internal fun sanitizeExportFilename(filename: String): String =
+    filename.trim().replace('/', '_').replace('\\', '_').ifBlank { "image.jpg" }
 
 private fun exportStagingDirectory(): String {
-    val caches = NSSearchPathForDirectoriesInDomains(
-        NSCachesDirectory,
-        NSUserDomainMask,
-        true,
-    ).filterIsInstance<String>().firstOrNull().orEmpty()
-    val dir = "$caches/$EXPORT_SUBDIR"
+    val dir =
+        "${NSSearchPathForDirectoriesInDomains(
+            NSCachesDirectory,
+            NSUserDomainMask,
+            true,
+        ).filterIsInstance<String>().firstOrNull().orEmpty()}/$EXPORT_SUBDIR"
     NSFileManager.defaultManager.createDirectoryAtPath(dir, true, null, null)
     return dir
 }
@@ -48,7 +47,7 @@ private fun writeExportStagingFile(filename: String, bytes: ByteArray): String? 
     val path = "$dir/${sanitizeExportFilename(filename)}"
     val nsData = bytes.usePinned { pinned ->
         NSData.create(bytes = pinned.addressOf(0), length = bytes.size.toULong())
-    } ?: return null
+    }
     return if (nsData.writeToFile(path, true)) path else null
 }
 
@@ -121,9 +120,8 @@ actual fun rememberPlatformSaveMessageImage(
                 onComplete(success)
             }
             activeDelegate = delegate
-            val fileUrl = NSURL.fileURLWithPath(stagingPath)
             val picker = UIDocumentPickerViewController(
-                forExportingURLs = listOf(fileUrl),
+                forExportingURLs = listOf(NSURL.fileURLWithPath(stagingPath)),
                 asCopy = true,
             )
             defaultExportDirectoryUrl()?.let { picker.directoryURL = it }

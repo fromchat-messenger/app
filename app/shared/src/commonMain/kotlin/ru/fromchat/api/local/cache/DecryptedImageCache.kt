@@ -1,6 +1,6 @@
 package ru.fromchat.api.local.cache
 
-import com.pr0gramm3r101.utils.files.PlatformFileSystem
+import ru.fromchat.utils.files.PlatformFileSystem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -17,7 +17,6 @@ import ru.fromchat.api.local.download.AttachmentDownloadScheduler
 import ru.fromchat.api.local.download.checkAttachmentDownloadActive
 import ru.fromchat.api.local.download.ensureAttachmentDownloadActive
 import ru.fromchat.ui.chat.utils.AttachmentDownloadVisibility
-import ru.fromchat.api.local.cache.DecryptedImageCache.storageKey
 import ru.fromchat.api.local.download.LocalDecodedImageCache
 import ru.fromchat.api.local.download.ChatPreviewDecodeSize
 import ru.fromchat.api.local.download.decodeImageBytes

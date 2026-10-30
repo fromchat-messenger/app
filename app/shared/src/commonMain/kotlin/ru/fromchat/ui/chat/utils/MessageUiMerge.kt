@@ -77,7 +77,7 @@ internal fun mergeDatabaseMessagesWithPanelState(
         panel.id > 0 && panel.id !in mergedIds
     }
     if (droppedConfirmed.isNotEmpty()) {
-        ru.fromchat.Logger.d(
+        ru.fromchat.logging.Logger.d(
             "MessageCache",
             "mergeDbPanel dropConfirmedDeletes count=${droppedConfirmed.size} " +
                 "ids=${droppedConfirmed.map { it.id }.take(12)} " +
@@ -89,7 +89,7 @@ internal fun mergeDatabaseMessagesWithPanelState(
         panel.id < 0 && cid != null && cid !in mergedClientIds
     }
     if (extraPanel.isNotEmpty()) {
-        ru.fromchat.Logger.d(
+        ru.fromchat.logging.Logger.d(
             "MessageCache",
             "mergeDbPanel keepOptimistic count=${extraPanel.size} " +
                 "ids=${extraPanel.map { it.id }}",

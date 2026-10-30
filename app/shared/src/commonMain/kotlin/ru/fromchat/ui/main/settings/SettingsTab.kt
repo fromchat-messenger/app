@@ -1,7 +1,6 @@
 package ru.fromchat.ui.main.settings
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,7 +15,6 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.BugReport
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TopAppBar
@@ -26,11 +24,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.pr0gramm3r101.components.Category
-import com.pr0gramm3r101.utils.WindowWidthSizeClass
-import com.pr0gramm3r101.utils.currentWindowAdaptiveInfo
-import com.pr0gramm3r101.utils.verticalScroll
-import com.pr0gramm3r101.utils.widthSizeClass
+import ru.fromchat.utils.components.Category
+import ru.fromchat.utils.WindowWidthSizeClass
+import ru.fromchat.utils.currentWindowAdaptiveInfo
+import ru.fromchat.utils.verticalScroll
+import ru.fromchat.utils.widthSizeClass
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.about
@@ -55,16 +53,15 @@ import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.ExpressiveListItem
 import ru.fromchat.ui.components.ExpressiveTints
-import ru.fromchat.ui.extraStatusBars
+import ru.fromchat.ui.theme.extraStatusBars
 import ru.fromchat.ui.main.LocalConversationListDetailActive
-import ru.fromchat.ui.main.LocalDesktopSettingsNavController
+import ru.fromchat.ui.main.desktop.LocalDesktopSettingsNavController
 import ru.fromchat.ui.main.LocalMainChromeInsets
 import ru.fromchat.ui.main.mainPagerBottomInset
-import ru.fromchat.ui.main.navigateReplacingMainDetail
+import ru.fromchat.ui.main.nav.navigateReplacingMainDetail
 
 val SettingsStepHorizontalPadding = 24.dp
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SettingsTab() {
     val navController =

@@ -1,12 +1,14 @@
+@file:OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+
 package ru.fromchat.logging
 
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.UByteVar
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.allocArray
 import kotlinx.cinterop.convert
-import kotlinx.cinterop.get
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
@@ -42,10 +44,13 @@ internal actual object LogFileOps {
         withContext(Dispatchers.Default) {
             if (!NSFileManager.defaultManager.fileExistsAtPath(sourcePath)) return@withContext
             val raw = NSData.dataWithContentsOfFile(sourcePath) ?: return@withContext
-            val gzipped = gzipCompress(raw.toByteArray())
-            val parent = destinationPath.substringBeforeLast('/', missingDelimiterValue = destinationPath)
-            NSFileManager.defaultManager.createDirectoryAtPath(parent, true, null, null)
-            writeBytes(destinationPath, gzipped)
+            NSFileManager.defaultManager.createDirectoryAtPath(
+                destinationPath.substringBeforeLast('/', missingDelimiterValue = destinationPath),
+                true,
+                null,
+                null,
+            )
+            writeBytes(destinationPath, gzipCompress(raw.toByteArray()))
             NSFileManager.defaultManager.removeItemAtPath(sourcePath, null)
         }
     }
@@ -61,10 +66,13 @@ internal actual object LogFileOps {
         onProgress: (Float) -> Unit,
     ) {
         withContext(Dispatchers.Default) {
-            val bytes = gunzipToByteArray(sourcePath, onProgress)
-            val parent = destinationPath.substringBeforeLast('/', missingDelimiterValue = destinationPath)
-            NSFileManager.defaultManager.createDirectoryAtPath(parent, true, null, null)
-            writeBytes(destinationPath, bytes)
+            NSFileManager.defaultManager.createDirectoryAtPath(
+                destinationPath.substringBeforeLast('/', missingDelimiterValue = destinationPath),
+                true,
+                null,
+                null,
+            )
+            writeBytes(destinationPath, gunzipToByteArray(sourcePath, onProgress))
         }
     }
 
@@ -74,21 +82,29 @@ internal actual object LogFileOps {
     ) {
         withContext(Dispatchers.Default) {
             if (entries.isEmpty()) return@withContext
-            val zipEntries = entries.mapNotNull { (entryName, sourcePath) ->
-                if (!NSFileManager.defaultManager.fileExistsAtPath(sourcePath)) return@mapNotNull null
-                ZipFileEntry(entryName, readBytes(sourcePath))
-            }
-            val bytes = buildStoreZipArchive(zipEntries)
-            val parent = destinationPath.substringBeforeLast('/', missingDelimiterValue = destinationPath)
-            NSFileManager.defaultManager.createDirectoryAtPath(parent, true, null, null)
-            writeBytes(destinationPath, bytes)
+            NSFileManager.defaultManager.createDirectoryAtPath(
+                destinationPath.substringBeforeLast('/', missingDelimiterValue = destinationPath),
+                true,
+                null,
+                null,
+            )
+            writeBytes(
+                destinationPath,
+                buildStoreZipArchive(
+                    entries.mapNotNull { (entryName, sourcePath) ->
+                        if (!NSFileManager.defaultManager.fileExistsAtPath(sourcePath)) return@mapNotNull null
+                        ZipFileEntry(entryName, readBytes(sourcePath))
+                    },
+                ),
+            )
         }
     }
 
     private fun writeBytes(path: String, bytes: ByteArray) {
         bytes.usePinned { pinned ->
-            NSData.create(bytes = pinned.addressOf(0), length = bytes.size.toULong())
-                ?.writeToFile(path, true)
+            NSData
+                .create(bytes = pinned.addressOf(0), length = bytes.size.toULong())
+                .writeToFile(path, true)
         }
     }
 
@@ -107,9 +123,8 @@ internal actual object LogFileOps {
             return ByteArray(0)
         }
         val deflated = compressed.copyOfRange(10, compressed.size - 8)
-        val inflated = inflateGzipPayload(deflated)
         onProgress(1f)
-        return inflated
+        return inflateGzipPayload(deflated)
     }
 
     private fun inflateGzipPayload(deflated: ByteArray): ByteArray = memScoped {

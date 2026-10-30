@@ -1,3 +1,5 @@
 TEAM_ID=82MWK23YNM
 BUNDLE_ID=ru.fromchat.app
 APP_NAME=FromChat
+// SQLDelight native driver (static ComposeApp.framework)
+OTHER_LDFLAGS = $(inherited) -lsqlite3

@@ -12,13 +12,19 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.core.splashscreen.SplashScreenViewProvider
+import androidx.dynamicanimation.animation.DynamicAnimation
+import androidx.dynamicanimation.animation.SpringAnimation
+import androidx.dynamicanimation.animation.SpringForce
 import androidx.lifecycle.lifecycleScope
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
 import kotlinx.coroutines.launch
+import ru.fromchat.logging.Logger
 import ru.fromchat.notifications.NotificationLaunchCoordinator
 import ru.fromchat.notifications.NotificationLaunchTarget
 import ru.fromchat.ui.App
+import ru.fromchat.ui.SplashHandoffContainer
 import ru.fromchat.ui.chat.panels.publicchat.isPublicChatVisible
 
 private const val EXTRA_NOTIFICATION_CHAT_TYPE = "notification_chat_type"
@@ -50,6 +56,8 @@ class MainActivity : ComponentActivity() {
     private var startAtProfileUsername by mutableStateOf<String?>(null)
     private var profileLookupErrorMessage by mutableStateOf<String?>(null)
     private var prevIsPublicChatVisible: Boolean? = null
+    private var firstUiFrameReady by mutableStateOf(false)
+    private var splashHandoffActive by mutableStateOf(false)
     private val requestNotificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) {}
@@ -138,7 +146,7 @@ class MainActivity : ComponentActivity() {
 
     private fun parseProfileDeepLink(intent: Intent?): ProfileDeepLinkTarget? {
         val data: Uri = intent?.data ?: return null
-        Logger.d("ProfileDeepLink", "parseProfileDeepLink intentData=${data.toString()}")
+        Logger.d("ProfileDeepLink", "parseProfileDeepLink intentData=${data}")
         if (!data.scheme.equals("fromchat", ignoreCase = true)) return null
         if (data.host != "u") return null
 
@@ -187,25 +195,53 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun runSplashExitAnimation(splashScreenViewProvider: SplashScreenViewProvider) {
+        val splashScreenView = splashScreenViewProvider.view
+        splashScreenView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+        splashHandoffActive = true
+        SpringAnimation(splashScreenView, DynamicAnimation.ALPHA, 0f).apply {
+            spring = SpringForce(0f).apply {
+                dampingRatio = SpringForce.DAMPING_RATIO_NO_BOUNCY
+                stiffness = 400f
+            }
+            minimumVisibleChange = DynamicAnimation.MIN_VISIBLE_CHANGE_ALPHA
+            addEndListener { _, _, _, _ ->
+                splashScreenView.setLayerType(android.view.View.LAYER_TYPE_NONE, null)
+                splashScreenViewProvider.remove()
+            }
+            start()
+        }
+    }
+
+    private fun configureSplashScreen() {
+        val splashScreen = installSplashScreen()
+        splashScreen.setKeepOnScreenCondition { !firstUiFrameReady }
+        splashScreen.setOnExitAnimationListener { splashScreenView ->
+            runSplashExitAnimation(splashScreenView)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         Logger.i("MainActivity", "onCreate savedInstanceStateNull=${savedInstanceState == null}")
+        configureSplashScreen()
         super.onCreate(savedInstanceState)
-        installSplashScreen()
         enableEdgeToEdge()
 
-        deliverLaunchIntent(intent)
         setContent {
-            App(
-                scrollToMessageId = scrollToMessageId,
-                startAtPublicChat = startAtPublicChat,
-                startAtDmConversationUserId = startAtDmConversationUserId,
-                startAtProfileUserId = startAtProfileUserId,
-                startAtProfileUsername = startAtProfileUsername,
-                profileLookupErrorMessage = profileLookupErrorMessage,
-                onProfileLookupErrorMessageConsumed = {
-                    profileLookupErrorMessage = null
-                }
-            )
+            SplashHandoffContainer(handoffActive = splashHandoffActive) {
+                App(
+                    scrollToMessageId = scrollToMessageId,
+                    startAtPublicChat = startAtPublicChat,
+                    startAtDmConversationUserId = startAtDmConversationUserId,
+                    startAtProfileUserId = startAtProfileUserId,
+                    startAtProfileUsername = startAtProfileUsername,
+                    profileLookupErrorMessage = profileLookupErrorMessage,
+                    onProfileLookupErrorMessageConsumed = {
+                        profileLookupErrorMessage = null
+                    },
+                    onUiDisplayed = { firstUiFrameReady = true },
+                )
+            }
         }
 
         lifecycleScope.launch {

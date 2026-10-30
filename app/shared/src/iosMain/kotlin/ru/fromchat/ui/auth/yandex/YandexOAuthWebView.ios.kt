@@ -43,9 +43,10 @@ import platform.WebKit.WKUserScriptInjectionTime
 import platform.WebKit.WKWebView
 import platform.WebKit.WKWebViewConfiguration
 import platform.darwin.NSObject
-import ru.fromchat.Logger
-import ru.fromchat.auth.yandex.YANDEX_OAUTH_REDIRECT_URI
-import ru.fromchat.auth.yandex.extractOAuthCode
+import ru.fromchat.logging.Logger
+import ru.fromchat.api.yandex.YANDEX_OAUTH_REDIRECT_URI
+import ru.fromchat.api.yandex.extractOAuthCode
+import kotlin.time.Duration.Companion.milliseconds
 
 private const val LOG_TAG = "YandexOAuthWV"
 private const val LOADING_FADE_MS = 250
@@ -157,7 +158,7 @@ actual fun YandexOAuthWebView(
         if (pageLoading) {
             showLoadingOverlay = true
         } else {
-            delay(LOADING_HIDE_DELAY_MS)
+            delay(LOADING_HIDE_DELAY_MS.milliseconds)
             showLoadingOverlay = false
         }
     }

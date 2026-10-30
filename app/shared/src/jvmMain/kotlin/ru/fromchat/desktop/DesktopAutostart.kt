@@ -3,7 +3,7 @@ package ru.fromchat.desktop
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.util.prefs.Preferences
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 
 /**
  * Best-effort login/autostart helpers. Call from settings UI later.

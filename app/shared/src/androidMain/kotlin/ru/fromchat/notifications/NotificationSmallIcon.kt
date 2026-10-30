@@ -2,6 +2,7 @@ package ru.fromchat.notifications
 
 import android.content.Context
 
+// TODO replace this with just R.drawable.ic_stat_fromchat
 /** White silhouette drawable for status-bar / notification small icons. */
 object NotificationSmallIcon {
     private const val DRAWABLE_NAME = "ic_stat_fromchat"

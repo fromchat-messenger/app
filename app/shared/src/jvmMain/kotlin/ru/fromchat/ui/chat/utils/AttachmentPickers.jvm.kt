@@ -12,8 +12,8 @@ import java.net.URI
 import javax.imageio.ImageIO
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import ru.fromchat.ui.applyMacOsAppAppearance
-import ru.fromchat.ui.isAppInDarkTheme
+import ru.fromchat.ui.theme.applyMacOsAppAppearance
+import ru.fromchat.ui.theme.isAppInDarkTheme
 
 actual fun getFilenameFromUri(uri: String): String {
     val path = when {

@@ -4,8 +4,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import ru.fromchat.api.local.db.store.ProfileCache
-import ru.fromchat.api.local.db.store.PublicChatProfileCache
-import ru.fromchat.api.local.cache.CacheContext.activeInstanceId
 import ru.fromchat.ui.chat.utils.PublicChatPanelCache
 import ru.fromchat.ui.chat.panels.dm.DmPanelCache
 

@@ -14,10 +14,10 @@ import ru.fromchat.api.local.db.isPlaceholderAttachmentAspectRatio
 import ru.fromchat.api.local.db.isPlaceholderAttachmentDimensions
 import ru.fromchat.api.local.download.ChatPreviewDecodeSize
 import ru.fromchat.api.local.download.LocalDecodedImageCache
-import ru.fromchat.ui.chat.MessageGroupInfo
-import ru.fromchat.ui.chat.bubbleBottomRadii
-import ru.fromchat.ui.chat.bubbleTopRadii
-import ru.fromchat.ui.chat.rememberAnimatedBubbleRadii
+import ru.fromchat.ui.chat.message.MessageGroupInfo
+import ru.fromchat.ui.chat.message.bubbleBottomRadii
+import ru.fromchat.ui.chat.message.bubbleTopRadii
+import ru.fromchat.ui.chat.message.rememberAnimatedBubbleRadii
 
 /** Max attachment preview width in chat bubbles (160dp × 1.3). */
 internal val ATTACHMENT_TILE_MAX_WIDTH = 208.dp

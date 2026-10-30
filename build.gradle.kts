@@ -47,7 +47,7 @@ subprojects {
     afterEvaluate {
         if (!useCiPrebuiltJvm()) return@afterEvaluate
         when (path) {
-            ":app:shared", ":utils:shared" -> {
+            ":app:shared" -> {
                 tasks.matching { it.name == "compileKotlinJvm" }.configureEach {
                     onlyIf {
                         val skip = hasFilesUnder("classes/kotlin/jvm/main", "class")

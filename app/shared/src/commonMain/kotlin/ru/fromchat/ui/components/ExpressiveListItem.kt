@@ -11,9 +11,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import com.pr0gramm3r101.components.ListItem
-import com.pr0gramm3r101.components.ListItemContextMenuScope
-import com.pr0gramm3r101.components.ListItemPosition
+import ru.fromchat.utils.components.ListItem
+import ru.fromchat.utils.components.ListItemContextMenuScope
+import ru.fromchat.utils.components.ListItemPosition
 import tech.annexflow.constraintlayout.compose.ConstraintLayoutScope
 
 /**

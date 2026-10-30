@@ -1,0 +1,304 @@
+package ru.fromchat.ui.main.nav
+
+import androidx.compose.animation.SharedTransitionScope
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavController
+import androidx.navigation.NavGraphBuilder
+import androidx.navigation.NavType
+import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
+import ru.fromchat.logging.Logger
+import ru.fromchat.ui.main.settings.about.legal.DocumentScreen
+import ru.fromchat.ui.main.settings.about.legal.DocumentType
+import ru.fromchat.ui.chat.panels.dm.DmChatRoute
+import ru.fromchat.ui.chat.panels.dm.DmNav
+import ru.fromchat.ui.chat.panels.dm.DmProfileRoute
+import ru.fromchat.ui.chat.panels.dm.navigateToDmChat
+import ru.fromchat.ui.chat.panels.publicchat.PublicChatChatRoute
+import ru.fromchat.ui.chat.panels.publicchat.PublicChatNav
+import ru.fromchat.ui.chat.panels.publicchat.PublicChatProfileRoute
+import ru.fromchat.ui.main.settings.about.AboutScreen
+import ru.fromchat.ui.main.settings.AppearanceScreen
+import ru.fromchat.ui.main.settings.devices.DevicesScreen
+import ru.fromchat.ui.main.settings.logs.LOG_FILE_OPEN_RESULT_KEY
+import ru.fromchat.ui.main.settings.logs.LogFilesScreen
+import ru.fromchat.ui.main.settings.logs.LogsScreen
+import ru.fromchat.ui.main.settings.NotificationsScreen
+import ru.fromchat.ui.main.settings.SettingsRoutes
+import ru.fromchat.ui.main.settings.account.AccountScreen
+import ru.fromchat.ui.main.settings.account.changepassword.ChangePasswordScreen
+import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexConfirmScreen
+import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexDoneScreen
+import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexOAuthScreen
+import ru.fromchat.ui.main.settings.account.delete.DeleteAccountScreen
+import ru.fromchat.ui.main.settings.server.ServerConfigScreen
+import ru.fromchat.ui.main.desktop.detailPaneShowBackButton
+import ru.fromchat.ui.profile.EditProfileFocusField
+import ru.fromchat.ui.profile.edit.EditProfileScreen
+import ru.fromchat.ui.profile.ProfileRoutes
+import ru.fromchat.ui.profile.ProfileScreen
+
+/**
+ * Conversation detail destinations (DM / public chat + in-conversation profiles).
+ * Used by the root NavHost (compact) and the desktop Chats detail NavHost.
+ */
+fun NavGraphBuilder.conversationDetailDestinations(
+    navController: NavController,
+    sharedTransitionScope: SharedTransitionScope,
+    scrollToMessageId: Int?,
+) {
+    composable(
+        route = PublicChatNav.CHAT_ROUTE,
+    ) {
+        PublicChatChatRoute(
+            scrollToMessageId = scrollToMessageId,
+            navController = navController,
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = this,
+        )
+    }
+
+    composable(
+        route = PublicChatNav.PROFILE_ROUTE,
+    ) {
+        PublicChatProfileRoute(
+            navController = navController,
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = this,
+        )
+    }
+
+    composable(
+        route = DmNav.CHAT_ROUTE,
+        arguments = listOf(
+            navArgument("otherUserId") { type = NavType.StringType },
+            navArgument("sourceMessageId") { type = NavType.StringType; defaultValue = "0" },
+        ),
+    ) { entry ->
+        val otherUserId = entry.pathInt("otherUserId")
+        val sourceMessageId = entry.pathInt("sourceMessageId")
+        if (otherUserId <= 0) return@composable
+        DmChatRoute(
+            otherUserId = otherUserId,
+            scrollToMessageId = sourceMessageId.takeIf { it > 0 },
+            navController = navController,
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = this,
+        )
+    }
+
+    composable(
+        route = DmNav.PROFILE_ROUTE,
+        arguments = listOf(navArgument("otherUserId") { type = NavType.StringType }),
+    ) { entry ->
+        val otherUserId = entry.pathInt("otherUserId")
+        if (otherUserId <= 0) return@composable
+        DmProfileRoute(
+            otherUserId = otherUserId,
+            navController = navController,
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = this,
+        )
+    }
+}
+
+/**
+ * Standalone profile + edit-profile destinations.
+ *
+ * @param onOpenChat Opens a DM; on desktop settings host this should target the Chats detail nav.
+ */
+fun NavGraphBuilder.profileDetailDestinations(
+    navController: NavController,
+    sharedTransitionScope: SharedTransitionScope,
+    onOpenChat: (Int) -> Unit = { navController.navigateToDmChat(it) },
+) {
+    composable(
+        route = "profile/{userId}?fromDeepLink={fromDeepLink}",
+        arguments = listOf(
+            navArgument("userId") { type = NavType.StringType },
+            navArgument("fromDeepLink") {
+                type = NavType.BoolType
+                defaultValue = false
+            },
+        ),
+    ) { backStackEntry ->
+        val args = backStackEntry.savedStateHandle
+        val userIdParam = args.get<String>("userId")
+        val parsedUserId = userIdParam?.toIntOrNull()
+        val userId = if ((parsedUserId ?: 0) > 0) parsedUserId else null
+        val profileUsername = if (userId == null) {
+            userIdParam?.trim()?.takeIf { it.isNotBlank() }
+        } else {
+            null
+        }
+
+        val fromDeepLink = when (val rawFromDeepLink = args.get<Any?>("fromDeepLink")) {
+            is Boolean -> rawFromDeepLink
+            is String -> rawFromDeepLink == "true"
+            else -> false
+        }
+
+        Logger.d(
+            "ProfileRoute",
+            "profile entry args: rawUserId=$userIdParam parsedUserId=$parsedUserId resolvedUserId=$userId " +
+                "resolvedUsername=$profileUsername fromDeepLink=$fromDeepLink " +
+                "currentRoute=${backStackEntry.destination.route}",
+        )
+
+        ProfileScreen(
+            userId = userId,
+            username = profileUsername,
+            showBackButton = detailPaneShowBackButton(),
+            onBack = { navController.navigateUp() },
+            onChat = onOpenChat,
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = this@composable,
+            showErrorAsToast = fromDeepLink,
+        )
+    }
+
+    composable(
+        route = ProfileRoutes.Edit,
+        arguments = listOf(
+            navArgument(ProfileRoutes.ARG_FOCUS) {
+                type = NavType.StringType
+                defaultValue = ""
+            },
+        ),
+    ) { entry ->
+        val focusField = EditProfileFocusField.fromArg(
+            entry.savedStateHandle.get<String>(ProfileRoutes.ARG_FOCUS),
+        )
+        EditProfileScreen(
+            onBack = { navController.navigateUp() },
+            initialFocusField = focusField,
+        )
+    }
+}
+
+/**
+ * Settings hub detail destinations (account, appearance, about, …).
+ *
+ * @param rootNavController For logout / delete that wipe back to welcome on the root graph.
+ */
+fun NavGraphBuilder.settingsDetailDestinations(
+    navController: NavController,
+    rootNavController: NavController = navController,
+) {
+    composable("about") {
+        AboutScreen()
+    }
+
+    composable(SettingsRoutes.Logs) {
+        LogsScreen()
+    }
+
+    composable(SettingsRoutes.LogFiles) {
+        LogFilesScreen(
+            onOpenFile = { file ->
+                navController.previousBackStackEntry
+                    ?.savedStateHandle
+                    ?.set(LOG_FILE_OPEN_RESULT_KEY, file.path)
+                navController.navigateUp()
+            },
+        )
+    }
+
+    composable(
+        route = DocumentType.ROUTE,
+        arguments = listOf(
+            navArgument(DocumentType.ARG_DOCUMENT_TYPE) { type = NavType.StringType },
+        ),
+    ) { entry ->
+        val type = entry.savedStateHandle
+            .get<String>(DocumentType.ARG_DOCUMENT_TYPE)
+            ?.let(DocumentType::typeFromArg)
+            ?: return@composable
+        DocumentScreen(
+            type = type,
+            onBack = { navController.navigateUp() },
+            onOpenLegalDocument = { linkedType ->
+                navController.navigate(DocumentType.route(linkedType)) {
+                    launchSingleTop = true
+                }
+            },
+        )
+    }
+
+    composable(SettingsRoutes.Appearance) {
+        AppearanceScreen(onBack = { navController.navigateUp() })
+    }
+
+    composable(SettingsRoutes.Notifications) {
+        NotificationsScreen(onBack = { navController.navigateUp() })
+    }
+
+    composable(SettingsRoutes.Devices) {
+        DevicesScreen(onBack = { navController.navigateUp() })
+    }
+
+    composable(SettingsRoutes.SecurityPasswordFlow) {
+        ChangePasswordScreen(
+            onBack = { navController.navigateUp() },
+            onDone = { navController.popBackStack() },
+        )
+    }
+
+    composable(SettingsRoutes.AccountDeleteFlow) {
+        DeleteAccountScreen(
+            onBack = { navController.navigateUp() },
+            onDeleted = {
+                rootNavController.navigate("welcome") {
+                    popUpTo("chat") { inclusive = true }
+                }
+            },
+        )
+    }
+
+    composable(SettingsRoutes.AccountYandexFlow) {
+        ChangeYandexConfirmScreen(
+            onBack = { navController.navigateUp() },
+        )
+    }
+
+    composable(SettingsRoutes.AccountYandexOAuth) {
+        ChangeYandexOAuthScreen(
+            onBack = { navController.navigateUp() },
+        )
+    }
+
+    composable(SettingsRoutes.AccountYandexDone) {
+        ChangeYandexDoneScreen(
+            onDone = {
+                navController.popBackStack(SettingsRoutes.Account, inclusive = false)
+            },
+        )
+    }
+
+    composable(SettingsRoutes.Account) {
+        AccountScreen(
+            onBack = { navController.navigateUp() },
+            onLogout = {
+                rootNavController.navigate("welcome") {
+                    popUpTo("chat") { inclusive = true }
+                }
+            },
+            onChangePassword = { navController.navigate(SettingsRoutes.SecurityPasswordFlow) },
+            onChangeYandexId = { navController.navigate(SettingsRoutes.AccountYandexFlow) },
+            onDeleteAccount = { navController.navigate(SettingsRoutes.AccountDeleteFlow) },
+        )
+    }
+
+    // Same route string as pre-auth server config on the root graph; fine on a nested graph.
+    composable(SettingsRoutes.ServerConfig) {
+        ServerConfigScreen()
+    }
+}
+
+private fun NavBackStackEntry.pathInt(name: String): Int =
+    when (val raw = savedStateHandle.get<Any?>(name)) {
+        is Int -> raw
+        is Long -> raw.toInt()
+        is String -> raw.toIntOrNull() ?: 0
+        else -> 0
+    }

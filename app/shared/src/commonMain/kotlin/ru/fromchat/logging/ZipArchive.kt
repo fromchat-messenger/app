@@ -3,7 +3,22 @@ package ru.fromchat.logging
 internal data class ZipFileEntry(
     val name: String,
     val data: ByteArray,
-)
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other == null || this::class != other::class) return false
+
+        other as ZipFileEntry
+
+        if (name != other.name) return false
+        if (!data.contentEquals(other.data)) return false
+
+        return true
+    }
+
+    override fun hashCode() =
+        name.hashCode().let { 31 * it + data.contentHashCode() }
+}
 
 internal fun buildStoreZipArchive(entries: List<ZipFileEntry>): ByteArray {
     if (entries.isEmpty()) return ByteArray(0)

@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalForeignApi::class)
+@file:OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 
 package ru.fromchat.ui.chat.utils
 
@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
@@ -43,9 +44,8 @@ actual fun rememberCreateDownloadDestinationLauncher(
             onDestination(null)
             return@launcher
         }
-        val fileUrl = NSURL.fileURLWithPath(stagingPath)
         val picker = UIDocumentPickerViewController(
-            forExportingURLs = listOf(fileUrl),
+            forExportingURLs = listOf(NSURL.fileURLWithPath(stagingPath)),
             asCopy = true,
         )
         defaultDownloadsDirectoryUrl()?.let { picker.directoryURL = it }
@@ -81,20 +81,18 @@ private fun defaultDownloadsDirectoryUrl(): NSURL? {
     )
 }
 
-@OptIn(ExperimentalForeignApi::class)
 private fun writePickerStagingPlaceholder(filename: String): String? {
-    val caches = NSSearchPathForDirectoriesInDomains(
-        NSCachesDirectory,
-        NSUserDomainMask,
-        true,
-    ).filterIsInstance<String>().firstOrNull().orEmpty()
-    val dir = "$caches/save_export_pick"
+    val dir =
+        "${NSSearchPathForDirectoriesInDomains(
+            NSCachesDirectory,
+            NSUserDomainMask,
+            true,
+        ).filterIsInstance<String>().firstOrNull().orEmpty()}/save_export_pick"
     NSFileManager.defaultManager.createDirectoryAtPath(dir, true, null, null)
     val path = "$dir/${sanitizeExportFilename(filename)}"
-    val placeholder = ByteArray(0)
-    val nsData = placeholder.usePinned { pinned ->
+    val nsData = ByteArray(0).usePinned { pinned ->
         NSData.create(bytes = pinned.addressOf(0), length = 0u)
-    } ?: return null
+    }
     return if (nsData.writeToFile(path, true)) path else null
 }
 

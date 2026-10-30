@@ -1,6 +1,6 @@
 package ru.fromchat.api.local.db
 
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 
 fun isSqliteBusy(throwable: Throwable): Boolean {
     var current: Throwable? = throwable

@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalForeignApi::class)
-
 package ru.fromchat.api.local.download
 
 import androidx.compose.runtime.Composable
@@ -8,14 +6,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSURL
 import platform.UIKit.UIDocumentPickerDelegateProtocol
 import platform.UIKit.UIDocumentPickerViewController
 import platform.darwin.NSObject
-import ru.fromchat.api.local.cache.DecryptedFileCache
 import ru.fromchat.api.local.cache.PendingFileSaveEntry
 import ru.fromchat.api.local.cache.PendingFileSaveRegistry
 import ru.fromchat.utils.iosTopViewController
@@ -44,13 +40,6 @@ actual fun rememberPlatformSaveMessageFile(
                         mimeType = pending.mimeType,
                     ),
                 )
-                if (DecryptedFileCache.getCached(
-                        messageId = DownloadedFileRegistry.messageIdFromStorageKey(pending.storageKey) ?: -1,
-                        fileIndex = DownloadedFileRegistry.fileIndexFromStorageKey(pending.storageKey) ?: 0,
-                    ) == null
-                ) {
-                    // Download will trigger copy when cache is ready.
-                }
                 onComplete(true)
             }
         }
@@ -67,7 +56,7 @@ private suspend fun pickSaveDestination(filename: String, mimeType: String): Str
     suspendCancellableCoroutine { cont ->
         val host = iosTopViewController()
         if (host == null) {
-            cont.resume(null) {}
+            cont.resume(null) { _, _, _ -> }
             return@suspendCancellableCoroutine
         }
         val picker = UIDocumentPickerViewController(forExportingURLs = emptyList<NSURL>(), asCopy = true)
@@ -76,12 +65,11 @@ private suspend fun pickSaveDestination(filename: String, mimeType: String): Str
                 controller: UIDocumentPickerViewController,
                 didPickDocumentsAtURLs: List<*>,
             ) {
-                val url = didPickDocumentsAtURLs.firstOrNull() as? NSURL
-                cont.resume(url?.absoluteString) {}
+                cont.resume((didPickDocumentsAtURLs.firstOrNull() as? NSURL)?.absoluteString) { _, _, _ -> }
             }
 
             override fun documentPickerWasCancelled(controller: UIDocumentPickerViewController) {
-                cont.resume(null) {}
+                cont.resume(null) { _, _, _ -> }
             }
         }
         picker.delegate = delegate

@@ -89,13 +89,13 @@ object DmInboundMessageProcessor {
     val data = runCatching {
       ApiClient.json.decodeFromJsonElement(DmDeletedData.serializer(), element)
     }.getOrNull() ?: run {
-      ru.fromchat.Logger.w("DmInbox", "processDeleted decode failed")
+      ru.fromchat.logging.Logger.w("DmInbox", "processDeleted decode failed")
       return
     }
 
     val currentUserId = ApiClient.user?.id ?: return
     if (data.senderId != currentUserId && data.recipientId != currentUserId) {
-      ru.fromchat.Logger.d(
+      ru.fromchat.logging.Logger.d(
         "DmInbox",
         "processDeleted skipNotParticipant messageId=${data.id} " +
           "senderId=${data.senderId} recipientId=${data.recipientId} self=$currentUserId",
@@ -108,7 +108,7 @@ object DmInboundMessageProcessor {
       else -> data.senderId
     } ?: return
 
-    ru.fromchat.Logger.i(
+    ru.fromchat.logging.Logger.i(
       "DmInbox",
       "processDeleted messageId=${data.id} otherUserId=$otherUserId " +
         "senderId=${data.senderId} recipientId=${data.recipientId}",

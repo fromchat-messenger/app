@@ -15,7 +15,7 @@ import javafx.scene.Scene
 import javafx.scene.web.WebEngine
 import javafx.scene.web.WebView
 import netscape.javascript.JSObject
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.ui.jvm.ensureJavaFxStarted
 import ru.fromchat.ui.jvm.releaseJavaFxWebView
 import java.util.concurrent.atomic.AtomicReference

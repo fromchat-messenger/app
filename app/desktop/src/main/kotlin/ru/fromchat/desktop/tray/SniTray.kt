@@ -5,8 +5,7 @@ import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder
 import org.freedesktop.dbus.exceptions.DBusExecutionException
 import org.freedesktop.dbus.interfaces.DBus
 import org.freedesktop.dbus.interfaces.Properties
-import ru.fromchat.Logger
-import ru.fromchat.desktop.TrayConnectionStatus
+import ru.fromchat.logging.Logger
 import java.awt.image.BufferedImage
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.SwingUtilities
@@ -65,7 +64,7 @@ internal class SniTrayController private constructor(
     }
 
     companion object {
-        private val LOG_TAG = "SniTray"
+        private const val LOG_TAG = "SniTray"
         const val ITEM_PATH = "/org/ayatana/NotificationItem/FromChat"
         const val MENU_PATH = "$ITEM_PATH/Menu"
         private const val WATCHER_SERVICE = "org.kde.StatusNotifierWatcher"

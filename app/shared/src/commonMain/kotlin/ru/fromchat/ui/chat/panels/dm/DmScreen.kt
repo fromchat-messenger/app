@@ -18,8 +18,8 @@ import ru.fromchat.api.local.messages.ActiveDmChatTracker
 import ru.fromchat.api.local.send.OutgoingMessageCoordinator
 import ru.fromchat.api.local.send.scheduleOutboxProcessing
 import ru.fromchat.api.local.cache.CacheContext
-import ru.fromchat.ui.chat.AvatarInfo
-import ru.fromchat.ui.chat.ChatScreen
+import ru.fromchat.ui.chat.chrome.AvatarInfo
+import ru.fromchat.ui.chat.chrome.ChatScreen
 
 @Composable
 fun DmScreen(

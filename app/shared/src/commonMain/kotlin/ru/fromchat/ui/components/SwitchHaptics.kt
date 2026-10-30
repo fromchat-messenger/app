@@ -2,7 +2,7 @@ package ru.fromchat.ui.components
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import com.pr0gramm3r101.components.LocalSwitchHaptic
+import ru.fromchat.utils.components.LocalSwitchHaptic
 import ru.fromchat.utils.haptic.HapticFeedbackEvent
 import ru.fromchat.utils.haptic.rememberHapticFeedback
 

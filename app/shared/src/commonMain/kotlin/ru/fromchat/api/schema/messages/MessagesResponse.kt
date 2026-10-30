@@ -13,7 +13,5 @@ data class MessagesResponse(
 )
 
 /** Whether another `before_id` page likely exists (public chat scroll-up). */
-fun MessagesResponse.hasMoreOlderHistory(pageSize: Int): Boolean {
-    if (messages.isEmpty()) return false
-    return hasMoreBefore || hasMore || messages.size >= pageSize
-}
+fun MessagesResponse.hasMoreOlderHistory(pageSize: Int): Boolean =
+    messages.isNotEmpty() && (hasMoreBefore || hasMore || messages.size >= pageSize)

@@ -1,5 +1,6 @@
-package ru.fromchat.desktop.tray
+@file:Suppress("unused", "UnusedSymbol")
 
+package ru.fromchat.desktop.tray
 import org.freedesktop.dbus.DBusPath
 import org.freedesktop.dbus.types.Variant
 

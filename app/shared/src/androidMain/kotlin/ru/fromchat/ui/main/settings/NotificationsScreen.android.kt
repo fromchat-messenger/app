@@ -8,7 +8,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import com.pr0gramm3r101.utils.UtilsLibrary
+import ru.fromchat.utils.UtilsLibrary
 
 actual fun openAppNotificationSettings(): Boolean =
     try {
@@ -31,15 +31,11 @@ actual fun openAppNotificationSettings(): Boolean =
 
 actual fun areAppNotificationsEnabled(): Boolean {
     if (!NotificationManagerCompat.from(UtilsLibrary.context).areNotificationsEnabled()) return false
-
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+    return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
         ContextCompat.checkSelfPermission(
             UtilsLibrary.context,
-            Manifest.permission.POST_NOTIFICATIONS
+            Manifest.permission.POST_NOTIFICATIONS,
         ) == PackageManager.PERMISSION_GRANTED
-    } else {
-        true
-    }
 }
 
 actual fun arePushNotificationsSupported(): Boolean = true

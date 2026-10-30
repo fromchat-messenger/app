@@ -1,6 +1,6 @@
 package ru.fromchat.api.local.db
 
-import com.pr0gramm3r101.utils.files.PlatformFileSystem
+import ru.fromchat.utils.files.PlatformFileSystem
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -16,7 +16,7 @@ import ru.fromchat.api.schema.messages.dm.DmFile
 import ru.fromchat.api.local.AttachmentMediaLog
 import ru.fromchat.api.local.cache.DecryptedImageCache
 import ru.fromchat.api.local.download.readLocalImageDimensions
-import ru.fromchat.ui.chat.isImageFilename
+import ru.fromchat.ui.chat.media.isImageFilename
 
 private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -148,8 +148,7 @@ internal fun messageQualifiesForImageCacheHydration(message: Message): Boolean {
         if (isImageFilename(name)) return true
     }
     val parsed = parseDmMessageContent(message.content)
-    if (!parsed.fileThumbnails.isNullOrEmpty() && !parsed.files.isNullOrEmpty()) return true
-    return false
+    return !parsed.fileThumbnails.isNullOrEmpty() && !parsed.files.isNullOrEmpty()
 }
 
 /** Restores pending preview URIs from DB without attaching orphaned image cache files to text rows. */

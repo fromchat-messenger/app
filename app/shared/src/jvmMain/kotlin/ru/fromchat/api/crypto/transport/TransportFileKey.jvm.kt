@@ -2,7 +2,7 @@ package ru.fromchat.api.crypto.transport
 
 import com.ionspin.kotlin.crypto.LibsodiumInitializer
 import com.ionspin.kotlin.crypto.box.Box
-import com.pr0gramm3r101.utils.crypto.Base64
+import ru.fromchat.utils.crypto.Base64
 import dev.whyoleg.cryptography.BinarySize.Companion.bits
 import dev.whyoleg.cryptography.CryptographyProvider
 import dev.whyoleg.cryptography.DelicateCryptographyApi
@@ -16,7 +16,6 @@ import kotlinx.coroutines.withContext
 
 private const val IV_SIZE = 12
 
-@OptIn(DelicateCryptographyApi::class)
 private val aesGcm get() = CryptographyProvider.Default.get(AES.GCM)
 
 private fun ensureLibsodiumInitialized() {

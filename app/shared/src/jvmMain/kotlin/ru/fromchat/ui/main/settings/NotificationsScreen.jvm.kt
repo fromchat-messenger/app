@@ -3,10 +3,8 @@ package ru.fromchat.ui.main.settings
 import ru.fromchat.desktop.DesktopNotificationSettings
 import ru.fromchat.desktop.MacNotificationCenter
 
-actual fun openAppNotificationSettings(): Boolean {
-    if (isMacOs()) return MacNotificationCenter.openSystemSettings()
-    return false
-}
+actual fun openAppNotificationSettings(): Boolean =
+    isMacOs() && MacNotificationCenter.openSystemSettings()
 
 actual fun areAppNotificationsEnabled(): Boolean {
     if (!isMacOs()) return true
@@ -27,10 +25,8 @@ actual fun setDesktopMessageNotificationsEnabled(enabled: Boolean) {
     }
 }
 
-actual fun requestDesktopNotificationPermission(): Boolean {
-    if (!isMacOs()) return true
-    return MacNotificationCenter.registerAndRequestAuthorization()
-}
+actual fun requestDesktopNotificationPermission(): Boolean =
+    !isMacOs() || MacNotificationCenter.registerAndRequestAuthorization()
 
 private fun isMacOs(): Boolean =
     System.getProperty("os.name").orEmpty().lowercase().contains("mac")

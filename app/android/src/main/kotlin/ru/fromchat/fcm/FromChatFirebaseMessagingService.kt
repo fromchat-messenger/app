@@ -2,16 +2,17 @@ package ru.fromchat.fcm
 
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
-import com.pr0gramm3r101.utils.settings.settings
+import ru.fromchat.utils.settings.settings
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.api.ApiClient
-import ru.fromchat.api.uploadPendingFcmTokenIfAvailable
+import ru.fromchat.api.push.uploadPendingFcmTokenIfAvailable
 import ru.fromchat.notifications.MessageNotificationCoordinator
 
+// TODO onNewToken() implementation
 @OptIn(DelicateCoroutinesApi::class)
 class FromChatFirebaseMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(remoteMessage: RemoteMessage) {

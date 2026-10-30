@@ -1,5 +1,3 @@
-@file:Suppress("AssignedValueIsNeverRead")
-
 package ru.fromchat.ui.main.settings.account
 
 import androidx.compose.foundation.layout.Column
@@ -14,7 +12,6 @@ import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -29,9 +26,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
-import com.pr0gramm3r101.components.Category
-import com.pr0gramm3r101.components.ListItem
-import com.pr0gramm3r101.utils.conditional
+import ru.fromchat.utils.components.Category
+import ru.fromchat.utils.components.ListItem
+import ru.fromchat.utils.conditional
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
@@ -52,9 +49,10 @@ import ru.fromchat.settings_security_change_password_sub
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.main.settings.SettingsDetailTopBar
 import ru.fromchat.ui.main.settings.rememberSettingsCollapsingScrollBehavior
+import ru.fromchat.ui.main.settings.rememberSettingsDetailHazeState
+import ru.fromchat.ui.main.settings.settingsDetailHazeSource
 import ru.fromchat.ui.main.settings.settingsDetailUseCollapsingTopBar
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AccountScreen(
     onBack: () -> Unit,
@@ -65,6 +63,7 @@ fun AccountScreen(
 ) {
     val useCollapsing = settingsDetailUseCollapsingTopBar()
     val scrollBehavior = rememberSettingsCollapsingScrollBehavior()
+    val hazeState = rememberSettingsDetailHazeState()
     val scope = rememberCoroutineScope()
     var showLogoutConfirm by remember { mutableStateOf(false) }
     var yandexAvailable by remember { mutableStateOf(false) }
@@ -81,6 +80,7 @@ fun AccountScreen(
             SettingsDetailTopBar(
                 title = stringResource(Res.string.settings_account_title),
                 onBack = onBack,
+                hazeState = hazeState,
                 scrollBehavior = scrollBehavior,
             )
         }
@@ -88,6 +88,7 @@ fun AccountScreen(
         Column(
             Modifier
                 .fillMaxWidth()
+                .settingsDetailHazeSource(hazeState)
                 .conditional(useCollapsing) {
                     Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
                 }

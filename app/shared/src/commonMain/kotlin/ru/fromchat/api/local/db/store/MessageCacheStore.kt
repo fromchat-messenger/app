@@ -2,7 +2,6 @@ package ru.fromchat.api.local.db.store
 
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -10,13 +9,12 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.messages.ChatListPreviewPendingIndicator
 import ru.fromchat.api.local.messages.ChatListPreviewState
 import ru.fromchat.api.local.messages.ChatListPreviewStrings
 import ru.fromchat.api.local.messages.GENERAL_PUBLIC_GROUP_ID
-import ru.fromchat.api.local.messages.buildChatListPreview
 import ru.fromchat.api.local.messages.buildChatListPreviewFromEnvelope
 import ru.fromchat.api.local.messages.buildChatListPreviewState
 import ru.fromchat.api.local.db.aspectRatioFromDimensionPair
@@ -47,9 +45,9 @@ import ru.fromchat.api.local.cache.DecryptedFileCache
 import ru.fromchat.api.local.cache.DecryptedImageCache
 import ru.fromchat.api.local.download.DownloadedFileRegistry
 import ru.fromchat.api.local.download.readImageDimensionsFromBytes
-import com.pr0gramm3r101.utils.crypto.Base64
+import ru.fromchat.utils.crypto.Base64
 import ru.fromchat.ui.chat.utils.attachPublicReplyReferences
-import ru.fromchat.ui.chat.isImageFilename
+import ru.fromchat.ui.chat.media.isImageFilename
 import ru.fromchat.ui.chat.utils.dedupeMessagesByClientId
 import ru.fromchat.ui.chat.utils.dropSupersededOptimisticMessages
 import kotlin.concurrent.Volatile
@@ -906,7 +904,7 @@ object MessageCacheStore {
             .selectPendingOutboxForInstance(instanceId)
             .asFlow()
             .mapToList(messageDatabaseDispatcher)
-        val notifierFlow = DmConversationListNotifier.events.map { Unit }
+        val notifierFlow = DmConversationListNotifier.events.map {  }
         return merge(conversationsFlow, messagesFlow, pendingFlow, outboxFlow, notifierFlow)
             .mapLatest { loadCachedDmConversations() }
     }

@@ -16,7 +16,7 @@ import ru.fromchat.api.local.send.PublicAttachmentOutboxPayload
 import ru.fromchat.api.local.send.scheduleOutboxProcessing
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.cache.repairInterruptedUploadArtifacts
-import ru.fromchat.api.PublicChatProfileSync
+import ru.fromchat.api.sync.PublicChatProfileSync
 import ru.fromchat.api.instance.applyCachedSessionInstanceIfAvailable
 import ru.fromchat.api.instance.scheduleSessionInstanceNetworkRefresh
 

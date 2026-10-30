@@ -11,7 +11,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlin.coroutines.coroutineContext
 import kotlinx.serialization.json.Json
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.workers.AttachmentUploadNotifier
@@ -22,11 +21,6 @@ import ru.fromchat.api.local.db.store.MessageDatabaseProvider
 import ru.fromchat.api.local.db.store.MessageRepository
 import ru.fromchat.api.local.messages.conversationIdForDm
 import ru.fromchat.api.local.messages.conversationIdForGroup
-import ru.fromchat.api.local.send.OutboundSendNotifier
-import ru.fromchat.api.local.send.OutboundSendProgress
-import ru.fromchat.api.local.send.isOutboundPermanentFailure
-import ru.fromchat.api.local.send.isOutboundTransientFailure
-import ru.fromchat.api.local.send.outboundFailureErrorKey
 import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.api.schema.messages.dm.SendDmFile
 import ru.fromchat.api.local.cache.CacheContext
@@ -34,7 +28,8 @@ import ru.fromchat.api.local.db.buildDmOutboundPlaintext
 import ru.fromchat.api.local.cache.clearUploadArtifacts
 import ru.fromchat.api.local.cache.clearUploadSecretsOnly
 import ru.fromchat.api.local.AttachmentMediaLog
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Single entry point for enqueueing outbound messages (DB row + outbox + worker).
@@ -84,7 +79,7 @@ object OutgoingMessageCoordinator {
         if (id.isEmpty()) return
         retryJobs[id]?.cancel()
         retryJobs[id] = drainScope.launch {
-            delay(3_000)
+            delay(3_000.milliseconds)
             try {
                 drainOutboxForInstance(id)
             } finally {

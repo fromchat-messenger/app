@@ -19,12 +19,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import ru.fromchat.ui.components.ChromeBackIconButton
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.RestartAlt
@@ -65,8 +64,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.pr0gramm3r101.utils.navigateAndWipeBackStack
-import com.pr0gramm3r101.utils.toDp
+import ru.fromchat.utils.navigateAndWipeBackStack
+import ru.fromchat.utils.toDp
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.blur.hazeBlur
@@ -114,7 +113,7 @@ import ru.fromchat.ui.components.DisabledBringIntoViewSpec
 import ru.fromchat.ui.components.ExpressiveIconFrame
 import ru.fromchat.ui.components.FromChatSnackbarHost
 import ru.fromchat.ui.components.HazeActionButton
-import com.pr0gramm3r101.utils.LastAnchoredBottomArrangement
+import ru.fromchat.utils.LastAnchoredBottomArrangement
 import ru.fromchat.ui.components.LazyListFocusScrollEffect
 import ru.fromchat.ui.components.SettingsPasswordOutlineFieldShape
 import ru.fromchat.ui.components.rememberLazyListFocusScrollState
@@ -122,7 +121,7 @@ import ru.fromchat.ui.components.trackLazyListFocus
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 import ru.fromchat.ui.main.settings.settingsDetailShowBackButton
 import ru.fromchat.ui.main.settings.settingsDetailWindowInsets
-import ru.fromchat.ui.extraStatusBars
+import ru.fromchat.ui.theme.extraStatusBars
 
 private object ServerConfigLazyListIndices {
     const val SERVER_IP_FIELD = 2
@@ -344,12 +343,7 @@ fun ServerConfigScreen() {
                         title = {},
                         navigationIcon = {
                             if (settingsDetailShowBackButton()) {
-                                IconButton(onClick = navController::navigateUp) {
-                                    Icon(
-                                        Icons.AutoMirrored.Rounded.ArrowBack,
-                                        contentDescription = stringResource(Res.string.back)
-                                    )
-                                }
+                                ChromeBackIconButton(onClick = navController::navigateUp)
                             }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(

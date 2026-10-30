@@ -34,7 +34,7 @@ import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.AppBuildInfo
 import ru.fromchat.Res
 import ru.fromchat.config.Settings
-import ru.fromchat.legal.Markdown
+import ru.fromchat.ui.main.settings.about.legal.Markdown
 import ru.fromchat.release_notes_dont_show_again
 import ru.fromchat.release_notes_ok
 import ru.fromchat.release_notes_title

@@ -1,9 +1,10 @@
 import SwiftUI
+import ComposeApp
 
 @main
 struct iOSApp: App {
     init() {
-        IosApplicationBootstrapKt.launchOnApplicationStart()
+        IosApplicationBootstrap.shared.launchOnApplicationStart()
     }
 
     var body: some Scene {

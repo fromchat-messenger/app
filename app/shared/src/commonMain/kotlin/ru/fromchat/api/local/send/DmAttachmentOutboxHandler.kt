@@ -1,6 +1,6 @@
 package ru.fromchat.api.local.send
 
-import com.pr0gramm3r101.utils.crypto.Base64
+import ru.fromchat.utils.crypto.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -39,7 +39,7 @@ import ru.fromchat.api.crypto.transport.TransportCrypto
 import ru.fromchat.api.crypto.transport.TransportFileEncryptor
 import ru.fromchat.db.Outbox
 import ru.fromchat.api.local.AttachmentMediaLog
-import ru.fromchat.ui.chat.isImageFilename
+import ru.fromchat.ui.chat.media.isImageFilename
 
 private const val INLINE_UPLOAD_THRESHOLD_BYTES = 512 * 1024
 private const val DEFAULT_CHUNK_SIZE = 262_144

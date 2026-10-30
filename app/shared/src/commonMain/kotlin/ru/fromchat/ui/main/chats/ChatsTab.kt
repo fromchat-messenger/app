@@ -6,7 +6,6 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -36,14 +35,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Block
-import com.pr0gramm3r101.components.ListItem
-import com.pr0gramm3r101.components.ListItemPosition
+import ru.fromchat.utils.components.ListItem
+import ru.fromchat.utils.components.ListItemPosition
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -51,10 +49,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.union
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
@@ -76,7 +70,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import ru.fromchat.ui.extraStatusBars
+import ru.fromchat.ui.theme.extraStatusBars
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -94,11 +88,10 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import com.pr0gramm3r101.utils.supportClipboardManagerImpl
+import ru.fromchat.utils.supportClipboardManagerImpl
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -110,15 +103,13 @@ import ru.fromchat.action_delete
 import ru.fromchat.action_mark_read
 import ru.fromchat.logo_square
 import ru.fromchat.api.ApiClient
-import ru.fromchat.api.ChatListSync
-import ru.fromchat.api.StatusSubscriptionCoordinator
+import ru.fromchat.api.sync.ChatListSync
+import ru.fromchat.api.sync.StatusSubscriptionCoordinator
 import ru.fromchat.api.calls.CallStore
 import ru.fromchat.api.local.WebSocketManager
 import ru.fromchat.api.local.cache.CacheContext
-import ru.fromchat.api.local.db.store.CachedConversation
 import ru.fromchat.api.local.db.store.ConnectionStateStore
 import ru.fromchat.api.local.db.store.ConnectionStatus
-import ru.fromchat.api.local.messages.ChatListPreviewState
 import ru.fromchat.api.local.messages.ChatListPreviewStrings
 import ru.fromchat.api.local.db.store.MessageCacheStore
 import ru.fromchat.api.local.db.store.MessageRepository
@@ -144,7 +135,7 @@ import ru.fromchat.status_updating
 import ru.fromchat.account_suspended
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.main.LocalConversationListDetailActive
-import ru.fromchat.ui.main.LocalDesktopChatsNavController
+import ru.fromchat.ui.main.desktop.LocalDesktopChatsNavController
 import ru.fromchat.ui.main.LocalMainChromeInsets
 import ru.fromchat.ui.chat.panels.dm.navigateToDmChat
 import ru.fromchat.ui.chat.panels.publicchat.navigateToPublicChat
@@ -341,7 +332,6 @@ private fun rememberSearchBarCollapseSnap(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun chatsTopAppBarColors(blurReveal: Float) = TopAppBarDefaults.topAppBarColors(
     // Two-pane list sits on AppPanel (`surfaceContainerLowest`); compact uses `surface`.
@@ -372,7 +362,6 @@ private fun ChatsTopBarHazeBackdrop(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ChatsNormalTopBar(
     blurReveal: Float,
@@ -466,7 +455,6 @@ private fun ChatsNormalTopBar(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ChatsSelectionTopBar(
     blurReveal: Float,
@@ -542,7 +530,6 @@ private fun ChatsSelectionTopBar(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatsTab(
     isVisible: Boolean = true,
@@ -579,7 +566,7 @@ fun ChatsTab(
     )
     var publicChatPreviewState by remember(activeInstanceId, previewStrings.imageOnly, previewStrings.attachmentOnly) {
         if (activeInstanceId.isBlank()) {
-            mutableStateOf<ChatListPreviewState?>(null)
+            mutableStateOf(null)
         } else {
             runCatching { PublicChatProfileCache.hydrateFromDiskImmediate(activeInstanceId) }
             val preview = runCatching {

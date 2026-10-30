@@ -1,6 +1,6 @@
 package ru.fromchat.api.local.db.store
 
-import com.pr0gramm3r101.utils.files.PlatformFileSystem
+import ru.fromchat.utils.files.PlatformFileSystem
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.channels.OverlappingFileLockException
@@ -41,8 +41,7 @@ object MessageDatabasePaths {
      */
     fun isDatabaseLockedByAnotherProcess(): Boolean {
         val targets = lockTargetFiles()
-        if (targets.isEmpty()) return false
-        return targets.any { isFileLockedExclusively(it) }
+        return targets.isNotEmpty() && targets.any { isFileLockedExclusively(it) }
     }
 
     private fun isFileLockedExclusively(file: File): Boolean =

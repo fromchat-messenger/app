@@ -25,7 +25,6 @@ import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.rounded.Contacts
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -46,9 +45,9 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import com.pr0gramm3r101.utils.WindowWidthSizeClass
-import com.pr0gramm3r101.utils.currentWindowAdaptiveInfo
-import com.pr0gramm3r101.utils.widthSizeClass
+import ru.fromchat.utils.WindowWidthSizeClass
+import ru.fromchat.utils.currentWindowAdaptiveInfo
+import ru.fromchat.utils.widthSizeClass
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.blur.HazeBlurStyle
@@ -70,9 +69,9 @@ import ru.fromchat.desktop.DesktopMenuCommands
 import ru.fromchat.profile
 import ru.fromchat.settings
 import ru.fromchat.ui.LocalNavController
-import ru.fromchat.ui.navBarShowTitle
-import ru.fromchat.ui.navBarStyle
-import ru.fromchat.ui.chat.rememberChatSurfaceContainerHazeStyle
+import ru.fromchat.ui.theme.navBarShowTitle
+import ru.fromchat.ui.theme.navBarStyle
+import ru.fromchat.ui.chat.chrome.rememberChatSurfaceContainerHazeStyle
 import ru.fromchat.ui.chat.panels.dm.navigateToDmChat
 import ru.fromchat.ui.components.BackHandler
 import ru.fromchat.ui.components.FromChatSnackbarHost
@@ -80,12 +79,13 @@ import ru.fromchat.ui.components.FloatingNavBar
 import ru.fromchat.ui.components.FloatingNavItemSpec
 import ru.fromchat.ui.components.LocalPaneHazeState
 import ru.fromchat.ui.components.Text
-import ru.fromchat.ui.extraStatusBars
+import ru.fromchat.ui.theme.extraStatusBars
 import ru.fromchat.ui.main.chats.ChatContextMenuOverlayController
 import ru.fromchat.ui.main.chats.ChatContextMenuOverlayHost
 import ru.fromchat.ui.main.chats.ChatsSearchScreen
 import ru.fromchat.ui.main.chats.ChatsTab
-import ru.fromchat.ui.main.navigateReplacingMainDetail
+import ru.fromchat.ui.main.nav.navigateReplacingMainDetail
+import ru.fromchat.ui.main.desktop.LocalDesktopChatsNavController
 import ru.fromchat.ui.main.settings.SettingsTab
 import ru.fromchat.ui.profile.ProfileScreen
 
@@ -122,7 +122,6 @@ private fun selectMainPage(
  * @param initialPage Pager page when showing the full MainScreen.
  * @param onPageChanged Invoked when the pager settles on a page (for list–detail empty panes).
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
     sharedTransitionScope: SharedTransitionScope? = null,

@@ -67,7 +67,7 @@ object MessageRepository {
         MessageCacheStore.observeActiveDmConversations(activeInstance())
 
     suspend fun replacePublicMessages(messages: List<Message>, replaceAll: Boolean = false) {
-        ru.fromchat.Logger.d(
+        ru.fromchat.logging.Logger.d(
             "MessageRepo",
             "replacePublicMessages count=${messages.size} replaceAll=$replaceAll",
         )
@@ -83,12 +83,12 @@ object MessageRepository {
         MessageCacheStore.deletePublicMessageByClientMessageId(clientMessageId)
 
     suspend fun deletePublicMessageById(messageId: Int) {
-        ru.fromchat.Logger.d("MessageRepo", "deletePublicMessageById messageId=$messageId")
+        ru.fromchat.logging.Logger.d("MessageRepo", "deletePublicMessageById messageId=$messageId")
         MessageCacheStore.deletePublicMessageById(messageId)
     }
 
     suspend fun markMessageDeleted(conversationId: String, messageId: Int) {
-        ru.fromchat.Logger.d(
+        ru.fromchat.logging.Logger.d(
             "MessageRepo",
             "markMessageDeleted convId=$conversationId messageId=$messageId",
         )
@@ -102,7 +102,7 @@ object MessageRepository {
         MessageCacheStore.loadDmMessages(otherUserId)
 
     suspend fun replaceDmMessages(otherUserId: Int, messages: List<Message>, replaceAll: Boolean = false) {
-        ru.fromchat.Logger.d(
+        ru.fromchat.logging.Logger.d(
             "MessageRepo",
             "replaceDmMessages otherUserId=$otherUserId count=${messages.size} replaceAll=$replaceAll",
         )
@@ -119,7 +119,7 @@ object MessageRepository {
         MessageCacheStore.deleteDmMessageByClientMessageId(otherUserId, clientMessageId)
 
     suspend fun deleteDmMessageById(otherUserId: Int, messageId: Int) {
-        ru.fromchat.Logger.d(
+        ru.fromchat.logging.Logger.d(
             "MessageRepo",
             "deleteDmMessageById otherUserId=$otherUserId messageId=$messageId",
         )
@@ -179,12 +179,11 @@ object MessageRepository {
     ) {
         if (visibleMessageIds.isEmpty()) return
         visibleReadMutex.withLock {
-            val ownId = currentUserId
             val visibleInboundIds = messages
                 .filter { message ->
                     message.id > 0 &&
                         message.id in visibleMessageIds &&
-                        (ownId == null || message.user_id != ownId) &&
+                        (currentUserId == null || message.user_id != currentUserId) &&
                         (peerUserId == null || message.user_id == peerUserId)
                 }
                 .map { it.id }

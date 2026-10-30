@@ -33,11 +33,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import ru.fromchat.ui.components.ChromeBackIconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -82,7 +81,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.graphics.shapes.Morph
 import androidx.graphics.shapes.RoundedPolygon
-import com.pr0gramm3r101.utils.LastAnchoredBottomArrangement
+import ru.fromchat.utils.imeScrollWithKeyboard
+import ru.fromchat.utils.LastAnchoredBottomArrangement
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.HazeState
@@ -96,7 +96,7 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.back
-import ru.fromchat.ui.extraStatusBars
+import ru.fromchat.ui.theme.extraStatusBars
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 import kotlin.math.abs
 
@@ -555,12 +555,7 @@ fun ExpressiveStepFlowScaffold(
             windowInsets = topBarWindowInsets,
             title = {},
             navigationIcon = {
-                IconButton(onClick = navigateBack) {
-                    Icon(
-                        Icons.AutoMirrored.Rounded.ArrowBack,
-                        contentDescription = stringResource(Res.string.back),
-                    )
-                }
+                ChromeBackIconButton(onClick = navigateBack)
             },
             actions = {
                 trailingTopBarActions?.invoke()
@@ -592,12 +587,7 @@ fun ExpressiveStepFlowScaffold(
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = navigateBack) {
-                Icon(
-                    Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = stringResource(Res.string.back),
-                )
-            }
+            ChromeBackIconButton(onClick = navigateBack)
             Spacer(Modifier.weight(1f))
             trailingTopBarActions?.invoke()
         }
@@ -651,6 +641,7 @@ fun ExpressiveStepFlowScaffold(
                             state = listState,
                             modifier = Modifier
                                 .fillMaxSize()
+                                .imeScrollWithKeyboard()
                                 .background(contentBackground)
                                 .hazeSource(hazeState)
                                 .onGloballyPositioned {
@@ -734,7 +725,8 @@ fun ExpressiveStepFlowScaffold(
                                 modifier = Modifier
                                     .align(Alignment.TopStart)
                                     .fillMaxWidth()
-                                    .verticalScroll(rememberScrollState()),
+                                    .verticalScroll(rememberScrollState())
+                                    .imeScrollWithKeyboard(),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
                                 ExpressiveStepHeroSection()
@@ -779,7 +771,7 @@ fun ExpressiveStepFlowScaffold(
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalAnimationApi::class)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class, )
 @Composable
 fun MorphedExpressiveHero(
     currentSpec: ExpressiveHeroSpec,

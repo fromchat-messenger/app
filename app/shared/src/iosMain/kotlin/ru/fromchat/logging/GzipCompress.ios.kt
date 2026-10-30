@@ -17,7 +17,6 @@ import platform.zlib.Z_DEFAULT_COMPRESSION
 import platform.zlib.compress2
 import platform.zlib.uLongVar
 
-@OptIn(ExperimentalForeignApi::class)
 internal actual fun gzipCompress(input: ByteArray): ByteArray {
     if (input.isEmpty()) {
         return byteArrayOf(

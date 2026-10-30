@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+
 package ru.fromchat.api.local.cache
 
 import kotlinx.cinterop.BetaInteropApi
@@ -19,12 +21,11 @@ import platform.Foundation.NSUserDomainMask
 import platform.Foundation.create
 import platform.Foundation.dataWithContentsOfURL
 import platform.Foundation.writeToFile
-import com.pr0gramm3r101.utils.IosPosixFileReader
-import com.pr0gramm3r101.utils.iosCopyFile
-import com.pr0gramm3r101.utils.iosFileSize
-import com.pr0gramm3r101.utils.iosReadFileRange
+import ru.fromchat.utils.IosPosixFileReader
+import ru.fromchat.utils.iosCopyFile
+import ru.fromchat.utils.iosFileSize
+import ru.fromchat.utils.iosReadFileRange
 
-@OptIn(ExperimentalForeignApi::class)
 private fun uploadDir(instanceId: String): String {
     val url = NSFileManager.defaultManager.URLForDirectory(
         directory = NSCachesDirectory,
@@ -33,8 +34,8 @@ private fun uploadDir(instanceId: String): String {
         create = true,
         error = null,
     ) ?: return ""
-    val safe = instanceId.replace(Regex("[^a-zA-Z0-9._-]"), "_")
-    val path = url.path + "/fromchat/instances/$safe/uploads"
+    val path = url.path +
+        "/fromchat/instances/${instanceId.replace(Regex("[^a-zA-Z0-9._-]"), "_")}/uploads"
     NSFileManager.defaultManager.createDirectoryAtPath(path, true, null, null)
     return path
 }
@@ -51,23 +52,18 @@ private fun sourcePartPath(instanceId: String, clientMessageId: String): String 
 private fun sourceOkPath(instanceId: String, clientMessageId: String): String =
     "${uploadDir(instanceId)}/${safeId(clientMessageId)}.source.ok"
 
-@OptIn(ExperimentalForeignApi::class)
 private fun blobPath(instanceId: String, clientMessageId: String): String =
     "${uploadDir(instanceId)}/${safeId(clientMessageId)}.enc"
 
-@OptIn(ExperimentalForeignApi::class)
 private fun blobPartPath(instanceId: String, clientMessageId: String): String =
     "${uploadDir(instanceId)}/${safeId(clientMessageId)}.enc.part"
 
-@OptIn(ExperimentalForeignApi::class)
 private fun blobOkPath(instanceId: String, clientMessageId: String): String =
     "${uploadDir(instanceId)}/${safeId(clientMessageId)}.enc.ok"
 
-@OptIn(ExperimentalForeignApi::class)
 private fun cipherPath(instanceId: String, clientMessageId: String): String =
     "${uploadDir(instanceId)}/${safeId(clientMessageId)}.cipher.json"
 
-@OptIn(ExperimentalForeignApi::class)
 private fun cipherPartPath(instanceId: String, clientMessageId: String): String =
     "${uploadDir(instanceId)}/${safeId(clientMessageId)}.cipher.json.part"
 
@@ -77,28 +73,25 @@ actual fun encryptedUploadBlobPath(instanceId: String, clientMessageId: String):
 actual fun encryptedUploadBlobPartPath(instanceId: String, clientMessageId: String): String =
     blobPartPath(instanceId, clientMessageId)
 
-@OptIn(ExperimentalForeignApi::class)
 private fun readOkMarker(okPath: String, diskPath: String, expectedBytes: Long): Boolean {
     if (!NSFileManager.defaultManager.fileExistsAtPath(okPath)) return false
     if (!NSFileManager.defaultManager.fileExistsAtPath(diskPath)) return false
     val raw = NSData.create(contentsOfFile = okPath)?.let { data ->
-        val ptr = data.bytes?.reinterpret<ByteVar>() ?: return false
-        ByteArray(data.length.toInt()) { i -> ptr[i] }.decodeToString()
+        val bytesPtr = data.bytes ?: return false
+        val bytePtr = bytesPtr.reinterpret<ByteVar>()
+        ByteArray(data.length.toInt()) { i -> bytePtr[i] }.decodeToString()
     } ?: return false
     val marker = decodeUploadArtifactOkMarker(raw) ?: return false
     return marker.isValidOnDisk(iosFileSize(diskPath), expectedBytes)
 }
 
-@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 private fun writeOkMarker(okPath: String, actualBytes: Long, expectedBytes: Long) {
-    val text = encodeUploadArtifactOkMarker(actualBytes, expectedBytes)
-    text.encodeToByteArray().usePinned { pinned ->
-        val data = NSData.create(bytes = pinned.addressOf(0), length = text.length.toULong())
-        data?.writeToFile(okPath, true)
+    val bytes = encodeUploadArtifactOkMarker(actualBytes, expectedBytes).encodeToByteArray()
+    bytes.usePinned { pinned ->
+        NSData.create(bytes = pinned.addressOf(0), length = bytes.size.toULong()).writeToFile(okPath, true)
     }
 }
 
-@OptIn(ExperimentalForeignApi::class)
 private fun atomicReplace(partPath: String, finalPath: String) {
     if (!NSFileManager.defaultManager.fileExistsAtPath(partPath)) {
         error("Partial upload file missing")
@@ -110,14 +103,12 @@ private fun atomicReplace(partPath: String, finalPath: String) {
     }
 }
 
-@OptIn(ExperimentalForeignApi::class)
 actual suspend fun queryOutboundUriSizeBytes(fileUri: String): Long? = withContext(Dispatchers.Default) {
-    val url = NSURL.URLWithString(fileUri) ?: return@withContext null
-    val values = url.resourceValuesForKeys(listOf(NSURLFileSizeKey), null)
-    (values?.get(NSURLFileSizeKey) as? NSNumber)?.longValue
+    ((NSURL.URLWithString(fileUri) ?: return@withContext null)
+        .resourceValuesForKeys(listOf(NSURLFileSizeKey), null)
+        ?.get(NSURLFileSizeKey) as? NSNumber)?.longValue
 }
 
-@OptIn(ExperimentalForeignApi::class)
 actual suspend fun stageOutboundFileForUpload(
     instanceId: String,
     clientMessageId: String,
@@ -173,8 +164,12 @@ actual suspend fun isEncryptedBlobReady(
     clientMessageId: String,
     expectedEncryptedSizeBytes: Long?,
 ): Boolean = withContext(Dispatchers.Default) {
-    val expected = expectedEncryptedSizeBytes?.takeIf { it > 0L } ?: 0L
-    if (!readOkMarker(blobOkPath(instanceId, clientMessageId), blobPath(instanceId, clientMessageId), expected)) {
+    if (!readOkMarker(
+            blobOkPath(instanceId, clientMessageId),
+            blobPath(instanceId, clientMessageId),
+            expectedEncryptedSizeBytes?.takeIf { it > 0L } ?: 0L,
+        )
+    ) {
         return@withContext false
     }
     NSFileManager.defaultManager.fileExistsAtPath(cipherPath(instanceId, clientMessageId))
@@ -200,7 +195,6 @@ actual suspend fun commitEncryptedUploadBlob(
     }
 }
 
-@OptIn(ExperimentalForeignApi::class)
 actual suspend fun repairInterruptedUploadArtifacts(instanceId: String, clientMessageId: String) {
     withContext(Dispatchers.Default) {
         NSFileManager.defaultManager.removeItemAtPath(sourcePartPath(instanceId, clientMessageId), null)
@@ -224,7 +218,6 @@ actual suspend fun repairInterruptedUploadArtifacts(instanceId: String, clientMe
     }
 }
 
-@OptIn(ExperimentalForeignApi::class)
 private class IosOutboundFileInputStream(
     private val reader: IosPosixFileReader,
 ) : OutboundFileInputStream {
@@ -240,7 +233,6 @@ private class IosOutboundFileInputStream(
     }
 }
 
-@OptIn(ExperimentalForeignApi::class)
 actual suspend fun openOutboundFileInputStream(fileUri: String): OutboundFileInputStream? =
     withContext(Dispatchers.Default) {
         val path = when {
@@ -251,7 +243,6 @@ actual suspend fun openOutboundFileInputStream(fileUri: String): OutboundFileInp
         runCatching { IosOutboundFileInputStream(IosPosixFileReader(path)) }.getOrNull()
     }
 
-@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 private fun readBytesAtPath(path: String): ByteArray? {
     if (!NSFileManager.defaultManager.fileExistsAtPath(path)) return null
     val data = NSData.create(contentsOfFile = path) ?: return null
@@ -262,7 +253,6 @@ private fun readBytesAtPath(path: String): ByteArray? {
     return ByteArray(length) { i -> bytePtr[i] }
 }
 
-@OptIn(ExperimentalForeignApi::class)
 actual suspend fun readOutboundFileBytes(fileUri: String): ByteArray =
     withContext(Dispatchers.Default) {
         val url = NSURL.URLWithString(fileUri) ?: throw OutboundFileUnavailableException("Invalid file URI")
@@ -274,7 +264,6 @@ actual suspend fun readOutboundFileBytes(fileUri: String): ByteArray =
         ByteArray(length) { i -> bytePtr[i] }
     }
 
-@OptIn(ExperimentalForeignApi::class)
 actual suspend fun copyOutboundFileToPath(sourceUri: String, destinationPath: String) {
     withContext(Dispatchers.Default) {
         val sourcePath = when {
@@ -290,7 +279,6 @@ actual suspend fun copyOutboundFileToPath(sourceUri: String, destinationPath: St
     }
 }
 
-@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 actual suspend fun saveEncryptedUploadBlob(instanceId: String, clientMessageId: String, bytes: ByteArray) {
     withContext(Dispatchers.Default) {
         repairInterruptedUploadArtifacts(instanceId, clientMessageId)
@@ -299,12 +287,11 @@ actual suspend fun saveEncryptedUploadBlob(instanceId: String, clientMessageId: 
         NSFileManager.defaultManager.removeItemAtPath(blobOkPath(instanceId, clientMessageId), null)
         bytes.usePinned { pinned ->
             val data = NSData.create(bytes = pinned.addressOf(0), length = bytes.size.toULong())
-            data?.writeToFile(part, true)
+            data.writeToFile(part, true)
         }
     }
 }
 
-@OptIn(ExperimentalForeignApi::class)
 actual suspend fun loadEncryptedUploadBlob(instanceId: String, clientMessageId: String): ByteArray? =
     withContext(Dispatchers.Default) {
         if (!isEncryptedBlobReady(instanceId, clientMessageId, null)) return@withContext null
@@ -335,12 +322,12 @@ actual suspend fun readEncryptedUploadBlobRange(
     iosReadFileRange(path, offset, length)
 }
 
-@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
-actual suspend fun saveUploadTransportCipherJson(instanceId: String, clientMessageId: String, json: String) {
-    saveUploadTransportCipherJsonAtomic(instanceId, clientMessageId, json)
-}
+actual suspend fun saveUploadTransportCipherJson(
+    instanceId: String,
+    clientMessageId: String,
+    json: String,
+) = saveUploadTransportCipherJsonAtomic(instanceId, clientMessageId, json)
 
-@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 actual suspend fun saveUploadTransportCipherJsonAtomic(
     instanceId: String,
     clientMessageId: String,
@@ -351,19 +338,17 @@ actual suspend fun saveUploadTransportCipherJsonAtomic(
         val final = cipherPath(instanceId, clientMessageId)
         json.encodeToByteArray().usePinned { pinned ->
             val data = NSData.create(bytes = pinned.addressOf(0), length = json.length.toULong())
-            data?.writeToFile(part, true)
+            data.writeToFile(part, true)
         }
         atomicReplace(part, final)
     }
 }
 
-@OptIn(ExperimentalForeignApi::class)
 actual suspend fun loadUploadTransportCipherJson(instanceId: String, clientMessageId: String): String? =
     withContext(Dispatchers.Default) {
         readBytesAtPath(cipherPath(instanceId, clientMessageId))?.decodeToString()?.takeIf { it.isNotBlank() }
     }
 
-@OptIn(ExperimentalForeignApi::class)
 actual suspend fun clearUploadArtifacts(instanceId: String, clientMessageId: String) {
     withContext(Dispatchers.Default) {
         NSFileManager.defaultManager.removeItemAtPath(sourcePath(instanceId, clientMessageId), null)
@@ -377,7 +362,6 @@ actual suspend fun clearUploadArtifacts(instanceId: String, clientMessageId: Str
     }
 }
 
-@OptIn(ExperimentalForeignApi::class)
 actual suspend fun clearUploadSecretsOnly(instanceId: String, clientMessageId: String) {
     withContext(Dispatchers.Default) {
         NSFileManager.defaultManager.removeItemAtPath(blobPath(instanceId, clientMessageId), null)

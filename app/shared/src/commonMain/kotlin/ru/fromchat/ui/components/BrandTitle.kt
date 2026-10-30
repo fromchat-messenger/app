@@ -1,7 +1,6 @@
 package ru.fromchat.ui.components
 
 import androidx.compose.foundation.layout.wrapContentWidth
-import ru.fromchat.ui.components.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -21,7 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.pr0gramm3r101.utils.toPx
+import ru.fromchat.utils.toPx
 import org.jetbrains.compose.resources.Font
 import ru.fromchat.Res
 import ru.fromchat.montserrat_cyrillic

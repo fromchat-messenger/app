@@ -1,6 +1,6 @@
 package ru.fromchat.api.local.send
 
-import com.pr0gramm3r101.utils.crypto.Base64
+import ru.fromchat.utils.crypto.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -21,15 +21,11 @@ import ru.fromchat.api.local.db.store.MessageDatabaseProvider
 import ru.fromchat.api.local.messages.optimisticMessageIdForClientMessageId
 import ru.fromchat.api.local.workers.AttachmentUploadNotifier
 import ru.fromchat.api.local.workers.AttachmentUploadProgress
-import ru.fromchat.api.local.send.isOutboundPermanentFailure
-import ru.fromchat.api.local.send.isOutboundTransientFailure
-import ru.fromchat.api.local.send.outboundFailureErrorKey
-import ru.fromchat.api.local.send.SEND_ERROR_FAILED
 import ru.fromchat.api.local.db.isPlaceholderAttachmentDimensions
 import ru.fromchat.api.schema.messages.publicchat.resolvePublicAttachmentLayout
 import ru.fromchat.api.schema.messages.publicchat.upload.PublicUploadCompleteResponse
 import ru.fromchat.db.Outbox
-import ru.fromchat.ui.chat.isImageFilename
+import ru.fromchat.ui.chat.media.isImageFilename
 
 private const val DEFAULT_CHUNK_SIZE = 262_144
 private const val MAX_ATTACHMENT_OUTBOX_ATTEMPTS = 5L
@@ -523,22 +519,21 @@ object PublicAttachmentOutboxHandler {
             !isPlaceholderAttachmentDimensions(w, h)
         } == true
         if (!serverHasReal) {
-            val aspect = payloadAspect
             val stagedUri = payload.fileUri.trim().takeIf { it.isNotEmpty() }
             AttachmentMediaLog.aspect(
                 "outbox_apply_payload_aspect",
                 "job" to payload.clientMessageId.take(12),
-                "aspect" to aspect,
+                "payloadAspect" to payloadAspect,
                 "stagedUri" to stagedUri?.take(48),
             )
             return laidOut.copy(
                 pendingFileUri = stagedUri?.takeIf { path ->
-                    com.pr0gramm3r101.utils.files.PlatformFileSystem.exists(
+                    ru.fromchat.utils.files.PlatformFileSystem.exists(
                         path.removePrefix("file://"),
                     )
                 },
-                pendingFileAspectRatio = aspect,
-                fileAspectRatios = aspect?.let { listOf(it) },
+                pendingFileAspectRatio = payloadAspect,
+                fileAspectRatios = payloadAspect?.let { listOf(it) },
             )
         }
         AttachmentMediaLog.aspect("outbox_keep_server", "job" to payload.clientMessageId.take(12))

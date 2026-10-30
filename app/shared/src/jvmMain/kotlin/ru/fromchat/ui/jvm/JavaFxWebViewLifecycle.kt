@@ -3,7 +3,7 @@ package ru.fromchat.ui.jvm
 import javafx.application.Platform
 import javafx.embed.swing.JFXPanel
 import javafx.scene.web.WebEngine
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean

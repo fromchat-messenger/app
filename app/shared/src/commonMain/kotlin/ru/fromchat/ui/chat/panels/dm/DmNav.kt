@@ -11,11 +11,11 @@ import androidx.compose.runtime.remember
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import androidx.navigation.NavOptionsBuilder
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.api.local.cache.CacheContext
 import androidx.compose.ui.Modifier
 import ru.fromchat.api.local.db.store.ProfileCache
-import ru.fromchat.ui.chat.rememberChatNavigationGate
+import ru.fromchat.ui.chat.chrome.rememberChatNavigationGate
 import ru.fromchat.utils.haptic.HapticFeedbackEvent
 import ru.fromchat.ui.profile.ProfileScreen
 import ru.fromchat.utils.haptic.rememberHapticFeedback
@@ -60,8 +60,7 @@ fun NavController.navigateToDmChat(
 /** True when the back-stack top is already [DmNav.CHAT_ROUTE] for [otherUserId]. */
 fun NavController.isCurrentDmChat(otherUserId: Int): Boolean {
     val entry = currentBackStackEntry ?: return false
-    if (entry.destination.route != DmNav.CHAT_ROUTE) return false
-    return entry.dmChatOtherUserId() == otherUserId
+    return entry.destination.route == DmNav.CHAT_ROUTE && entry.dmChatOtherUserId() == otherUserId
 }
 
 /** The otherUserId of the DM chat on top of this stack, or null when none is open. */

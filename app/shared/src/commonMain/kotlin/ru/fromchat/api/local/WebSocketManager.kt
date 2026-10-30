@@ -8,7 +8,6 @@ import io.ktor.http.HttpMethod
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
@@ -21,7 +20,6 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
@@ -29,10 +27,9 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import ru.fromchat.AppForeground
-import ru.fromchat.keepWebSocketAliveInBackground
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.api.ApiClient
-import ru.fromchat.api.UpdateSyncManager
+import ru.fromchat.api.sync.UpdateSyncManager
 import ru.fromchat.api.instance.InstanceIdGuard
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.db.store.ConnectionStateStore
@@ -43,9 +40,7 @@ import ru.fromchat.config.ServerConfig
 import kotlin.concurrent.Volatile
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.ExperimentalTime
 
-@OptIn(ExperimentalTime::class)
 object WebSocketManager {
     private const val TAG = "WebSocketManager"
     private const val RECONNECT_DELAY_MS = 1_000L
@@ -317,7 +312,6 @@ object WebSocketManager {
         }
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
     suspend fun request(message: WebSocketMessage, timeoutMs: Long = 10_000): WebSocketMessage? {
         logD("WebSocket request: $message")
         var handler: ((WebSocketMessage) -> Unit)? = null

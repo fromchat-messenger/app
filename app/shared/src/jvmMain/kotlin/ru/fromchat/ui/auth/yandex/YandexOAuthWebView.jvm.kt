@@ -16,9 +16,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.stringResource
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.Res
-import ru.fromchat.auth.yandex.extractOAuthCode
+import ru.fromchat.api.yandex.extractOAuthCode
 import ru.fromchat.auth_yandex_browser_body
 import ru.fromchat.cancel
 import ru.fromchat.desktop.DesktopDeepLinkBus

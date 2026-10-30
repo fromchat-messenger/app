@@ -16,18 +16,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import com.pr0gramm3r101.utils.crypto.deriveAuthSecret
+import ru.fromchat.utils.crypto.deriveAuthSecret
 import io.ktor.client.call.body
 import io.ktor.client.plugins.ClientRequestException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import org.jetbrains.compose.resources.stringResource
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.crypto.IdentityKeyManager
 import ru.fromchat.api.instance.ServerProbeResult
+import ru.fromchat.api.instance.apiBaseUrlFor
 import ru.fromchat.api.instance.probeServer
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.db.clearAccountCacheOnLogout
@@ -49,7 +49,7 @@ import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.TextCta
 import ru.fromchat.ui.components.rememberExpressiveStepFlow
 import ru.fromchat.ui.components.showLoggedSnackbar
-import ru.fromchat.ui.extraStatusBars
+import ru.fromchat.ui.theme.extraStatusBars
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -80,13 +80,42 @@ internal sealed interface RegisterResult {
     data class Error(val message: String, val cause: Throwable? = null) : RegisterResult
 }
 
-private const val AUTH_SERVER_PROBE_TIMEOUT_MS = 5_000L
+private const val AUTH_SERVER_PROBE_TAG = "AuthServerProbe"
+/** Must cover HTTPS→HTTP fallback plus `/instance_id` (up to 10s per attempt). */
+private const val AUTH_SERVER_PROBE_TIMEOUT_MS = 25_000L
 
-internal suspend fun probeCurrentServer() = runCatching {
-    withTimeout(AUTH_SERVER_PROBE_TIMEOUT_MS.milliseconds) {
-        probeServer(Settings.readServerConfig()) is ServerProbeResult.Supported
+internal suspend fun probeCurrentServer(): Boolean {
+    val config = Settings.readServerConfig()
+    val apiBase = apiBaseUrlFor(config)
+    Logger.i(
+        AUTH_SERVER_PROBE_TAG,
+        "probe start storedHost=${config.serverIp} apiPort=${config.apiPort} " +
+            "https=${config.httpsEnabled} url=$apiBase",
+    )
+    return runCatching {
+        withTimeout(AUTH_SERVER_PROBE_TIMEOUT_MS.milliseconds) {
+            val result = probeServer(config)
+            when (result) {
+                is ServerProbeResult.Supported ->
+                    Logger.i(
+                        AUTH_SERVER_PROBE_TAG,
+                        "probe ok instanceId=${result.instanceId} pingMs=${result.pingMs} " +
+                            "callsOk=${result.callsOk}",
+                    )
+                else ->
+                    Logger.w(AUTH_SERVER_PROBE_TAG, "probe not supported: $result url=$apiBase")
+            }
+            result is ServerProbeResult.Supported
+        }
+    }.getOrElse { e ->
+        Logger.w(
+            AUTH_SERVER_PROBE_TAG,
+            "probe failed within ${AUTH_SERVER_PROBE_TIMEOUT_MS}ms url=$apiBase",
+            e,
+        )
+        false
     }
-}.getOrDefault(false)
+}
 
 private suspend fun fullLogin(
     username: String,

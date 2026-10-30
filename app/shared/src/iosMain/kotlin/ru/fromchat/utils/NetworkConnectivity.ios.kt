@@ -1,8 +1,6 @@
-@file:OptIn(ExperimentalForeignApi::class)
 
 package ru.fromchat.utils
 
-import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

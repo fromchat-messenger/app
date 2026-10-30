@@ -10,7 +10,7 @@ import androidx.navigation.NavController
 import androidx.navigation.NavOptionsBuilder
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.db.store.PublicChatProfileCache
-import ru.fromchat.ui.chat.rememberChatNavigationGate
+import ru.fromchat.ui.chat.chrome.rememberChatNavigationGate
 import ru.fromchat.ui.chat.utils.PublicChatPanelCache
 import ru.fromchat.ui.profile.PublicChatProfileScreen
 import ru.fromchat.utils.haptic.HapticFeedbackEvent

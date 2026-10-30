@@ -33,15 +33,17 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import coil3.ImageLoader
 import coil3.compose.setSingletonImageLoaderFactory
+import coil3.memory.MemoryCache
 import coil3.network.ktor3.KtorNetworkFetcherFactory
 import coil3.svg.SvgDecoder
 import ru.fromchat.api.ApiClient
-import com.pr0gramm3r101.utils.LocalSystemBarsVisibility
-import com.pr0gramm3r101.utils.WindowWidthSizeClass
-import com.pr0gramm3r101.utils.currentWindowAdaptiveInfo
-import com.pr0gramm3r101.utils.navigateAndWipeBackStack
-import com.pr0gramm3r101.utils.rememberSystemBarsController
-import com.pr0gramm3r101.utils.widthSizeClass
+import ru.fromchat.utils.PlatformInteractiveKeyboardDismissEffect
+import ru.fromchat.utils.LocalSystemBarsVisibility
+import ru.fromchat.utils.WindowWidthSizeClass
+import ru.fromchat.utils.currentWindowAdaptiveInfo
+import ru.fromchat.utils.navigateAndWipeBackStack
+import ru.fromchat.utils.rememberSystemBarsController
+import ru.fromchat.utils.widthSizeClass
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
@@ -56,13 +58,13 @@ import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import ru.fromchat.AppForeground
-import ru.fromchat.Logger
-import ru.fromchat.keepWebSocketAliveInBackground
-import ru.fromchat.api.DeferredStartupNetwork
-import ru.fromchat.api.ProfileUpdateSync
-import ru.fromchat.api.PublicChatProfileSync
-import ru.fromchat.api.StatusSubscriptionCoordinator
-import ru.fromchat.api.UpdateSyncManager
+import ru.fromchat.logging.Logger
+import ru.fromchat.api.local.keepWebSocketAliveInBackground
+import ru.fromchat.api.sync.DeferredStartupNetwork
+import ru.fromchat.api.sync.ProfileUpdateSync
+import ru.fromchat.api.sync.PublicChatProfileSync
+import ru.fromchat.api.sync.StatusSubscriptionCoordinator
+import ru.fromchat.api.sync.UpdateSyncManager
 import ru.fromchat.api.calls.CallStore
 import ru.fromchat.api.instance.bootstrapSessionInstance
 import ru.fromchat.api.instance.bootstrapSessionOnStartup
@@ -89,42 +91,44 @@ import ru.fromchat.ui.auth.captcha.SmartCaptchaNav
 import ru.fromchat.ui.auth.captcha.SmartCaptchaScreen
 import ru.fromchat.ui.auth.yandex.YandexOAuthNav
 import ru.fromchat.ui.auth.yandex.YandexOAuthScreen
-import ru.fromchat.ui.chat.ChatFullscreenImageController
-import ru.fromchat.ui.chat.ChatFullscreenImageHost
-import ru.fromchat.ui.chat.LocalChatFullscreenImageController
-import ru.fromchat.ui.calls.CallOverlay
+import ru.fromchat.ui.chat.media.ChatFullscreenImageController
+import ru.fromchat.ui.chat.media.ChatFullscreenImageHost
+import ru.fromchat.ui.chat.media.LocalChatFullscreenImageController
+import ru.fromchat.ui.calls.overlay.CallOverlay
 import ru.fromchat.ui.chat.panels.dm.currentDmChatUserId
 import ru.fromchat.ui.chat.panels.dm.isCurrentDmChat
 import ru.fromchat.ui.chat.panels.dm.navigateToDmChat
-import ru.fromchat.ui.chat.panels.publicchat.PublicChatNav
 import ru.fromchat.ui.chat.panels.publicchat.navigateToPublicChat
 import ru.fromchat.ui.chat.utils.appRootAttachmentDropTarget
-import ru.fromchat.ui.components.provideSwitchHaptics
 import ru.fromchat.ui.main.ConversationListDetailShell
-import ru.fromchat.ui.main.DesktopChatsDetailNavHost
-import ru.fromchat.ui.main.DesktopContactsDetailNavHost
-import ru.fromchat.ui.main.DesktopSettingsDetailNavHost
-import ru.fromchat.ui.main.DesktopTabDetailHosts
-import ru.fromchat.ui.main.LocalDesktopChatsNavController
-import ru.fromchat.ui.main.LocalDesktopMainTab
-import ru.fromchat.ui.main.LocalDesktopSettingsNavController
+import ru.fromchat.ui.main.handleAppMenuShortcutKeyEvent
+import ru.fromchat.ui.components.provideSwitchHaptics
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import ru.fromchat.ui.main.desktop.DesktopChatsDetailNavHost
+import ru.fromchat.ui.main.desktop.DesktopContactsDetailNavHost
+import ru.fromchat.ui.main.desktop.DesktopSettingsDetailNavHost
+import ru.fromchat.ui.main.desktop.DesktopTabDetailHosts
+import ru.fromchat.ui.main.desktop.LocalDesktopChatsNavController
+import ru.fromchat.ui.main.desktop.LocalDesktopMainTab
+import ru.fromchat.ui.main.desktop.LocalDesktopSettingsNavController
 import ru.fromchat.ui.main.MAIN_PAGE_CHATS
-import ru.fromchat.ui.main.MAIN_PAGE_CONTACTS
 import ru.fromchat.ui.main.MAIN_PAGE_PROFILE
 import ru.fromchat.ui.main.MAIN_PAGE_SETTINGS
-import ru.fromchat.ui.main.isCurrentMainDetailRoute
+import ru.fromchat.ui.main.nav.isCurrentMainDetailRoute
 import ru.fromchat.ui.main.MainScreen
-import ru.fromchat.ui.main.NavTransitionMuting
+import ru.fromchat.ui.main.nav.NavTransitionMuting
 import ru.fromchat.ui.main.chats.ChatsSearchScreen
-import ru.fromchat.ui.main.conversationDetailDestinations
-import ru.fromchat.ui.main.mutedEnterTransition
-import ru.fromchat.ui.main.mutedExitTransition
-import ru.fromchat.ui.main.navigateReplacingMainDetail
-import ru.fromchat.ui.main.profileDetailDestinations
+import ru.fromchat.ui.main.nav.conversationDetailDestinations
+import ru.fromchat.ui.main.nav.mutedEnterTransition
+import ru.fromchat.ui.main.nav.mutedExitTransition
+import ru.fromchat.ui.main.nav.navigateReplacingMainDetail
+import ru.fromchat.ui.main.nav.profileDetailDestinations
 import ru.fromchat.ui.main.settings.SettingsRoutes
-import ru.fromchat.ui.main.settingsDetailDestinations
+import ru.fromchat.ui.main.nav.settingsDetailDestinations
 import ru.fromchat.ui.components.LocalPaneHazeState
 import ru.fromchat.ui.components.ScreenSurface
+import ru.fromchat.ui.theme.FromChatTheme
+import ru.fromchat.ui.welcome.WelcomeScreen
 import dev.chrisbanes.haze.rememberHazeState
 import ru.fromchat.utils.NetworkConnectivity
 import kotlin.time.Duration.Companion.milliseconds
@@ -228,9 +232,16 @@ fun App(
     onProfileLookupErrorMessageConsumed: () -> Unit = {},
     /** Desktop: fired once [startDestination] is known so the window can show after bootstrap. */
     onContentReady: () -> Unit = {},
+    /** Android: first pre-draw of main UI once status-bar insets are available. */
+    onUiDisplayed: () -> Unit = {},
 ) {
     setSingletonImageLoaderFactory { context ->
         ImageLoader.Builder(context)
+            .memoryCache {
+                MemoryCache.Builder()
+                    .maxSizeBytes(48L * 1024 * 1024)
+                    .build()
+            }
             .components {
                 add(SvgDecoder.Factory())
                 add(KtorNetworkFetcherFactory(httpClient = { ApiClient.http }))
@@ -255,6 +266,17 @@ fun App(
 
         val hasToken = ApiClient.token?.isNotEmpty() == true
 
+        startDestination = when {
+            hasToken -> "chat"
+            else -> "welcome"
+        }
+
+        withContext(Dispatchers.Default) {
+            runCatching { NetworkConnectivity.ensureStarted() }
+            runCatching { UpdateSyncManager.initializeFromStorage(ApiClient.user?.id) }
+            Logger.i("App", "FromChat started")
+        }
+
         if (hasToken) {
             runCatching {
                 bootstrapSessionOnStartup(
@@ -267,10 +289,6 @@ fun App(
             StatusSubscriptionCoordinator.ensureStarted()
         }
 
-        startDestination = when {
-            hasToken -> "chat"
-            else -> "welcome"
-        }
         onContentReady()
 
         DeferredStartupNetwork.scheduleAfterUiVisible()
@@ -351,6 +369,7 @@ fun App(
     }
 
     FromChatTheme {
+        PlatformInteractiveKeyboardDismissEffect()
         provideSwitchHaptics {
         SharedTransitionLayout {
             val navController = rememberNavController()
@@ -641,6 +660,7 @@ fun App(
                 LocalChatFullscreenImageController provides fullscreenImageController,
             ) {
                 if (startDestination != null) {
+                    UiDisplayedEffect(onDisplayed = onUiDisplayed)
                     LaunchedEffect(Unit) {
                         DesktopMenuCommands.commands.collect { command ->
                             if (command != DesktopMenuCommand.OpenAbout) return@collect
@@ -669,7 +689,11 @@ fun App(
                         Box(
                             Modifier
                                 .fillMaxSize()
-                                .appRootAttachmentDropTarget(),
+                                .appRootAttachmentDropTarget()
+                                .onPreviewKeyEvent { event ->
+                                    if (ApiClient.token.isNullOrBlank()) return@onPreviewKeyEvent false
+                                    handleAppMenuShortcutKeyEvent(event)
+                                },
                         ) {
                             @Composable
                             fun AppNavHost(modifier: Modifier = Modifier) {

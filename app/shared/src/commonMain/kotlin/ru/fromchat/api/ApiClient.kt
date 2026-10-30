@@ -1,10 +1,10 @@
 package ru.fromchat.api
 
-import com.pr0gramm3r101.utils.crypto.Base64
-import com.pr0gramm3r101.utils.currentDeviceInfo
-import com.pr0gramm3r101.utils.files.PlatformFileSystem
-import com.pr0gramm3r101.utils.settings.secureSettings
-import com.pr0gramm3r101.utils.settings.settings
+import ru.fromchat.utils.crypto.Base64
+import ru.fromchat.utils.currentDeviceInfo
+import ru.fromchat.utils.files.PlatformFileSystem
+import ru.fromchat.utils.settings.secureSettings
+import ru.fromchat.utils.settings.settings
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.network.sockets.ConnectTimeoutException
@@ -48,22 +48,22 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.jsonPrimitive
-import ru.fromchat.api.ApiClient.logout
-import ru.fromchat.api.ApiClient.persistSessionToStorage
 import ru.fromchat.api.crypto.IdentityKeyManager
 import ru.fromchat.api.crypto.transport.TransportCiphertext
 import ru.fromchat.api.crypto.transport.TransportCrypto
 import ru.fromchat.api.instance.InstanceIdGuard
 import ru.fromchat.api.instance.InstanceIdResolveResult
 import ru.fromchat.api.instance.resolveInstanceId
+import ru.fromchat.api.push.uploadPendingFcmTokenIfAvailable
+import ru.fromchat.api.push.unregisterFcmTokenFromServer
+import ru.fromchat.api.sync.PublicChatProfileSync
+import ru.fromchat.api.sync.UpdateSyncManager
 import ru.fromchat.api.local.WebSocketManager
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.cache.readOutboundFileBytes
 import ru.fromchat.api.local.db.clearAccountCacheOnLogout
-import ru.fromchat.api.local.db.store.MessageRepository
 import ru.fromchat.api.local.db.store.ProfileCache
 import ru.fromchat.api.local.download.streamEncryptedFileToDisk
 import ru.fromchat.api.local.send.scheduleOutboxProcessing
@@ -479,7 +479,7 @@ object ApiClient {
                 }
             }
         } catch (e: Exception) {
-            ru.fromchat.Logger.e("ApiClient", "Error loading persisted data", e)
+            ru.fromchat.logging.Logger.e("ApiClient", "Error loading persisted data", e)
         }
     }
 
@@ -522,7 +522,7 @@ object ApiClient {
                 val captcha = raw["captcha"]?.let {
                     json.decodeFromJsonElement(SmartCaptchaParams.serializer(), it)
                 }
-                ru.fromchat.Logger.i(
+                ru.fromchat.logging.Logger.i(
                     "SmartCaptcha",
                     "authPasswordStep needs_register yandexRequired=$yandexRequired " +
                         "captchaRequired=$captchaRequired " +
@@ -1364,7 +1364,7 @@ object ApiClient {
     }
 
     /** Clears in-memory and on-disk partial download state on logout. */
-    suspend fun clearAllDownloadCachesOnLogout() {
+    fun clearAllDownloadCachesOnLogout() {
         val keys = partialDownloadMetaCache.keys.toList()
         keys.forEach { clearPartialEncryptedDownload(it) }
         partialDownloadMetaCache.clear()
@@ -1478,7 +1478,7 @@ object ApiClient {
             val backupResponse = response.body<BackupBlobResponse>()
             backupResponse.blob
         } catch (e: Exception) {
-            ru.fromchat.Logger.d("ApiClient", "No backup found or error fetching: ${e.message}")
+            ru.fromchat.logging.Logger.d("ApiClient", "No backup found or error fetching: ${e.message}")
             null
         }
     }
@@ -1645,7 +1645,7 @@ object ApiClient {
             runCatching {
                 http.get("${ServerConfig.apiBaseUrl}/logout")
             }.onFailure { e ->
-                ru.fromchat.Logger.e("ApiClient", "Server logout failed", e)
+                ru.fromchat.logging.Logger.e("ApiClient", "Server logout failed", e)
             }
             clearLocalSession()
         } finally {

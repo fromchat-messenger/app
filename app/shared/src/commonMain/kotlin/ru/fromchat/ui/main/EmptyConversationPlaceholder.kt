@@ -17,7 +17,7 @@ import ru.fromchat.select_chat_placeholder
 import ru.fromchat.select_contact_placeholder
 import ru.fromchat.select_settings_placeholder
 import ru.fromchat.ui.components.Text
-import ru.fromchat.ui.extraStatusBars
+import ru.fromchat.ui.theme.extraStatusBars
 
 /** Empty detail pane when nothing is selected in a list–detail layout. */
 @Composable

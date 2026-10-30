@@ -1,8 +1,7 @@
 package ru.fromchat.desktop
 
 import ru.fromchat.AppBuildInfo
-import ru.fromchat.Logger
-import java.io.File
+import ru.fromchat.logging.Logger
 import java.util.concurrent.TimeUnit
 
 /** Windows 10+ toast notifications with the branded app logo override. */
@@ -38,22 +37,22 @@ object WindowsDesktopNotifications {
             }
         }
 
-        val script = """
+        val script = $$"""
             [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
             [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
-            ${'$'}xml = [Windows.Data.Xml.Dom.XmlDocument]::new()
-            ${'$'}xml.LoadXml(@"
+            $xml = [Windows.Data.Xml.Dom.XmlDocument]::new()
+            $xml.LoadXml(@"
             <toast activationType="foreground">
               <visual>
                 <binding template="ToastGeneric">
-                  $binding
+                  $$binding
                 </binding>
               </visual>
             </toast>
             "@)
-            ${'$'}notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("$aumid")
-            ${'$'}toast = [Windows.UI.Notifications.ToastNotification]::new(${'$'}xml)
-            ${'$'}notifier.Show(${'$'}toast)
+            $notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("$$aumid")
+            $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
+            $notifier.Show($toast)
             """.trimIndent()
 
         return runCatching {

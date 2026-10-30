@@ -11,8 +11,8 @@ import kotlinx.serialization.json.Json
 import ru.fromchat.api.schema.user.devices.DeviceSessionInfo
 import ru.fromchat.config.Settings.API_PORT_KEY
 import ru.fromchat.config.Settings.SERVER_IP_KEY
-import ru.fromchat.ui.Theme
-import com.pr0gramm3r101.utils.settings.Settings as PlatformSettings
+import ru.fromchat.ui.theme.Theme
+import ru.fromchat.utils.settings.Settings as PlatformSettings
 
 object Settings {
     private const val MATERIAL_YOU_KEY = "materialYou"
@@ -148,16 +148,11 @@ object Settings {
         if (ip.isBlank()) {
             serverConfigNotInitialized()
         }
-        val apiPort = settings.getInt(API_PORT_KEY, 443).coerceIn(1, 65535)
+        val apiPort = normalizeStoredPort(API_PORT_KEY, default = 443)
         val rawCalls = settings.getInt(CALLS_PORT_KEY, -1)
         val callsPort = if (rawCalls in 1..65535) rawCalls else DEFAULT_CALLS_PORT
         val https = settings.getBoolean(HTTPS_ENABLED_KEY, true)
-        val callsEnabled =
-            if (settings.contains(CALLS_ENABLED_KEY)) {
-                settings.getBoolean(CALLS_ENABLED_KEY, true)
-            } else {
-                true
-            }
+        val callsEnabled = settings.getBoolean(CALLS_ENABLED_KEY, true)
         return ServerConfigData(
             serverIp = ip,
             apiPort = apiPort,
@@ -165,6 +160,15 @@ object Settings {
             httpsEnabled = https,
             callsEnabled = callsEnabled,
         )
+    }
+
+    /** Repairs invalid stored ports (e.g. legacy iOS int 0 in NSUserDefaults). */
+    private suspend fun normalizeStoredPort(key: String, default: Int): Int {
+        if (!settings.contains(key)) return default
+        val raw = settings.getInt(key, default)
+        if (raw in 1..65535) return raw
+        settings.putInt(key, default)
+        return default
     }
 
     private suspend fun writeServerConfig(value: ServerConfigData) {
@@ -220,6 +224,9 @@ object Settings {
         get() = runBlocking { settings.getBoolean(RELEASE_NOTES_PERMANENTLY_HIDDEN_KEY, false) }
         set(value) = runIO { settings.putBoolean(RELEASE_NOTES_PERMANENTLY_HIDDEN_KEY, value) }
 }
+
+/** Platform default for [enterToSend] when [ENTER_TO_SEND_KEY] is unset. */
+internal expect fun defaultEnterToSend(): Boolean
 
 /** Main-screen bottom navigation bar style. */
 enum class NavBarStyle {

@@ -46,9 +46,9 @@ import ru.fromchat.ui.components.Text
 /** Height of the custom Windows title bar; keep in sync with [ru.fromchat.ui.LocalExtraStatusBarTop]. */
 val WindowsTitleBarHeight = 32.dp
 
-private val TitleBarHoverAlpha = 0.28f
-private val TitleBarPressAlpha = 0.36f
-private val TitleBarCloseHoverAlpha = 1f
+private const val TitleBarHoverAlpha = 0.28f
+private const val TitleBarPressAlpha = 0.36f
+private const val TitleBarCloseHoverAlpha = 1f
 
 @Composable
 fun WindowScope.WindowsDesktopTitleBar(

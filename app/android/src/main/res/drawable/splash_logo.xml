@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Splash 288dp slot: inset between full-bleed and 192dp safe circle (~240dp artwork). -->
+<inset
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/logo_square"
+    android:insetBottom="24dp"
+    android:insetLeft="24dp"
+    android:insetRight="24dp"
+    android:insetTop="24dp" />

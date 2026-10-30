@@ -30,7 +30,6 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
@@ -38,10 +37,10 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.pr0gramm3r101.utils.ImeKeyboardPhase
-import com.pr0gramm3r101.utils.keyboardPhase
-import com.pr0gramm3r101.utils.rememberImeMotion
-import com.pr0gramm3r101.utils.toPx
+import ru.fromchat.utils.ImeKeyboardPhase
+import ru.fromchat.utils.keyboardPhase
+import ru.fromchat.utils.rememberImeMotion
+import ru.fromchat.utils.toPx
 import kotlin.math.roundToInt
 
 /** Lazy list item indices for [ExpressiveStepFlowScaffold] haze layout. */
@@ -151,16 +150,15 @@ private fun imeDismissFollowActive(
     predictiveBackProgress: Float,
     reportedImeBottomPx: Int,
     settledImeBottomPx: Int,
-): Boolean {
-    if (phase == ImeKeyboardPhase.Hidden && !imeAnimating && predictiveBackProgress <= 0f) {
-        return false
-    }
-    return predictiveBackProgress > 0f ||
-        imeAnimating ||
-        phase == ImeKeyboardPhase.Closing ||
-        phase == ImeKeyboardPhase.ReopeningPartial ||
-        (settledImeBottomPx > 0 && reportedImeBottomPx in 1 until settledImeBottomPx)
-}
+): Boolean =
+    !(phase == ImeKeyboardPhase.Hidden && !imeAnimating && predictiveBackProgress <= 0f) &&
+        (
+            predictiveBackProgress > 0f ||
+                imeAnimating ||
+                phase == ImeKeyboardPhase.Closing ||
+                phase == ImeKeyboardPhase.ReopeningPartial ||
+                (settledImeBottomPx > 0 && reportedImeBottomPx in 1 until settledImeBottomPx)
+            )
 
 /** Scrolls the list when the IME would cover the focused field; skips if already fully visible. */
 @Composable

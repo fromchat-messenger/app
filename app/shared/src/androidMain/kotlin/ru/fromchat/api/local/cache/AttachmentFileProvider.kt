@@ -5,7 +5,6 @@ import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
 import android.os.ParcelFileDescriptor
-import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import androidx.core.content.FileProvider
 import java.io.File
@@ -36,22 +35,9 @@ class AttachmentFileProvider : FileProvider() {
             ?: "attachment"
         val safeSize = file?.length()
         for (i in columns.indices) {
-            values[i] = when (columns[i]) {
-                // Many installers/document providers don't use OpenableColumns constants directly.
-                // Populate common aliases so DISPLAY_NAME is never null when a name is requested.
-                OpenableColumns.DISPLAY_NAME,
-                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-                "display_name",
-                "_display_name",
-                "name",
-                "filename",
-                "title" ->
-                    safeDisplayName
-                OpenableColumns.SIZE,
-                DocumentsContract.Document.COLUMN_SIZE,
-                "size",
-                "_size" ->
-                    safeSize
+            values[i] = when {
+                isDisplayNameColumn(columns[i]) -> safeDisplayName
+                isSizeColumn(columns[i]) -> safeSize
                 else -> null
             }
         }
@@ -74,13 +60,10 @@ class AttachmentFileProvider : FileProvider() {
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
         val file = resolveFile(uri)
-        if (file == null) {
-            return super.openFile(uri, mode)
+        return file?.let {
+            ParcelFileDescriptor.open(it, ParcelFileDescriptor.parseMode(mode))
                 ?: error("Failed to open attachment file")
-        }
-        val fileMode = ParcelFileDescriptor.parseMode(mode)
-        return ParcelFileDescriptor.open(file, fileMode)
-            ?: error("Failed to open attachment file")
+        } ?: super.openFile(uri, mode) ?: error("Failed to open attachment file")
     }
 
     companion object {
@@ -124,9 +107,15 @@ class AttachmentFileProvider : FileProvider() {
         return file.takeIf { it.isFile }
     }
 
-    private fun emptyResultCursor(projection: Array<out String>?): Cursor {
-        val columns = projection?.takeIf { it.isNotEmpty() }
-            ?: arrayOf(OpenableColumns.DISPLAY_NAME)
-        return MatrixCursor(columns, 0)
-    }
+    private fun isDisplayNameColumn(column: String): Boolean =
+        // [OpenableColumns.DISPLAY_NAME] and DocumentsContract display-name columns share "_display_name".
+        column == OpenableColumns.DISPLAY_NAME ||
+            column == "display_name" ||
+            column == "name" ||
+            column == "filename" ||
+            column == "title"
+
+    private fun isSizeColumn(column: String): Boolean =
+        column == OpenableColumns.SIZE ||
+            column == "size"
 }

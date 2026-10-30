@@ -4,6 +4,8 @@ Read in other languages: [Русский](./README.md)
 
 FromChat is a 100% free and open-source messenger. This repository is the cross-platform client (Android, Desktop via Compose Multiplatform, and iOS).
 
+Agents: [AGENTS.md](./AGENTS.md) and [`.agents/skills/`](./.agents/skills/) (ship via **`release`** skill, `/release`); humans: [AI policy](./AI_POLICY.en.md).
+
 [📥 Download](https://github.com/fromchat-messenger/android/releases/latest) • [💬 Telegram Channel](https://t.me/fromchat_ch) • [🖥️ Server](https://github.com/fromchat-messenger/backend)
 
 ## ✨ Features
@@ -134,9 +136,7 @@ android/
 │       ├── commonMain/
 │       ├── androidMain/
 │       └── iosMain/      # not ready yet
-├── utils/                # reusable utilities
-│   ├── android/
-│   └── shared/
+│           └── …/ru/fromchat/utils/  # shared helpers (settings, crypto, UI)
 └── gradle/libs.versions.toml
 ```
 

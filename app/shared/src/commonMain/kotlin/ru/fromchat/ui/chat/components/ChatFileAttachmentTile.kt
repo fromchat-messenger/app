@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -39,12 +38,11 @@ import ru.fromchat.attachment_retry
 import ru.fromchat.attachment_upload_failed
 import ru.fromchat.attachment_upload_failed_too_large
 import ru.fromchat.cd_attachment_upload_retry
-import ru.fromchat.ui.chat.ExpressiveFileAttachmentRow
-import ru.fromchat.ui.chat.messageBubbleContentColor
+import ru.fromchat.ui.chat.media.ExpressiveFileAttachmentRow
+import ru.fromchat.ui.chat.message.messageBubbleContentColor
 import ru.fromchat.ui.chat.utils.showAttachmentOpenFailed
 import ru.fromchat.ui.components.Text
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ChatFileAttachmentTile(
     filename: String,

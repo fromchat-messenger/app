@@ -25,7 +25,6 @@ runs:
             settings.gradle.kts \
             gradle.properties \
             app \
-            utils \
             .github/workflows/release.yml \
             .github/actions) \
           | sha256sum | awk '{print $1}'

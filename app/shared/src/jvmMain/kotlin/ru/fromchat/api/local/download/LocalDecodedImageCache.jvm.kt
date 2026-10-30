@@ -12,12 +12,12 @@ import org.jetbrains.skia.ImageInfo
 import org.jetbrains.skia.SamplingMode
 
 actual object PlatformDecodedBitmapCache {
-    private val cache = mutableMapOf<String, ImageBitmap>()
+    private val cache = DecodedBitmapByteLruCache(maxCacheBytes())
 
-    actual fun get(key: String): ImageBitmap? = cache[key]
+    actual fun get(key: String): ImageBitmap? = cache.get(key)
 
     actual fun put(key: String, bitmap: ImageBitmap) {
-        cache[key] = bitmap
+        cache.put(key, bitmap)
     }
 
     actual fun remove(key: String) {
@@ -25,17 +25,100 @@ actual object PlatformDecodedBitmapCache {
     }
 
     actual fun evictPrefix(prefix: String) {
-        cache.keys.filter { it.startsWith(prefix) }.forEach { cache.remove(it) }
+        cache.evictPrefix(prefix)
     }
+
+    private fun maxCacheBytes(): Int =
+        (Runtime.getRuntime().maxMemory() / 8).toInt().coerceAtLeast(4 * 1024 * 1024)
+}
+
+/**
+ * LRU by decoded ARGB8888 footprint — matches Android [android.util.LruCache] sizing in
+ * [LocalDecodedImageCache.android.kt].
+ */
+private class DecodedBitmapByteLruCache(private val maxBytes: Int) {
+    private val map = LinkedHashMap<String, ImageBitmap>(16, 0.75f, true)
+    private var sizeBytes = 0
+
+    @Synchronized
+    fun get(key: String): ImageBitmap? = map[key]
+
+    @Synchronized
+    fun put(key: String, bitmap: ImageBitmap) {
+        remove(key)
+        val entryBytes = bitmapByteSize(bitmap)
+        if (entryBytes > maxBytes) return
+        while (sizeBytes + entryBytes > maxBytes && map.isNotEmpty()) {
+            evictOldest()
+        }
+        map[key] = bitmap
+        sizeBytes += entryBytes
+    }
+
+    @Synchronized
+    fun remove(key: String) {
+        val removed = map.remove(key) ?: return
+        sizeBytes -= bitmapByteSize(removed)
+    }
+
+    @Synchronized
+    fun evictPrefix(prefix: String) {
+        map.keys.filter { it.startsWith(prefix) }.forEach { remove(it) }
+    }
+
+    private fun evictOldest() {
+        val eldest = map.entries.firstOrNull() ?: return
+        map.remove(eldest.key)
+        sizeBytes -= bitmapByteSize(eldest.value)
+    }
+
+    private fun bitmapByteSize(bitmap: ImageBitmap): Int =
+        (bitmap.width * bitmap.height * 4).coerceAtLeast(0)
 }
 
 actual fun decodeLocalImageFile(absolutePath: String, reqWidthPx: Int, reqHeightPx: Int): ImageBitmap? {
-    val bytes = runCatching { File(absolutePath).readBytes() }.getOrNull() ?: return null
-    return decodeImageBytes(bytes, reqWidthPx, reqHeightPx)
+    if (!File(absolutePath).isFile) return null
+    decodeWithSkiaFromFile(absolutePath, reqWidthPx, reqHeightPx)?.let { return it }
+    return decodeWithImageIoFromFile(absolutePath, reqWidthPx, reqHeightPx)
 }
 
 actual fun decodeImageBytes(bytes: ByteArray, reqWidthPx: Int, reqHeightPx: Int): ImageBitmap? =
     decodeWithSkia(bytes, reqWidthPx, reqHeightPx) ?: decodeWithImageIo(bytes, reqWidthPx, reqHeightPx)
+
+private fun decodeWithSkiaFromFile(path: String, reqWidthPx: Int, reqHeightPx: Int): ImageBitmap? =
+    runCatching {
+        decodeWithSkia(File(path).readBytes(), reqWidthPx, reqHeightPx)
+    }.getOrNull()
+
+private fun decodeWithImageIoFromFile(path: String, reqWidthPx: Int, reqHeightPx: Int): ImageBitmap? =
+    runCatching {
+        ImageIO.createImageInputStream(File(path)).use { stream ->
+            stream ?: return@runCatching null
+            val readers = ImageIO.getImageReaders(stream)
+            if (!readers.hasNext()) return@runCatching null
+            val reader = readers.next()
+            try {
+                reader.input = stream
+                val srcW = reader.getWidth(0)
+                val srcH = reader.getHeight(0)
+                if (srcW <= 0 || srcH <= 0) return@runCatching null
+                var subsample = 1
+                while (srcW / subsample > reqWidthPx * 2 && srcH / subsample > reqHeightPx * 2) {
+                    subsample *= 2
+                }
+                val param = reader.defaultReadParam.apply {
+                    setSourceSubsampling(subsample, subsample, 0, 0)
+                }
+                val decoded = reader.read(0, param) ?: return@runCatching null
+                val scaled = scaleBufferedImageToFitWithin(decoded, reqWidthPx, reqHeightPx)
+                val out = ByteArrayOutputStream()
+                ImageIO.write(scaled, "png", out)
+                Image.makeFromEncoded(out.toByteArray()).toComposeImageBitmap()
+            } finally {
+                reader.dispose()
+            }
+        }
+    }.getOrNull()
 
 private fun decodeWithSkia(bytes: ByteArray, reqWidthPx: Int, reqHeightPx: Int): ImageBitmap? =
     runCatching {

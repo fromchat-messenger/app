@@ -30,18 +30,15 @@ private fun isValidIpv4(s: String): Boolean {
     return true
 }
 
-private fun isValidIpv6(s: String): Boolean {
-    if (s.isBlank() || !s.all { it.isDigit() || it in "abcdefABCDEF:" }) return false
-    return s.count { it == ':' } >= 2
-}
+private fun isValidIpv6(s: String): Boolean =
+    s.isNotBlank() &&
+        s.all { it.isDigit() || it in "abcdefABCDEF:" } &&
+        s.count { it == ':' } >= 2
 
 private fun isValidIpv6Bracketed(s: String): Boolean {
     if (!s.startsWith('[') || !s.contains(']')) return false
-
     val end = s.indexOf(']')
-    if (end <= 1) return false
-
-    return isValidIpv6(s.substring(1, end))
+    return end > 1 && isValidIpv6(s.substring(1, end))
 }
 
 private fun isValidHostname(host: String): Boolean {

@@ -2,7 +2,7 @@ package ru.fromchat.desktop
 
 import java.awt.SystemTray
 import java.awt.TrayIcon
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.notifications.NotificationLaunchCoordinator
 import ru.fromchat.notifications.NotificationLaunchTarget
 

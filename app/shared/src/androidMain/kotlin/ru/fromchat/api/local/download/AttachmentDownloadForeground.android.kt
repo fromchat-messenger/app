@@ -1,6 +1,6 @@
 package ru.fromchat.api.local.download
 
-import com.pr0gramm3r101.utils.UtilsLibrary
+import ru.fromchat.utils.UtilsLibrary
 import ru.fromchat.api.local.workers.AttachmentDownloadForegroundService
 
 actual object AttachmentDownloadForeground {

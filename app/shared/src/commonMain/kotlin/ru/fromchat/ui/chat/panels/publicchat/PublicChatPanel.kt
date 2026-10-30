@@ -9,7 +9,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.cache.DecryptedImageCache
@@ -33,8 +33,9 @@ import ru.fromchat.api.schema.websocket.types.MessageDeletedData
 import ru.fromchat.api.schema.websocket.types.ReactionUpdateData
 import ru.fromchat.api.schema.websocket.types.TypingUpdateData
 import ru.fromchat.api.schema.websocket.types.WebSocketUpdatesData
-import ru.fromchat.ui.chat.AvatarInfo
-import ru.fromchat.ui.chat.ChatPanel
+import ru.fromchat.ui.chat.chrome.AvatarInfo
+import ru.fromchat.ui.chat.chrome.ChatPanel
+import ru.fromchat.ui.chat.utils.dedupeMessagesByClientId
 import ru.fromchat.ui.chat.utils.PublicChatTypingHandler
 import ru.fromchat.ui.chat.utils.TypingHandler
 import ru.fromchat.ui.chat.utils.attachPublicReplyReferences
@@ -351,8 +352,8 @@ class PublicChatPanel(
         }
         if (ahead.isEmpty() && older.isEmpty() && inFlight.isEmpty()) return merged
         val combined = merged + ahead + older + inFlight
-        return ru.fromchat.api.local.messages.sortMessagesForChatDisplay(
-            ru.fromchat.ui.chat.utils.dedupeMessagesByClientId(combined),
+        return sortMessagesForChatDisplay(
+            dedupeMessagesByClientId(combined),
         )
     }
 
@@ -421,7 +422,7 @@ class PublicChatPanel(
                 ProfileCache.mergePreviewFromPublicMessages(networkMessages)
                 val optimisticSnapshot = snapshotPendingOptimisticMessages()
                 val pendingStr = debugPendingKeys().takeIf { it.isNotBlank() } ?: "(none)"
-                val optIds = optimisticSnapshot.mapNotNull { it.client_message_id }.ifEmpty { listOf<String>() }
+                val optIds = optimisticSnapshot.mapNotNull { it.client_message_id }.ifEmpty { listOf() }
                 Logger.d(
                     "PublicChatPanel",
                     "loadMessages: pendingKeys=$pendingStr optimisticSnapshot=$optIds " +

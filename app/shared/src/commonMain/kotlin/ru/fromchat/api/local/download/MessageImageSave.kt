@@ -10,7 +10,7 @@ import ru.fromchat.api.local.cache.DecryptedImageCache
 import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.api.local.cache.readOutboundFileBytes
 import ru.fromchat.api.local.mimeTypeForFilename
-import ru.fromchat.ui.chat.isImageFilename
+import ru.fromchat.ui.chat.media.isImageFilename
 import ru.fromchat.ui.chat.utils.attachmentDecodeCacheKeys
 import ru.fromchat.ui.chat.utils.peekDecodedAttachmentBitmap
 

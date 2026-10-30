@@ -46,9 +46,9 @@ import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.chat_drop_attachment_hint
 import ru.fromchat.chat_drop_not_a_file
-import ru.fromchat.ui.chat.isImageFilename
+import ru.fromchat.ui.chat.media.isImageFilename
 import ru.fromchat.ui.components.Text
-import com.pr0gramm3r101.utils.conditional
+import ru.fromchat.utils.conditional
 
 /** True while a file drag that this process accepted is still in progress. */
 object AttachmentDragSession {
@@ -333,7 +333,6 @@ private fun dispatchDropUris(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 fun Modifier.chatAttachmentDropTarget(
     enabled: Boolean,
     bridge: AttachmentDropBridge,
@@ -416,7 +415,6 @@ fun Modifier.chatAttachmentDropTarget(
  * Always-mounted root target so a drag started on the chats list (or elsewhere) still
  * receives DROP after navigating into a chat that was not composed at drag start.
  */
-@OptIn(ExperimentalFoundationApi::class)
 fun Modifier.appRootAttachmentDropTarget(): Modifier = composed {
     val permissionsHost = rememberAttachmentDropPermissionsHost()
     val target = remember(permissionsHost) {

@@ -105,7 +105,7 @@ kotlin {
         iosTarget.binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
-            linkerOpts("-framework", "UIKit")
+            linkerOpts("-framework", "UIKit", "-lsqlite3")
         }
     }
 
@@ -158,13 +158,20 @@ kotlin {
             implementation(libs.sqldelight.runtime)
             implementation(libs.sqldelight.coroutines.extensions)
 
-            implementation(project(":utils:shared"))
+            implementation(libs.kotlin.stdlib)
             implementation(libs.krypto)
             implementation(libs.cryptography.core)
             implementation(libs.cryptography.provider.optimal)
         }
 
         androidMain.dependencies {
+            implementation(libs.androidx.adaptive.android)
+            implementation(libs.datastore.preferences)
+            implementation(libs.datastore.core)
+            implementation(libs.biometric)
+            implementation(libs.androidx.appcompat)
+            implementation(libs.material)
+            implementation(libs.security.crypto)
             implementation(libs.androidx.core.ktx)
             implementation(libs.markdown.renderer.m3)
             implementation(libs.bouncycastle.bcprov)
@@ -182,6 +189,9 @@ kotlin {
         }
 
         iosMain.dependencies {
+            implementation(libs.multiplatform.settings)
+            implementation(libs.multiplatform.settings.coroutines)
+            implementation(libs.multiplatform.settings.serialization)
             implementation(libs.jetbrains.kotlinx.io.bytestring)
             implementation(libs.jetbrains.kotlinx.coroutines.core)
             implementation(libs.ktor.client.darwin)
@@ -190,6 +200,9 @@ kotlin {
         }
 
         jvmMain.dependencies {
+            implementation(libs.multiplatform.settings)
+            implementation(libs.multiplatform.settings.coroutines)
+            implementation(libs.multiplatform.settings.serialization)
             if (System.getProperty("os.name").orEmpty().lowercase().contains("win") &&
                 (project.findProperty("windowsArm64") != null || hostCpuArch() == "aarch64")
             ) {
@@ -215,7 +228,7 @@ kotlin {
                     exclude(group = "org.openjfx")
                 }
             }
-            implementation("net.java.dev.jna:jna-platform:5.15.0")
+            implementation(libs.jna.platform)
         }
     }
 }

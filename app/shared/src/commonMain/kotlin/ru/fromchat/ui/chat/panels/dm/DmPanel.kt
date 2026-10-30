@@ -29,16 +29,16 @@ import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.api.schema.messages.dm.DmEnvelope
 import ru.fromchat.api.schema.websocket.WebSocketMessage
 import ru.fromchat.api.schema.websocket.types.DmDeletedData
-import ru.fromchat.ui.profile.displayNameText
-import ru.fromchat.ui.profile.isRedactedPeerAccount
-import ru.fromchat.Logger
+import ru.fromchat.ui.profile.widget.displayNameText
+import ru.fromchat.ui.profile.widget.isRedactedPeerAccount
+import ru.fromchat.logging.Logger
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.api.crypto.CorruptedDmMessagePlaceholder
 import ru.fromchat.api.crypto.DmCiphertextCorruptedException
 import ru.fromchat.api.crypto.decryptEnvelope
 import ru.fromchat.api.local.AttachmentMediaLog
-import ru.fromchat.ui.chat.AvatarInfo
-import ru.fromchat.ui.chat.ChatPanel
+import ru.fromchat.ui.chat.chrome.AvatarInfo
+import ru.fromchat.ui.chat.chrome.ChatPanel
 import ru.fromchat.api.local.cache.DecryptedFileCache
 import ru.fromchat.api.local.cache.DecryptedImageCache
 import ru.fromchat.ui.chat.utils.DmTypingHandler
@@ -50,7 +50,7 @@ import ru.fromchat.ui.chat.utils.dropSupersededOptimisticMessages
 import ru.fromchat.ui.chat.utils.imageAspectRatioForMessage
 import ru.fromchat.ui.chat.utils.preserveReplyToFromExisting
 import ru.fromchat.ui.chat.utils.resolveDmReplyToId
-import ru.fromchat.ui.chat.isImageFilename
+import ru.fromchat.ui.chat.media.isImageFilename
 import ru.fromchat.api.local.send.seedOutboundFileAsDownloaded
 
 class DmPanel(

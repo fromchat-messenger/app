@@ -1,8 +1,8 @@
 package ru.fromchat.desktop
 
 import ru.fromchat.config.Settings
-import ru.fromchat.ui.Theme
-import ru.fromchat.ui.jvmPlatformSystemDarkTheme
+import ru.fromchat.ui.theme.Theme
+import ru.fromchat.ui.theme.jvmPlatformSystemDarkTheme
 import javax.swing.JRootPane
 
 internal fun isMacOs(): Boolean =

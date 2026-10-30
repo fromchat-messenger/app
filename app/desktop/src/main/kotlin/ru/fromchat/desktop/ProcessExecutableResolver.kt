@@ -65,10 +65,10 @@ internal object ProcessExecutableResolver {
     fun killProcess(pid: Long): Boolean {
         if (pid <= 0L) return false
         val handle = ProcessHandle.of(pid)
-        if (handle.isEmpty) return false
-        return runCatching {
-            handle.get().destroyForcibly()
-            true
-        }.getOrDefault(false)
+        return !handle.isEmpty &&
+            runCatching {
+                handle.get().destroyForcibly()
+                true
+            }.getOrDefault(false)
     }
 }

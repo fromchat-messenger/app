@@ -1,56 +1,54 @@
 [versions]
-agp = "9.4.1"
+agp = "9.5.0"
 androidx-activityCompose = "1.13.0"
 androidx-appcompat = "1.8.0"
 androidx-core-ktx = "1.19.1"
 androidx-exifinterface = "1.4.2"
 coilCompose = "3.6.3"
-compose-multiplatform = "1.12.1"
+compose-multiplatform = "1.12.2"
 dbusJava = "5.2.2"
 #noinspection NewerVersionAvailable
 constraintlayout = "0.8.0-shaded"
 coreSplashscreen = "1.2.0"
-firebaseMessaging = "26.0.0"
+firebaseMessaging = "26.0.1"
 googleServices = "4.5.0"
 haze = "2.0.1"
 jnaPlatform = "5.19.1"
 kotlin = "2.4.21"
 adaptiveAndroid = "1.3.0"
 biometric = "1.4.0-alpha07"
-gson = "2.14.0"
 kotlinxIoBytestring = "0.9.1"
 kotlinxCoroutinesCore = "1.11.0"
 kotlinxIoCore = "0.9.1"
 multiplatformCryptoLibsodiumBindings = "0.9.5"
 multiplatformSettings = "1.3.0"
 serialization = "2.4.21"
-serialization-json = "1.11.0"
+serialization-json = "1.12.0"
 material = "1.14.0"
-activityKtx = "1.13.0"
 navigationCompose = "2.9.2"
-datastore = "1.2.1"
+datastore = "1.3.0"
 security-crypto = "1.1.0"
-ktor = "3.6.0"
+ktor = "3.6.1"
 slf4j = "1.7.36"
-slf4jJdk14 = "2.0.17"
+slf4jJdk14 = "2.0.20"
 kotlinxDatetime = "0.8.0"
 lifecycleRuntimeKtx = "2.11.0"
 composeBom = "2026.09.00"
 composeMaterialIconsExtended = "1.7.3"
 composeMaterial3 = "1.12.0-alpha03"
-composeComponents = "1.12.1"
-playServicesBase = "18.11.0"
+composeComponents = "1.12.2"
+playServicesBase = "18.11.1"
 tweetnaclJava = "1.1.4"
 androidxWork = "2.12.0"
 cryptography-kotlin = "0.6.0"
 krypto = "4.0.10"
 sqldelight = "2.4.1"
-livekitAndroid = "2.29.0"
+livekitAndroid = "2.29.2"
 livekitAndroidComposeComponents = "2.4.2"
-markdownRendererM3 = "0.45.0"
+markdownRendererM3 = "0.46.0"
 bouncycastle = "1.86"
-webkit = "1.17.1"
-openjfx = "27"
+webkit = "1.18.0"
+openjfx = "27.0.1"
 
 [libraries]
 androidx-core-splashscreen = { module = "androidx.core:core-splashscreen", version.ref = "coreSplashscreen" }
@@ -75,11 +73,9 @@ jetbrains-kotlinx-io-bytestring = { module = "org.jetbrains.kotlinx:kotlinx-io-b
 androidx-adaptive-android = { group = "androidx.compose.material3.adaptive", name = "adaptive-android", version.ref = "adaptiveAndroid" }
 kotlin-stdlib = { group = "org.jetbrains.kotlin", name = "kotlin-stdlib", version.ref = "kotlin" }
 biometric = { module = "androidx.biometric:biometric", version.ref = "biometric" }
-gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
 kotlinx-io-core = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinxIoCore" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization-json" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
-androidx-activity-ktx = { group = "androidx.activity", name = "activity-ktx", version.ref = "activityKtx" }
 multiplatform-crypto-libsodium-bindings = { module = "com.ionspin.kotlin:multiplatform-crypto-libsodium-bindings", version.ref = "multiplatformCryptoLibsodiumBindings" }
 multiplatform-settings = { module = "com.russhwolf:multiplatform-settings", version.ref = "multiplatformSettings" }
 multiplatform-settings-coroutines = { module = "com.russhwolf:multiplatform-settings-coroutines", version.ref = "multiplatformSettings" }

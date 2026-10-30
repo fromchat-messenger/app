@@ -7,10 +7,10 @@ import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import com.pr0gramm3r101.utils.UtilsLibrary
+import ru.fromchat.utils.UtilsLibrary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.api.local.cache.AttachmentFileProvider
 import ru.fromchat.api.local.mimeTypeForFilename
 import ru.fromchat.ui.chat.uriToLocalCacheFile
@@ -82,7 +82,7 @@ actual suspend fun openCachedAttachmentFile(
         val primary = buildViewIntent(resolvedMime)
         val fallback = buildViewIntent("*/*")
         val hasPrimary = ensureGrantForIntent(primary)
-        val hasFallback = if (!hasPrimary) ensureGrantForIntent(fallback) else true
+        val hasFallback = hasPrimary || ensureGrantForIntent(fallback)
         if (!hasPrimary && !hasFallback) {
             Logger.w(tag, "No handler for uri=$contentUri mime=$resolvedMime name=$nameForMime")
             return@runCatching false

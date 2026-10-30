@@ -1,7 +1,7 @@
 package ru.fromchat.notifications
 
 import org.jetbrains.compose.resources.getString
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.Res
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.messages.ActiveDmChatTracker

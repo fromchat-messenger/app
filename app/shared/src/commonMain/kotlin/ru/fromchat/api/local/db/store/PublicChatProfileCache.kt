@@ -21,8 +21,9 @@ object PublicChatProfileCache {
 
     fun isFullyLoaded(): Boolean {
         val instanceId = resolvedInstanceId()
-        if (instanceId.isEmpty() || loadedInstanceId != instanceId) return false
-        return isCompleteProfile(_profile.value)
+        return instanceId.isNotEmpty() &&
+            loadedInstanceId == instanceId &&
+            isCompleteProfile(_profile.value)
     }
 
     /**
@@ -53,15 +54,15 @@ object PublicChatProfileCache {
         }
     }
 
-    suspend fun onActiveInstanceChanged(instanceId: String) {
+    fun onActiveInstanceChanged(instanceId: String) {
         hydrateFromDiskImmediate(instanceId)
     }
 
-    suspend fun hydrateFromDisk() {
+    fun hydrateFromDisk() {
         hydrateFromDiskImmediate(CacheContext.activeInstanceId.value)
     }
 
-    suspend fun clear() {
+    fun clear() {
         _profile.value = null
         loadedInstanceId = ""
     }

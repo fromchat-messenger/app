@@ -64,12 +64,12 @@ actual fun extractDroppedText(event: DragAndDropEvent): String? =
 
 actual fun acceptsAttachmentDrop(event: DragAndDropEvent): Boolean {
     val mimeTypes = event.mimeTypes()
-    if (mimeTypes.any { it == ClipDescription.MIMETYPE_TEXT_URILIST }) return true
-    return mimeTypes.any { mime ->
-        mime == "*/*" ||
-            mime.startsWith("image/") ||
-            mime.startsWith("video/") ||
-            mime.startsWith("application/") ||
+    return mimeTypes.any { it == ClipDescription.MIMETYPE_TEXT_URILIST } ||
+        mimeTypes.any { mime ->
+            mime == "*/*" ||
+                mime.startsWith("image/") ||
+                mime.startsWith("video/") ||
+                mime.startsWith("application/") ||
             mime.startsWith("audio/") ||
             mime.startsWith("text/")
     }

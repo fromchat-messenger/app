@@ -20,12 +20,12 @@ import androidx.compose.ui.window.WindowExceptionHandler
 import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.awt.ComposeWindow
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.api.local.db.isSqliteBusy
-import ru.fromchat.ui.FromChatTheme
-import ru.fromchat.ui.LocalExtraStatusBarTop
-import ru.fromchat.ui.getColorScheme
-import ru.fromchat.ui.isAppInDarkTheme
+import ru.fromchat.ui.theme.FromChatTheme
+import ru.fromchat.ui.theme.LocalExtraStatusBarTop
+import ru.fromchat.ui.theme.getColorScheme
+import ru.fromchat.ui.theme.isAppInDarkTheme
 import java.awt.image.BufferedImage
 
 internal fun desktopThemeBackgroundCompose(darkTheme: Boolean): Color =

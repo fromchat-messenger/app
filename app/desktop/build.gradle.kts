@@ -28,7 +28,6 @@ dependencies {
     implementation(libs.compose.materialIconsExtended)
     implementation(libs.compose.components.resources)
     implementation(project(":app:shared"))
-    implementation(project(":utils:shared"))
     implementation(libs.kotlinx.coroutines.swing)
     implementation(libs.jna.platform)
     // StatusNotifierItem tray on Linux: pure-Java D-Bus client (no GTK/JNA), plus an slf4j
@@ -148,6 +147,13 @@ private fun syncWindowsArm64SkikoNatives(appDir: File, classpath: Iterable<File>
  * "MacOS does not support OPENGL rendering API" in SkiaLayer's constructor, killing the app
  * before the first frame.
  */
+/** Keep packaged/desktop dev runs from reserving multi-GB default heaps on large-RAM hosts. */
+private fun desktopMemoryJvmArgs(): List<String> =
+    listOf(
+        "-Xmx768m",
+        "-XX:+UseStringDeduplication",
+    )
+
 private fun hostGpuJvmArgs(): List<String> =
     if (isWindowsArm64Host()) {
         // Windows ARM64: OpenGL is unsupported; ANGLE (D3D11) is the supported GPU path in Skiko.
@@ -231,7 +237,7 @@ fun stageWindowsJpackageRuntime(appImageRoot: File) {
     if (cfg.isFile) {
         val text = cfg.readText()
         if (!text.contains("app.runtime=")) {
-            val runtimeLine = "app.runtime=\$APPDIR\\..\\runtime"
+            val runtimeLine = $$"app.runtime=$APPDIR\\..\\runtime"
             val updated = if (text.contains("[Application]")) {
                 text.replace("[Application]", "[Application]\n$runtimeLine")
             } else {
@@ -435,7 +441,7 @@ compose.desktop {
         // Application-level, and per host: an unqualified jvmArgs() inside
         // nativeDistributions.<platform> { } lands here anyway and then leaks into every platform's
         // launcher config. See hostGpuJvmArgs().
-        jvmArgs(*(hostGpuJvmArgs() + hostScalingJvmArgs()).toTypedArray())
+        jvmArgs(*(desktopMemoryJvmArgs() + hostGpuJvmArgs() + hostScalingJvmArgs()).toTypedArray())
 
         buildTypes.release.proguard {
             version = proguardVersion
@@ -794,9 +800,9 @@ val installDmgBackgroundTools = tasks.register<Exec>("installDmgBackgroundTools"
     commandLine(
         "bash",
         "-lc",
-        """
-        export PLAYWRIGHT_BROWSERS_PATH="${dmgPlaywrightBrowsersDir.asFile.absolutePath}"
-        mkdir -p "${'$'}PLAYWRIGHT_BROWSERS_PATH"
+        $$"""
+        export PLAYWRIGHT_BROWSERS_PATH="$${dmgPlaywrightBrowsersDir.asFile.absolutePath}"
+        mkdir -p "$PLAYWRIGHT_BROWSERS_PATH"
         if [ ! -f node_modules/playwright/package.json ]; then
           npm install --no-fund --no-audit
         fi
@@ -1135,17 +1141,17 @@ val packageLinuxAppImage = tasks.register<Exec>("packageLinuxAppImage") {
         val appRun = stage.resolve("AppRun")
         val rel = stage.toPath().relativize(nestedExe.toPath()).toString()
         appRun.writeText(
-            """
+            $$"""
             #!/bin/sh
-            SELF="${'$'}(dirname "${'$'}(readlink -f "${'$'}0")")"
-            case "${'$'}(uname -m)" in
+            SELF="$(dirname "$(readlink -f "$0")")"
+            case "$(uname -m)" in
               aarch64|arm64)
-                if [ -z "${'$'}MESA_GL_VERSION_OVERRIDE" ]; then
+                if [ -z "$MESA_GL_VERSION_OVERRIDE" ]; then
                   export MESA_GL_VERSION_OVERRIDE=3.0
                 fi
                 ;;
             esac
-            exec "${'$'}SELF/$rel" "${'$'}@"
+            exec "$SELF/$$rel" "$@"
             """.trimIndent() + "\n",
         )
         appRun.setExecutable(true)

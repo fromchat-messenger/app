@@ -44,19 +44,19 @@ object LocalDecodedImageCache {
         return false
     }
 
-    suspend fun loadFull(
+    fun loadFull(
         storageKey: String,
         fileUri: String,
         target: ChatPreviewDecodeSize,
     ): ImageBitmap? = loadIntoCache(previewCacheKey(storageKey), fileUri, target)
 
-    suspend fun loadFullscreen(
+    fun loadFullscreen(
         storageKey: String,
         fileUri: String,
         target: ChatPreviewDecodeSize,
     ): ImageBitmap? = loadIntoCache(fullscreenCacheKey(storageKey), fileUri, target)
 
-    private suspend fun loadIntoCache(
+    private fun loadIntoCache(
         cacheKey: String,
         fileUri: String,
         target: ChatPreviewDecodeSize,
@@ -105,7 +105,7 @@ object LocalDecodedImageCache {
         return bitmap
     }
 
-    suspend fun loadThumb(
+    fun loadThumb(
         storageKey: String,
         bytes: ByteArray,
         displayTarget: ChatPreviewDecodeSize,

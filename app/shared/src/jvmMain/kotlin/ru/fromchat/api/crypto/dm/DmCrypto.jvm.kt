@@ -1,7 +1,7 @@
 package ru.fromchat.api.crypto.dm
 
-import com.pr0gramm3r101.utils.crypto.Base64
-import com.pr0gramm3r101.utils.require
+import ru.fromchat.utils.crypto.Base64
+import ru.fromchat.utils.require
 import dev.whyoleg.cryptography.BinarySize.Companion.bits
 import dev.whyoleg.cryptography.CryptographyProvider
 import dev.whyoleg.cryptography.DelicateCryptographyApi

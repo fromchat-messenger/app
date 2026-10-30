@@ -17,10 +17,10 @@ import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
 import ru.fromchat.Res
 import ru.fromchat.api.schema.user.auth.YandexOAuthParams
-import ru.fromchat.auth.yandex.YANDEX_OAUTH_REDIRECT_URI
-import ru.fromchat.auth.yandex.buildYandexAuthorizeUrl
-import ru.fromchat.auth.yandex.generatePkcePair
-import ru.fromchat.auth.yandex.resolveYandexClientId
+import ru.fromchat.api.yandex.YANDEX_OAUTH_REDIRECT_URI
+import ru.fromchat.api.yandex.buildYandexAuthorizeUrl
+import ru.fromchat.api.yandex.generatePkcePair
+import ru.fromchat.api.yandex.resolveYandexClientId
 import ru.fromchat.auth_step_yandex_body
 import ru.fromchat.auth_step_yandex_cta
 import ru.fromchat.auth_step_yandex_title
@@ -34,7 +34,7 @@ import ru.fromchat.ui.components.ExpressiveHeroSpec
 import ru.fromchat.ui.components.ExpressiveStepPage
 import ru.fromchat.ui.components.ExpressiveStepPageHeader
 import ru.fromchat.ui.components.Text
-import ru.fromchat.ui.isAppInDarkTheme
+import ru.fromchat.ui.theme.isAppInDarkTheme
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable

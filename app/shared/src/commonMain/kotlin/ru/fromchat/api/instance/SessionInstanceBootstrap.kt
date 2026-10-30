@@ -8,10 +8,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import ru.fromchat.api.ApiClient
-import ru.fromchat.api.ChatListSync
-import ru.fromchat.api.ProfileUpdateSync
-import ru.fromchat.api.PublicChatProfileSync
-import ru.fromchat.api.StatusSubscriptionCoordinator
+import ru.fromchat.api.sync.ChatListSync
+import ru.fromchat.api.sync.ProfileUpdateSync
+import ru.fromchat.api.sync.PublicChatProfileSync
+import ru.fromchat.api.sync.StatusSubscriptionCoordinator
 import ru.fromchat.api.local.db.store.InstanceRegistryStore
 import ru.fromchat.api.local.db.store.MessageDatabaseProvider
 import ru.fromchat.api.local.db.store.MessageRepository

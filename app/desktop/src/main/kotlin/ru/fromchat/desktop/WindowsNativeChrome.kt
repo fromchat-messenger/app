@@ -1,5 +1,6 @@
-package ru.fromchat.desktop
+@file:Suppress("unused", "UnusedSymbol")
 
+package ru.fromchat.desktop
 import androidx.compose.ui.awt.ComposeWindow
 import com.sun.jna.Native
 import com.sun.jna.NativeLibrary

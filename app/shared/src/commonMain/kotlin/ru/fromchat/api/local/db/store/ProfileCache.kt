@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.api.schema.messages.dm.DmConversationUser
@@ -22,7 +22,6 @@ import ru.fromchat.api.schema.user.profile.VerificationStatus
 import ru.fromchat.api.local.cache.CacheContext
 import kotlin.concurrent.Volatile
 import kotlin.time.Clock
-import kotlin.time.ExperimentalTime
 
 /**
  * Returns true when a profile entry should not expose its `username` field
@@ -86,7 +85,6 @@ object ProfileCache {
     fun get(userId: Int): UserProfile? = profiles[userId]
 
     /** True when a full non-preview profile was fetched recently enough to skip refetch. */
-    @OptIn(ExperimentalTime::class)
     fun hasFreshFullProfile(userId: Int, maxAgeMs: Long = FULL_PROFILE_TTL_MS): Boolean {
         val profile = get(userId) ?: run {
             Logger.d("ProfileCache", "hasFreshFullProfile id=$userId miss")
@@ -260,7 +258,6 @@ object ProfileCache {
      * When [force] is false, an existing full (non-preview) cache row is kept so a slow HTTP
      * response cannot overwrite a fresher WebSocket update.
      */
-    @OptIn(ExperimentalTime::class)
     fun applyServerProfile(profile: UserProfile, force: Boolean = false) {
         if (profile.id <= 0) return
         val normalized = profile.copy(isClientPreviewOnly = false)
@@ -518,8 +515,7 @@ object ProfileCache {
         currentUserId: Int? = ApiClient.user?.id,
     ): Message {
         val enrichedReply = message.reply_to?.let { enrichPublicMessageForDisplay(it, currentUserId) }
-        val self = currentUserId
-        if (self != null && message.user_id == self) {
+        if (currentUserId != null && message.user_id == currentUserId) {
             val user = ApiClient.user
             return message.copy(
                 username = message.username.trim().ifBlank { user?.username.orEmpty() },
@@ -533,7 +529,7 @@ object ProfileCache {
         val profile = get(message.user_id)
         return message.copy(
             username = message.username.trim().ifBlank {
-                profile?.visibleUsername(self).orEmpty()
+                profile?.visibleUsername(currentUserId).orEmpty()
             },
             displayName = message.displayName?.trim()?.takeIf { it.isNotEmpty() }
                 ?: profile?.displayName?.trim()?.takeIf { it.isNotEmpty() },

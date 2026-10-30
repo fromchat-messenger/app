@@ -1,6 +1,6 @@
 package ru.fromchat.api.crypto.dm
 
-import com.pr0gramm3r101.utils.files.PlatformFileSystem
+import ru.fromchat.utils.files.PlatformFileSystem
 import dev.whyoleg.cryptography.BinarySize.Companion.bits
 import dev.whyoleg.cryptography.CryptographyProvider
 import dev.whyoleg.cryptography.DelicateCryptographyApi
@@ -57,7 +57,7 @@ internal actual suspend fun platformAesGcmStreamDecryptMekFile(
     return plaintextBytes
 }
 
-private suspend fun pumpRawSourceToSink(source: RawSource, sink: RawSink) {
+private fun pumpRawSourceToSink(source: RawSource, sink: RawSink) {
     val chunk = Buffer()
     while (true) {
         val read = source.readAtMostTo(chunk, COPY_BUFFER_BYTES.toLong())

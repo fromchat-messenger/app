@@ -15,7 +15,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Contacts
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -35,9 +34,8 @@ import ru.fromchat.Res
 import ru.fromchat.contacts
 import ru.fromchat.contacts_empty_body
 import ru.fromchat.contacts_empty_title
-import ru.fromchat.ui.extraStatusBars
+import ru.fromchat.ui.theme.extraStatusBars
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContactsTab() {
     Scaffold(

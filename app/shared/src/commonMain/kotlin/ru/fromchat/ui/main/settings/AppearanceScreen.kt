@@ -2,7 +2,6 @@ package ru.fromchat.ui.main.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,7 +18,6 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Tab
 import androidx.compose.material.icons.rounded.ViewInAr
 import androidx.compose.material.icons.rounded.Wallpaper
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -34,11 +32,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.pr0gramm3r101.components.Category
-import com.pr0gramm3r101.components.ListItem
-import com.pr0gramm3r101.components.SwitchListItem
-import com.pr0gramm3r101.utils.conditional
-import com.pr0gramm3r101.utils.materialYouAvailable
+import ru.fromchat.utils.components.Category
+import ru.fromchat.utils.components.ListItem
+import ru.fromchat.utils.components.SwitchListItem
+import ru.fromchat.utils.conditional
+import ru.fromchat.utils.materialYouAvailable
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.appearance_nav_bar_floating
@@ -60,18 +58,17 @@ import ru.fromchat.materialYou
 import ru.fromchat.materialYou_d
 import ru.fromchat.settings_category_appearance
 import ru.fromchat.theme
-import ru.fromchat.ui.Theme
+import ru.fromchat.ui.theme.Theme
 import ru.fromchat.ui.components.Text
-import ru.fromchat.ui.dynamicThemeEnabled
-import ru.fromchat.ui.navBarShowTitle
-import ru.fromchat.ui.navBarStyle
-import ru.fromchat.ui.theme
+import ru.fromchat.ui.theme.dynamicThemeEnabled
+import ru.fromchat.ui.theme.navBarShowTitle
+import ru.fromchat.ui.theme.navBarStyle
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AppearanceScreen(onBack: () -> Unit) {
     val useCollapsing = settingsDetailUseCollapsingTopBar()
     val scrollBehavior = rememberSettingsCollapsingScrollBehavior()
+    val hazeState = rememberSettingsDetailHazeState()
 
     var materialYouSwitch by remember {
         mutableStateOf(Settings.materialYou && materialYouAvailable)
@@ -87,6 +84,7 @@ fun AppearanceScreen(onBack: () -> Unit) {
             SettingsDetailTopBar(
                 title = stringResource(Res.string.settings_category_appearance),
                 onBack = onBack,
+                hazeState = hazeState,
                 scrollBehavior = scrollBehavior,
             )
         }
@@ -94,6 +92,7 @@ fun AppearanceScreen(onBack: () -> Unit) {
         Column(
             Modifier
                 .fillMaxWidth()
+                .settingsDetailHazeSource(hazeState)
                 .conditional(useCollapsing) {
                     Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
                 }
@@ -160,7 +159,6 @@ fun AppearanceScreen(onBack: () -> Unit) {
                                     onClick = {
                                         themeChipIndex = index
                                         Settings.theme = Theme.entries[index]
-                                        theme = Theme.entries[index]
                                     },
                                     selected = index == themeChipIndex,
                                     leadingIcon = {

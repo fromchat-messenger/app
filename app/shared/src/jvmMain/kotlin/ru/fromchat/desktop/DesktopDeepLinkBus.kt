@@ -4,8 +4,8 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import ru.fromchat.Logger
-import ru.fromchat.auth.yandex.YANDEX_OAUTH_REDIRECT_URI
+import ru.fromchat.logging.Logger
+import ru.fromchat.api.yandex.YANDEX_OAUTH_REDIRECT_URI
 
 /**
  * Receives `fromchat://` URIs from the desktop process (startup args, second-instance

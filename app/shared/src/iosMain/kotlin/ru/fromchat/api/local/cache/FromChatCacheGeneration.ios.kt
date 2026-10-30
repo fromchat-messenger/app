@@ -1,5 +1,8 @@
+@file:OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+
 package ru.fromchat.api.local.cache
 
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
@@ -15,7 +18,6 @@ import ru.fromchat.api.local.db.store.MessageDatabaseProvider
 
 private const val GENERATION_FILE = ".generation"
 
-@OptIn(ExperimentalForeignApi::class)
 private fun fromChatRoot(): String {
     val url = NSFileManager.defaultManager.URLForDirectory(
         directory = NSCachesDirectory,
@@ -27,16 +29,13 @@ private fun fromChatRoot(): String {
     return url.path + "/fromchat"
 }
 
-@OptIn(ExperimentalForeignApi::class)
 private fun writeGenerationMarker(path: String) {
     val bytes = "1\n".encodeToByteArray()
     bytes.usePinned { pinned ->
-        val data = NSData.create(bytes = pinned.addressOf(0), length = bytes.size.toULong())
-        data?.writeToFile(path, true)
+        NSData.create(bytes = pinned.addressOf(0), length = bytes.size.toULong()).writeToFile(path, true)
     }
 }
 
-@OptIn(ExperimentalForeignApi::class)
 actual suspend fun ensureFromChatCacheGeneration() {
     withContext(Dispatchers.Default) {
         val root = fromChatRoot()
@@ -50,7 +49,6 @@ actual suspend fun ensureFromChatCacheGeneration() {
     }
 }
 
-@OptIn(ExperimentalForeignApi::class)
 actual suspend fun writeFromChatCacheGeneration() {
     withContext(Dispatchers.Default) {
         val root = fromChatRoot()

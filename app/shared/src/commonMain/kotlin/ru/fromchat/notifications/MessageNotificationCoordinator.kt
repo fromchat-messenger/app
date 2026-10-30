@@ -1,6 +1,6 @@
 package ru.fromchat.notifications
 
-import com.pr0gramm3r101.utils.settings.settings
+import ru.fromchat.utils.settings.settings
 import io.ktor.client.plugins.ClientRequestException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,7 +16,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.jetbrains.compose.resources.getString
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.crypto.CorruptedDmMessagePlaceholder
@@ -36,6 +36,7 @@ import ru.fromchat.api.schema.websocket.types.MessageDeletedData
 import ru.fromchat.chat_preview_attachment
 import ru.fromchat.chat_preview_image
 import ru.fromchat.chat_preview_image_emoji
+import kotlin.time.Duration.Companion.milliseconds
 
 private const val TAG = "MessageNotificationCoordinator"
 private const val PREF_SHOWN_KEY = "shown_message_ids"
@@ -124,7 +125,7 @@ object MessageNotificationCoordinator {
         Logger.i(TAG, "schedule public fetch in ${PUBLIC_FETCH_DEBOUNCE_MS}ms")
         publicFetchJob?.cancel()
         publicFetchJob = scope.launch {
-            delay(PUBLIC_FETCH_DEBOUNCE_MS)
+            delay(PUBLIC_FETCH_DEBOUNCE_MS.milliseconds)
             publicFetchMutex.withLock {
                 fetchAndNotify(includeDmMessages = false)
             }
@@ -392,7 +393,7 @@ object MessageNotificationCoordinator {
 
     private suspend fun presentAll(notifications: List<PresentedMessageNotification>) {
         notifications.forEachIndexed { index, notification ->
-            if (index > 0) delay(BANNER_STAGGER_MS)
+            if (index > 0) delay(BANNER_STAGGER_MS.milliseconds)
             present(notification)
         }
     }

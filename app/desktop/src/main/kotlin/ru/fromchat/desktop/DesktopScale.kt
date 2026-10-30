@@ -9,8 +9,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import java.io.File
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Desktop scale factor for Linux desktops whose X11/Wayland handoff does not carry one.
@@ -111,7 +112,7 @@ internal object DesktopScale {
         forced.value = detect()
         scope.launch(Dispatchers.IO) {
             while (isActive) {
-                delay(POLL_INTERVAL_MS)
+                delay(POLL_INTERVAL_MS.milliseconds)
                 val next = detect()
                 val previous = forced.value
                 // Only react to real changes: a desktop that legitimately sits at 1.0 must not be

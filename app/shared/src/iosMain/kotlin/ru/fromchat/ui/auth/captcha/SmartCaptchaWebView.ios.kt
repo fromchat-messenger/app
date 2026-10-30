@@ -30,7 +30,7 @@ import platform.WebKit.WKUserScriptInjectionTime
 import platform.WebKit.WKWebView
 import platform.WebKit.WKWebViewConfiguration
 import platform.darwin.NSObject
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 
 private const val SMARTCAPTCHA_WEBVIEW_BASE = "https://smartcaptcha.cloud.yandex.ru/webview"
 private const val NATIVE_CLIENT_HANDLER = "NativeClient"

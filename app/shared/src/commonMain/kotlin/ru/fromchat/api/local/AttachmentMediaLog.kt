@@ -1,6 +1,6 @@
 package ru.fromchat.api.local
 
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import kotlin.time.Clock
 
 /**

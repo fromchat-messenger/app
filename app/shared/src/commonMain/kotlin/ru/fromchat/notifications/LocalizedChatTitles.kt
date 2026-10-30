@@ -1,5 +1,7 @@
 package ru.fromchat.notifications
 
+import kotlin.concurrent.Volatile
+
 /**
  * Chat titles resolved by the UI, for callers that run outside a composition.
  *

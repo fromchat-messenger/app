@@ -1,6 +1,6 @@
 package ru.fromchat.logging
 
-import com.pr0gramm3r101.utils.files.PlatformFileSystem
+import ru.fromchat.utils.files.PlatformFileSystem
 
 /** App-wide diagnostic logs under `cacheDir/fromchat/logs/` (not per-instance). */
 object FromChatLogDirs {
