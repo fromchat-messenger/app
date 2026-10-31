@@ -275,7 +275,7 @@ private fun DocumentContent(
                         return
                     }
 
-                    defaultUriHandler.openUri(uri)
+                    defaultUriHandler.openUri(resolveMarkdownLinkTarget(uri))
                 }
             }
         },

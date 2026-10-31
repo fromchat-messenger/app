@@ -28,6 +28,12 @@ abstract class GenerateAppBuildInfoTask : DefaultTask() {
     @get:Input
     abstract val debugBuild: Property<Boolean>
 
+    @get:Input
+    abstract val gitCommitSha: Property<String>
+
+    @get:Input
+    abstract val gitHubRepository: Property<String>
+
     @get:InputFile
     abstract val releaseNotesFile: RegularFileProperty
 
@@ -40,14 +46,41 @@ abstract class GenerateAppBuildInfoTask : DefaultTask() {
         check(outRoot.invariantSeparatorsPath.contains("/generated/")) {
             "AppBuildInfo must be written under a generated/ directory, got: $outRoot"
         }
+        fun escapeKotlinString(value: String): String =
+            value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\r\n", "\n")
+                .replace("\n", "\\n")
+
         val releaseNotesEscaped = releaseNotesFile.get().asFile
             .takeIf { it.isFile }
             ?.readText()
-            ?.replace("\\", "\\\\")
-            ?.replace("\"", "\\\"")
-            ?.replace("\r\n", "\n")
-            ?.replace("\n", "\\n")
+            ?.let(::escapeKotlinString)
             ?: ""
+
+        val repo = gitHubRepository.get().trim()
+        val shaRaw = gitCommitSha.get().trim()
+        val sha = shaRaw.ifEmpty { "dev" }
+        val gitCommitShort = when {
+            sha.equals("dev", ignoreCase = true) -> "dev"
+            sha.length >= 7 && sha.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' } ->
+                sha.take(7).lowercase()
+            else -> sha.take(7).lowercase()
+        }
+        val gitCommitUrl =
+            if (
+                repo.isNotEmpty() &&
+                shaRaw.isNotEmpty() &&
+                shaRaw.matches(Regex("^[0-9a-fA-F]{7,40}$"))
+            ) {
+                "https://github.com/$repo/commit/${shaRaw.lowercase()}"
+            } else {
+                ""
+            }
+        val gitCommitShaForLinks =
+            if (shaRaw.matches(Regex("^[0-9a-fA-F]{7,40}$"))) shaRaw.lowercase() else ""
+
         outRoot.deleteRecursively()
         outRoot.resolve("ru/fromchat").apply { mkdirs() }.resolve("AppBuildInfo.kt").writeText(
             """
@@ -55,10 +88,14 @@ abstract class GenerateAppBuildInfoTask : DefaultTask() {
             |
             |/** Injected by Gradle into generated sources (not under src/). */
             |object AppBuildInfo {
-            |    const val version = "${versionName.get()}"
+            |    const val version = "${escapeKotlinString(versionName.get())}"
             |    const val versionCode = ${versionCode.get()}
             |    const val isDebug = ${debugBuild.get()}
             |    const val releaseNotesMarkdown = "$releaseNotesEscaped"
+            |    const val gitCommitShort = "${escapeKotlinString(gitCommitShort)}"
+            |    const val gitCommitSha = "${escapeKotlinString(gitCommitShaForLinks)}"
+            |    const val gitCommitUrl = "${escapeKotlinString(gitCommitUrl)}"
+            |    const val githubRepository = "${escapeKotlinString(repo)}"
             |}
             |
             """.trimMargin()
@@ -76,6 +113,8 @@ val generateAppBuildInfo = tasks.register<GenerateAppBuildInfoTask>("generateApp
                 names.any { it.contains("Debug", ignoreCase = true) }
         },
     )
+    gitCommitSha.set(rootProject.extra["gitCommitSha"] as String)
+    gitHubRepository.set(rootProject.extra["gitHubRepository"] as String)
     outputDirectory.set(layout.buildDirectory.dir("generated/sources/appBuildInfo/kotlin"))
 }
 

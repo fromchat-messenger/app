@@ -7,11 +7,14 @@
     <string name="home">Главная</string>
     <string name="about">О приложении</string>
     <string name="about_version">Версия %1$s</string>
+    <string name="about_version_commit_prefix">Версия %1$s, коммит </string>
     <string name="about_link_telegram">Telegram</string>
     <string name="about_link_max">MAX</string>
     <string name="about_link_website">Сайт</string>
     <string name="about_link_privacy">Политика конфиденциальности</string>
     <string name="about_link_terms">Пользовательское соглашение</string>
+    <string name="about_link_license">Лицензия</string>
+    <string name="about_link_license_desc">AGPL-3.0</string>
     <string name="about_what_changed">Что изменилось в этом обновлении</string>
     <string name="release_notes_title">Что нового</string>
     <string name="release_notes_ok">OK</string>

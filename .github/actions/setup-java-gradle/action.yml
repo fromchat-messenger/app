@@ -45,6 +45,14 @@ runs:
         java-version: "17"
         architecture: ${{ inputs.java-architecture }}
 
+    - name: Export Gradle build metadata
+      shell: bash
+      run: |
+        {
+          echo "ORG_GRADLE_PROJECT_gitCommitSha=${{ github.sha }}"
+          echo "ORG_GRADLE_PROJECT_gitHubRepository=${{ github.repository }}"
+        } >> "$GITHUB_ENV"
+
     - name: Export the jmods-capable desktop JDK
       if: inputs.desktop-jdk != ''
       shell: bash

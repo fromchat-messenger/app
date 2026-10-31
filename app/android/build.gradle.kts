@@ -122,9 +122,14 @@ extensions.configure<ApplicationExtension> {
     }
 
     buildTypes {
+        val versionBase = rootProject.extra["versionName"] as String
+        val skipBetaSuffix = Regex("(?i)-beta(\\d+)?$").containsMatchIn(versionBase)
+
         debug {
             applicationIdSuffix = ".beta"
-            versionNameSuffix = "-beta"
+            if (!skipBetaSuffix) {
+                versionNameSuffix = "-beta"
+            }
             if (hasDebugKeystore) {
                 signingConfig = signingConfigs.getByName("debug")
             }

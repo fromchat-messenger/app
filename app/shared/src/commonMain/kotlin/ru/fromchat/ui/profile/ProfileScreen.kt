@@ -1895,6 +1895,7 @@ private fun ProfileBioMarkdown(
     MarkdownPlain(
         content = content,
         modifier = modifier,
+        bodyColor = MaterialTheme.colorScheme.onSurfaceVariant,
         onLinkClick = { uri ->
             runCatching { uriHandler.openUri(uri) }.onFailure {
                 scope.launch {

@@ -39,6 +39,10 @@ jobs:
             V="${GITHUB_REF_NAME#win-x64-}"
           fi
           bash scripts/ci-set-version.sh "$V"
+          {
+            echo "ORG_GRADLE_PROJECT_gitCommitSha=${{ github.sha }}"
+            echo "ORG_GRADLE_PROJECT_gitHubRepository=${{ github.repository }}"
+          } >> "$GITHUB_ENV"
       - name: Package Windows x64 installer
         shell: bash
         run: |

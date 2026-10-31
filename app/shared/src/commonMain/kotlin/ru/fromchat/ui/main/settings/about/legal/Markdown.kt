@@ -42,9 +42,11 @@ import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialShapes
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -74,9 +76,60 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ru.fromchat.AppBuildInfo
+import ru.fromchat.appRepoBlobUrl
 import ru.fromchat.ui.components.Text
 
 private const val LINK_PRESS_SCALE = 0.92f
+
+private val VERSION_BETA_SUFFIX = Regex("(?i)-beta(\\d+)?$")
+
+/** Debug builds append `-beta` unless [version] already ends with `-beta` and optional digits. */
+fun appDisplayVersion(version: String, isDebug: Boolean): String {
+    if (!isDebug || VERSION_BETA_SUFFIX.containsMatchIn(version)) return version
+    return "$version-beta"
+}
+
+/**
+ * Opens http(s) links as-is, in-app legal static paths unchanged, and repo-relative `./path` links on GitHub at [AppBuildInfo.gitCommitSha].
+ */
+fun resolveMarkdownLinkTarget(uri: String): String {
+    val normalized = uri.trim().replace('\\', '/')
+    if (
+        normalized.startsWith("http://", ignoreCase = true) ||
+        normalized.startsWith("https://", ignoreCase = true)
+    ) {
+        return normalized
+    }
+    if (resolveLegalDocumentType(normalized) != null) return normalized
+
+    val repoPath = normalized.removePrefix("./").trimStart('/')
+    if (repoPath.isEmpty()) return normalized
+
+    return AppBuildInfo.appRepoBlobUrl(repoPath) ?: normalized
+}
+
+/** Indented line that continues the previous `- ` list item (not a new block). */
+internal fun isMarkdownListItemContinuation(line: String): Boolean {
+    if (line.isBlank()) return false
+    if (!line.first().isWhitespace()) return false
+    val content = line.trim()
+    if (content.startsWith("- ")) return false
+    if (content.startsWith("### ") || content.startsWith("## ") || content.startsWith("# ")) return false
+    if (isLegalMarkdownTableLine(content)) return false
+    return true
+}
+
+internal fun consumeMarkdownListItem(lines: List<String>, startIndex: Int): Pair<String, Int> {
+    val firstLine = lines[startIndex].trimEnd().removePrefix("- ").trim()
+    val parts = mutableListOf(firstLine)
+    var index = startIndex + 1
+    while (index < lines.size && isMarkdownListItemContinuation(lines[index])) {
+        parts += lines[index].trim()
+        index += 1
+    }
+    return parts.joinToString(" ") to index
+}
 
 private fun AnnotatedString.linkAt(offset: Int): AnnotatedString.Range<LinkAnnotation>? {
     if (isEmpty()) return null
@@ -248,6 +301,7 @@ internal fun MarkdownPlain(
     content: String,
     modifier: Modifier = Modifier,
     onLinkClick: (String) -> Unit,
+    bodyColor: Color = MaterialTheme.colorScheme.onSurface,
 ) {
     val bodyStyle = MaterialTheme.typography.bodyMedium
     val linkStyle = SpanStyle(
@@ -255,6 +309,7 @@ internal fun MarkdownPlain(
         textDecoration = TextDecoration.Underline,
     )
 
+    CompositionLocalProvider(LocalContentColor provides bodyColor) {
     Column(modifier = modifier) {
         val lines = content.lineSequence().toList()
         var index = 0
@@ -281,12 +336,13 @@ internal fun MarkdownPlain(
                             LegalMarkdownTableView(
                                 table = it,
                                 linkStyle = linkStyle,
+                                textColor = bodyColor,
                                 onLinkClick = onLinkClick,
                             )
                         } else {
                             tableLines.forEach { line ->
                                 MarkdownBlockText(
-                                    text = parseInlineMarkdown(line, linkStyle, onLinkClick),
+                                    text = parseInlineMarkdown(line, linkStyle, bodyColor, onLinkClick),
                                     style = bodyStyle,
                                     modifier = Modifier.padding(bottom = 4.dp),
                                 )
@@ -297,7 +353,7 @@ internal fun MarkdownPlain(
 
                 trimmed.startsWith("### ") -> {
                     MarkdownBlockText(
-                        text = parseInlineMarkdown(trimmed.removePrefix("### "), linkStyle, onLinkClick),
+                        text = parseInlineMarkdown(trimmed.removePrefix("### "), linkStyle, bodyColor, onLinkClick),
                         style = markdownSubsectionStyle(),
                         modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
                     )
@@ -307,7 +363,7 @@ internal fun MarkdownPlain(
 
                 trimmed.startsWith("## ") -> {
                     MarkdownBlockText(
-                        text = parseInlineMarkdown(trimmed.removePrefix("## "), linkStyle, onLinkClick),
+                        text = parseInlineMarkdown(trimmed.removePrefix("## "), linkStyle, bodyColor, onLinkClick),
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                         modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
                     )
@@ -317,7 +373,7 @@ internal fun MarkdownPlain(
 
                 trimmed.startsWith("# ") -> {
                     MarkdownBlockText(
-                        text = parseInlineMarkdown(trimmed.removePrefix("# "), linkStyle, onLinkClick),
+                        text = parseInlineMarkdown(trimmed.removePrefix("# "), linkStyle, bodyColor, onLinkClick),
                         style = MaterialTheme.typography.titleLarge,
                         modifier = Modifier.padding(bottom = 8.dp),
                     )
@@ -326,6 +382,7 @@ internal fun MarkdownPlain(
                 }
 
                 trimmed.startsWith("- ") -> {
+                    val (itemText, nextIndex) = consumeMarkdownListItem(lines, index)
                     Row(modifier = Modifier.padding(start = 8.dp, bottom = 4.dp)) {
                         Text(
                             text = "• ",
@@ -333,17 +390,17 @@ internal fun MarkdownPlain(
                         )
 
                         MarkdownBlockText(
-                            text = parseInlineMarkdown(trimmed.removePrefix("- "), linkStyle, onLinkClick),
+                            text = parseInlineMarkdown(itemText, linkStyle, bodyColor, onLinkClick),
                             style = bodyStyle,
                         )
                     }
 
-                    index += 1
+                    index = nextIndex
                 }
 
                 else -> {
                     MarkdownBlockText(
-                        text = parseInlineMarkdown(trimmed, linkStyle, onLinkClick),
+                        text = parseInlineMarkdown(trimmed, linkStyle, bodyColor, onLinkClick),
                         style = bodyStyle,
                         modifier = Modifier.padding(bottom = 4.dp),
                     )
@@ -351,6 +408,7 @@ internal fun MarkdownPlain(
                 }
             }
         }
+    }
     }
 }
 
@@ -413,7 +471,7 @@ internal fun MarkdownBlockText(
     ) {
         BasicText(
             text = text,
-            style = style.merge(color = MaterialTheme.colorScheme.onSurface),
+            style = style.merge(color = LocalContentColor.current),
             onTextLayout = { layoutResult = it },
         )
     }
@@ -422,6 +480,7 @@ internal fun MarkdownBlockText(
 internal fun parseInlineMarkdown(
     text: String,
     linkStyle: SpanStyle,
+    textColor: Color,
     onLinkClick: (String) -> Unit,
 ): AnnotatedString =
     buildAnnotatedString {
@@ -431,10 +490,21 @@ internal fun parseInlineMarkdown(
                 text.startsWith("**", index) -> {
                     val end = text.indexOf("**", index + 2)
                     if (end != -1) {
-                        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                        withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = textColor)) {
                             append(text.substring(index + 2, end))
                         }
                         index = end + 2
+                    } else {
+                        append(text[index])
+                        index += 1
+                    }
+                }
+
+                text[index] == '`' -> {
+                    val end = text.indexOf('`', index + 1)
+                    if (end != -1) {
+                        append(text.substring(index + 1, end))
+                        index = end + 1
                     } else {
                         append(text[index])
                         index += 1
@@ -464,6 +534,11 @@ internal fun parseInlineMarkdown(
                         append(text[index])
                         index += 1
                     }
+                }
+
+                text[index] == '\\' && index + 1 < text.length -> {
+                    append(text[index + 1])
+                    index += 2
                 }
 
                 else -> {
@@ -497,6 +572,7 @@ private fun isMarkdownTableSeparator(line: String) =
 private fun LegalMarkdownTableView(
     table: MarkdownTable,
     linkStyle: SpanStyle,
+    textColor: Color,
     onLinkClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -521,6 +597,7 @@ private fun LegalMarkdownTableView(
                         backgroundColor = MaterialTheme.colorScheme.surfaceContainerLow,
                         borderColor = borderColor,
                         linkStyle = linkStyle,
+                        textColor = textColor,
                         onLinkClick = onLinkClick,
                     )
                 }
@@ -535,6 +612,7 @@ private fun LegalMarkdownTableView(
                             backgroundColor = MaterialTheme.colorScheme.surface,
                             borderColor = borderColor,
                             linkStyle = linkStyle,
+                            textColor = textColor,
                             onLinkClick = onLinkClick,
                         )
                     }
@@ -551,6 +629,7 @@ private fun MarkdownTableCell(
     backgroundColor: Color,
     borderColor: Color,
     linkStyle: SpanStyle,
+    textColor: Color,
     onLinkClick: (String) -> Unit,
 ) {
     Box(
@@ -562,7 +641,7 @@ private fun MarkdownTableCell(
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         MarkdownBlockText(
-            text = parseInlineMarkdown(text, linkStyle, onLinkClick),
+            text = parseInlineMarkdown(text, linkStyle, textColor, onLinkClick),
             style = style,
         )
     }

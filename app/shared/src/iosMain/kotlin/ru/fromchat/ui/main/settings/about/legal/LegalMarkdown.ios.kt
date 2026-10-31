@@ -13,6 +13,6 @@ actual fun Markdown(
     MarkdownPlain(
         content = content,
         modifier = modifier,
-        onLinkClick = { uriHandler.openUri(it) },
+        onLinkClick = { uriHandler.openUri(resolveMarkdownLinkTarget(it)) },
     )
 }

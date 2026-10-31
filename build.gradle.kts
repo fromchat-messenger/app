@@ -19,6 +19,38 @@ plugins {
 extra["versionName"] = providers.gradleProperty("versionName").getOrElse("1.2.0-beta21")
 extra["versionCode"] = providers.gradleProperty("versionCode").getOrElse("120021").toInt()
 
+fun parseGitHubRepositoryFromRemote(remote: String): String {
+    if (remote.isBlank()) return ""
+    val normalized = remote.trim().replace('\\', '/')
+    return Regex("""github\.com[/:]([^/]+)/([^/]+?)(?:\.git)?/?$""", RegexOption.IGNORE_CASE)
+        .find(normalized)
+        ?.let { "${it.groupValues[1]}/${it.groupValues[2]}" }
+        .orEmpty()
+}
+
+/** CI: ORG_GRADLE_PROJECT_* from setup-java-gradle / set-version; local builds fall back to git. */
+extra["gitCommitSha"] = providers.gradleProperty("gitCommitSha")
+    .orElse(providers.environmentVariable("GITHUB_SHA"))
+    .orElse(
+        providers.exec {
+            workingDir = rootDir
+            commandLine("git", "rev-parse", "HEAD")
+            isIgnoreExitValue = true
+        }.standardOutput.asText.map { it.trim() },
+    )
+    .getOrElse("")
+
+extra["gitHubRepository"] = providers.gradleProperty("gitHubRepository")
+    .orElse(providers.environmentVariable("GITHUB_REPOSITORY"))
+    .orElse(
+        providers.exec {
+            workingDir = rootDir
+            commandLine("git", "remote", "get-url", "origin")
+            isIgnoreExitValue = true
+        }.standardOutput.asText.map { parseGitHubRepositoryFromRemote(it.trim()) },
+    )
+    .getOrElse("")
+
 buildscript {
     repositories {
         google()

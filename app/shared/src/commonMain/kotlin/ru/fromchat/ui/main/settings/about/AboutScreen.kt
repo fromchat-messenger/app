@@ -10,6 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Balance
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material.icons.rounded.Shield
@@ -28,7 +29,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import ru.fromchat.utils.components.Category
 import ru.fromchat.utils.components.ListItem
@@ -38,18 +44,22 @@ import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
 import ru.fromchat.AppBuildInfo
+import ru.fromchat.appRepoBlobUrl
 import ru.fromchat.Res
 import ru.fromchat.about
 import ru.fromchat.about_link_max
+import ru.fromchat.about_link_license
+import ru.fromchat.about_link_license_desc
 import ru.fromchat.about_link_privacy
 import ru.fromchat.about_link_telegram
 import ru.fromchat.about_link_terms
 import ru.fromchat.about_link_website
-import ru.fromchat.about_version
+import ru.fromchat.about_version_commit_prefix
 import ru.fromchat.about_what_changed
 import ru.fromchat.app_desc
 import ru.fromchat.logo_square
 import ru.fromchat.ui.main.settings.about.legal.DocumentType
+import ru.fromchat.ui.main.settings.about.legal.appDisplayVersion
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.components.BrandTitle
 import ru.fromchat.ui.main.settings.SettingsDetailTopBar
@@ -116,14 +126,8 @@ fun AboutScreen() {
 
                 BrandTitle(Modifier.padding(bottom = 4.dp))
 
-                Text(
-                    text = stringResource(
-                        Res.string.about_version,
-                        AppBuildInfo.version + if (AppBuildInfo.isDebug) "-beta" else "",
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 16.dp)
+                AboutVersionLine(
+                    modifier = Modifier.padding(bottom = 16.dp),
                 )
 
                 Text(
@@ -135,12 +139,13 @@ fun AboutScreen() {
                 )
             }
 
-            Category(Modifier.padding(top = 16.dp)) {
-                if (AppBuildInfo.releaseNotesMarkdown.isNotBlank()) {
+            if (AppBuildInfo.releaseNotesMarkdown.isNotBlank()) {
+                Category(
+                    modifier = Modifier.padding(top = 16.dp),
+                ) {
                     ListItem(
                         headline = stringResource(Res.string.about_what_changed),
                         onClick = { showReleaseNotes = true },
-                        divider = true,
                         leadingContent = {
                             Icon(
                                 imageVector = Icons.Rounded.NewReleases,
@@ -150,7 +155,11 @@ fun AboutScreen() {
                         },
                     )
                 }
+            }
 
+            Category(
+                modifier = Modifier.padding(top = if (AppBuildInfo.releaseNotesMarkdown.isNotBlank()) 8.dp else 16.dp),
+            ) {
                 ListItem(
                     headline = stringResource(Res.string.about_link_telegram),
                     supportingText = URL_TELEGRAM,
@@ -175,10 +184,26 @@ fun AboutScreen() {
                     headline = stringResource(Res.string.about_link_website),
                     supportingText = URL_WEBSITE,
                     onClick = { uriHandler.openUri(URL_WEBSITE) },
-                    divider = true,
                     leadingContent = {
                         Icon(
                             imageVector = Icons.Rounded.Website,
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                )
+            }
+
+            Category(
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
+                ListItem(
+                    headline = stringResource(Res.string.about_link_terms),
+                    onClick = { navController.navigate(DocumentType.route(DocumentType.Terms)) },
+                    divider = true,
+                    leadingContent = {
+                        Icon(
+                            imageVector = Icons.Rounded.Description,
                             contentDescription = null,
                             modifier = Modifier.size(24.dp),
                         )
@@ -199,11 +224,14 @@ fun AboutScreen() {
                 )
 
                 ListItem(
-                    headline = stringResource(Res.string.about_link_terms),
-                    onClick = { navController.navigate(DocumentType.route(DocumentType.Terms)) },
+                    headline = stringResource(Res.string.about_link_license),
+                    supportingText = stringResource(Res.string.about_link_license_desc),
+                    onClick = {
+                        AppBuildInfo.appRepoBlobUrl("LICENSE")?.let(uriHandler::openUri)
+                    },
                     leadingContent = {
                         Icon(
-                            imageVector = Icons.Rounded.Description,
+                            imageVector = Icons.Rounded.Balance,
                             contentDescription = null,
                             modifier = Modifier.size(24.dp),
                         )
@@ -212,4 +240,43 @@ fun AboutScreen() {
             }
         }
     }
+}
+
+@Composable
+private fun AboutVersionLine(modifier: Modifier = Modifier) {
+    val uriHandler = LocalUriHandler.current
+    val versionDisplay = appDisplayVersion(AppBuildInfo.version, AppBuildInfo.isDebug)
+    val prefix = stringResource(Res.string.about_version_commit_prefix, versionDisplay)
+    val commitShort = AppBuildInfo.gitCommitShort
+    val commitUrl = AppBuildInfo.gitCommitUrl
+    val textStyle = MaterialTheme.typography.bodyMedium
+    val bodyColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val linkStyle = textStyle.toSpanStyle().copy(
+        color = MaterialTheme.colorScheme.primary,
+        textDecoration = TextDecoration.Underline,
+    )
+    val annotated = buildAnnotatedString {
+        append(prefix)
+        if (commitUrl.isNotBlank()) {
+            withLink(
+                LinkAnnotation.Clickable(
+                    tag = commitUrl,
+                    styles = TextLinkStyles(style = linkStyle),
+                    linkInteractionListener = { link ->
+                        (link as? LinkAnnotation.Clickable)?.tag?.let(uriHandler::openUri)
+                    },
+                ),
+            ) {
+                append(commitShort)
+            }
+        } else {
+            append(commitShort)
+        }
+    }
+    Text(
+        text = annotated,
+        style = textStyle,
+        color = bodyColor,
+        modifier = modifier,
+    )
 }

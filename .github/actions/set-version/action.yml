@@ -24,5 +24,7 @@ runs:
         {
           echo "ORG_GRADLE_PROJECT_versionName=$VERSION"
           echo "ORG_GRADLE_PROJECT_versionCode=$VERSION_CODE"
+          echo "ORG_GRADLE_PROJECT_gitCommitSha=${{ github.sha }}"
+          echo "ORG_GRADLE_PROJECT_gitHubRepository=${{ github.repository }}"
         } >> "$GITHUB_ENV"
-        echo "versionName=$VERSION versionCode=$VERSION_CODE"
+        echo "versionName=$VERSION versionCode=$VERSION_CODE commit=${GITHUB_SHA} repo=${GITHUB_REPOSITORY}"
