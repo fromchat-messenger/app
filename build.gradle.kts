@@ -16,8 +16,8 @@ plugins {
  * Gradle build-cache key, so a per-release `sed` here gave every release a brand-new cache key
  * and orphaned the previous one — roughly a gigabyte of dead cache per release tag.
  */
-extra["versionName"] = providers.gradleProperty("versionName").getOrElse("1.2.0")
-extra["versionCode"] = providers.gradleProperty("versionCode").getOrElse("120").toInt()
+extra["versionName"] = providers.gradleProperty("versionName").getOrElse("1.2.0-beta21")
+extra["versionCode"] = providers.gradleProperty("versionCode").getOrElse("120021").toInt()
 
 buildscript {
     repositories {
