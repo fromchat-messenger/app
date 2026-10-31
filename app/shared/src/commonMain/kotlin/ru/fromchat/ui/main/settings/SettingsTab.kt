@@ -1,5 +1,6 @@
 package ru.fromchat.ui.main.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -18,7 +19,6 @@ import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -59,6 +59,10 @@ import ru.fromchat.ui.main.desktop.LocalDesktopSettingsNavController
 import ru.fromchat.ui.main.LocalMainChromeInsets
 import ru.fromchat.ui.main.mainPagerBottomInset
 import ru.fromchat.ui.main.nav.navigateReplacingMainDetail
+import ru.fromchat.ui.main.settings.rememberSettingsDetailHazeState
+import ru.fromchat.ui.main.settings.settingsDetailHazeSource
+import ru.fromchat.ui.main.settings.settingsDetailTopBarColors
+import ru.fromchat.ui.main.settings.settingsDetailTopBarHazeBlur
 
 val SettingsStepHorizontalPadding = 24.dp
 
@@ -67,6 +71,12 @@ fun SettingsTab() {
     val navController =
         LocalDesktopSettingsNavController.current ?: LocalNavController.current
     val isTwoPane = currentWindowAdaptiveInfo().widthSizeClass != WindowWidthSizeClass.COMPACT
+    val hazeState = rememberSettingsDetailHazeState()
+    val listSurfaceColor = if (LocalConversationListDetailActive.current) {
+        MaterialTheme.colorScheme.surfaceContainerLowest
+    } else {
+        MaterialTheme.colorScheme.surface
+    }
 
     fun openDetail(route: String) {
         navController.navigateReplacingMainDetail(route = route)
@@ -79,6 +89,7 @@ fun SettingsTab() {
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
+                modifier = Modifier.settingsDetailTopBarHazeBlur(hazeState),
                 windowInsets = if (LocalMainChromeInsets.current.top > 0.dp) {
                     WindowInsets.extraStatusBars
                 } else {
@@ -87,20 +98,15 @@ fun SettingsTab() {
                 title = {
                     Text(stringResource(Res.string.settings), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 },
-                // Two-pane list sits on AppPanel (`surfaceContainerLowest`); compact uses `surface`.
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = if (LocalConversationListDetailActive.current) {
-                        MaterialTheme.colorScheme.surfaceContainerLowest
-                    } else {
-                        MaterialTheme.colorScheme.surface
-                    },
-                ),
+                colors = settingsDetailTopBarColors(),
             )
         }
     ) { innerPadding ->
         Column(
             Modifier
                 .fillMaxSize()
+                .background(listSurfaceColor)
+                .settingsDetailHazeSource(hazeState)
                 .verticalScroll()
                 .mainPagerBottomInset()
         ) {

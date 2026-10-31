@@ -59,6 +59,25 @@ fun rememberSettingsDetailHazeState(): HazeState = rememberHazeState()
 
 fun Modifier.settingsDetailHazeSource(hazeState: HazeState): Modifier = hazeSource(hazeState)
 
+@Composable
+fun settingsDetailTopBarColors() = TopAppBarDefaults.topAppBarColors(
+    containerColor = Color.Transparent,
+    scrolledContainerColor = Color.Transparent,
+)
+
+@Composable
+fun Modifier.settingsDetailTopBarHazeBlur(hazeState: HazeState): Modifier = hazeBlur(
+    input = HazeInput.Backdrop(hazeState),
+    style = HazeMaterials.thin().then {
+        progressive(
+            HazeProgressive.verticalGradient(
+                startIntensity = 1f,
+                endIntensity = 0f,
+            ),
+        )
+    },
+)
+
 /**
  * [TopAppBarDefaults.exitUntilCollapsedScrollBehavior] plus a nested-scroll wrapper that
  * snaps `heightOffset` to expanded (0) or collapsed (`heightOffsetLimit`) after UserInput
@@ -91,21 +110,8 @@ fun SettingsDetailTopBar(
     scrollBehavior: TopAppBarScrollBehavior? = null,
 ) {
     val topBarWindowInsets = settingsDetailWindowInsets()
-    val topBarColors = TopAppBarDefaults.topAppBarColors(
-        containerColor = Color.Transparent,
-        scrolledContainerColor = Color.Transparent,
-    )
-    val topBarBlur = Modifier.hazeBlur(
-        input = HazeInput.Backdrop(hazeState),
-        style = HazeMaterials.thin().then {
-            progressive(
-                HazeProgressive.verticalGradient(
-                    startIntensity = 1f,
-                    endIntensity = 0f,
-                ),
-            )
-        },
-    )
+    val topBarColors = settingsDetailTopBarColors()
+    val topBarBlur = Modifier.settingsDetailTopBarHazeBlur(hazeState)
     val titleContent: @Composable () -> Unit = {
         Text(
             text = title,

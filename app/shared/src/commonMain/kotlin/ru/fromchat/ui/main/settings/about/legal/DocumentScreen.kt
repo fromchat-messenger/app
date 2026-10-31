@@ -20,19 +20,11 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material.icons.Icons
-import ru.fromchat.ui.components.ChromeBackIconButton
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MediumTopAppBar
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -50,27 +42,25 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import ru.fromchat.utils.ToggleNavScrimEffect
-import dev.chrisbanes.haze.HazeInput
-import dev.chrisbanes.haze.blur.hazeBlur
-import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
+import ru.fromchat.utils.conditional
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.about_link_privacy
 import ru.fromchat.about_link_terms
 import ru.fromchat.attachment_retry
-import ru.fromchat.back
 import ru.fromchat.legal_document_cached_banner
 import ru.fromchat.legal_document_load_error
-import ru.fromchat.ui.chat.chrome.rememberChatSurfaceContainerHazeStyle
 import ru.fromchat.ui.components.ActionButton
 import ru.fromchat.ui.components.ScreenSurface
 import ru.fromchat.ui.components.Text
-import ru.fromchat.ui.theme.extraStatusBars
+import ru.fromchat.ui.main.settings.SettingsDetailTopBar
+import ru.fromchat.ui.main.settings.rememberSettingsCollapsingScrollBehavior
+import ru.fromchat.ui.main.settings.rememberSettingsDetailHazeState
+import ru.fromchat.ui.main.settings.settingsDetailHazeSource
+import ru.fromchat.ui.main.settings.settingsDetailUseCollapsingTopBar
 
 private data class PendingDocument(
     val parsed: ParsedDocument,
@@ -91,19 +81,21 @@ private sealed interface DocumentDisplayState {
     ) : DocumentDisplayState
 }
 
-@OptIn(
-    ExperimentalMaterial3Api::class,
-    ExperimentalMaterial3ExpressiveApi::class,
-)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun DocumentScreen(
     type: DocumentType,
     onBack: () -> Unit,
     onOpenLegalDocument: (DocumentType) -> Unit,
 ) {
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val useCollapsing = settingsDetailUseCollapsingTopBar()
+    val scrollBehavior = rememberSettingsCollapsingScrollBehavior()
     val listState = rememberLazyListState()
-    val hazeState = rememberHazeState()
+    val hazeState = rememberSettingsDetailHazeState()
+    val title = when (type) {
+        DocumentType.Privacy -> stringResource(Res.string.about_link_privacy)
+        DocumentType.Terms -> stringResource(Res.string.about_link_terms)
+    }
 
     LaunchedEffect(type) {
         listState.scrollToItem(0)
@@ -113,36 +105,18 @@ fun DocumentScreen(
 
     ScreenSurface {
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        modifier = Modifier.conditional(useCollapsing) {
+            nestedScroll(scrollBehavior.nestedScrollConnection)
+        },
         containerColor = Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onSurface,
         contentWindowInsets = WindowInsets.navigationBars,
         topBar = {
-            MediumTopAppBar(
-                windowInsets = WindowInsets.extraStatusBars,
-                title = {
-                    Text(
-                        text = when (type) {
-                            DocumentType.Privacy -> stringResource(Res.string.about_link_privacy)
-                            DocumentType.Terms -> stringResource(Res.string.about_link_terms)
-                        },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-                navigationIcon = {
-                    ChromeBackIconButton(onClick = onBack)
-                },
+            SettingsDetailTopBar(
+                title = title,
+                onBack = onBack,
+                hazeState = hazeState,
                 scrollBehavior = scrollBehavior,
-                colors = TopAppBarDefaults.topAppBarColors(
-                    scrolledContainerColor = Color.Transparent
-                ),
-                modifier = Modifier
-                    .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.91f))
-                    .hazeBlur(
-                        input = HazeInput.Backdrop(hazeState),
-                        style = rememberChatSurfaceContainerHazeStyle(),
-                    ),
             )
         },
     ) { innerPadding ->
@@ -189,8 +163,8 @@ fun DocumentScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .consumeWindowInsets(innerPadding)
-                .background(MaterialTheme.colorScheme.background)
-                .hazeSource(hazeState),
+                .settingsDetailHazeSource(hazeState)
+                .background(MaterialTheme.colorScheme.background),
         ) {
             Box(
                 modifier = Modifier
