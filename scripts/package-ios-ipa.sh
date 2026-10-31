@@ -12,6 +12,8 @@ VERSION_CODE="$(printf '%s' "$VERSION" | sed 's/[^0-9]//g')"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 IOS_PROJECT_DIR="$ROOT/app/ios"
 BUILD_DIR="$ROOT/build/ios"
+mkdir -p "$OUT_DIR"
+OUT_DIR="$(cd "$OUT_DIR" && pwd)"
 IPA_NAME="FromChat-${RELEASE_LABEL}.ipa"
 IPA_PATH="$OUT_DIR/$IPA_NAME"
 
@@ -27,7 +29,7 @@ if [[ -z "${JAVA_HOME:-}" ]]; then
 fi
 
 rm -rf "$BUILD_DIR"
-mkdir -p "$BUILD_DIR" "$OUT_DIR"
+mkdir -p "$BUILD_DIR"
 
 # xcodebuild hides Run Script output and starts Gradle without --no-daemon, which often looks
 # "stuck" on CI (no log lines for many minutes). Build the KMP framework explicitly first.
