@@ -51,18 +51,21 @@ export OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES
 echo "Using SDK_NAME=$SDK_NAME"
 
 cd "$ROOT"
-./gradlew :app:shared:embedAndSignAppleFrameworkForXcode \
+./gradlew :app:shared:linkReleaseFrameworkIosArm64 \
   --no-daemon \
   --console=plain \
   -Dorg.gradle.vfs.watch=false \
   -Djdk.lang.Process.launchMechanism=fork
 
-FRAMEWORK_DIR="$ROOT/app/shared/build/xcode-frameworks/Release/$SDK_NAME"
-if [[ ! -d "$FRAMEWORK_DIR" ]]; then
-  echo "Kotlin framework missing under $FRAMEWORK_DIR" >&2
+FRAMEWORK_SRC="$ROOT/app/shared/build/bin/iosArm64/releaseFramework/ComposeApp.framework"
+FRAMEWORK_DEST="$ROOT/app/shared/build/xcode-frameworks/Release/$SDK_NAME/ComposeApp.framework"
+if [[ ! -d "$FRAMEWORK_SRC" ]]; then
+  echo "Release framework missing at $FRAMEWORK_SRC" >&2
   exit 1
 fi
-echo "Kotlin framework ready at $FRAMEWORK_DIR"
+mkdir -p "$(dirname "$FRAMEWORK_DEST")"
+rm -rf "$FRAMEWORK_DEST"
+cp -R "$FRAMEWORK_SRC" "$FRAMEWORK_DEST"
 
 echo "Running xcodebuild (Kotlin build phase skipped)…"
 xcodebuild \
