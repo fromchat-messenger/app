@@ -14,7 +14,13 @@ runs:
       run: |
         set -euo pipefail
         VERSION="${{ inputs.version }}"
-        VERSION_CODE="$(printf '%s' "$VERSION" | sed 's/[^0-9]//g')"
+        if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          digits="$(printf '%s' "$VERSION" | sed 's/[^0-9]//g')"
+          # Stable semver: stay above 1.2.0-betaNN (strip -> 1200NN) without rewriting build.gradle.kts.
+          VERSION_CODE=$(( digits * 1000 + 999 ))
+        else
+          VERSION_CODE="$(printf '%s' "$VERSION" | sed 's/[^0-9]//g')"
+        fi
         if [[ -z "$VERSION_CODE" ]]; then
           VERSION_CODE=1
         fi
