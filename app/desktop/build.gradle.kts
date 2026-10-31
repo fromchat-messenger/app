@@ -1170,7 +1170,7 @@ val packageLinuxAppImage = tasks.register<Exec>("packageLinuxAppImage") {
             fi
             ARCH="$(uname -m)"
             export ARCH
-            "$TOOL" "$${stage.absolutePath}" "$${out.absolutePath}"
+            "$TOOL" --no-check-permissions "$${stage.absolutePath}" "$${out.absolutePath}"
             """.trimIndent(),
         )
     }

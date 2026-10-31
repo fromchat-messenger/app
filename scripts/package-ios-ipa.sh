@@ -36,7 +36,8 @@ PRODUCTS_DIR="$BUILD_DIR/Build/Products/Release-iphoneos"
 mkdir -p "$PRODUCTS_DIR"
 
 export CONFIGURATION=Release
-export SDK_NAME="$(xcrun --sdk iphoneos --show-sdk-name)"
+SDK_VERSION="$(xcrun --sdk iphoneos --show-sdk-version)"
+export SDK_NAME="iphoneos${SDK_VERSION}"
 export ARCHS=arm64
 export PLATFORM_NAME=iphoneos
 export EFFECTIVE_PLATFORM_NAME=-iphoneos

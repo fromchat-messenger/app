@@ -1,9 +1,18 @@
 name: Restore JVM compile outputs
-description: Verify JVM compile outputs from the Build JAR artifact are present before packaging
+description: Extract and verify JVM compile outputs from the Build JAR artifact before packaging
 
 runs:
   using: composite
   steps:
+    - name: Extract JVM compile outputs
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ -f jvm-compile-outputs.tar.gz ]]; then
+          tar -xzf jvm-compile-outputs.tar.gz
+        elif [[ -f jvm-compile-outputs/jvm-compile-outputs.tar.gz ]]; then
+          tar -xzf jvm-compile-outputs/jvm-compile-outputs.tar.gz
+        fi
     - name: Verify JVM compile outputs
       shell: bash
       run: |

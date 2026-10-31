@@ -171,6 +171,13 @@ jobs:
           scope: build-jar
       - name: Compile and ProGuard release desktop jars
         run: ./gradlew :app:desktop:exportReleaseProguardForCi --no-daemon --console=plain
+      - name: Archive JVM compile outputs
+        run: |
+          set -euo pipefail
+          tar -czf jvm-compile-outputs.tar.gz \
+            app/shared/build \
+            app/desktop/build/classes \
+            app/desktop/build/libs
       - uses: ./.github/actions/save-gradle-build-cache
         if: always()
         with:
@@ -184,11 +191,7 @@ jobs:
       - uses: actions/upload-artifact@v5
         with:
           name: jvm-compile-outputs
-          path: |
-            app/shared/build
-            app/desktop/build/classes
-            app/desktop/build/libs
-          include-hidden-files: true
+          path: jvm-compile-outputs.tar.gz
           if-no-files-found: error
           retention-days: 3
 
