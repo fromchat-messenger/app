@@ -33,6 +33,12 @@ use windows::Win32::System::Registry::{
     HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WRITE, REG_CREATE_KEY_DISPOSITION,
     REG_DWORD, REG_OPTION_NON_VOLATILE, REG_SZ, REG_VALUE_TYPE, HKEY,
 };
+use windows::Win32::Storage::EnhancedStorage::PKEY_AppUserModel_ID;
+use windows::core::PROPVARIANT;
+use windows::Win32::System::Com::StructuredStorage::{
+    InitPropVariantFromStringAsVector, PropVariantClear,
+};
+use windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore;
 use windows::Win32::UI::Shell::{
     IShellLinkW, ShellExecuteW, FOLDERID_CommonPrograms, FOLDERID_Desktop, FOLDERID_Programs,
     SHGetKnownFolderPath, KF_FLAG_DEFAULT,
@@ -77,6 +83,14 @@ impl FromChatEdition {
 
     pub fn shortcut_name(&self) -> &'static str {
         self.display_name()
+    }
+
+    /// Must match [ru.fromchat.desktop.WindowsAppIdentity] on the JVM side.
+    pub fn app_user_model_id(&self) -> &'static str {
+        match self {
+            Self::Release => "denis0001-dev.FromChat",
+            Self::Beta => "denis0001-dev.FromChat.Beta",
+        }
     }
 
     /// Default install directory leaf (`FromChat` or `FromChat Beta`).
@@ -413,12 +427,21 @@ pub fn known_folder(id: windows::core::GUID) -> Result<PathBuf> {
     }
 }
 
+fn prop_variant_from_wide_string(text: &[u16]) -> Result<PROPVARIANT> {
+    unsafe {
+        InitPropVariantFromStringAsVector(PCWSTR(text.as_ptr()))
+            .ok()
+            .context("InitPropVariantFromStringAsVector AppUserModelID")
+    }
+}
+
 pub fn create_shortcut(
     link_path: &Path,
     target: &Path,
     working_dir: &Path,
     description: &str,
     icon: &Path,
+    app_user_model_id: &str,
 ) -> Result<()> {
     unsafe {
         CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?;
@@ -433,6 +456,16 @@ pub fn create_shortcut(
         link.SetWorkingDirectory(PCWSTR(work_w.as_ptr()))?;
         link.SetDescription(PCWSTR(desc_w.as_ptr()))?;
         link.SetIconLocation(PCWSTR(icon_w.as_ptr()), 0)?;
+        let property_store: IPropertyStore = link.cast()?;
+        let app_id_w = wide(app_user_model_id);
+        let mut app_id_prop = prop_variant_from_wide_string(&app_id_w)?;
+        property_store
+            .SetValue(&PKEY_AppUserModel_ID, &app_id_prop)
+            .context("SetValue System.AppUserModel.ID")?;
+        PropVariantClear(&mut app_id_prop).ok().context("PropVariantClear")?;
+        property_store
+            .Commit()
+            .context("Commit shortcut property store")?;
         let persist: IPersistFile = link.cast()?;
         let link_w = wide(&link_path.to_string_lossy());
         persist.Save(PCWSTR(link_w.as_ptr()), true)?;

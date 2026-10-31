@@ -127,6 +127,7 @@ fn dispatch(handle: fromchat_installer_common::PipeHandle, cmd: HelperCommand) -
                     &dest,
                     edition.display_name(),
                     &icon,
+                    edition.app_user_model_id(),
                 )?;
             }
             if desktop {
@@ -137,6 +138,7 @@ fn dispatch(handle: fromchat_installer_common::PipeHandle, cmd: HelperCommand) -
                     &dest,
                     edition.display_name(),
                     &icon,
+                    edition.app_user_model_id(),
                 )?;
             }
             pipe_write_line(
@@ -253,10 +255,18 @@ fn dispatch(handle: fromchat_installer_common::PipeHandle, cmd: HelperCommand) -
                 &dest,
                 edition.display_name(),
                 &icon,
+                edition.app_user_model_id(),
             )?;
             if desktop_shortcut {
                 let link = desktop_folder()?.join(&shortcut);
-                create_shortcut(&link, &launch_exe, &dest, edition.display_name(), &icon)?;
+                create_shortcut(
+                    &link,
+                    &launch_exe,
+                    &dest,
+                    edition.display_name(),
+                    &icon,
+                    edition.app_user_model_id(),
+                )?;
             }
             pipe_write_line(
                 handle,

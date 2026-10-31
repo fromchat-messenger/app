@@ -1,4 +1,4 @@
-use crate::BRANDING_PNG;
+use crate::branding::{png_bytes_to_ico, BRANDING_PNG};
 use anyhow::{Context, Result};
 use editpe::{Image, ResourceEntryName};
 use std::path::Path;
@@ -18,8 +18,9 @@ pub fn patch_jpackage_exe_icon(exe_path: &Path) -> Result<()> {
     let mut resources = image.resource_directory().cloned().unwrap_or_default();
     resources.root_mut().remove(ResourceEntryName::ID(RT_ICON));
     resources.root_mut().remove(ResourceEntryName::ID(RT_GROUP_ICON));
-    let tmp = std::env::temp_dir().join("fromchat-branding.png");
-    std::fs::write(&tmp, BRANDING_PNG).context("write temp branding png")?;
+    let ico_bytes = png_bytes_to_ico(BRANDING_PNG).context("encode branding ico")?;
+    let tmp = std::env::temp_dir().join("fromchat-branding.ico");
+    std::fs::write(&tmp, &ico_bytes).context("write temp branding ico")?;
     resources
         .set_main_icon_file(
             tmp.to_str()

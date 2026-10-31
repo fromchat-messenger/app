@@ -1477,6 +1477,7 @@ fn run_full_install(
                 &dest,
                 edition.display_name(),
                 &icon,
+                edition.app_user_model_id(),
             )?;
         }
         let programs = fromchat_installer_common::programs_folder(all_users)?;
@@ -1487,6 +1488,7 @@ fn run_full_install(
             &dest,
             edition.display_name(),
             &icon,
+            edition.app_user_model_id(),
         )?;
     }
     let _ = app_exe;
@@ -1672,6 +1674,7 @@ fn run_upgrade(
             &dest,
             installed.edition.display_name(),
             &icon,
+            installed.edition.app_user_model_id(),
         )?;
         if desktop_shortcut {
             let desk = fromchat_installer_common::desktop_folder()?;
@@ -1681,6 +1684,7 @@ fn run_upgrade(
                 &dest,
                 installed.edition.display_name(),
                 &icon,
+                installed.edition.app_user_model_id(),
             )?;
         }
     }

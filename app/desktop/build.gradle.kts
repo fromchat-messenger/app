@@ -1029,7 +1029,7 @@ val windowsSetupOutput = desktopDistDir.map {
 val windowsUniversalSetupOutput = desktopDistDir.map {
     it.file("FromChat-Setup-$desktopVersionName-windows-universal.exe")
 }
-val windowsBetaSetupOutput = desktopDistDir.map { it.file("FromChat-Setup-$desktopVersionName-beta2.exe") }
+val windowsBetaSetupOutput = desktopDistDir.map { it.file("FromChat-Setup-$desktopVersionName.exe") }
 val macDmgReleaseOutput = desktopDistDir.map {
     it.file("FromChat-$desktopVersionName-macOS-${desktopReleaseArchLabel()}.dmg")
 }

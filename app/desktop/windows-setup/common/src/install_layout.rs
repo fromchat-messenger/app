@@ -30,6 +30,8 @@ pub fn finalize_install_launcher(
         let visible = dest.join(visible_name);
         fs::write(&visible, launcher_bytes)
             .with_context(|| format!("write visible launcher {}", visible.display()))?;
+        crate::patch_jpackage_exe_icon(&visible)
+            .with_context(|| format!("patch icon on {}", visible.display()))?;
         let legacy = dest.join(LEGACY_VISIBLE_BETA_EXE);
         if legacy.is_file() {
             let _ = fs::remove_file(&legacy);

@@ -36,6 +36,8 @@ if /I "%1"=="beta" (
     )
   )
   gradlew.bat :app:desktop:packageBetaWindows -PbetaDesktop --no-daemon
+  if errorlevel 1 exit /b 1
+  call "%~dp0copy-installers-to-desktop.cmd"
   exit /b %ERRORLEVEL%
 )
 
@@ -59,14 +61,17 @@ if /I "%1"=="gradle" (
   if errorlevel 1 exit /b 1
   if exist gradle\gradle-daemon-jvm.properties del /f gradle\gradle-daemon-jvm.properties
   gradlew.bat :app:desktop:packageReleaseWindows --no-daemon
+  if errorlevel 1 exit /b 1
+  call "%~dp0copy-installers-to-desktop.cmd"
   exit /b %ERRORLEVEL%
 )
 
-echo Usage: build-windows-vm.cmd sync [all^|rust^|scripts^|gradle]
+echo Usage: build-windows-vm.cmd sync [all^|rust^|scripts^|gradle^|purge-sources]
 echo        build-windows-vm.cmd rust    ^(sync windows-setup, then cargo build^)
 echo        build-windows-vm.cmd beta    ^(debug app + beta setup EXE, no ProGuard^)
 echo        build-windows-vm.cmd install ^(beta build + upgrade install + launch^)
 echo        Place x64 app-image: scripts\stage-windows-x64-prebuilt.cmd ^<path^>
 echo        build-windows-vm.cmd pack    ^(sync, rust, packSetupOnly — fast UI loop^)
 echo        build-windows-vm.cmd gradle  ^(sync, full packageReleaseWindows^)
+echo        After beta/gradle: copies newest FromChat-Setup-*.exe to the Windows user Desktop
 exit /b 1

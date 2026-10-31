@@ -22,15 +22,15 @@ if not defined WIN_DESKTOP (
 )
 
 set "INSTALLER="
-for /f "delims=" %%F in ('dir /b /od "%WIN_DESKTOP%\FromChat-Setup-*-beta2.exe" 2^>nul') do set "INSTALLER=%WIN_DESKTOP%\%%F"
+for /f "delims=" %%F in ('dir /b /od "%WIN_DESKTOP%\FromChat-Setup-*.exe" 2^>nul') do set "INSTALLER=%WIN_DESKTOP%\%%F"
 
 if not defined INSTALLER (
   set "DIST=C:\FromChat\app\app\desktop\build\distributions\release"
-  for /f "delims=" %%F in ('dir /b /od "%DIST%\FromChat-Setup-*-beta2.exe" 2^>nul') do set "INSTALLER=%DIST%\%%F"
+  for /f "delims=" %%F in ('dir /b /od "%DIST%\FromChat-Setup-*.exe" 2^>nul') do set "INSTALLER=%DIST%\%%F"
 )
 
 if not exist "%INSTALLER%" (
-  echo ERROR: No FromChat-Setup-*-beta2.exe on Desktop or in dist folder
+  echo ERROR: No FromChat-Setup-*.exe on Desktop or in dist folder
   exit /b 1
 )
 
