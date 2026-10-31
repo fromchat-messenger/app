@@ -1,18 +1,16 @@
+# Release builds run on workflow_dispatch only — never on tag pushes.
+#
+# Why: workflow-run caches are scoped by ref. A run can only restore caches saved for its own ref
+# or for the default branch ("Restrictions for accessing a cache"), and a save made during a
+# tag-triggered run is pinned to that tag and reusable by nobody — every release tag would start
+# cold and never warm another build. Dispatching from the default branch makes every save land in
+# the default-branch scope, which all future runs can restore. The tag does not have to exist
+# beforehand: the publish step creates it (pointing at the commit that was built). Dispatch from a
+# non-default branch still works (hotfix betas), but its saves are scoped to that branch only,
+# so it never warms and never reuses the shared cache — resolve-version warns about it.
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
-    paths:
-      - "app/**"
-      - "utils/**"
-      - "gradle/**"
-      - "build.gradle.kts"
-      - "settings.gradle.kts"
-      - "gradle.properties"
-      - ".github/workflows/release.yml"
-      - ".github/actions/**"
   workflow_dispatch:
     inputs:
       version:
@@ -56,7 +54,7 @@ env:
 
 jobs:
   resolve-version:
-    name: Resolve version
+    name: Resolve version and check build inputs
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -66,16 +64,17 @@ jobs:
       prerelease: ${{ steps.ver.outputs.prerelease }}
       release_label: ${{ steps.ver.outputs.release_label }}
       force_update_release: ${{ steps.ver.outputs.force_update_release }}
+      should_build: ${{ steps.decide.outputs.should_build }}
+      inputs_hash: ${{ steps.hash.outputs.hash }}
     steps:
       - id: ver
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            V="${{ github.event.inputs.version }}"
-          else
-            V="${GITHUB_REF_NAME#v}"
+          V="${{ github.event.inputs.version }}"
+          if [ "${{ github.ref_name }}" != "${{ github.event.repository.default_branch }}" ]; then
+            echo "::warning::Dispatched from '${{ github.ref_name }}' instead of the default branch ('${{ github.event.repository.default_branch }}'). Caches saved by this run are scoped to '${{ github.ref_name }}' and invisible to future runs — dispatch from '${{ github.event.repository.default_branch }}' to keep the build caches reusable."
           fi
           if [[ ! "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]]; then
             echo "Invalid version: $V" >&2
@@ -102,38 +101,20 @@ jobs:
             *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
           esac
           if gh release view "$TAG" >/dev/null 2>&1; then
-            case "${{ github.event_name }}" in
-              workflow_dispatch)
-                if [ "${{ github.event.inputs.force_update_release }}" = "true" ]; then
-                  echo "Release $TAG exists; force_update_release enabled."
-                  echo "force_update_release=true" >> "$GITHUB_OUTPUT"
-                elif [ "${{ github.event.inputs.skip_publish }}" = "true" ]; then
-                  echo "Release $TAG exists; skip_publish enabled — build only."
-                  echo "force_update_release=false" >> "$GITHUB_OUTPUT"
-                else
-                  echo "Release $TAG already exists. Use force_update_release=true to republish or skip_publish=true to build only." >&2
-                  exit 1
-                fi
-                ;;
-              *)
-                echo "Release $TAG already exists. Delete it first, then push the tag again." >&2
-                exit 1
-                ;;
-            esac
+            if [ "${{ github.event.inputs.force_update_release }}" = "true" ]; then
+              echo "Release $TAG exists; force_update_release enabled."
+              echo "force_update_release=true" >> "$GITHUB_OUTPUT"
+            elif [ "${{ github.event.inputs.skip_publish }}" = "true" ]; then
+              echo "Release $TAG exists; skip_publish enabled — build only."
+              echo "force_update_release=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "Release $TAG already exists. Use force_update_release=true to republish or skip_publish=true to build only." >&2
+              exit 1
+            fi
           else
             echo "force_update_release=false" >> "$GITHUB_OUTPUT"
           fi
 
-  check-build:
-    name: Check build inputs
-    needs: resolve-version
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    outputs:
-      should_build: ${{ steps.decide.outputs.should_build }}
-      inputs_hash: ${{ steps.hash.outputs.hash }}
-    steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/hash-release-build-inputs
         id: hash
@@ -141,16 +122,16 @@ jobs:
         id: built
         with:
           path: .release-built-marker
-          key: release-built-${{ needs.resolve-version.outputs.tag }}-${{ steps.hash.outputs.hash }}
+          key: release-built-${{ steps.ver.outputs.tag }}-${{ steps.hash.outputs.hash }}
           lookup-only: true
       - id: decide
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.resolve-version.outputs.tag }}
+          TAG: ${{ steps.ver.outputs.tag }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.rebuild }}" = "true" ]; then
+          if [ "${{ github.event.inputs.rebuild }}" = "true" ]; then
             echo "should_build=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -168,12 +149,13 @@ jobs:
 
   desktop-proguard:
     name: Build JAR
-    needs: [resolve-version, check-build]
-    if: needs.check-build.outputs.should_build == 'true'
+    needs: resolve-version
+    if: needs.resolve-version.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
       FROMCHAT_PREBUILT_PROGUARD: "0"
+      ORG_GRADLE_PROJECT_org.gradle.workers.max: "4"
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/restore-git-mtimes
@@ -181,12 +163,21 @@ jobs:
         with:
           version: ${{ needs.resolve-version.outputs.version }}
       - uses: ./.github/actions/setup-java-gradle
+        with:
+          desktop-jdk: "25"
       - uses: ./.github/actions/cache-gradle-build
         id: gradle-build-cache
         with:
           scope: build-jar
       - name: Compile and ProGuard release desktop jars
         run: ./gradlew :app:desktop:exportReleaseProguardForCi --no-daemon --console=plain
+      - name: Archive JVM compile outputs
+        run: |
+          set -euo pipefail
+          tar -czf jvm-compile-outputs.tar.gz \
+            app/shared/build \
+            app/desktop/build/classes \
+            app/desktop/build/libs
       - uses: ./.github/actions/save-gradle-build-cache
         if: always()
         with:
@@ -197,29 +188,53 @@ jobs:
           path: app/desktop/build/ci/proguard/
           if-no-files-found: error
           retention-days: 3
+      - uses: actions/upload-artifact@v5
+        with:
+          name: jvm-compile-outputs
+          path: jvm-compile-outputs.tar.gz
+          if-no-files-found: error
+          retention-days: 3
 
-  windows-common:
-    name: Windows installer
-    needs: [resolve-version, check-build]
-    if: needs.check-build.outputs.should_build == 'true'
-    runs-on: windows-latest
-    timeout-minutes: 30
+  windows-tools:
+    name: Windows tools (${{ matrix.label }})
+    needs: resolve-version
+    if: needs.resolve-version.outputs.should_build == 'true'
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            label: x64
+            runner: windows-latest
+            rust-target: x86_64-pc-windows-msvc
+            java-distribution: temurin
+          - arch: arm64
+            label: ARM
+            runner: windows-11-arm
+            rust-target: aarch64-pc-windows-msvc
+            # Adoptium publishes no Windows aarch64 build for 17, hence zulu. See the ARM leg of
+            # windows-package for why the Gradle JVM must not be 21+ on Windows ARM64.
+            java-distribution: zulu
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/restore-git-mtimes
       - uses: ./.github/actions/set-version
         with:
           version: ${{ needs.resolve-version.outputs.version }}
+      # This job only needs a JVM to drive cargo; the app image is packaged by windows-package.
       - uses: ./.github/actions/setup-java-gradle
+        with:
+          java-distribution: ${{ matrix.java-distribution }}
       - uses: ./.github/actions/cache-gradle-build
         id: gradle-build-cache
         with:
-          scope: windows-installer
+          scope: windows-tools-${{ matrix.arch }}
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-msvc
+          targets: ${{ matrix.rust-target }}
       - uses: ./.github/actions/cache-windows-rust-tools
-        id: rust-tools-cache
       - name: Verify Windows Rust binaries
         id: rust-binaries
         shell: bash
@@ -238,6 +253,10 @@ jobs:
             fi
           done
           echo "ready=$ready" >> "$GITHUB_OUTPUT"
+      # cargo builds for the host, so each runner produces tooling for its own architecture. That
+      # matters: fromchat-pack picks the embedded payload with std::env::consts::ARCH, the stub's
+      # compile-time arch, so an x64 stub running emulated on ARM64 looks for an x86_64 payload the
+      # ARM64 bundle does not contain ("installer has no payload for this CPU (x86_64)").
       - name: Build Windows installer Rust tooling
         if: steps.rust-binaries.outputs.ready != 'true'
         shell: bash
@@ -246,7 +265,7 @@ jobs:
         if: always()
       - uses: actions/upload-artifact@v5
         with:
-          name: windows-rust-tools
+          name: windows-rust-tools-${{ matrix.arch }}
           path: app/desktop/windows-setup/target/release/*.exe
           if-no-files-found: error
           retention-days: 3
@@ -257,10 +276,11 @@ jobs:
 
   windows-package:
     name: Windows (${{ matrix.label }})
-    needs: [resolve-version, check-build, desktop-proguard, windows-common]
-    if: needs.check-build.outputs.should_build == 'true'
+    needs: [resolve-version, desktop-proguard, windows-tools]
+    if: needs.resolve-version.outputs.should_build == 'true'
     env:
       FROMCHAT_PREBUILT_PROGUARD: "1"
+      FROMCHAT_PREBUILT_JVM: "1"
     strategy:
       fail-fast: false
       matrix:
@@ -268,9 +288,18 @@ jobs:
           - arch: x64
             label: x64
             runner: windows-latest
+            java-distribution: temurin
           - arch: arm64
             label: ARM
             runner: windows-11-arm
+            # JDK-8371740: a LinkedTransferQueue race, fixed only in JDK 26, makes Gradle on
+            # Windows ARM64 hang at build shutdown ("Timeout waiting for concurrent jobs to
+            # complete") whenever it runs on JDK 21+. This runner's ambient JAVA_HOME is Temurin
+            # 21.0.12, so pin the Gradle JVM to 17 — exactly what the x64 leg does. Adoptium
+            # publishes no Windows aarch64 build for 17, hence zulu. Packaging is unaffected:
+            # resolvePackagingJdkHome() rejects 17 as too old and falls back to the Java 25
+            # toolchain JDK for jpackage.
+            java-distribution: zulu
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     steps:
@@ -284,15 +313,9 @@ jobs:
         shell: cmd
         run: call scripts\ensure-windows-arm64-jdk.cmd
       - uses: ./.github/actions/setup-java-gradle
-        if: matrix.arch == 'x64'
         with:
           cache-read-only: "true"
-      - uses: gradle/actions/setup-gradle@v5
-        if: matrix.arch == 'arm64'
-        with:
-          gradle-version: wrapper
-          cache-read-only: true
-          add-job-summary: on-failure
+          java-distribution: ${{ matrix.java-distribution }}
       - uses: ./.github/actions/cache-gradle-build
         id: gradle-build-cache
         with:
@@ -301,10 +324,19 @@ jobs:
         with:
           name: desktop-proguard
           path: app/desktop/build/prebuilt/main-release/proguard
+      - uses: actions/download-artifact@v5
+        with:
+          name: jvm-compile-outputs
+          path: .
+      - uses: ./.github/actions/restore-jvm-compile-outputs
+      # Tooling for this architecture, built natively by the windows-tools matrix leg. The two
+      # architectures must not share: fromchat-pack selects the embedded payload with
+      # std::env::consts::ARCH, so an x64 stub on ARM64 reports "x86_64" and finds no x86_64
+      # payload in the ARM-only bundle.
       - name: Restore Windows Rust installer tools
         uses: actions/download-artifact@v5
         with:
-          name: windows-rust-tools
+          name: windows-rust-tools-${{ matrix.arch }}
           path: app/desktop/windows-setup/target/release
       - name: Package Windows ${{ matrix.arch }} installer
         shell: bash
@@ -334,19 +366,24 @@ jobs:
 
   macos:
     name: macOS (${{ matrix.label }})
-    needs: [resolve-version, check-build, desktop-proguard]
-    if: needs.check-build.outputs.should_build == 'true'
+    needs: [resolve-version, desktop-proguard]
+    if: needs.resolve-version.outputs.should_build == 'true'
     env:
       FROMCHAT_PREBUILT_PROGUARD: "1"
+      FROMCHAT_PREBUILT_JVM: "1"
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: arm64
             label: Apple Silicon
+            runner: macos-latest
+          # jpackage cannot cross-build: on an arm64 runner this job silently ships
+          # arm64 binaries under the -intel.dmg name (beta18 did exactly that).
           - arch: x64
             label: Intel
-    runs-on: macos-latest
+            runner: macos-26-intel
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
@@ -371,28 +408,56 @@ jobs:
         with:
           name: desktop-proguard
           path: app/desktop/build/prebuilt/main-release/proguard
+      - uses: actions/download-artifact@v5
+        with:
+          name: jvm-compile-outputs
+          path: .
+      - uses: ./.github/actions/restore-jvm-compile-outputs
       - name: Cache DMG background tooling
         uses: actions/cache@v5
         with:
           path: |
             app/desktop/dmg-background/node_modules
-            ~/.cache/ms-playwright
+            app/desktop/dmg-background/.playwright-browsers
           key: dmg-tools-${{ runner.arch }}-${{ hashFiles('app/desktop/dmg-background/package-lock.json') }}
           restore-keys: dmg-tools-${{ runner.arch }}-
+      - name: Cache DMG export output
+        uses: actions/cache@v5
+        with:
+          path: app/desktop/build/dmg-background/dist
+          key: dmg-export-${{ runner.arch }}-${{ hashFiles('app/desktop/dmg-background/**', 'app/shared/src/commonMain/composeResources/drawable/logo_square.png') }}
+          restore-keys: dmg-export-${{ runner.arch }}-
       - name: Install macOS packaging tools
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/app/desktop/dmg-background/.playwright-browsers
         run: |
           if ! command -v create-dmg >/dev/null 2>&1; then
             brew install create-dmg
           fi
           DMG_DIR="app/desktop/dmg-background"
+          mkdir -p "$PLAYWRIGHT_BROWSERS_PATH"
           if [[ ! -f "$DMG_DIR/node_modules/playwright/package.json" ]]; then
             npm --prefix "$DMG_DIR" ci --no-fund --no-audit
           fi
           npm --prefix "$DMG_DIR" exec playwright install chromium
+          echo "FROMCHAT_DMG_TOOLS_READY=1" >> "$GITHUB_ENV"
+          echo "PLAYWRIGHT_BROWSERS_PATH=$PLAYWRIGHT_BROWSERS_PATH" >> "$GITHUB_ENV"
       - name: Package macOS ${{ matrix.arch }}
         run: |
           export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
           ./gradlew :app:desktop:packageReleaseMac -PdesktopArch=${{ matrix.arch }} --no-daemon --console=plain
+      # jpackage only reports its error text in files on the runner surface — surface them.
+      - name: Dump jpackage logs on failure
+        if: failure()
+        run: |
+          for t in createReleaseDistributable createDmgOther; do
+            D="app/desktop/build/compose/logs/$t"
+            [[ -d "$D" ]] || continue
+            for f in "$D"/*.txt; do
+              echo "===== $f"
+              cat "$f"
+            done
+          done
       - uses: actions/upload-artifact@v5
         with:
           name: macos-${{ matrix.arch }}
@@ -405,10 +470,11 @@ jobs:
 
   linux:
     name: Linux (${{ matrix.label }})
-    needs: [resolve-version, check-build, desktop-proguard]
-    if: needs.check-build.outputs.should_build == 'true'
+    needs: [resolve-version, desktop-proguard]
+    if: needs.resolve-version.outputs.should_build == 'true'
     env:
       FROMCHAT_PREBUILT_PROGUARD: "1"
+      FROMCHAT_PREBUILT_JVM: "1"
     strategy:
       fail-fast: false
       matrix:
@@ -432,6 +498,7 @@ jobs:
       - uses: ./.github/actions/setup-java-gradle
         with:
           cache-read-only: "true"
+          desktop-jdk: "25"
       - uses: ./.github/actions/cache-gradle-build
         id: gradle-build-cache
         with:
@@ -440,6 +507,11 @@ jobs:
         with:
           name: desktop-proguard
           path: app/desktop/build/prebuilt/main-release/proguard
+      - uses: actions/download-artifact@v5
+        with:
+          name: jvm-compile-outputs
+          path: .
+      - uses: ./.github/actions/restore-jvm-compile-outputs
       - name: Install Linux packaging tools
         run: |
           sudo apt-get update
@@ -455,7 +527,11 @@ jobs:
           echo "APPIMAGETOOL=$TOOL" >> "$GITHUB_ENV"
       - name: Package Linux ${{ matrix.arch }}
         run: |
-          export FROMCHAT_PACKAGING_JDK="$JAVA_HOME"
+          # Keep the jmods-capable JDK the setup action exported; fall back to JAVA_HOME.
+          export FROMCHAT_PACKAGING_JDK="${FROMCHAT_PACKAGING_JDK:-$JAVA_HOME}"
+          # packageReleaseDeb/rpm are the slow, quiet parts of this invocation (profiled 2026-10-20:
+          # ~45s/~23s single-threaded jpackage compression) — candidates for parallel-invocation
+          # packaging if we ever want to shorten this leg.
           ./gradlew :app:desktop:packageReleaseLinux -PdesktopArch=${{ matrix.arch }} --no-daemon --console=plain
       - uses: actions/upload-artifact@v5
         with:
@@ -472,8 +548,8 @@ jobs:
 
   android:
     name: Android
-    needs: [resolve-version, check-build]
-    if: needs.check-build.outputs.should_build == 'true'
+    needs: resolve-version
+    if: needs.resolve-version.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -542,43 +618,68 @@ jobs:
           path: release-staging/*.apk
           if-no-files-found: error
 
-  record-build:
-    name: Record successful build
-    needs:
-      - resolve-version
-      - check-build
-      - desktop-proguard
-      - windows-common
-      - windows-package
-      - macos
-      - linux
-      - android
-    if: needs.check-build.outputs.should_build == 'true'
-    runs-on: ubuntu-latest
+  ios:
+    name: iOS
+    needs: resolve-version
+    if: needs.resolve-version.outputs.should_build == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 120
+    env:
+      GRADLE_OPTS: >-
+        -Dorg.gradle.daemon=false
+        -Dorg.gradle.vfs.watch=false
+        -Dorg.gradle.jvmargs=-Xmx6g
+        -Dkotlin.daemon.jvm.options=-Xmx4g
+      ORG_GRADLE_PROJECT_org.gradle.workers.max: "4"
     steps:
-      - run: mkdir -p .release-built-marker && touch .release-built-marker/built
-      - uses: actions/cache/save@v5
-        continue-on-error: true
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/restore-git-mtimes
+      - uses: ./.github/actions/set-version
         with:
-          path: .release-built-marker
-          key: release-built-${{ needs.resolve-version.outputs.tag }}-${{ needs.check-build.outputs.inputs_hash }}
+          version: ${{ needs.resolve-version.outputs.version }}
+      - uses: ./.github/actions/setup-java-gradle
+        with:
+          cache-read-only: "true"
+      - uses: ./.github/actions/cache-gradle-build
+        id: gradle-build-cache
+        with:
+          scope: ios
+      - name: Package unsigned iOS IPA
+        run: |
+          mkdir -p release-staging
+          bash scripts/package-ios-ipa.sh \
+            "${{ needs.resolve-version.outputs.version }}" \
+            "${{ needs.resolve-version.outputs.release_label }}" \
+            release-staging
+      - uses: actions/upload-artifact@v5
+        with:
+          name: ios
+          path: release-staging/*.ipa
+          if-no-files-found: error
+      - uses: ./.github/actions/save-gradle-build-cache
+        if: always()
+        with:
+          scope: ${{ steps.gradle-build-cache.outputs.cache-save-scope }}
 
   publish:
     if: >-
       always() &&
-      (github.event_name != 'workflow_dispatch' || github.event.inputs.skip_publish != 'true') &&
+      github.event.inputs.skip_publish != 'true' &&
       (
-        (needs.check-build.outputs.should_build == 'true' && needs.record-build.result == 'success') ||
-        (needs.check-build.outputs.should_build != 'true' && needs.resolve-version.outputs.force_update_release == 'true')
+        (needs.resolve-version.outputs.should_build == 'true' &&
+          !contains(needs.*.result, 'failure') &&
+          !contains(needs.*.result, 'cancelled') &&
+          !contains(needs.*.result, 'skipped')) ||
+        (needs.resolve-version.outputs.should_build != 'true' &&
+          needs.resolve-version.outputs.force_update_release == 'true')
       )
     needs:
       - resolve-version
-      - check-build
-      - record-build
       - windows-package
       - macos
       - linux
       - android
+      - ios
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -588,25 +689,42 @@ jobs:
           sparse-checkout: |
             RELEASE_NOTES.md
           sparse-checkout-cone-mode: false
+      # Save the build-success marker before publishing: a later step failing must not cause a
+      # re-run to rebuild identical inputs. If the release itself is still missing, decide will
+      # rebuild regardless of a marker hit.
+      - name: Record successful build
+        if: needs.resolve-version.outputs.should_build == 'true'
+        run: mkdir -p .release-built-marker && touch .release-built-marker/built
+      - uses: actions/cache/save@v5
+        if: needs.resolve-version.outputs.should_build == 'true'
+        continue-on-error: true
+        with:
+          path: .release-built-marker
+          key: release-built-${{ needs.resolve-version.outputs.tag }}-${{ needs.resolve-version.outputs.inputs_hash }}
       - name: Update release notes only
-        if: needs.check-build.outputs.should_build != 'true'
+        if: needs.resolve-version.outputs.should_build != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.resolve-version.outputs.tag }}
         run: gh release edit "$TAG" --notes-file RELEASE_NOTES.md
       - uses: actions/download-artifact@v5
-        if: needs.check-build.outputs.should_build == 'true'
+        if: needs.resolve-version.outputs.should_build == 'true'
         with:
           pattern: "{windows,macos,linux}-*"
           merge-multiple: true
           path: artifacts
       - uses: actions/download-artifact@v5
-        if: needs.check-build.outputs.should_build == 'true'
+        if: needs.resolve-version.outputs.should_build == 'true'
         with:
           name: android
           path: artifacts
+      - uses: actions/download-artifact@v5
+        if: needs.resolve-version.outputs.should_build == 'true'
+        with:
+          name: ios
+          path: artifacts
       - name: Collect release assets
-        if: needs.check-build.outputs.should_build == 'true'
+        if: needs.resolve-version.outputs.should_build == 'true'
         env:
           LABEL: ${{ needs.resolve-version.outputs.release_label }}
         run: |
@@ -640,6 +758,7 @@ jobs:
           pick_one "*-linux-x64.AppImage" "FromChat-${LABEL}-x64.AppImage"
           pick_one "*-linux-arm64.AppImage" "FromChat-${LABEL}-arm.AppImage"
           pick_one "*.apk" "FromChat-${LABEL}.apk"
+          pick_one "*.ipa" "FromChat-${LABEL}.ipa"
 
           if find release-assets -type f -name '*.zip' | grep -q .; then
             echo "Release assets must not be zip archives" >&2
@@ -647,7 +766,7 @@ jobs:
           fi
           ls -la release-assets
       - name: Publish GitHub Release
-        if: needs.check-build.outputs.should_build == 'true'
+        if: needs.resolve-version.outputs.should_build == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.resolve-version.outputs.tag }}
@@ -656,9 +775,13 @@ jobs:
           draft: false
           prerelease: ${{ needs.resolve-version.outputs.prerelease == 'true' }}
           generate_release_notes: false
-          overwrite_existing: ${{ needs.resolve-version.outputs.force_update_release == 'true' }}
+          # Re-upload assets to an existing release (force_update_release path). Note: the input
+          # is literally named overwrite_files; overwrite_existing is not a valid input of this
+          # action and used to be silently ignored by GitHub.
+          overwrite_files: true
           files: |
             release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}.apk
+            release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}.ipa
             release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}-x64.exe
             release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}-arm.exe
             release-assets/FromChat-${{ needs.resolve-version.outputs.release_label }}-apple.dmg

@@ -5,7 +5,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.AlternateEmail
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Delete
@@ -18,8 +18,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.pr0gramm3r101.components.Category
-import com.pr0gramm3r101.components.ListItem
+import ru.fromchat.utils.components.Category
+import ru.fromchat.utils.components.ListItem
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
@@ -47,7 +47,7 @@ internal fun consequencesStepPage(
 
     return ExpressiveStepPage(
         hero = ExpressiveHeroSpec(
-            icon = Icons.Filled.DeleteForever,
+            icon = Icons.Rounded.DeleteForever,
             polygon = MaterialShapes.Cookie4Sided.normalized(),
             containerColor = scheme.errorContainer,
             contentColor = scheme.onErrorContainer,

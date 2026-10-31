@@ -1,6 +1,5 @@
 package ru.fromchat.ui.main.settings.account.changepassword
 
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
@@ -21,7 +20,6 @@ private enum class ChangePasswordFlowStep {
     Confirm,
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ChangePasswordScreen(onBack: () -> Unit, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()

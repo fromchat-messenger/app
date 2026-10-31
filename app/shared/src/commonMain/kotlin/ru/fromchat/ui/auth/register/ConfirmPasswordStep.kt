@@ -3,9 +3,9 @@ package ru.fromchat.ui.auth.register
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.VerifiedUser
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.rounded.VerifiedUser
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -40,6 +40,9 @@ import ru.fromchat.ui.components.ExpressiveStepPageHeader
 import ru.fromchat.ui.components.SettingsPasswordOutlineFieldShape
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.expressiveStepFieldColors
+import ru.fromchat.ui.components.expressiveStepSingleLineKeyboardOptions
+import ru.fromchat.ui.components.expressiveStepSubmitKeyboardActions
+import ru.fromchat.ui.components.expressiveStepSubmitOnEnter
 import ru.fromchat.ui.components.trackImeScrollTarget
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 
@@ -59,9 +62,23 @@ internal fun confirmPasswordStepPage(
     val pwdMatch = stringResource(Res.string.passwords_dont_match)
     val nextLabel = stringResource(Res.string.settings_next)
 
+    fun attemptSubmit() {
+        if (confirmPassword.isBlank()) {
+            onSnackbar(fillAll, null)
+            return
+        }
+
+        if (confirmPassword != password) {
+            onSnackbar(pwdMatch, null)
+            return
+        }
+
+        scope.launch { onContinue() }
+    }
+
     return ExpressiveStepPage(
         hero = ExpressiveHeroSpec(
-            icon = Icons.Filled.VerifiedUser,
+            icon = Icons.Rounded.VerifiedUser,
             polygon = MaterialShapes.VerySunny.normalized(),
             containerColor = colorScheme.tertiaryContainer,
             contentColor = colorScheme.onTertiaryContainer,
@@ -81,13 +98,16 @@ internal fun confirmPasswordStepPage(
                 modifier = Modifier
                     .fillMaxWidth()
                     .trackImeScrollTarget(imeScroll, ExpressiveStepLazyListIndices.STEPS_BODY)
+                    .expressiveStepSubmitOnEnter(::attemptSubmit)
                     .padding(horizontal = SettingsStepHorizontalPadding),
                 singleLine = true,
+                keyboardOptions = expressiveStepSingleLineKeyboardOptions(),
+                keyboardActions = expressiveStepSubmitKeyboardActions(::attemptSubmit),
                 visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
                     IconButton(onClick = { visible = !visible }) {
                         Icon(
-                            imageVector = if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                            imageVector = if (visible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
                             contentDescription = stringResource(
                                 if (visible) Res.string.hide_password else Res.string.show_password,
                             ),
@@ -100,19 +120,7 @@ internal fun confirmPasswordStepPage(
         },
         button = {
             ActionButton(
-                onClick = {
-                    if (confirmPassword.isBlank()) {
-                        onSnackbar(fillAll, null)
-                        return@ActionButton
-                    }
-
-                    if (confirmPassword != password) {
-                        onSnackbar(pwdMatch, null)
-                        return@ActionButton
-                    }
-
-                    scope.launch { onContinue() }
-                },
+                onClick = ::attemptSubmit,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(nextLabel)

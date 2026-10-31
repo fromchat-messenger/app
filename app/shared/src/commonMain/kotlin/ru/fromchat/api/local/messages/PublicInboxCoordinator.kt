@@ -3,7 +3,7 @@ package ru.fromchat.api.local.messages
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.db.store.MessageRepository
 import ru.fromchat.api.local.db.store.ProfileCache

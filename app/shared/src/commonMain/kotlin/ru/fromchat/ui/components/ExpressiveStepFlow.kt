@@ -23,7 +23,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
@@ -33,11 +33,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import ru.fromchat.ui.components.ChromeBackIconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -82,13 +81,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.graphics.shapes.Morph
 import androidx.graphics.shapes.RoundedPolygon
-import com.pr0gramm3r101.utils.LastAnchoredBottomArrangement
+import ru.fromchat.utils.imeScrollWithKeyboard
+import ru.fromchat.utils.LastAnchoredBottomArrangement
+import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.blur.hazeBlur
+import dev.chrisbanes.haze.blur.materials.HazeMaterials
 import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
-import dev.chrisbanes.haze.materials.HazeMaterials
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.first
@@ -96,6 +96,7 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.back
+import ru.fromchat.ui.theme.extraStatusBars
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 import kotlin.math.abs
 
@@ -333,7 +334,6 @@ fun MorphedExpressiveStepButton(
 @OptIn(
     ExperimentalAnimationApi::class,
     ExperimentalMaterial3Api::class,
-    ExperimentalHazeMaterialsApi::class,
 )
 @Composable
 fun ExpressiveStepFlowScaffold(
@@ -343,6 +343,8 @@ fun ExpressiveStepFlowScaffold(
     onBackAtFirstPage: () -> Unit,
     trailingTopBarActions: @Composable (() -> Unit)? = null,
     hazeScaffold: Boolean = true,
+    contentBackground: Color = MaterialTheme.colorScheme.background,
+    topBarWindowInsets: WindowInsets = WindowInsets.extraStatusBars,
 ) {
     val pagerState = flowState.pagerState
     val scope = flowState.scope
@@ -550,14 +552,10 @@ fun ExpressiveStepFlowScaffold(
     @Composable
     fun HazeTopBar(hazeState: HazeState) {
         TopAppBar(
+            windowInsets = topBarWindowInsets,
             title = {},
             navigationIcon = {
-                IconButton(onClick = navigateBack) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(Res.string.back),
-                    )
-                }
+                ChromeBackIconButton(onClick = navigateBack)
             },
             actions = {
                 trailingTopBarActions?.invoke()
@@ -566,12 +564,17 @@ fun ExpressiveStepFlowScaffold(
                 containerColor = Color.Transparent,
                 scrolledContainerColor = Color.Transparent,
             ),
-            modifier = Modifier.hazeEffect(state = hazeState, style = HazeMaterials.thin()) {
-                progressive = HazeProgressive.verticalGradient(
-                    startIntensity = 1f,
-                    endIntensity = 0f,
-                )
-            },
+            modifier = Modifier.hazeBlur(
+                input = HazeInput.Backdrop(hazeState),
+                style = HazeMaterials.thin().then {
+                    progressive(
+                        HazeProgressive.verticalGradient(
+                            startIntensity = 1f,
+                            endIntensity = 0f,
+                        ),
+                    )
+                },
+            ),
         )
     }
 
@@ -580,16 +583,11 @@ fun ExpressiveStepFlowScaffold(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .statusBarsPadding()
+                .windowInsetsPadding(topBarWindowInsets)
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = navigateBack) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(Res.string.back),
-                )
-            }
+            ChromeBackIconButton(onClick = navigateBack)
             Spacer(Modifier.weight(1f))
             trailingTopBarActions?.invoke()
         }
@@ -643,7 +641,8 @@ fun ExpressiveStepFlowScaffold(
                             state = listState,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .background(scheme.background)
+                                .imeScrollWithKeyboard()
+                                .background(contentBackground)
                                 .hazeSource(hazeState)
                                 .onGloballyPositioned {
                                     listViewportBounds = it.boundsInWindow()
@@ -726,7 +725,8 @@ fun ExpressiveStepFlowScaffold(
                                 modifier = Modifier
                                     .align(Alignment.TopStart)
                                     .fillMaxWidth()
-                                    .verticalScroll(rememberScrollState()),
+                                    .verticalScroll(rememberScrollState())
+                                    .imeScrollWithKeyboard(),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
                                 ExpressiveStepHeroSection()
@@ -771,7 +771,7 @@ fun ExpressiveStepFlowScaffold(
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalAnimationApi::class)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class, )
 @Composable
 fun MorphedExpressiveHero(
     currentSpec: ExpressiveHeroSpec,

@@ -1,0 +1,261 @@
+/* Fonts and logo are staged by :app:desktop:stageDmgBackground from composeResources. */
+
+@font-face {
+  font-family: "Google Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url("assets/fonts/google_sans_regular.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Google Sans";
+  font-style: normal;
+  font-weight: 500;
+  font-display: block;
+  src: url("assets/fonts/google_sans_medium.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Google Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: block;
+  src: url("assets/fonts/google_sans_semibold.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Google Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+  src: url("assets/fonts/google_sans_bold.ttf") format("truetype");
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  background: rgb(21, 18, 24);
+  overflow: hidden;
+}
+
+:root {
+  --brand-gradient: linear-gradient(
+    45deg,
+    #9333ea,
+    #6366f1,
+    #3b82f6,
+    #a855f7,
+    #d946ef,
+    #ec4899,
+    #7e22ce
+  );
+  --brand-conic: conic-gradient(
+    from 0deg,
+    rgba(147, 51, 234, 0.5) 0%,
+    rgba(99, 102, 241, 0.6) 12.5%,
+    rgba(59, 130, 246, 0.55) 25%,
+    rgba(168, 85, 247, 0.5) 37.5%,
+    rgba(217, 70, 239, 0.6) 50%,
+    rgba(236, 72, 153, 0.55) 62.5%,
+    rgba(192, 132, 252, 0.5) 75%,
+    rgba(126, 34, 206, 0.6) 87.5%,
+    rgba(147, 51, 234, 0.5) 100%
+  );
+  --surface: rgb(21, 18, 24);
+  --on-surface: rgba(230, 224, 233, 0.92);
+  --on-surface-muted: rgba(230, 224, 233, 0.72);
+  /* Extra strip at the bottom; Finder clips it so the visible area lines up with the title bar. */
+  --window-chrome-bottom: 22px;
+  --content-height: 380px;
+  --slot-size: 96px;
+}
+
+#dmg {
+  position: relative;
+  width: 540px;
+  height: calc(var(--content-height) + var(--window-chrome-bottom));
+  overflow: hidden;
+  color: var(--on-surface);
+  font-family: "Google Sans", system-ui, sans-serif;
+  background-color: var(--surface);
+  isolation: isolate;
+}
+
+/* Clipped by Finder at the bottom — keeps the designed content aligned under the title bar. */
+.window-chrome-bleed {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--window-chrome-bottom);
+  background-color: var(--surface);
+  z-index: 0;
+}
+
+.brand {
+  position: absolute;
+  top: 28px;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.brand__logo-wrap {
+  position: relative;
+  width: 100%;
+  overflow-x: clip;
+  display: flex;
+  justify-content: center;
+}
+
+.brand__logo-wrap::before {
+  content: "";
+  background: var(--brand-conic);
+  position: absolute;
+  width: 1200px;
+  height: 1200px;
+  bottom: -180px;
+  opacity: 0.48;
+  left: calc(50% - 600px);
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.brand__logo {
+  width: 68px;
+  height: 68px;
+  background-image: url("assets/logo_square.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  border-radius: 17px;
+  position: relative;
+  z-index: 1;
+}
+
+.brand__wordmark {
+  font-family: "Montserrat", "Google Sans", sans-serif;
+  font-weight: 700;
+  font-size: 30px;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  background: var(--brand-gradient);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  position: relative;
+  z-index: 1;
+}
+
+.brand__tagline {
+  font-family: "Google Sans", sans-serif;
+  font-weight: 500;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  color: rgba(230, 224, 233, 0.9);
+  position: relative;
+  z-index: 1;
+}
+
+.install {
+  position: absolute;
+  /* Vertically centered in the gap between brand block (~151px) and notice (~292px). */
+  top: 174px;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+}
+
+.slot {
+  width: var(--slot-size);
+  height: var(--slot-size);
+  border: none;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.arrow {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  color: rgba(230, 224, 233, 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.arrow svg {
+  display: block;
+  width: 44px;
+  height: 44px;
+}
+
+.notice {
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  bottom: calc(var(--window-chrome-bottom) + 16px);
+  z-index: 1;
+  text-align: center;
+  font-family: "Google Sans", sans-serif;
+  font-weight: 400;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--on-surface-muted);
+  text-wrap: balance;
+}
+
+.notice strong {
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+.slot__label {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Google Sans", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  color: var(--primary-pill, #7e22ce);
+  text-align: center;
+  white-space: nowrap;
+  z-index: 3;
+  pointer-events: none;
+  box-sizing: border-box;
+  min-height: 26px;
+  padding: 5px 12px;
+}
+
+.slot__label::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: var(--primary-pill, #7e22ce);
+  z-index: -1;
+}

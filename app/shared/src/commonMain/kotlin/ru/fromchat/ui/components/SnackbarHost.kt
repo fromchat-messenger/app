@@ -12,7 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 
 /**
  * App-wide snackbar styling: elevated surface container instead of inverse surface.

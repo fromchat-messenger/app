@@ -3,9 +3,9 @@ package ru.fromchat.ui.auth
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,6 +45,9 @@ import ru.fromchat.ui.components.ExpressiveStepPageHeader
 import ru.fromchat.ui.components.SettingsPasswordOutlineFieldShape
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.expressiveStepFieldColors
+import ru.fromchat.ui.components.expressiveStepSingleLineKeyboardOptions
+import ru.fromchat.ui.components.expressiveStepSubmitKeyboardActions
+import ru.fromchat.ui.components.expressiveStepSubmitOnEnter
 import ru.fromchat.ui.components.trackImeScrollTarget
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 
@@ -73,9 +76,61 @@ internal fun passwordStepPage(
     val unexpected = stringResource(Res.string.error_unexpected)
     val loginLabel = stringResource(Res.string.login)
 
+    fun attemptSubmit() {
+        if (busy) return
+
+        if (password.length !in 5..50) {
+            onSnackbar(pwdLen, null)
+            return
+        }
+
+        scope.launch {
+            busy = true
+
+            try {
+                when (
+                    val result = authPasswordStep(
+                        username = username,
+                        password = password,
+                        wrongPasswordMessage = wrongPassword,
+                        rateLimitMessage = rateLimit,
+                        unexpectedError = unexpected,
+                    )
+                ) {
+                    is PasswordStepResult.LoginSuccess -> {
+                        onLoginSuccess()
+                    }
+
+                    is PasswordStepResult.NeedsRegister -> {
+                        onNeedsRegister(
+                            result.yandexRequired,
+                            result.yandex,
+                            result.captchaRequired,
+                            result.captcha,
+                        )
+                    }
+
+                    is PasswordStepResult.WrongPassword -> {
+                        onSnackbar(result.message, null)
+                    }
+
+                    is PasswordStepResult.RateLimited -> {
+                        onSnackbar(result.message, null)
+                    }
+
+                    is PasswordStepResult.Error -> {
+                        onSnackbar(result.message, result.cause)
+                    }
+                }
+            } finally {
+                busy = false
+            }
+        }
+    }
+
     return ExpressiveStepPage(
         hero = ExpressiveHeroSpec(
-            icon = Icons.Filled.Lock,
+            icon = Icons.Rounded.Lock,
             polygon = MaterialShapes.Cookie7Sided.normalized(),
             containerColor = colorScheme.secondaryContainer,
             contentColor = colorScheme.onSecondaryContainer,
@@ -94,14 +149,17 @@ internal fun passwordStepPage(
                 modifier = Modifier
                     .fillMaxWidth()
                     .trackImeScrollTarget(imeScroll, ExpressiveStepLazyListIndices.STEPS_BODY)
+                    .expressiveStepSubmitOnEnter(::attemptSubmit)
                     .padding(horizontal = SettingsStepHorizontalPadding),
                 enabled = !busy,
                 singleLine = true,
+                keyboardOptions = expressiveStepSingleLineKeyboardOptions(),
+                keyboardActions = expressiveStepSubmitKeyboardActions(::attemptSubmit),
                 visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
                     IconButton(onClick = { visible = !visible }) {
                         Icon(
-                            imageVector = if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                            imageVector = if (visible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
                             contentDescription = stringResource(
                                 if (visible) Res.string.hide_password else Res.string.show_password,
                             ),
@@ -115,57 +173,7 @@ internal fun passwordStepPage(
         listFooter = { ChangeServerButton() },
         button = {
             ActionButton(
-                onClick = {
-                    if (busy) return@ActionButton
-
-                    if (password.length !in 5..50) {
-                        onSnackbar(pwdLen, null)
-                        return@ActionButton
-                    }
-
-                    scope.launch {
-                        busy = true
-
-                        try {
-                            when (
-                                val result = authPasswordStep(
-                                    username = username,
-                                    password = password,
-                                    wrongPasswordMessage = wrongPassword,
-                                    rateLimitMessage = rateLimit,
-                                    unexpectedError = unexpected,
-                                )
-                            ) {
-                                is PasswordStepResult.LoginSuccess -> {
-                                    onLoginSuccess()
-                                }
-
-                                is PasswordStepResult.NeedsRegister -> {
-                                    onNeedsRegister(
-                                        result.yandexRequired,
-                                        result.yandex,
-                                        result.captchaRequired,
-                                        result.captcha,
-                                    )
-                                }
-
-                                is PasswordStepResult.WrongPassword -> {
-                                    onSnackbar(result.message, null)
-                                }
-
-                                is PasswordStepResult.RateLimited -> {
-                                    onSnackbar(result.message, null)
-                                }
-
-                                is PasswordStepResult.Error -> {
-                                    onSnackbar(result.message, result.cause)
-                                }
-                            }
-                        } finally {
-                            busy = false
-                        }
-                    }
-                },
+                onClick = ::attemptSubmit,
                 enabled = !busy,
                 loading = busy,
                 modifier = Modifier.fillMaxWidth(),

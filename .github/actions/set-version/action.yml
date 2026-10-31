@@ -1,5 +1,5 @@
 name: Set release version
-description: Writes versionName/versionCode into build.gradle.kts for CI
+description: Makes versionName/versionCode available to Gradle for CI
 
 inputs:
   version:
@@ -12,19 +12,25 @@ runs:
     - name: Set version
       shell: bash
       run: |
+        set -euo pipefail
         VERSION="${{ inputs.version }}"
-        VERSION_CODE="$(printf '%s' "$VERSION" | sed 's/[^0-9]//g')"
+        if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          digits="$(printf '%s' "$VERSION" | sed 's/[^0-9]//g')"
+          # Stable semver: stay above 1.2.0-betaNN (strip -> 1200NN) without rewriting build.gradle.kts.
+          VERSION_CODE=$(( digits * 1000 + 999 ))
+        else
+          VERSION_CODE="$(printf '%s' "$VERSION" | sed 's/[^0-9]//g')"
+        fi
         if [[ -z "$VERSION_CODE" ]]; then
           VERSION_CODE=1
         fi
-        GRADLE_FILE="build.gradle.kts"
-        CURRENT_NAME="$(sed -n 's/.*extra\["versionName"\] = "\([^"]*\)".*/\1/p' "$GRADLE_FILE" | head -n 1)"
-        CURRENT_CODE="$(sed -n 's/.*extra\["versionCode"\] = \([0-9]*\).*/\1/p' "$GRADLE_FILE" | head -n 1)"
-        if [[ "$CURRENT_NAME" == "$VERSION" && "$CURRENT_CODE" == "$VERSION_CODE" ]]; then
-          echo "versionName=$VERSION versionCode=$VERSION_CODE (unchanged)"
-          exit 0
-        fi
-        sed -i.bak "s/extra\\[\"versionName\"\\] = \"[^\"]*\"/extra[\"versionName\"] = \"$VERSION\"/" "$GRADLE_FILE"
-        sed -i.bak "s/extra\\[\"versionCode\"\\] = [0-9]*/extra[\"versionCode\"] = $VERSION_CODE/" "$GRADLE_FILE"
-        rm -f "$GRADLE_FILE.bak"
-        echo "versionName=$VERSION versionCode=$VERSION_CODE"
+        # Injected as Gradle project properties rather than rewriting build.gradle.kts: that file
+        # is hashed into the Gradle build-cache key, so editing it per release meant no release
+        # could ever reuse the previous one's cache.
+        {
+          echo "ORG_GRADLE_PROJECT_versionName=$VERSION"
+          echo "ORG_GRADLE_PROJECT_versionCode=$VERSION_CODE"
+          echo "ORG_GRADLE_PROJECT_gitCommitSha=${{ github.sha }}"
+          echo "ORG_GRADLE_PROJECT_gitHubRepository=${{ github.repository }}"
+        } >> "$GITHUB_ENV"
+        echo "versionName=$VERSION versionCode=$VERSION_CODE commit=${GITHUB_SHA} repo=${GITHUB_REPOSITORY}"

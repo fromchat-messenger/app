@@ -1,8 +1,6 @@
-@file:OptIn(ExperimentalForeignApi::class)
 
 package ru.fromchat.utils
 
-import kotlinx.cinterop.ExperimentalForeignApi
 import platform.UIKit.UIApplication
 import platform.UIKit.UIViewController
 import platform.UIKit.UIWindow

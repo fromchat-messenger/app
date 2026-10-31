@@ -2,6 +2,7 @@
 <resources>
     <!-- App -->
     <string name="app_name">FromChat</string>
+    <string name="app_name_beta">FromChat Beta</string>
 
     <!-- Navigation -->
     <string name="back">Back</string>
@@ -9,11 +10,18 @@
     <string name="home">Home</string>
     <string name="about">About</string>
     <string name="about_version">Version %1$s</string>
+    <string name="about_version_commit_prefix">Version %1$s, commit </string>
     <string name="about_link_telegram">Telegram</string>
     <string name="about_link_max">MAX</string>
     <string name="about_link_website">Website</string>
     <string name="about_link_privacy">Privacy policy</string>
     <string name="about_link_terms">Terms of service</string>
+    <string name="about_link_license">License</string>
+    <string name="about_link_license_desc">AGPL-3.0</string>
+    <string name="about_what_changed">What changed in this update</string>
+    <string name="release_notes_title">What's new</string>
+    <string name="release_notes_ok">OK</string>
+    <string name="release_notes_dont_show_again">Don't show again</string>
     <string name="legal_privacy_title">Privacy policy</string>
     <string name="legal_terms_title">Terms of service</string>
     <string name="legal_document_cached_banner">Showing a saved copy. Content may be out of date.</string>
@@ -21,6 +29,29 @@
     <string name="auth_legal_notice_prefix">By creating an account you agree to the </string>
     <string name="auth_legal_notice_and"> and </string>
     <string name="app_desc">100% free and open messenger. Supports self-hosted installation on your own server.</string>
+
+    <!-- Desktop menu / tray -->
+    <string name="desktop_menu_file">File</string>
+    <string name="desktop_menu_edit">Edit</string>
+    <string name="desktop_menu_window">Window</string>
+    <string name="desktop_about_app">About FromChat</string>
+    <string name="desktop_tray_show">Show</string>
+    <string name="desktop_show_app">Show FromChat</string>
+    <string name="desktop_quit">Quit</string>
+    <string name="desktop_new_chat">New Chat</string>
+    <string name="desktop_search_conversations">Search Conversations</string>
+    <string name="desktop_cut">Cut</string>
+    <string name="desktop_paste">Paste</string>
+    <string name="desktop_select_all">Select All</string>
+    <string name="desktop_minimize">Minimize</string>
+    <string name="desktop_zoom">Zoom</string>
+    <string name="desktop_database_locked_title">Database locked</string>
+    <string name="desktop_database_locked_message">FromChat cannot access its database because another process is using it.</string>
+    <string name="desktop_database_locked_kill">End process</string>
+    <string name="desktop_database_locked_waiting">Waiting for the database to become available…</string>
+    <string name="desktop_database_locked_unknown_process">Unknown process</string>
+    <string name="desktop_database_locked_unknown_hint">Could not identify the locking process. Another app may have the database open (IDE, DB browser, antivirus, or cloud sync on the data folder). Check Task Manager for a hidden java.exe.</string>
+    <string name="desktop_database_locked_pid">PID %1$d</string>
 
     <!-- Authentication -->
     <string name="welcome">Welcome!</string>
@@ -66,10 +97,14 @@
     <string name="auth_captcha_body">Confirm you’re human to continue creating your account.</string>
     <string name="auth_captcha_failed">Captcha verification failed. Please try again.</string>
     <string name="auth_yandex_webview_title">Yandex ID</string>
+    <string name="auth_yandex_browser_body">Complete sign-in in your browser</string>
     <string name="auth_yandex_client_mismatch">This server returned an unexpected Yandex app id. Update the app or contact support.</string>
     <string name="auth_yandex_failed">Yandex sign-in was cancelled or failed.</string>
     <!-- Main Screen -->
     <string name="chats">Chats</string>
+    <string name="select_chat_placeholder">Select a chat to start messaging</string>
+    <string name="select_contact_placeholder">Select a contact to view</string>
+    <string name="select_settings_placeholder">Select a setting to view</string>
     <string name="contacts">Contacts</string>
     <string name="profile">Profile</string>
     <string name="dms">Private chats</string>
@@ -99,9 +134,13 @@
     <string name="search_not_found">No results</string>
     <string name="search_not_found_message">Nothing found here. Try rephrasing your query.</string>
     <string name="message_placeholder">Write a message…</string>
+    <string name="chat_drop_attachment_hint">Drop file here</string>
+    <string name="chat_drop_not_a_file">This isn't a file</string>
 
     <!-- Connection / chat chrome -->
     <string name="status_connecting">Connecting</string>
+    <string name="status_connected">Connected</string>
+    <string name="status_disconnected">Disconnected</string>
     <string name="status_updating">Updating</string>
     <string name="chat_group_label">Group</string>
     <string name="chat_members_count">%1$d people</string>
@@ -326,6 +365,8 @@
     <string name="logout">Log out</string>
     <string name="materialYou">Material You</string>
     <string name="materialYou_d">Match colors to your wallpaper. Works on Android 12 and up.</string>
+    <string name="enter_to_send">Send on Enter</string>
+    <string name="enter_to_send_d">Enter sends the message. Shift+Enter adds a new line.</string>
     <string name="theme">Look</string>
     <string name="as_system">Same as phone</string>
     <string name="light">Light</string>
@@ -336,6 +377,14 @@
     <!-- Settings categories -->
     <string name="settings_category_appearance">Appearance</string>
     <string name="settings_category_appearance_d">Theme and Material You</string>
+    <string name="appearance_nav_bar_style">Navigation bar style</string>
+    <string name="appearance_nav_bar_style_d">How the bottom navigation bar looks</string>
+    <string name="appearance_window_frame">Native window frame</string>
+    <string name="appearance_window_frame_d">Use the OS-drawn window frame instead of the built-in title bar. The window will reopen.</string>
+    <string name="appearance_nav_bar_traditional">Traditional</string>
+    <string name="appearance_nav_bar_floating">Floating</string>
+    <string name="appearance_nav_bar_show_titles">Show tab titles</string>
+    <string name="appearance_nav_bar_show_titles_d">Reveal the label of the selected tab</string>
     <string name="settings_category_server_tools">Server and tools</string>
     <string name="settings_category_server_tools_d">Change server, debug API</string>
     <string name="settings_category_notifications">Notifications</string>
@@ -353,6 +402,16 @@
     <string name="settings_notifications_permission_required">Open system notification settings to allow alerts.</string>
     <string name="settings_push_notifications">Push notifications</string>
     <string name="settings_push_notifications_d">These will let you know if you got a new message when the app is closed.</string>
+    <string name="settings_push_notifications_unavailable">Not available on this platform. New messages are only visible while the app is open.</string>
+    <string name="settings_desktop_notifications">Message notifications</string>
+    <string name="settings_desktop_notifications_d">Show alerts in the system tray when the window is hidden or you are in another chat.</string>
+
+    <string name="notification_direct_message">Direct message</string>
+    <string name="notification_direct_message_from">Direct message from %1$s</string>
+    <string name="notification_new_messages">%1$d new messages</string>
+    <string name="notification_new_messages_in">%1$s: %2$s</string>
+    <string name="notification_reply">Reply</string>
+    <string name="notification_reply_hint">Reply to chat…</string>
 
     <string name="settings_devices_title">Devices</string>
     <string name="settings_devices_empty">No active sessions</string>
@@ -399,6 +458,7 @@
     <string name="settings_security_step_confirm_body">Type your new password again to make sure it matches.</string>
     <string name="settings_next">Next</string>
     <string name="settings_hub_about_sub">Version, links, and more</string>
+    <string name="settings_hub_profile_sub">Your profile and public info</string>
     <string name="logs_title">Logs</string>
     <string name="settings_hub_logs_sub">View, share, and manage app logs</string>
     <string name="logs_empty">No log entries yet</string>

@@ -3,11 +3,11 @@ package ru.fromchat.api.local.download
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import com.pr0gramm3r101.utils.files.PlatformFileSystem
+import ru.fromchat.utils.files.PlatformFileSystem
 import ru.fromchat.api.local.cache.DecryptedFileCache
 import ru.fromchat.api.local.mimeTypeForFilename
 import ru.fromchat.api.schema.messages.Message
-import ru.fromchat.ui.chat.isImageFilename
+import ru.fromchat.ui.chat.media.isImageFilename
 
 data class SavableMessageFile(
     val fileIndex: Int,
@@ -21,12 +21,12 @@ data class SavableMessageFile(
 
 fun isMessageFileCached(message: Message, fileIndex: Int): Boolean {
     val file = message.files?.getOrNull(fileIndex) ?: return false
-    if (isImageFilename(file.name)) return false
-    return DecryptedFileCache.getCached(
-        messageId = message.id,
-        fileIndex = fileIndex,
-        clientMessageId = message.client_message_id,
-    ) != null
+    return !isImageFilename(file.name) &&
+        DecryptedFileCache.getCached(
+            messageId = message.id,
+            fileIndex = fileIndex,
+            clientMessageId = message.client_message_id,
+        ) != null
 }
 
 fun cachedAttachmentFileSize(cacheUri: String): Long {

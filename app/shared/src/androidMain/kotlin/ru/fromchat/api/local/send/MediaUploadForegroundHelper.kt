@@ -1,6 +1,5 @@
 package ru.fromchat.api.local.send
 
-import android.R
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -9,7 +8,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.work.ForegroundInfo
-import com.pr0gramm3r101.utils.UtilsLibrary
+import ru.fromchat.utils.UtilsLibrary
 import org.jetbrains.compose.resources.getString
 import ru.fromchat.Res
 import ru.fromchat.notif_media_upload_channel_name
@@ -48,7 +47,7 @@ object MediaUploadForegroundHelper {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(contentText)
-            .setSmallIcon(R.drawable.stat_sys_upload)
+            .setSmallIcon(android.R.drawable.stat_sys_upload)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)

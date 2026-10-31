@@ -2,14 +2,16 @@ Read in other languages: [Русский](./README.md)
 
 # FromChat
 
-FromChat is a 100% free and open-source messenger. This repository is the cross-platform client (Android + iOS; iOS is not ready yet).
+FromChat is a 100% free and open-source messenger. This repository is the cross-platform client (Android, Desktop via Compose Multiplatform, and iOS).
+
+Agents: [AGENTS.md](./AGENTS.md) and [`.agents/skills/`](./.agents/skills/) (ship via **`release`** skill, `/release`); humans: [AI policy](./AI_POLICY.en.md).
 
 [📥 Download](https://github.com/fromchat-messenger/android/releases/latest) • [💬 Telegram Channel](https://t.me/fromchat_ch) • [🖥️ Server](https://github.com/fromchat-messenger/backend)
 
 ## ✨ Features
 
 - **Voice and video calls** — LiveKit
-- **Screen sharing** during calls
+- **Screen sharing** during calls (Android)
 - **Public chat** — server-wide community
 - **Direct messages** — legal encryption scheme; server-side E2EE planned
 - **Device management** — active sessions
@@ -18,15 +20,35 @@ FromChat is a 100% free and open-source messenger. This repository is the cross-
 
 ## 📊 Client Comparison
 
-⚠️ **iOS is temporarily not supported** (Apple constraints and development cost). It will ship later.
+| Feature                     | Android | Desktop                  | Web | iOS               |
+|-----------------------------|---------|--------------------------|-----|-------------------|
+| **Messaging and profiles**  | ✅       | ✅                        | ✅   | ✅                 |
+| **Voice/video calls**       | ✅       | ✅                        | ✅   | ✅                 |
+| **Screen sharing**          | ✅       | ❌                        | ✅   | ❌                 |
+| **Push when backgrounded**  | ✅ (FCM) | ✅ (persistent WS + tray) | ✅   | ❌ (WS while open) |
+| **Message reactions**       | ❌       | ❌                        | ✅   | ❌                 |
+| **Rich attachment support** | ✅       | ✅                        | ❌   | ✅                 |
 
-| Feature | Android | Web | iOS |
-| --- | --- | --- | --- |
-| **Messaging and profiles** | ✅ | ✅ | ❌ |
-| **Voice/video calls** | ✅ | ✅ | ❌ |
-| **Screen sharing** | ✅ | ✅ | ❌ |
-| **Message reactions** | ❌ | ✅ | ❌ |
-| **Rich attachment support** | ✅ | ❌ | ❌ |
+Desktop replaces the former Electron client in the Web repo. Run with `./gradlew :app:desktop:run`.
+
+### Desktop packaging
+
+Build release packages on the matching OS (or via CI):
+
+| Task                                           | Host       | Artifacts                                                                           |
+|------------------------------------------------|------------|-------------------------------------------------------------------------------------|
+| `./gradlew :app:desktop:packageReleaseMac`     | macOS      | `FromChat-<ver>-macOS.dmg`                                                          |
+| `./gradlew :app:desktop:packageReleaseLinux`   | Linux      | `.deb`, `.rpm`, `.AppImage` (needs `appimagetool`)                                  |
+| `./gradlew :app:desktop:packageReleaseWindows` | Windows    | `FromChat-Setup-<ver>.exe`, `FromChat-Portable-<ver>.exe` (Rust toolchain required) |
+| `./gradlew :app:desktop:packageReleaseDesktop` | current OS | delegates to the task above                                                         |
+
+Outputs land under `app/desktop/build/distributions/release/`.
+
+**CI:** `.github/workflows/release.yml` runs on `workflow_dispatch` only (required `version` input; the `v*` tag does not need to exist beforehand — the publish step creates it), then uploads assets to a GitHub Release.
+
+**Windows portable:** extracts into a folder where only `FromChat Portable.exe` is visible; other runtime files are Hidden. Data is stored in a Hidden `fromchat-data/` next to that EXE (`-Dfromchat.portable=true`).
+
+**Installed data:** Windows `%LOCALAPPDATA%\FromChat`, macOS `~/Library/Application Support/FromChat`, Linux `~/.local/share/FromChat` (migrates from legacy `~/.fromchat/cache` when present).
 
 ---
 
@@ -69,22 +91,25 @@ FromChat is a 100% free and open-source messenger. This repository is the cross-
 
    mkdir -p app/android/keys
 
+   # Quote passwords: characters like & * ? ! break unquoted shell args.
    keytool -genkey -v -keystore app/android/keys/debug.jks \
      -keyalg RSA -keysize 2048 -validity 10000 \
-     -alias key0 -storepass $DEBUG_STORE_PASS -keypass $DEBUG_KEY_PASS \
+     -alias key0 -storepass "$DEBUG_STORE_PASS" -keypass "$DEBUG_KEY_PASS" \
      -dname "CN=Debug, O=FromChat, C=RU"
 
    keytool -genkey -v -keystore app/android/keys/release.jks \
      -keyalg RSA -keysize 2048 -validity 10000 \
-     -alias key0 -storepass $RELEASE_STORE_PASS -keypass $RELEASE_KEY_PASS \
+     -alias key0 -storepass "$RELEASE_STORE_PASS" -keypass "$RELEASE_KEY_PASS" \
      -dname "CN=Release, O=FromChat, C=RU"
 
-   cat > app/android/keystore.properties << EOF
-   releaseStorePassword=$RELEASE_STORE_PASS
-   releaseKeyPassword=$RELEASE_KEY_PASS
-   debugStorePassword=$DEBUG_STORE_PASS
-   debugKeyPassword=$DEBUG_KEY_PASS
-   EOF
+   # Path must be app/android/keys/keystore.properties (matches build.gradle.kts).
+   # Outer "…" / '…' around values are optional; Gradle strips them.
+   cat > app/android/keys/keystore.properties << EOF
+releaseStorePassword=$RELEASE_STORE_PASS
+releaseKeyPassword=$RELEASE_KEY_PASS
+debugStorePassword=$DEBUG_STORE_PASS
+debugKeyPassword=$DEBUG_KEY_PASS
+EOF
    ```
 
 3. **Open in Android Studio:** `File → Open` → repo root. Gradle syncs dependencies automatically.
@@ -111,9 +136,7 @@ android/
 │       ├── commonMain/
 │       ├── androidMain/
 │       └── iosMain/      # not ready yet
-├── utils/                # reusable utilities
-│   ├── android/
-│   └── shared/
+│           └── …/ru/fromchat/utils/  # shared helpers (settings, crypto, UI)
 └── gradle/libs.versions.toml
 ```
 

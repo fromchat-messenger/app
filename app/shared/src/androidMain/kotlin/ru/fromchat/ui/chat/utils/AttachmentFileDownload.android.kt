@@ -10,7 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import com.pr0gramm3r101.utils.UtilsLibrary
+import ru.fromchat.utils.UtilsLibrary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 

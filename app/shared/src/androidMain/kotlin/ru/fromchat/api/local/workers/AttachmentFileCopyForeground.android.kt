@@ -1,6 +1,6 @@
 package ru.fromchat.api.local.workers
 
-import com.pr0gramm3r101.utils.UtilsLibrary
+import ru.fromchat.utils.UtilsLibrary
 
 actual object AttachmentFileCopyForeground {
     actual fun onCopyStarted(storageKey: String, displayLabel: String?) {

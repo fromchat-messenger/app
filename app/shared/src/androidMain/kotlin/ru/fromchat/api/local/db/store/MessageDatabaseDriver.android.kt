@@ -3,7 +3,7 @@ package ru.fromchat.api.local.db.store
 import androidx.sqlite.db.SupportSQLiteDatabase
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
-import com.pr0gramm3r101.utils.UtilsLibrary
+import ru.fromchat.utils.UtilsLibrary
 import ru.fromchat.db.MessageDatabase
 import java.io.File
 

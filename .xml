@@ -1,0 +1,376 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/app/android/build.gradle.kts</file>
+  <line>13</line>
+  <module>FromChat.app.android</module>
+  <package>&lt;default&gt;</package>
+  <entry_point TYPE="method" FQNAME="Build_gradle.FixComposeResTask org.gradle.api.file.ConfigurableFileCollection getInputFiles()" />
+  <language>kotlin</language>
+  <offset>4</offset>
+  <length>67</length>
+  <highlighted_element>@get:InputFiles abstract val inputFiles: ConfigurableFileCollection</highlighted_element>
+  <problem_class id="" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">unused declaration</problem_class>
+  <hints>
+    <hint value="comment" />
+    <hint value="delete" />
+  </hints>
+  <description>Method is not reachable from the entry points.</description>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/app/android/build.gradle.kts</file>
+  <line>14</line>
+  <module>FromChat.app.android</module>
+  <package>&lt;default&gt;</package>
+  <entry_point TYPE="method" FQNAME="Build_gradle.FixComposeResTask org.gradle.api.file.DirectoryProperty getOutputDirectory()" />
+  <language>kotlin</language>
+  <offset>4</offset>
+  <length>68</length>
+  <highlighted_element>@get:OutputDirectory abstract val outputDirectory: DirectoryProperty</highlighted_element>
+  <problem_class id="" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">unused declaration</problem_class>
+  <hints>
+    <hint value="comment" />
+    <hint value="delete" />
+  </hints>
+  <description>Method is not reachable from the entry points.</description>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/app/android/build.gradle.kts</file>
+  <line>16</line>
+  <module>FromChat.app.android</module>
+  <package>&lt;default&gt;</package>
+  <entry_point TYPE="method" FQNAME="Build_gradle.FixComposeResTask void action()" />
+  <language>kotlin</language>
+  <offset>4</offset>
+  <length>11</length>
+  <highlighted_element>@TaskAction</highlighted_element>
+  <problem_class id="" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">unused declaration</problem_class>
+  <hints>
+    <hint value="comment" />
+    <hint value="delete" />
+  </hints>
+  <description>Method is never used.</description>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/app/android/src/main/kotlin/ru/fromchat/App.kt</file>
+  <line>13</line>
+  <module>FromChat.app.android.main</module>
+  <package>ru.fromchat</package>
+  <entry_point TYPE="class" FQNAME="ru.fromchat.App" />
+  <language>kotlin</language>
+  <offset>0</offset>
+  <length>27</length>
+  <highlighted_element>class App : Application() {</highlighted_element>
+  <problem_class id="" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">unused declaration</problem_class>
+  <hints>
+    <hint value="comment" />
+    <hint value="delete" />
+  </hints>
+  <description>Class is not instantiated.</description>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/app/android/src/main/kotlin/ru/fromchat/MainActivity.kt</file>
+  <line>46</line>
+  <module>FromChat.app.android.main</module>
+  <package>ru.fromchat</package>
+  <entry_point TYPE="class" FQNAME="ru.fromchat.MainActivity" />
+  <language>kotlin</language>
+  <offset>0</offset>
+  <length>42</length>
+  <highlighted_element>class MainActivity : ComponentActivity() {</highlighted_element>
+  <problem_class id="" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">unused declaration</problem_class>
+  <hints>
+    <hint value="comment" />
+    <hint value="delete" />
+  </hints>
+  <description>Class is not instantiated.</description>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/app/android/src/main/kotlin/ru/fromchat/fcm/FromChatFirebaseMessagingService.kt</file>
+  <line>16</line>
+  <module>FromChat.app.android.main</module>
+  <package>ru.fromchat.fcm</package>
+  <entry_point TYPE="class" FQNAME="ru.fromchat.fcm.FromChatFirebaseMessagingService" />
+  <language>kotlin</language>
+  <offset>0</offset>
+  <length>36</length>
+  <highlighted_element>@OptIn(DelicateCoroutinesApi::class)</highlighted_element>
+  <problem_class id="" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">unused declaration</problem_class>
+  <hints>
+    <hint value="comment" />
+    <hint value="delete" />
+  </hints>
+  <description>Class is not instantiated.</description>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/app/android/src/main/kotlin/ru/fromchat/notifications/NotificationReplyReceiver.kt</file>
+  <line>21</line>
+  <module>FromChat.app.android.main</module>
+  <package>ru.fromchat.notifications</package>
+  <entry_point TYPE="class" FQNAME="ru.fromchat.notifications.NotificationReplyReceiver" />
+  <language>kotlin</language>
+  <offset>0</offset>
+  <length>36</length>
+  <highlighted_element>@OptIn(DelicateCoroutinesApi::class)</highlighted_element>
+  <problem_class id="" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">unused declaration</problem_class>
+  <hints>
+    <hint value="comment" />
+    <hint value="delete" />
+  </hints>
+  <description>Class is not instantiated.</description>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/app/desktop/src/main/kotlin/FromChat.kt</file>
+  <line>1</line>
+  <module>FromChat.app.desktop.main</module>
+  <package>&lt;default&gt;</package>
+  <entry_point TYPE="class" FQNAME="FromChat" />
+  <language>kotlin</language>
+  <offset>0</offset>
+  <length>3</length>
+  <highlighted_element>/**</highlighted_element>
+  <problem_class id="" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">unused declaration</problem_class>
+  <hints>
+    <hint value="comment" />
+    <hint value="delete" />
+  </hints>
+  <description>Class is never used.</description>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/app/desktop/src/main/kotlin/ru/fromchat/desktop/Main.kt</file>
+  <line>286</line>
+  <module>FromChat.app.desktop.main</module>
+  <package>ru.fromchat.desktop</package>
+  <entry_point TYPE="method" FQNAME="ru.fromchat.desktop.MainKt void main(java.lang.String[] args)" />
+  <language>kotlin</language>
+  <offset>0</offset>
+  <length>31</length>
+  <highlighted_element>fun main(args: Array&lt;String&gt;) {</highlighted_element>
+  <problem_class id="" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">unused declaration</problem_class>
+  <hints>
+    <hint value="comment" />
+    <hint value="delete" />
+  </hints>
+  <description>Method has one usage, but the usage is not reachable from the entry points.</description>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/app/shared/build/generated/sources/appBuildInfo/kotlin/ru/fromchat/AppBuildInfo.kt</file>
+  <line>6</line>
+  <module>FromChat.app.shared.commonMain</module>
+  <package>ru.fromchat</package>
+  <entry_point TYPE="field" FQNAME="ru.fromchat.AppBuildInfo versionCode" />
+  <language>kotlin</language>
+  <offset>4</offset>
+  <length>27</length>
+  <highlighted_element>const val versionCode = 120</highlighted_element>
+  <problem_class id="" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">unused declaration</problem_class>
+  <hints>
+    <hint value="comment" />
+    <hint value="delete" />
+  </hints>
+  <description>Field is never used.</description>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/app/shared/build.gradle.kts</file>
+  <line>22</line>
+  <module>FromChat.app.shared</module>
+  <package>&lt;default&gt;</package>
+  <entry_point TYPE="method" FQNAME="Build_gradle.GenerateAppBuildInfoTask org.gradle.api.provider.Property&lt;java.lang.String&gt; getVersionName()" />
+  <language>kotlin</language>
+  <offset>4</offset>
+  <length>10</length>
+  <highlighted_element>@get:Input</highlighted_element>
+  <problem_class id="" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">unused declaration</problem_class>
+  <hints>
+    <hint value="comment" />
+    <hint value="delete" />
+  </hints>
+  <description>Method is not reachable from the entry points.</description>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/app/shared/build.gradle.kts</file>
+  <line>25</line>
+  <module>FromChat.app.shared</module>
+  <package>&lt;default&gt;</package>
+  <entry_point TYPE="method" FQNAME="Build_gradle.GenerateAppBuildInfoTask org.gradle.api.provider.Property&lt;java.lang.Integer&gt; getVersionCode()" />
+  <language>kotlin</language>
+  <offset>4</offset>
+  <length>10</length>
+  <highlighted_element>@get:Input</highlighted_element>
+  <problem_class id="" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">unused declaration</problem_class>
+  <hints>
+    <hint value="comment" />
+    <hint value="delete" />
+  </hints>
+  <description>Method is not reachable from the entry points.</description>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/app/shared/build.gradle.kts</file>
+  <line>28</line>
+  <module>FromChat.app.shared</module>
+  <package>&lt;default&gt;</package>
+  <entry_point TYPE="method" FQNAME="Build_gradle.GenerateAppBuildInfoTask org.gradle.api.provider.Property&lt;java.lang.Boolean&gt; getDebugBuild()" />
+  <language>kotlin</language>
+  <offset>4</offset>
+  <length>10</length>
+  <highlighted_element>@get:Input</highlighted_element>
+  <problem_class id="" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">unused declaration</problem_class>
+  <hints>
+    <hint value="comment" />
+    <hint value="delete" />
+  </hints>
+  <description>Method is not reachable from the entry points.</description>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/app/shared/build.gradle.kts</file>
+  <line>31</line>
+  <module>FromChat.app.shared</module>
+  <package>&lt;default&gt;</package>
+  <entry_point TYPE="method" FQNAME="Build_gradle.GenerateAppBuildInfoTask org.gradle.api.file.RegularFileProperty getReleaseNotesFile()" />
+  <language>kotlin</language>
+  <offset>4</offset>
+  <length>14</length>
+  <highlighted_element>@get:InputFile</highlighted_element>
+  <problem_class id="" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">unused declaration</problem_class>
+  <hints>
+    <hint value="comment" />
+    <hint value="delete" />
+  </hints>
+  <description>Method is not reachable from the entry points.</description>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/app/shared/build.gradle.kts</file>
+  <line>34</line>
+  <module>FromChat.app.shared</module>
+  <package>&lt;default&gt;</package>
+  <entry_point TYPE="method" FQNAME="Build_gradle.GenerateAppBuildInfoTask org.gradle.api.file.DirectoryProperty getOutputDirectory()" />
+  <language>kotlin</language>
+  <offset>4</offset>
+  <length>20</length>
+  <highlighted_element>@get:OutputDirectory</highlighted_element>
+  <problem_class id="" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">unused declaration</problem_class>
+  <hints>
+    <hint value="comment" />
+    <hint value="delete" />
+  </hints>
+  <description>Method is not reachable from the entry points.</description>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/app/shared/build.gradle.kts</file>
+  <line>37</line>
+  <module>FromChat.app.shared</module>
+  <package>&lt;default&gt;</package>
+  <entry_point TYPE="method" FQNAME="Build_gradle.GenerateAppBuildInfoTask void generate()" />
+  <language>kotlin</language>
+  <offset>4</offset>
+  <length>11</length>
+  <highlighted_element>@TaskAction</highlighted_element>
+  <problem_class id="" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">unused declaration</problem_class>
+  <hints>
+    <hint value="comment" />
+    <hint value="delete" />
+  </hints>
+  <description>Method is never used.</description>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/app/shared/src/androidMain/kotlin/ru/fromchat/api/local/cache/AttachmentFileProvider.kt</file>
+  <line>13</line>
+  <module>FromChat.app.shared.androidMain</module>
+  <package>ru.fromchat.api.local.cache</package>
+  <entry_point TYPE="class" FQNAME="ru.fromchat.api.local.cache.AttachmentFileProvider" />
+  <language>kotlin</language>
+  <offset>0</offset>
+  <length>3</length>
+  <highlighted_element>/**</highlighted_element>
+  <problem_class id="" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">unused declaration</problem_class>
+  <hints>
+    <hint value="comment" />
+    <hint value="delete" />
+  </hints>
+  <description>Class is not instantiated.</description>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/app/shared/src/androidMain/kotlin/ru/fromchat/api/local/workers/AttachmentDownloadForegroundService.kt</file>
+  <line>24</line>
+  <module>FromChat.app.shared.androidMain</module>
+  <package>ru.fromchat.api.local.workers</package>
+  <entry_point TYPE="class" FQNAME="ru.fromchat.api.local.workers.AttachmentDownloadForegroundService" />
+  <language>kotlin</language>
+  <offset>0</offset>
+  <length>3</length>
+  <highlighted_element>/**</highlighted_element>
+  <problem_class id="" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">unused declaration</problem_class>
+  <hints>
+    <hint value="comment" />
+    <hint value="delete" />
+  </hints>
+  <description>Class is not instantiated.</description>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/app/shared/src/androidMain/kotlin/ru/fromchat/api/local/workers/AttachmentFileCopyForegroundService.kt</file>
+  <line>22</line>
+  <module>FromChat.app.shared.androidMain</module>
+  <package>ru.fromchat.api.local.workers</package>
+  <entry_point TYPE="class" FQNAME="ru.fromchat.api.local.workers.AttachmentFileCopyForegroundService" />
+  <language>kotlin</language>
+  <offset>0</offset>
+  <length>3</length>
+  <highlighted_element>/**</highlighted_element>
+  <problem_class id="" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">unused declaration</problem_class>
+  <hints>
+    <hint value="comment" />
+    <hint value="delete" />
+  </hints>
+  <description>Class is not instantiated.</description>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/app/shared/src/androidMain/kotlin/ru/fromchat/ui/auth/yandex/YandexOAuthWebView.android.kt</file>
+  <line>317</line>
+  <module>FromChat.app.shared.androidMain</module>
+  <package>ru.fromchat.ui.auth.yandex</package>
+  <entry_point TYPE="method" FQNAME=" boolean shouldOverrideUrlLoading(android.webkit.WebView view, java.lang.String url)" />
+  <language>kotlin</language>
+  <offset>12</offset>
+  <length>33</length>
+  <highlighted_element>@Deprecated(&quot;Deprecated in Java&quot;)</highlighted_element>
+  <problem_class id="" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">unused declaration</problem_class>
+  <hints>
+    <hint value="comment" />
+    <hint value="delete" />
+  </hints>
+  <description>Method overrides a library method but&lt;ul&gt;&lt;li&gt;its class is never instantiated OR&lt;/li&gt;&lt;li&gt;its class instantiations are not reachable from the entry points.&lt;/li&gt;&lt;/ul&gt;</description>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/app/shared/src/androidMain/kotlin/ru/fromchat/ui/calls/overlay/CallForegroundService.kt</file>
+  <line>20</line>
+  <module>FromChat.app.shared.androidMain</module>
+  <package>ru.fromchat.ui.calls.overlay</package>
+  <entry_point TYPE="class" FQNAME="ru.fromchat.ui.calls.overlay.CallForegroundService" />
+  <language>kotlin</language>
+  <offset>0</offset>
+  <length>3</length>
+  <highlighted_element>/**</highlighted_element>
+  <problem_class id="" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">unused declaration</problem_class>
+  <hints>
+    <hint value="comment" />
+    <hint value="delete" />
+  </hints>
+  <description>Class is not instantiated.</description>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/app/shared/src/commonMain/kotlin/ru/fromchat/api/ApiUtils.kt</file>
+  <line>8</line>
+  <module>FromChat.app.shared.commonMain</module>
+  <package>ru.fromchat.api</package>
+  <entry_point TYPE="method" FQNAME="ru.fromchat.api.ApiUtilsKt java.lang.Object apiRequest(java.lang.String unexpectedError, kotlin.jvm.functions.Function2&lt;? super java.lang.String,? super java.lang.Exception,kotlin.Unit&gt; onError, kotlin.jvm.functions.Function1&lt;? super Response,kotlin.Unit&gt; onSuccess, kotlin.jvm.functions.Function1&lt;? super kotlin.coroutines.Continuation&lt;? super Response&gt;,? extends java.lang.Object&gt; request, kotlin.coroutines.Continuation&lt;? super kotlin.Result&lt;? extends Response&gt;&gt; $completion)" />
+  <language>kotlin</language>
+  <offset>0</offset>
+  <length>41</length>
+  <highlighted_element>suspend inline fun &lt;Response&gt; apiRequest(</highlighted_element>
+  <problem_class id="" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">unused declaration</problem_class>
+  <hints>
+    <hint value="comment" />
+    <hint value="delete" />
+  </hints>
+  <description>Method is never used.</description>
+</problem>
+</problems>

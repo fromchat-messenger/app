@@ -2,6 +2,8 @@ package ru.fromchat.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
@@ -12,16 +14,22 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
@@ -29,10 +37,10 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.pr0gramm3r101.utils.ImeKeyboardPhase
-import com.pr0gramm3r101.utils.keyboardPhase
-import com.pr0gramm3r101.utils.rememberImeMotion
-import com.pr0gramm3r101.utils.toPx
+import ru.fromchat.utils.ImeKeyboardPhase
+import ru.fromchat.utils.keyboardPhase
+import ru.fromchat.utils.rememberImeMotion
+import ru.fromchat.utils.toPx
 import kotlin.math.roundToInt
 
 /** Lazy list item indices for [ExpressiveStepFlowScaffold] haze layout. */
@@ -47,6 +55,21 @@ val LocalExpressiveStepFocusEnabled = compositionLocalOf { true }
 
 /** When true, the current step's primary field should request focus once. */
 val LocalExpressiveStepAutoFocusPrimary = compositionLocalOf { false }
+
+/** Desktop Enter / Android IME action for expressive step single-line fields. */
+fun Modifier.expressiveStepSubmitOnEnter(onSubmit: () -> Unit): Modifier = onPreviewKeyEvent { event ->
+    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+    if (event.key != Key.Enter && event.key != Key.NumPadEnter) return@onPreviewKeyEvent false
+    if (event.isShiftPressed) return@onPreviewKeyEvent false
+    onSubmit()
+    true
+}
+
+fun expressiveStepSingleLineKeyboardOptions(): KeyboardOptions =
+    KeyboardOptions(imeAction = ImeAction.Done)
+
+fun expressiveStepSubmitKeyboardActions(onSubmit: () -> Unit): KeyboardActions =
+    KeyboardActions(onDone = { onSubmit() })
 
 /** Requests focus for [focusRequester] when [LocalExpressiveStepAutoFocusPrimary] becomes true. */
 @Composable
@@ -117,6 +140,26 @@ private fun effectiveImeBottomPx(
     return (reportedImeBottomPx * (1f - progress)).roundToInt()
 }
 
+/**
+ * True while IME / page predictive-back is still moving — dismiss-follow must stay latched
+ * so reverse gestures keep scrolling content back up.
+ */
+private fun imeDismissFollowActive(
+    phase: ImeKeyboardPhase,
+    imeAnimating: Boolean,
+    predictiveBackProgress: Float,
+    reportedImeBottomPx: Int,
+    settledImeBottomPx: Int,
+): Boolean =
+    !(phase == ImeKeyboardPhase.Hidden && !imeAnimating && predictiveBackProgress <= 0f) &&
+        (
+            predictiveBackProgress > 0f ||
+                imeAnimating ||
+                phase == ImeKeyboardPhase.Closing ||
+                phase == ImeKeyboardPhase.ReopeningPartial ||
+                (settledImeBottomPx > 0 && reportedImeBottomPx in 1 until settledImeBottomPx)
+            )
+
 /** Scrolls the list when the IME would cover the focused field; skips if already fully visible. */
 @Composable
 fun LazyListImeScrollEffect(
@@ -152,13 +195,14 @@ fun LazyListImeScrollEffect(
         }
     }
 
+    // Do not key on focusedBoundsInWindow: scrollBy updates those bounds and would restart
+    // this effect every frame (cancel/re-apply), which oscillates two scroll targets.
     LaunchedEffect(
         imeMotion.currentBottomPx,
         imeMotion.sourceBottomPx,
         imeMotion.targetBottomPx,
         predictiveBackProgress(),
         scrollState.focusedItemIndex,
-        scrollState.focusedBoundsInWindow,
         viewportBoundsInWindow,
         contentPaddingTop,
         contentPaddingBottom,
@@ -184,12 +228,18 @@ fun LazyListImeScrollEffect(
 
         val reportedImeBottomPx = imeMotion.currentBottomPx
         val previousReported = previousReportedImeBottom.intValue
+        val progress = currentPredictiveProgress.value().coerceIn(0f, 1f)
         val phase = imeMotion.keyboardPhase(
             settledImeBottomPx = settledImeBottom.intValue,
             previousReportedImeBottomPx = previousReported,
         )
 
-        if (!imeMotion.isAnimating) {
+        // Keep the last fully-open height while dismiss-follow is latched; predictive IME
+        // can report source==target at a partial inset and would otherwise overwrite this.
+        if (!imeMotion.isAnimating &&
+            !wasFollowingKeyboardDismiss.value &&
+            progress <= 0f
+        ) {
             settledImeBottom.intValue = reportedImeBottomPx
         }
 
@@ -201,7 +251,6 @@ fun LazyListImeScrollEffect(
             else -> Unit
         }
 
-        val progress = currentPredictiveProgress.value().coerceIn(0f, 1f)
         val followImeBottom = if (progress > 0f) {
             effectiveImeBottomPx(reportedImeBottomPx, progress)
         } else {
@@ -236,9 +285,27 @@ fun LazyListImeScrollEffect(
             wasFollowingKeyboardDismiss.value = true
             previousFollowImeBottom.intValue = followImeBottom
             previousReportedImeBottom.intValue = reportedImeBottomPx
-            if (phase == ImeKeyboardPhase.Open || phase == ImeKeyboardPhase.Hidden) {
+
+            val followStillActive = imeDismissFollowActive(
+                phase = phase,
+                imeAnimating = imeMotion.isAnimating,
+                predictiveBackProgress = progress,
+                reportedImeBottomPx = reportedImeBottomPx,
+                settledImeBottomPx = settledImeBottom.intValue,
+            )
+            if (!followStillActive &&
+                (phase == ImeKeyboardPhase.Open || phase == ImeKeyboardPhase.Hidden)
+            ) {
+                // Reverse/abort already kept the gap locked while the IME moved back.
+                // Do not animateScrollBy here — that fights bring-into-view and glitches.
                 wasFollowingKeyboardDismiss.value = false
                 dismissFollowKeyboardTopGap.value = null
+                if (phase == ImeKeyboardPhase.Open) {
+                    skipStableAnchorAfterReopen.value = true
+                }
+                if (!imeMotion.isAnimating) {
+                    settledImeBottom.intValue = reportedImeBottomPx
+                }
             }
             return@LaunchedEffect
         }

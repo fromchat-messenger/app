@@ -7,7 +7,6 @@ import kotlinx.coroutines.launch
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.db.store.InstanceRegistryStore
 import ru.fromchat.config.ServerConfigData
-import ru.fromchat.api.instance.InstanceIdGuard.INSTANCE_ID_HEADER
 import kotlin.concurrent.Volatile
 
 /**

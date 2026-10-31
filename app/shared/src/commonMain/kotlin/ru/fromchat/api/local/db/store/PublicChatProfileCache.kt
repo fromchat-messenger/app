@@ -21,8 +21,9 @@ object PublicChatProfileCache {
 
     fun isFullyLoaded(): Boolean {
         val instanceId = resolvedInstanceId()
-        if (instanceId.isEmpty() || loadedInstanceId != instanceId) return false
-        return isCompleteProfile(_profile.value)
+        return instanceId.isNotEmpty() &&
+            loadedInstanceId == instanceId &&
+            isCompleteProfile(_profile.value)
     }
 
     /**
@@ -30,53 +31,40 @@ object PublicChatProfileCache {
      */
     fun hydrateFromDiskImmediate(instanceId: String): PublicChatProfile? {
         val id = instanceId.trim()
-        synchronized(this) {
-            if (id.isEmpty()) {
-                return _profile.value
-            }
-            if (loadedInstanceId == id && isCompleteProfile(_profile.value)) {
-                return _profile.value
-            }
-            val previousInstanceId = loadedInstanceId
-            loadedInstanceId = id
-            val disk = PublicChatProfileCacheStore.getImmediate(id)
-            _profile.value = when {
-                disk != null -> disk
-                previousInstanceId.isEmpty() -> _profile.value
-                previousInstanceId != id -> null
-                else -> _profile.value
-            }
-            return _profile.value
+        if (id.isEmpty()) return _profile.value
+        if (loadedInstanceId == id && isCompleteProfile(_profile.value)) return _profile.value
+        val previousInstanceId = loadedInstanceId
+        loadedInstanceId = id
+        val disk = PublicChatProfileCacheStore.getImmediate(id)
+        _profile.value = when {
+            disk != null -> disk
+            previousInstanceId.isEmpty() -> _profile.value
+            previousInstanceId != id -> null
+            else -> _profile.value
         }
+        return _profile.value
     }
 
     fun put(profile: PublicChatProfile) {
-        val instanceId: String
-        synchronized(this) {
-            _profile.value = profile
-            instanceId = resolvedInstanceId()
-            if (instanceId.isNotEmpty()) {
-                loadedInstanceId = instanceId
-            }
-        }
+        _profile.value = profile
+        val instanceId = resolvedInstanceId()
         if (instanceId.isNotEmpty()) {
+            loadedInstanceId = instanceId
             runCatching { PublicChatProfileCacheStore.putImmediate(instanceId, profile) }
         }
     }
 
-    suspend fun onActiveInstanceChanged(instanceId: String) {
+    fun onActiveInstanceChanged(instanceId: String) {
         hydrateFromDiskImmediate(instanceId)
     }
 
-    suspend fun hydrateFromDisk() {
+    fun hydrateFromDisk() {
         hydrateFromDiskImmediate(CacheContext.activeInstanceId.value)
     }
 
-    suspend fun clear() {
-        synchronized(this) {
-            _profile.value = null
-            loadedInstanceId = ""
-        }
+    fun clear() {
+        _profile.value = null
+        loadedInstanceId = ""
     }
 
     private fun resolvedInstanceId(): String =

@@ -1,6 +1,5 @@
 package ru.fromchat.api.local.db.store
 
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import ru.fromchat.api.schema.user.profile.UserProfile
@@ -12,7 +11,7 @@ object ProfileCacheStore {
         encodeDefaults = true
     }
 
-    suspend fun get(instanceId: String, userId: Int): UserProfile? = withContext(Dispatchers.Default) {
+    suspend fun get(instanceId: String, userId: Int): UserProfile? = withContext(messageDatabaseDispatcher) {
         val id = instanceId.trim()
         if (id.isEmpty()) return@withContext null
         val raw = MessageDatabaseProvider.database.messageDatabaseQueries
@@ -24,7 +23,7 @@ object ProfileCacheStore {
     suspend fun put(instanceId: String, profile: UserProfile) {
         val id = instanceId.trim()
         if (id.isEmpty()) return
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             MessageDatabaseProvider.database.messageDatabaseQueries.upsertProfileCache(
                 instanceId = id,
                 userId = profile.id.toLong(),
@@ -36,7 +35,7 @@ object ProfileCacheStore {
     suspend fun remove(instanceId: String, userId: Int) {
         val id = instanceId.trim()
         if (id.isEmpty()) return
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             MessageDatabaseProvider.database.messageDatabaseQueries.deleteProfileCache(
                 instanceId = id,
                 userId = userId.toLong(),
@@ -45,7 +44,7 @@ object ProfileCacheStore {
     }
 
     suspend fun loadAllForInstance(instanceId: String): Map<Int, UserProfile> =
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             val id = instanceId.trim()
             if (id.isEmpty()) return@withContext emptyMap()
             MessageDatabaseProvider.database.messageDatabaseQueries

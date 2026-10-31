@@ -1,10 +1,10 @@
 package ru.fromchat.ui.chat
 
-import android.net.Uri
-import com.pr0gramm3r101.utils.UtilsLibrary
+import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import ru.fromchat.api.local.workers.AttachmentFileCopyForeground
+import ru.fromchat.utils.UtilsLibrary
 import java.io.File
 import java.io.FileInputStream
 
@@ -19,8 +19,9 @@ internal suspend fun copyCachedFileToDestinationUri(
     AttachmentFileCopyForeground.onCopyStarted(storageKey, displayFilename)
     try {
         runCatching {
-            val dest = Uri.parse(destinationUri)
-            UtilsLibrary.context.contentResolver.openOutputStream(dest, "w")?.use { out ->
+            UtilsLibrary.context.contentResolver.openOutputStream(
+                destinationUri.toUri(), "w"
+            )?.use { out ->
                 FileInputStream(sourceFile).use { input ->
                     input.copyTo(out, bufferSize = 256 * 1024)
                     out.flush()
@@ -32,12 +33,10 @@ internal suspend fun copyCachedFileToDestinationUri(
     }
 }
 
-internal fun uriToLocalCacheFile(cacheUri: String): File? {
-    val path = when {
-        cacheUri.startsWith("file://") -> Uri.parse(cacheUri).path
+internal fun uriToLocalCacheFile(cacheUri: String) =
+    when {
+        cacheUri.startsWith("file://") -> cacheUri.toUri().path
         else -> cacheUri
-    }?.trim().orEmpty()
-    if (path.isEmpty()) return null
-    val file = File(path)
-    return file.takeIf { it.isFile }
-}
+    }?.trim()?.let {
+        File(it).takeIf { it.isFile }
+    }

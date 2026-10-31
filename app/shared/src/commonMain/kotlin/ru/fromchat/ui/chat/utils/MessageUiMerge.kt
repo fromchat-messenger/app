@@ -77,7 +77,7 @@ internal fun mergeDatabaseMessagesWithPanelState(
         panel.id > 0 && panel.id !in mergedIds
     }
     if (droppedConfirmed.isNotEmpty()) {
-        ru.fromchat.Logger.d(
+        ru.fromchat.logging.Logger.d(
             "MessageCache",
             "mergeDbPanel dropConfirmedDeletes count=${droppedConfirmed.size} " +
                 "ids=${droppedConfirmed.map { it.id }.take(12)} " +
@@ -89,7 +89,7 @@ internal fun mergeDatabaseMessagesWithPanelState(
         panel.id < 0 && cid != null && cid !in mergedClientIds
     }
     if (extraPanel.isNotEmpty()) {
-        ru.fromchat.Logger.d(
+        ru.fromchat.logging.Logger.d(
             "MessageCache",
             "mergeDbPanel keepOptimistic count=${extraPanel.size} " +
                 "ids=${extraPanel.map { it.id }}",
@@ -158,7 +158,7 @@ internal fun mergeMessageUiFields(db: Message, panel: Message?): Message {
         uploadError = if (confirmed) null else panel.uploadError ?: db.uploadError,
         files = db.files ?: panel.files,
         dmEnvelope = db.dmEnvelope ?: panel.dmEnvelope,
-        fileThumbnails = db.fileThumbnails ?: panel.fileThumbnails,
+        fileThumbnails = preferNonEmptyThumbnails(db.fileThumbnails, panel.fileThumbnails),
         fileAspectRatioPairs = db.fileAspectRatioPairs ?: panel.fileAspectRatioPairs,
         fileAspectRatios = when {
             confirmed && dbHasRealLayout -> db.fileAspectRatios ?: panel.fileAspectRatios
@@ -188,6 +188,19 @@ internal fun mergeMessageUiFields(db: Message, panel: Message?): Message {
     } else {
         merged
     }
+}
+
+private fun hasNonBlankThumbnail(list: List<String>?): Boolean =
+    list?.any { it.isNotBlank() } == true
+
+/** Prefer API thumbs over cached `[""]` rows from an older persist. */
+internal fun preferNonEmptyThumbnails(
+    db: List<String>?,
+    panel: List<String>?,
+): List<String>? = when {
+    hasNonBlankThumbnail(panel) -> panel
+    hasNonBlankThumbnail(db) -> db
+    else -> panel ?: db
 }
 
 /** Keeps hydrated [Message.reply_to] when a network/DB refresh omits nested reply payloads. */

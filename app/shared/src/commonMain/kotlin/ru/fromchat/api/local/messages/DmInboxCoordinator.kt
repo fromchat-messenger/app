@@ -36,7 +36,7 @@ object DmInboxCoordinator {
       }
       "dmDeleted" -> message.data?.let { element ->
         scope.launch {
-          ru.fromchat.Logger.d("DmInbox", "handleMessage dmDeleted")
+          ru.fromchat.logging.Logger.d("DmInbox", "handleMessage dmDeleted")
           DmInboundMessageProcessor.processDeleted(element)
           DmConversationListNotifier.notifyChanged()
         }

@@ -6,15 +6,14 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.Color as AndroidColor
 import android.graphics.Rect
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.PixelCopy
 import android.webkit.CookieManager
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -26,7 +25,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.runtime.Composable
@@ -46,6 +44,9 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.get
+import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -56,18 +57,24 @@ import androidx.webkit.WebViewFeature
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.suspendCancellableCoroutine
-import ru.fromchat.Logger
-import ru.fromchat.auth.yandex.YANDEX_OAUTH_REDIRECT_URI
-import ru.fromchat.auth.yandex.extractOAuthCode
+import ru.fromchat.api.yandex.YANDEX_OAUTH_REDIRECT_URI
+import ru.fromchat.api.yandex.extractOAuthCode
+import ru.fromchat.logging.Logger
 import ru.fromchat.ui.components.PredictiveBackHandler
 import kotlin.coroutines.resume
+import android.graphics.Color as AndroidColor
+
+private open class YandexOAuthRenderSafeWebViewClient : WebViewClient() {
+    override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean = false
+}
 
 private const val LOG_TAG = "YandexOAuthWV"
 private const val LOADING_FADE_MS = 250
 private const val LOADING_HIDE_DELAY_MS = 500L
 private const val TOP_ROW_SAMPLE_INTERVAL_MS = 50L
-/** View tag: last applied [darkTheme] so we do not re-set force-dark (that reloads the page). */
+// TODO looks like poor vibecode
 private const val TAG_APPLIED_DARK_THEME = 0x46C7_0A01
+private const val TAG_WEB_VIEW_CLIENT = 0x46C7_0A02
 
 private fun shortUrl(url: String?): String {
     if (url.isNullOrBlank()) return "null"
@@ -132,7 +139,7 @@ private const val PAGE_SCROLL_Y_JS = """
 })();
 """
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 actual fun YandexOAuthWebView(
@@ -226,10 +233,7 @@ actual fun YandexOAuthWebView(
     }
 
     DisposableEffect(webView, lifecycleOwner) {
-        val wv = webView
-        if (wv == null) {
-            return@DisposableEffect onDispose { }
-        }
+        val wv = webView ?: return@DisposableEffect onDispose {}
         val observer = LifecycleEventObserver { _, event ->
             Logger.i(
                 LOG_TAG,
@@ -259,12 +263,7 @@ actual fun YandexOAuthWebView(
         enabled = true,
         onProgress = { },
         onCommit = {
-            val wv = webView
-            if (wv != null && wv.canGoBack()) {
-                wv.goBack()
-            } else {
-                onCancelState.value()
-            }
+            webView?.takeIf { it.canGoBack() }?.goBack() ?: onCancelState.value()
         },
         onCancel = { },
     )
@@ -275,7 +274,7 @@ actual fun YandexOAuthWebView(
             "WebViewClient create id=$instanceId darkTheme=$darkTheme lang=$lang " +
                 "authorizeUrl=${shortUrl(authorizeUrl)}",
         )
-        object : WebViewClient() {
+        object : YandexOAuthRenderSafeWebViewClient() {
             private fun handleSpecialUrl(view: WebView?, url: String?): Boolean {
                 if (url.isNullOrBlank()) return false
                 if (url.startsWith("fromchat://", ignoreCase = true)) {
@@ -293,7 +292,7 @@ actual fun YandexOAuthWebView(
                     view?.context?.let { ctx ->
                         runCatching {
                             ctx.startActivity(
-                                Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                                Intent(Intent.ACTION_VIEW, url.toUri()).apply {
                                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                 },
                             )
@@ -310,10 +309,8 @@ actual fun YandexOAuthWebView(
                 view.evaluateJavascript(DISABLE_USER_SELECT_JS, null)
             }
 
-            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                val url = request?.url?.toString() ?: return false
-                return handleSpecialUrl(view, url)
-            }
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean =
+                handleSpecialUrl(view, request?.url?.toString() ?: return false)
 
             @Deprecated("Deprecated in Java")
             override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
@@ -385,6 +382,7 @@ actual fun YandexOAuthWebView(
                     settings.setSupportMultipleWindows(true)
                     applyYandexDarkSettingsIfNeeded(this, darkTheme)
                     webViewClient = client
+                    setTag(TAG_WEB_VIEW_CLIENT, client)
                     webChromeClient = object : WebChromeClient() {
                         override fun onCreateWindow(
                             view: WebView?,
@@ -395,7 +393,7 @@ actual fun YandexOAuthWebView(
                             val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
                             val temp = WebView(activity).apply {
                                 applyYandexDarkSettingsIfNeeded(this, darkTheme)
-                                webViewClient = object : WebViewClient() {
+                                webViewClient = object : YandexOAuthRenderSafeWebViewClient() {
                                     override fun shouldOverrideUrlLoading(
                                         v: WebView?,
                                         request: WebResourceRequest?,
@@ -404,7 +402,7 @@ actual fun YandexOAuthWebView(
                                         if (!isYandexAuthNavigation(url)) {
                                             runCatching {
                                                 context.startActivity(
-                                                    Intent(Intent.ACTION_VIEW, Uri.parse(url)),
+                                                    Intent(Intent.ACTION_VIEW, url.toUri()),
                                                 )
                                             }
                                         } else {
@@ -422,14 +420,14 @@ actual fun YandexOAuthWebView(
                     val hadSavedState = savedWebViewState.isEmpty.not()
                     val restoreList = if (hadSavedState) restoreState(savedWebViewState) else null
                     val historySize = copyBackForwardList().size
-                    val restored = hadSavedState && restoreList != null && historySize > 0
                     Logger.i(
                         LOG_TAG,
                         "AndroidView.factory restore id=$instanceId hadSaved=$hadSavedState " +
                             "restoreListNull=${restoreList == null} historySize=$historySize " +
-                            "restored=$restored wv=${Integer.toHexString(System.identityHashCode(this))}",
+                            "restored=${hadSavedState && restoreList != null && historySize > 0} " +
+                            "wv=${Integer.toHexString(System.identityHashCode(this))}",
                     )
-                    if (restored) {
+                    if (hadSavedState && restoreList != null && historySize > 0) {
                         pageLoading = false
                         showLoadingOverlay = false
                         updateCanGoBack(canGoBack())
@@ -449,17 +447,16 @@ actual fun YandexOAuthWebView(
             },
             modifier = Modifier.fillMaxSize(),
             update = { wv ->
-                val clientChanged = wv.webViewClient !== client
-                val darkBefore = wv.getTag(TAG_APPLIED_DARK_THEME) as? Boolean
                 applyYandexDarkSettingsIfNeeded(wv, darkTheme)
-                if (clientChanged) {
+                if (wv.getTag(TAG_WEB_VIEW_CLIENT) !== client) {
                     Logger.i(
                         LOG_TAG,
                         "AndroidView.update reassign client id=$instanceId " +
-                            "darkBefore=$darkBefore darkTheme=$darkTheme " +
+                            "darkBefore=${wv.getTag(TAG_APPLIED_DARK_THEME) as? Boolean} darkTheme=$darkTheme " +
                             "url=${shortUrl(wv.url)}",
                     )
                     wv.webViewClient = client
+                    wv.setTag(TAG_WEB_VIEW_CLIENT, client)
                 }
                 webView = wv
                 updateCanGoBack(wv.canGoBack())
@@ -586,7 +583,7 @@ private fun seedYandexThemeCookies(darkTheme: Boolean) {
 }
 
 /**
- * Applies force-dark / algorithmic darkening only when [darkTheme] changed.
+ * Applies force-dark / algorithmic darkening only when `darkTheme` changed.
  * Re-applying the same force-dark value can reload the page and wipe in-progress OAuth UI.
  */
 @Suppress("DEPRECATION")
@@ -613,8 +610,7 @@ private fun applyYandexDarkSettingsIfNeeded(webView: WebView, darkTheme: Boolean
 private suspend fun pageScrollY(webView: WebView): Double =
     suspendCancellableCoroutine { cont ->
         webView.evaluateJavascript(PAGE_SCROLL_Y_JS) { raw ->
-            val value = raw?.trim()?.removeSurrounding("\"")?.toDoubleOrNull() ?: 0.0
-            cont.resume(value)
+            cont.resume(raw?.trim()?.removeSurrounding("\"")?.toDoubleOrNull() ?: 0.0)
         }
     }
 
@@ -639,8 +635,7 @@ private suspend fun sampleTopRowColor(webView: WebView): Color? {
     val x = loc[0] + webView.width / 2
     val y = loc[1]
     if (x < 0 || y < 0) return null
-    val bitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
-    val src = Rect(x, y, x + 1, y + 1)
+    val bitmap = createBitmap(1, 1)
     return suspendCancellableCoroutine { cont ->
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             bitmap.recycle()
@@ -650,12 +645,11 @@ private suspend fun sampleTopRowColor(webView: WebView): Color? {
         try {
             PixelCopy.request(
                 window,
-                src,
+                Rect(x, y, x + 1, y + 1),
                 bitmap,
                 { result ->
                     if (result == PixelCopy.SUCCESS) {
-                        val pixel = bitmap.getPixel(0, 0)
-                        cont.resume(Color(pixel))
+                        cont.resume(Color(bitmap[0, 0]))
                     } else {
                         cont.resume(null)
                     }
@@ -677,7 +671,7 @@ private suspend fun sampleTopRowColor(webView: WebView): Color? {
  */
 internal fun isYandexAuthNavigation(url: String): Boolean {
     if (url.startsWith("fromchat://", ignoreCase = true)) return true
-    val uri = Uri.parse(url)
+    val uri = url.toUri()
     val host = uri.host?.lowercase() ?: return false
     val path = uri.path.orEmpty().lowercase()
 

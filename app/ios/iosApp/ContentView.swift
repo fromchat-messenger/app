@@ -9,8 +9,8 @@ struct ComposeView: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> UIViewController {
         MainViewControllerKt.MainViewController(
-            startAtProfileUserId = startAtProfileUserId,
-            startAtProfileUsername = startAtProfileUsername
+            startAtProfileUserId: startAtProfileUserId.map { KotlinInt(value: Int32($0)) },
+            startAtProfileUsername: startAtProfileUsername
         )
     }
 

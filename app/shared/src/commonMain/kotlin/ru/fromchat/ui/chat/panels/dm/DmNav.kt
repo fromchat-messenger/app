@@ -8,30 +8,75 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavController
+import androidx.navigation.NavOptionsBuilder
+import ru.fromchat.logging.Logger
 import ru.fromchat.api.local.cache.CacheContext
 import androidx.compose.ui.Modifier
-import androidx.navigation.NavController
 import ru.fromchat.api.local.db.store.ProfileCache
-import ru.fromchat.ui.chat.rememberChatNavigationGate
+import ru.fromchat.ui.chat.chrome.rememberChatNavigationGate
 import ru.fromchat.utils.haptic.HapticFeedbackEvent
 import ru.fromchat.ui.profile.ProfileScreen
 import ru.fromchat.utils.haptic.rememberHapticFeedback
 
 /** Route patterns and builders for DM chat + in-DM profile (stacked for predictive / system back). */
 object DmNav {
-    const val CHAT_ROUTE = "dm/{otherUserId}/chat?sourceMessageId={sourceMessageId}"
+    const val CHAT_ROUTE = "dm/{otherUserId}/chat/{sourceMessageId}"
     const val PROFILE_ROUTE = "dm/{otherUserId}/profile"
 
     fun chatRoute(otherUserId: Int, sourceMessageId: Int? = null): String {
-        return if (sourceMessageId != null && sourceMessageId > 0) {
-            "dm/$otherUserId/chat?sourceMessageId=$sourceMessageId"
-        } else {
-            "dm/$otherUserId/chat"
-        }
+        val source = sourceMessageId?.takeIf { it > 0 } ?: 0
+        return "dm/$otherUserId/chat/$source"
     }
 
     fun profileRoute(otherUserId: Int) = "dm/$otherUserId/profile"
 }
+
+/**
+ * Opens a DM chat, replacing any prior conversation/profile above the main `chat` root
+ * so large-screen switches do not stack previous chats.
+ *
+ * No-ops when that DM chat is already the top destination (avoids NavHost enter/exit
+ * for re-selecting the same conversation in list–detail).
+ */
+fun NavController.navigateToDmChat(
+    otherUserId: Int,
+    sourceMessageId: Int? = null,
+    builder: NavOptionsBuilder.() -> Unit = {},
+) {
+    if (sourceMessageId == null && isCurrentDmChat(otherUserId)) return
+
+    val route = DmNav.chatRoute(otherUserId, sourceMessageId)
+    runCatching {
+        navigate(route) {
+            popUpTo(graph.startDestinationId) { saveState = true }
+            launchSingleTop = true
+            builder()
+        }
+    }.onFailure { Logger.e("DmNav", "navigateToDmChat failed route=$route", it) }
+}
+
+/** True when the back-stack top is already [DmNav.CHAT_ROUTE] for [otherUserId]. */
+fun NavController.isCurrentDmChat(otherUserId: Int): Boolean {
+    val entry = currentBackStackEntry ?: return false
+    return entry.destination.route == DmNav.CHAT_ROUTE && entry.dmChatOtherUserId() == otherUserId
+}
+
+/** The otherUserId of the DM chat on top of this stack, or null when none is open. */
+fun NavController.currentDmChatUserId(): Int? {
+    val entry = currentBackStackEntry ?: return null
+    if (entry.destination.route != DmNav.CHAT_ROUTE) return null
+    return entry.dmChatOtherUserId()
+}
+
+private fun NavBackStackEntry.dmChatOtherUserId(): Int? =
+    when (val raw = savedStateHandle.get<Any?>("otherUserId")) {
+        is Int -> raw
+        is Long -> raw.toInt()
+        is String -> raw.toIntOrNull()
+        else -> null
+    }
 
 private const val DM_AVATAR_KEY_PREFIX = "dm-avatar-"
 
@@ -40,8 +85,8 @@ fun DmChatRoute(
     otherUserId: Int,
     scrollToMessageId: Int? = null,
     navController: NavController,
-    sharedTransitionScope: SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
     modifier: Modifier = Modifier,
 ) {
     val activeInstanceId by CacheContext.activeInstanceId.collectAsState()
@@ -105,7 +150,7 @@ fun DmProfileRoute(
         onChat = {
             runNav {
                 haptic(HapticFeedbackEvent.ProfileClosed)
-                navController.popBackStack()
+                navController.navigateToDmChat(otherUserId)
             }
         },
         modifier = modifier.fillMaxSize(),

@@ -21,7 +21,14 @@ actual fun provideMessageDatabaseDriver(): SqlDriver {
     NSFileManager.defaultManager.createDirectoryAtPath(dir, true, null, null)
     return NativeSqliteDriver(
         schema = MessageDatabase.Schema,
-        name = "$dir/message_database.db",
+        name = "message_database.db",
+        onConfiguration = { config ->
+            config.copy(
+                extendedConfig = config.extendedConfig.copy(
+                    basePath = dir,
+                ),
+            )
+        },
     )
 }
 

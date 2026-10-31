@@ -2,7 +2,7 @@ package ru.fromchat.api.local.messages
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.schema.websocket.WebSocketMessage
 import ru.fromchat.api.schema.websocket.types.WebSocketUpdatesData

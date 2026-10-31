@@ -7,7 +7,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
-import com.pr0gramm3r101.utils.UtilsLibrary
+import ru.fromchat.utils.UtilsLibrary
 
 actual fun scheduleOutboxProcessing(instanceId: String) {
     val id = instanceId.trim()

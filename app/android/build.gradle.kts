@@ -13,6 +13,12 @@ abstract class FixComposeResTask : DefaultTask() {
     @get:InputFiles abstract val inputFiles: ConfigurableFileCollection
     @get:OutputDirectory abstract val outputDirectory: DirectoryProperty
 
+    init {
+        group = "build"
+        description =
+            "Relayouts shared composeResources output for Android asset packaging (ru.fromchat namespace)."
+    }
+
     @TaskAction
     fun action() {
         val outDir = outputDirectory.get().asFile.apply {
@@ -32,6 +38,9 @@ abstract class FixComposeResTask : DefaultTask() {
 }
 
 val fixComposeResourcesStructure = tasks.register<FixComposeResTask>("fixComposeResourcesStructure") {
+    group = "build"
+    description =
+        "Relayouts shared composeResources output for Android asset packaging (ru.fromchat namespace)."
     val sharedProject = rootProject.project(":app:shared")
 
     inputFiles.from(
@@ -56,7 +65,11 @@ val fixComposeResourcesStructure = tasks.register<FixComposeResTask>("fixCompose
 
 extensions.configure<ApplicationExtension> {
     namespace = "ru.fromchat"
-    compileSdk = 37
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 2
+        }
+    }
 
     defaultConfig {
         applicationId = "ru.fromchat"
@@ -70,39 +83,64 @@ extensions.configure<ApplicationExtension> {
         }
     }
 
+    val keystorePropertiesFile = file("keys/keystore.properties")
+    val hasReleaseKeystore = keystorePropertiesFile.isFile && file("keys/release.jks").isFile
+    val hasDebugKeystore = keystorePropertiesFile.isFile && file("keys/debug.jks").isFile
+
     signingConfigs {
-        val keystoreProperties = Properties().apply {
-            load(file("keys/keystore.properties").inputStream())
-        }
+        if (hasReleaseKeystore || hasDebugKeystore) {
+            val keystoreProperties = Properties().apply {
+                load(keystorePropertiesFile.inputStream())
+            }
 
-        create("release") {
-            storeFile = file("keys/release.jks")
-            keyAlias = "key0"
-            storePassword = keystoreProperties["releaseStorePassword"].toString()
-            keyPassword = keystoreProperties["releaseKeyPassword"].toString()
-            enableV3Signing = true
-        }
+            fun Properties.password(key: String): String {
+                val raw = getProperty(key)
+                    ?: error("Missing $key in keys/keystore.properties")
+                return raw.trim().removeSurrounding("\"").removeSurrounding("'")
+            }
 
-        getByName("debug") {
-            storeFile = file("keys/debug.jks")
-            keyAlias = "debug"
-            storePassword = keystoreProperties["debugStorePassword"].toString()
-            keyPassword = keystoreProperties["debugKeyPassword"].toString()
-            enableV3Signing = true
+            if (hasReleaseKeystore) {
+                create("release") {
+                    storeFile = file("keys/release.jks")
+                    keyAlias = "key0"
+                    storePassword = keystoreProperties.password("releaseStorePassword")
+                    keyPassword = keystoreProperties.password("releaseKeyPassword")
+                    enableV3Signing = true
+                }
+            }
+
+            if (hasDebugKeystore) {
+                getByName("debug") {
+                    storeFile = file("keys/debug.jks")
+                    keyAlias = "key0"
+                    storePassword = keystoreProperties.password("debugStorePassword")
+                    keyPassword = keystoreProperties.password("debugKeyPassword")
+                    enableV3Signing = true
+                }
+            }
         }
     }
 
     buildTypes {
+        val versionBase = rootProject.extra["versionName"] as String
+        val skipBetaSuffix = Regex("(?i)-beta(\\d+)?$").containsMatchIn(versionBase)
+
         debug {
             applicationIdSuffix = ".beta"
-            versionNameSuffix = "-beta"
-            signingConfig = signingConfigs.getByName("debug")
+            if (!skipBetaSuffix) {
+                versionNameSuffix = "-beta"
+            }
+            if (hasDebugKeystore) {
+                signingConfig = signingConfigs.getByName("debug")
+            }
         }
 
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("release")
+            if (hasReleaseKeystore) {
+                signingConfig = signingConfigs.getByName("release")
+            }
 
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -156,6 +194,7 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.splashscreen)
+    implementation("androidx.dynamicanimation:dynamicanimation:1.1.0")
     implementation(libs.androidx.adaptive.android)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.core)
@@ -165,5 +204,4 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     implementation(project(":app:shared"))
-    implementation(project(":utils:shared"))
 }

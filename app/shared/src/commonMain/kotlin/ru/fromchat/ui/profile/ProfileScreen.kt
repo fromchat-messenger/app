@@ -21,7 +21,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import ru.fromchat.ui.components.ChromeBackIconButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Surface
@@ -35,19 +35,21 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.navigation.NavController
-import com.pr0gramm3r101.components.ListItemPosition
-import com.pr0gramm3r101.utils.SupportClipboardManager
+import ru.fromchat.utils.components.ListItemPosition
+import ru.fromchat.utils.SupportClipboardManager
+import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeEffect
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
-import dev.chrisbanes.haze.materials.HazeMaterials
+import dev.chrisbanes.haze.blur.hazeBlur
+import dev.chrisbanes.haze.blur.materials.HazeMaterials
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.CoroutineScope
 import ru.fromchat.api.local.db.store.PublicChatProfileCache
 import ru.fromchat.api.schema.chats.publicchat.PublicChatProfile
 import ru.fromchat.back
 import ru.fromchat.chat_members_count
-import ru.fromchat.legal.MarkdownPlain
+import ru.fromchat.ui.main.settings.about.legal.MarkdownPlain
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -61,27 +63,26 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Chat
-import androidx.compose.material.icons.filled.AlternateEmail
-import androidx.compose.material.icons.filled.Block
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.DeleteForever
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Link
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.automirrored.rounded.Chat
+import androidx.compose.material.icons.rounded.AlternateEmail
+import androidx.compose.material.icons.rounded.Block
+import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.DeleteForever
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.ContentCopy
-import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -107,13 +108,11 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
-import com.pr0gramm3r101.components.Category
-import com.pr0gramm3r101.components.ContextMenuPressable
-import com.pr0gramm3r101.components.ListItem
-import com.pr0gramm3r101.components.listItemPositionInGroup
-import com.pr0gramm3r101.utils.supportClipboardManagerImpl
-import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
+import ru.fromchat.utils.components.Category
+import ru.fromchat.utils.components.ContextMenuPressable
+import ru.fromchat.utils.components.ListItem
+import ru.fromchat.utils.components.listItemPositionInGroup
+import ru.fromchat.utils.supportClipboardManagerImpl
 import io.ktor.client.plugins.ClientRequestException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
@@ -123,13 +122,13 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.Res
 import ru.fromchat.action_copy
 import ru.fromchat.action_edit
 import ru.fromchat.api.ApiClient
-import ru.fromchat.api.StatusSubscriptionCoordinator
-import ru.fromchat.api.PublicChatProfileSync
+import ru.fromchat.api.sync.StatusSubscriptionCoordinator
+import ru.fromchat.api.sync.PublicChatProfileSync
 import ru.fromchat.api.local.WebSocketManager
 import ru.fromchat.api.local.db.store.ConnectionStateStore
 import ru.fromchat.api.local.db.store.ConnectionStatus
@@ -178,20 +177,23 @@ import ru.fromchat.profile_invalid_link
 import ru.fromchat.profile_load_failed
 import ru.fromchat.profile_not_found
 import ru.fromchat.profile_verified_support
-import ru.fromchat.ui.profile.deletedUserDisplayNameForUi
-import ru.fromchat.ui.profile.avatarLabelForInitials
-import ru.fromchat.ui.profile.displayNameForUi
-import ru.fromchat.ui.profile.effectiveVerificationStatus
-import ru.fromchat.ui.profile.isDeletedAccount
-import ru.fromchat.ui.profile.peerIsDeleted
+import ru.fromchat.ui.profile.badge.StatusBadge
+import ru.fromchat.ui.profile.widget.deletedUserDisplayNameForUi
+import ru.fromchat.ui.profile.widget.avatarLabelForInitials
+import ru.fromchat.ui.profile.widget.displayNameForUi
+import ru.fromchat.ui.profile.widget.effectiveVerificationStatus
+import ru.fromchat.ui.profile.widget.isDeletedAccount
+import ru.fromchat.ui.profile.widget.peerIsDeleted
 import ru.fromchat.ui.LocalNavController
+import ru.fromchat.ui.main.ConversationDetailContentPadding
 import ru.fromchat.ui.chat.Avatar
-import ru.fromchat.ui.chat.TypingIndicator
+import ru.fromchat.ui.chat.chrome.TypingIndicator
 import ru.fromchat.ui.components.FromChatSnackbarHost
 import ru.fromchat.ui.components.ScreenSurface
 import ru.fromchat.ui.components.ShimmerBox
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.showReplacingSnackbar
+import ru.fromchat.ui.theme.extraStatusBars
 import ru.fromchat.utils.RegistrationDateFormatStrings
 import ru.fromchat.utils.formatLastSeen
 import ru.fromchat.utils.formatProfileRegistrationDate
@@ -246,7 +248,6 @@ private fun rememberLiveProfile(userId: Int?): UserProfile? {
         ?.takeUnless { it.isClientPreviewOnly }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
     userId: Int?,
@@ -269,7 +270,7 @@ fun ProfileScreen(
     val navController = LocalNavController.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
-    val statusBarTopDp = with(density) { WindowInsets.statusBars.getTop(this).toDp() }
+    val statusBarTopDp = with(density) { WindowInsets.extraStatusBars.getTop(this).toDp() }
     val profileAvatarTop = statusBarTopDp + 24.dp
 
     val profileLoadFailed = stringResource(Res.string.profile_load_failed)
@@ -593,24 +594,24 @@ fun ProfileScreen(
         ).ifEmpty { presenceRecently }
         else -> ""
     }
-    val listItemIconTint = MaterialTheme.colorScheme.onSurfaceVariant
+    val listItemIconTint = MaterialTheme.colorScheme.primary
     val profileActions = resolvedProfile?.let { p ->
         if (isOwnProfile) {
             listOf(
                 ProfileAction(
                     label = labelEdit,
-                    icon = Icons.Filled.Edit,
+                    icon = Icons.Rounded.Edit,
                     holdsExpansionOnNavigate = true,
                     onClick = { navController.navigate(ProfileRoutes.editRoute()) },
                 ),
                 ProfileAction(
                     label = labelLink,
-                    icon = Icons.Filled.Link,
+                    icon = Icons.Rounded.Link,
                     onClick = { scope.launch { clipboard.setText(profileLink.orEmpty()) } },
                 ),
                 ProfileAction(
                     label = labelSettings,
-                    icon = Icons.Filled.Settings,
+                    icon = Icons.Rounded.Settings,
                     holdsExpansionOnNavigate = true,
                     onClick = onOpenSettings,
                 ),
@@ -619,13 +620,13 @@ fun ProfileScreen(
             listOf(
                 ProfileAction(
                     label = labelChat,
-                    icon = Icons.AutoMirrored.Filled.Chat,
+                    icon = Icons.AutoMirrored.Rounded.Chat,
                     holdsExpansionOnNavigate = true,
                     onClick = { onChat(p.id) },
                 ),
                 ProfileAction(
                     label = labelSearch,
-                    icon = Icons.Filled.Search,
+                    icon = Icons.Rounded.Search,
                     onClick = {
                         scope.launch {
                             snackbarHostState.showReplacingSnackbar(
@@ -642,7 +643,7 @@ fun ProfileScreen(
                 add(
                     ProfileAction(
                         label = labelChat,
-                        icon = Icons.AutoMirrored.Filled.Chat,
+                        icon = Icons.AutoMirrored.Rounded.Chat,
                         holdsExpansionOnNavigate = true,
                         onClick = { onChat(p.id) },
                     )
@@ -650,7 +651,7 @@ fun ProfileScreen(
                 add(
                     ProfileAction(
                         label = labelLink,
-                        icon = Icons.Filled.Link,
+                        icon = Icons.Rounded.Link,
                         onClick = { scope.launch { clipboard.setText(profileLink.orEmpty()) } },
                     )
                 )
@@ -666,7 +667,7 @@ fun ProfileScreen(
                 add(
                     ProfileAction(
                         label = labelSearch,
-                        icon = Icons.Filled.Search,
+                        icon = Icons.Rounded.Search,
                         onClick = {
                             scope.launch {
                                 snackbarHostState.showReplacingSnackbar(
@@ -698,17 +699,25 @@ fun ProfileScreen(
             animatedVisibilityScope != null &&
             sharedAvatarKey != null
 
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter,
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
-                    .hazeSource(hazeState),
+                    .widthIn(max = 600.dp),
             ) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background)
+                        .hazeSource(hazeState),
+                ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
                 when {
                     showAvatarSkeleton && !hideAvatar -> {
                         item {
@@ -862,10 +871,11 @@ fun ProfileScreen(
                 .padding(bottom = 16.dp)
                 .fillMaxWidth(),
         )
+            }
         }
     }
 }
-@OptIn(ExperimentalMaterial3Api::class)
+
 @Composable
 fun PublicChatProfileScreen(
     onBack: () -> Unit,
@@ -881,7 +891,7 @@ fun PublicChatProfileScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val density = LocalDensity.current
-    val statusBarTopDp = with(density) { WindowInsets.statusBars.getTop(this).toDp() }
+    val statusBarTopDp = with(density) { WindowInsets.extraStatusBars.getTop(this).toDp() }
     val profileAvatarTop = statusBarTopDp + 24.dp
     val profileLoadFailed = stringResource(Res.string.profile_load_failed)
     val profileNotFound = stringResource(Res.string.profile_not_found)
@@ -891,7 +901,7 @@ fun PublicChatProfileScreen(
     val notImplementedMessage = stringResource(Res.string.feature_not_implemented)
     val headlineBio = stringResource(Res.string.profile_headline_bio)
     val labelCopy = stringResource(Res.string.action_copy)
-    val listItemIconTint = MaterialTheme.colorScheme.onSurfaceVariant
+    val listItemIconTint = MaterialTheme.colorScheme.primary
 
     var state by remember {
         mutableStateOf(
@@ -951,18 +961,18 @@ fun PublicChatProfileScreen(
         listOf(
             ProfileAction(
                 label = labelChat,
-                icon = Icons.AutoMirrored.Filled.Chat,
+                icon = Icons.AutoMirrored.Rounded.Chat,
                 holdsExpansionOnNavigate = true,
                 onClick = onChat,
             ),
             ProfileAction(
                 label = labelLink,
-                icon = Icons.Filled.Link,
+                icon = Icons.Rounded.Link,
                 onClick = { scope.launch { clipboard.setText(profileLink.orEmpty()) } },
             ),
             ProfileAction(
                 label = labelSearch,
-                icon = Icons.Filled.Search,
+                icon = Icons.Rounded.Search,
                 onClick = {
                     scope.launch {
                         snackbarHostState.showReplacingSnackbar(
@@ -985,17 +995,25 @@ fun PublicChatProfileScreen(
         sharedAvatarKey != null
 
     ScreenSurface(modifier = modifier) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter,
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
-                    .hazeSource(hazeState),
+                    .widthIn(max = 600.dp),
             ) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background)
+                        .hazeSource(hazeState),
                 ) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
                 when {
                     useSharedAvatar && displayName.isNotBlank() -> {
                         item {
@@ -1071,6 +1089,7 @@ fun PublicChatProfileScreen(
                 .padding(bottom = 16.dp)
                 .fillMaxWidth(),
         )
+            }
         }
     }
 }
@@ -1141,7 +1160,7 @@ private fun PublicChatProfileLoadedBody(
                     groupItemCount = 1,
                     leadingContent = {
                         Icon(
-                            imageVector = Icons.Filled.Info,
+                            imageVector = Icons.Rounded.Info,
                             contentDescription = null,
                             tint = listItemIconTint,
                         )
@@ -1445,7 +1464,7 @@ private fun ProfileLoadedBody(
                         onContextMenuOpen = openContextMenuHaptic,
                         leadingContent = {
                             Icon(
-                                imageVector = Icons.Filled.AlternateEmail,
+                                imageVector = Icons.Rounded.AlternateEmail,
                                 contentDescription = null,
                                 tint = listItemIconTint,
                             )
@@ -1483,7 +1502,7 @@ private fun ProfileLoadedBody(
                         onContextMenuOpen = openContextMenuHaptic,
                         leadingContent = {
                             Icon(
-                                imageVector = Icons.Filled.CalendarMonth,
+                                imageVector = Icons.Rounded.CalendarMonth,
                                 contentDescription = null,
                                 tint = listItemIconTint,
                             )
@@ -1516,7 +1535,7 @@ private fun ProfileLoadedBody(
                         onContextMenuOpen = openContextMenuHaptic,
                         leadingContent = {
                             Icon(
-                                imageVector = Icons.Filled.Info,
+                                imageVector = Icons.Rounded.Info,
                                 contentDescription = null,
                                 tint = listItemIconTint,
                             )
@@ -1549,7 +1568,7 @@ private fun ProfileLoadedBody(
                         groupItemCount = detailCount,
                         leadingContent = {
                             Icon(
-                                imageVector = Icons.Filled.Verified,
+                                imageVector = Icons.Rounded.Verified,
                                 contentDescription = null,
                                 tint = listItemIconTint,
                             )
@@ -1580,7 +1599,7 @@ private fun ProfileLoadedBody(
                     enabled = !adminActionInProgress,
                     leadingContent = {
                         Icon(
-                            imageVector = Icons.Filled.Verified,
+                            imageVector = Icons.Rounded.Verified,
                             contentDescription = null,
                             tint = listItemIconTint,
                         )
@@ -1598,9 +1617,9 @@ private fun ProfileLoadedBody(
                     leadingContent = {
                         Icon(
                             imageVector = if (isSuspended) {
-                                Icons.Filled.CheckCircle
+                                Icons.Rounded.CheckCircle
                             } else {
-                                Icons.Filled.Block
+                                Icons.Rounded.Block
                             },
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.error,
@@ -1623,7 +1642,7 @@ private fun ProfileLoadedBody(
                     enabled = !adminActionInProgress,
                     leadingContent = {
                         Icon(
-                            imageVector = Icons.Filled.DeleteForever,
+                            imageVector = Icons.Rounded.DeleteForever,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.error,
                         )
@@ -1876,6 +1895,7 @@ private fun ProfileBioMarkdown(
     MarkdownPlain(
         content = content,
         modifier = modifier,
+        bodyColor = MaterialTheme.colorScheme.onSurfaceVariant,
         onLinkClick = { uri ->
             runCatching { uriHandler.openUri(uri) }.onFailure {
                 scope.launch {
@@ -2028,7 +2048,6 @@ private fun ExpressiveProfileActionButton(
     }
 }
 
-@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 private fun ProfileFloatingBackBar(
     visible: Boolean,
@@ -2044,28 +2063,29 @@ private fun ProfileFloatingBackBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(blurHeight)
-                .hazeEffect(state = hazeState, style = HazeMaterials.thin()) {
-                    progressive = HazeProgressive.verticalGradient(
-                        startIntensity = 1f,
-                        endIntensity = 0f,
-                    )
-                },
+                .hazeBlur(
+                    input = HazeInput.Backdrop(hazeState),
+                    style = HazeMaterials.thin().then {
+                        progressive(
+                            HazeProgressive.verticalGradient(
+                                startIntensity = 1f,
+                                endIntensity = 0f,
+                            ),
+                        )
+                    },
+                ),
         )
-        IconButton(
+        ChromeBackIconButton(
             onClick = onBack,
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .windowInsetsPadding(WindowInsets.statusBars),
-            colors = IconButtonDefaults.iconButtonColors(
-                contentColor = MaterialTheme.colorScheme.onSurface,
-            ),
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = stringResource(Res.string.back),
-                modifier = Modifier.size(24.dp),
-                tint = MaterialTheme.colorScheme.onSurface,
-            )
-        }
+                .windowInsetsPadding(WindowInsets.extraStatusBars)
+                .padding(
+                    start = ConversationDetailContentPadding - 2.dp,
+                    top = 6.dp,
+                    end = ConversationDetailContentPadding,
+                    bottom = 8.dp,
+                ),
+        )
     }
 }

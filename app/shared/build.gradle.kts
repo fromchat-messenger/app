@@ -2,8 +2,10 @@
 
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
 
@@ -26,6 +28,15 @@ abstract class GenerateAppBuildInfoTask : DefaultTask() {
     @get:Input
     abstract val debugBuild: Property<Boolean>
 
+    @get:Input
+    abstract val gitCommitSha: Property<String>
+
+    @get:Input
+    abstract val gitHubRepository: Property<String>
+
+    @get:InputFile
+    abstract val releaseNotesFile: RegularFileProperty
+
     @get:OutputDirectory
     abstract val outputDirectory: DirectoryProperty
 
@@ -35,6 +46,41 @@ abstract class GenerateAppBuildInfoTask : DefaultTask() {
         check(outRoot.invariantSeparatorsPath.contains("/generated/")) {
             "AppBuildInfo must be written under a generated/ directory, got: $outRoot"
         }
+        fun escapeKotlinString(value: String): String =
+            value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\r\n", "\n")
+                .replace("\n", "\\n")
+
+        val releaseNotesEscaped = releaseNotesFile.get().asFile
+            .takeIf { it.isFile }
+            ?.readText()
+            ?.let(::escapeKotlinString)
+            ?: ""
+
+        val repo = gitHubRepository.get().trim()
+        val shaRaw = gitCommitSha.get().trim()
+        val sha = shaRaw.ifEmpty { "dev" }
+        val gitCommitShort = when {
+            sha.equals("dev", ignoreCase = true) -> "dev"
+            sha.length >= 7 && sha.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' } ->
+                sha.take(7).lowercase()
+            else -> sha.take(7).lowercase()
+        }
+        val gitCommitUrl =
+            if (
+                repo.isNotEmpty() &&
+                shaRaw.isNotEmpty() &&
+                shaRaw.matches(Regex("^[0-9a-fA-F]{7,40}$"))
+            ) {
+                "https://github.com/$repo/commit/${shaRaw.lowercase()}"
+            } else {
+                ""
+            }
+        val gitCommitShaForLinks =
+            if (shaRaw.matches(Regex("^[0-9a-fA-F]{7,40}$"))) shaRaw.lowercase() else ""
+
         outRoot.deleteRecursively()
         outRoot.resolve("ru/fromchat").apply { mkdirs() }.resolve("AppBuildInfo.kt").writeText(
             """
@@ -42,9 +88,14 @@ abstract class GenerateAppBuildInfoTask : DefaultTask() {
             |
             |/** Injected by Gradle into generated sources (not under src/). */
             |object AppBuildInfo {
-            |    const val version = "${versionName.get()}"
+            |    const val version = "${escapeKotlinString(versionName.get())}"
             |    const val versionCode = ${versionCode.get()}
             |    const val isDebug = ${debugBuild.get()}
+            |    const val releaseNotesMarkdown = "$releaseNotesEscaped"
+            |    const val gitCommitShort = "${escapeKotlinString(gitCommitShort)}"
+            |    const val gitCommitSha = "${escapeKotlinString(gitCommitShaForLinks)}"
+            |    const val gitCommitUrl = "${escapeKotlinString(gitCommitUrl)}"
+            |    const val githubRepository = "${escapeKotlinString(repo)}"
             |}
             |
             """.trimMargin()
@@ -55,12 +106,15 @@ abstract class GenerateAppBuildInfoTask : DefaultTask() {
 val generateAppBuildInfo = tasks.register<GenerateAppBuildInfoTask>("generateAppBuildInfo") {
     versionName.set(rootProject.extra["versionName"] as String)
     versionCode.set(rootProject.extra["versionCode"] as Int)
+    releaseNotesFile.set(rootProject.layout.projectDirectory.file("RELEASE_NOTES.md"))
     debugBuild.set(
         gradle.startParameter.taskNames.let { names ->
             !names.any { it.contains("Release", ignoreCase = true) } ||
                 names.any { it.contains("Debug", ignoreCase = true) }
         },
     )
+    gitCommitSha.set(rootProject.extra["gitCommitSha"] as String)
+    gitHubRepository.set(rootProject.extra["gitHubRepository"] as String)
     outputDirectory.set(layout.buildDirectory.dir("generated/sources/appBuildInfo/kotlin"))
 }
 
@@ -68,12 +122,20 @@ kotlin {
     android {
         namespace = "ru.fromchat.shared"
         minSdk = 24
-        compileSdk = 37
+        compileSdk {
+            version = release(37) {
+                minorApiLevel = 2
+            }
+        }
     }
+
+    jvmToolchain(17)
 
     compilerOptions {
         freeCompilerArgs.addAll("-Xexpect-actual-classes")
     }
+
+    jvm()
 
     listOf(
         iosArm64(),
@@ -82,7 +144,7 @@ kotlin {
         iosTarget.binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
-            linkerOpts("-framework", "UIKit")
+            linkerOpts("-framework", "UIKit", "-lsqlite3")
         }
     }
 
@@ -107,8 +169,8 @@ kotlin {
             implementation(libs.navigation.compose)
             implementation(libs.compose.materialIconsExtended)
             implementation(libs.haze)
-            implementation(libs.haze.materials)
-            implementation(libs.androidx.core.ktx)
+            implementation(libs.haze.blur)
+            implementation(libs.haze.blur.materials)
             implementation(libs.androidx.lifecycle.runtime.compose)
 
             // Serialization
@@ -135,13 +197,21 @@ kotlin {
             implementation(libs.sqldelight.runtime)
             implementation(libs.sqldelight.coroutines.extensions)
 
-            implementation(project(":utils:shared"))
+            implementation(libs.kotlin.stdlib)
             implementation(libs.krypto)
             implementation(libs.cryptography.core)
             implementation(libs.cryptography.provider.optimal)
         }
 
         androidMain.dependencies {
+            implementation(libs.androidx.adaptive.android)
+            implementation(libs.datastore.preferences)
+            implementation(libs.datastore.core)
+            implementation(libs.biometric)
+            implementation(libs.androidx.appcompat)
+            implementation(libs.material)
+            implementation(libs.security.crypto)
+            implementation(libs.androidx.core.ktx)
             implementation(libs.markdown.renderer.m3)
             implementation(libs.bouncycastle.bcprov)
             implementation(libs.androidx.exifinterface)
@@ -158,12 +228,71 @@ kotlin {
         }
 
         iosMain.dependencies {
+            implementation(libs.multiplatform.settings)
+            implementation(libs.multiplatform.settings.coroutines)
+            implementation(libs.multiplatform.settings.serialization)
             implementation(libs.jetbrains.kotlinx.io.bytestring)
             implementation(libs.jetbrains.kotlinx.coroutines.core)
             implementation(libs.ktor.client.darwin)
             implementation(libs.multiplatform.crypto.libsodium.bindings)
             implementation(libs.sqldelight.driver.native)
         }
+
+        jvmMain.dependencies {
+            implementation(libs.multiplatform.settings)
+            implementation(libs.multiplatform.settings.coroutines)
+            implementation(libs.multiplatform.settings.serialization)
+            if (System.getProperty("os.name").orEmpty().lowercase().contains("win") &&
+                (project.findProperty("windowsArm64") != null || hostCpuArch() == "aarch64")
+            ) {
+                val composeDesktopVersion = libs.versions.compose.multiplatform.get()
+                implementation(
+                    "org.jetbrains.compose.desktop:desktop-jvm-windows-arm64:$composeDesktopVersion",
+                )
+            } else {
+                implementation(compose.desktop.currentOs)
+            }
+            implementation(libs.jetbrains.kotlinx.io.bytestring)
+            implementation(libs.jetbrains.kotlinx.coroutines.core)
+            implementation(libs.ktor.client.cio)
+            implementation(libs.multiplatform.crypto.libsodium.bindings)
+            implementation(libs.sqldelight.driver.sqlite)
+            implementation(libs.bouncycastle.bcprov)
+            // OpenJFX publishes empty jars without a classifier; declare every module
+            // with the host classifier and exclude transitive stubs.
+            val javafxVersion = libs.versions.openjfx.get()
+            val javafxClassifier = openjfxClassifier()
+            listOf("base", "graphics", "controls", "media", "web", "swing").forEach { module ->
+                implementation("org.openjfx:javafx-$module:$javafxVersion:$javafxClassifier") {
+                    exclude(group = "org.openjfx")
+                }
+            }
+            implementation(libs.jna.platform)
+        }
+    }
+}
+
+private fun hostCpuArch(): String {
+    val arch = System.getProperty("os.arch").orEmpty().lowercase()
+    if (arch.contains("aarch64") || arch == "arm64") return "aarch64"
+    val nativeArch = System.getenv("PROCESSOR_ARCHITEW6432")?.uppercase()
+        ?: System.getenv("PROCESSOR_ARCHITECTURE")?.uppercase()
+    if (nativeArch == "ARM64") return "aarch64"
+    return when {
+        arch.contains("amd64") || arch == "x86_64" -> "x86_64"
+        else -> arch
+    }
+}
+
+private fun openjfxClassifier(): String {
+    val os = System.getProperty("os.name").lowercase()
+    val isArm = hostCpuArch() == "aarch64"
+    return when {
+        os.contains("mac") && isArm -> "mac-aarch64"
+        os.contains("mac") -> "mac"
+        os.contains("win") -> "win"
+        isArm -> "linux-aarch64"
+        else -> "linux"
     }
 }
 

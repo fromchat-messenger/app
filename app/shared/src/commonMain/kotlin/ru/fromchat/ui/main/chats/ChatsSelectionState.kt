@@ -6,7 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.IntSize
-import com.pr0gramm3r101.components.ListItemPosition
+import ru.fromchat.utils.components.ListItemPosition
 import ru.fromchat.api.local.db.store.CachedConversation
 import ru.fromchat.api.local.messages.ChatListPreviewState
 import ru.fromchat.api.local.db.store.UserStatus
@@ -103,8 +103,8 @@ class ChatContextMenuOverlayController {
     var blurProgress by mutableFloatStateOf(0f)
     /** Shared row scale progress (0 = pressed, 1 = full) for overlay ↔ list handoff. */
     var rowRevealProgress by mutableFloatStateOf(0f)
-    /** True once the overlay row clone has been composed and positioned. */
-    var overlayCloneReady by mutableStateOf(false)
+    /** The overlay replica has been drawn at least once; the list row hides only after this. */
+    var overlayFirstDrawn by mutableStateOf(false)
     var onStateChange: (ChatContextMenuState) -> Unit = {}
     var onDismiss: () -> Unit = {}
     var onMessage: () -> Unit = {}
@@ -114,12 +114,11 @@ class ChatContextMenuOverlayController {
     var onMarkPublicRead: () -> Unit = {}
     var onDelete: (Int) -> Unit = {}
     var onSelect: () -> Unit = {}
-    var onOverlayCloneReady: () -> Unit = {}
 
     fun clear() {
         uiState = null
         blurProgress = 0f
         rowRevealProgress = 0f
-        overlayCloneReady = false
+        overlayFirstDrawn = false
     }
 }

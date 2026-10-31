@@ -11,12 +11,13 @@ import kotlinx.serialization.json.Json
 import ru.fromchat.api.schema.user.devices.DeviceSessionInfo
 import ru.fromchat.config.Settings.API_PORT_KEY
 import ru.fromchat.config.Settings.SERVER_IP_KEY
-import ru.fromchat.ui.Theme
-import com.pr0gramm3r101.utils.settings.Settings as PlatformSettings
+import ru.fromchat.ui.theme.Theme
+import ru.fromchat.utils.settings.Settings as PlatformSettings
 
 object Settings {
     private const val MATERIAL_YOU_KEY = "materialYou"
     private const val THEME_KEY = "theme"
+    private const val ENTER_TO_SEND_KEY = "enter_to_send"
     /** Legacy single field "host:port" or hostname — migrated once to [SERVER_IP_KEY] / [API_PORT_KEY]. */
     private const val SERVER_URL_KEY = "server_url"
     private const val SERVER_IP_KEY = "server_ip"
@@ -27,6 +28,10 @@ object Settings {
     private const val HTTPS_ENABLED_KEY = "https_enabled"
     private const val DEVICE_SESSIONS_CACHE_KEY = "device_sessions_cache_v1"
     private const val LAST_SERVER_INSTANCE_ID_KEY = "last_server_instance_id"
+    private const val LAST_ACKNOWLEDGED_APP_VERSION_KEY = "last_acknowledged_app_version"
+    private const val RELEASE_NOTES_PERMANENTLY_HIDDEN_KEY = "release_notes_permanently_hidden"
+    private const val NAV_BAR_STYLE_KEY = "nav_bar_style"
+    private const val NAV_BAR_SHOW_TITLE_KEY = "nav_bar_show_title"
 
     private val settings = PlatformSettings()
     private val deviceSessionsJson = Json { ignoreUnknownKeys = true }
@@ -80,6 +85,30 @@ object Settings {
         get() = runBlocking { Theme.entries[settings.getInt(THEME_KEY, Theme.AsSystem.ordinal)] }
         set(value) = runIO { settings.putInt(THEME_KEY, value.ordinal) }
 
+    var navBarStyle: NavBarStyle
+        get() = runBlocking {
+            NavBarStyle.entries[settings.getInt(NAV_BAR_STYLE_KEY, NavBarStyle.Floating.ordinal)]
+        }
+        set(value) = runIO { settings.putInt(NAV_BAR_STYLE_KEY, value.ordinal) }
+
+    /**
+     * When true, compact (single-pane) detail screens use the Pixel top app bar
+     * with an app "seed" chip instead of the stock collapsing app bar.
+     */
+    var navBarShowTitle: Boolean
+        get() = runBlocking { settings.getBoolean(NAV_BAR_SHOW_TITLE_KEY, true) }
+        set(value) = runIO { settings.putBoolean(NAV_BAR_SHOW_TITLE_KEY, value) }
+
+    /**
+     * When true, Enter sends the message and Shift+Enter inserts a newline.
+     * When false, Enter inserts a newline (previous composer behavior).
+     *
+     * Default: ON on desktop (JVM), OFF on mobile (Android / iOS).
+     */
+    var enterToSend: Boolean
+        get() = runBlocking { settings.getBoolean(ENTER_TO_SEND_KEY, defaultEnterToSend()) }
+        set(value) = runIO { settings.putBoolean(ENTER_TO_SEND_KEY, value) }
+
     var httpsEnabled: Boolean
         get() = runBlocking {
             if (settings.contains(HTTPS_ENABLED_KEY)) {
@@ -119,16 +148,11 @@ object Settings {
         if (ip.isBlank()) {
             serverConfigNotInitialized()
         }
-        val apiPort = settings.getInt(API_PORT_KEY, 443).coerceIn(1, 65535)
+        val apiPort = normalizeStoredPort(API_PORT_KEY, default = 443)
         val rawCalls = settings.getInt(CALLS_PORT_KEY, -1)
         val callsPort = if (rawCalls in 1..65535) rawCalls else DEFAULT_CALLS_PORT
         val https = settings.getBoolean(HTTPS_ENABLED_KEY, true)
-        val callsEnabled =
-            if (settings.contains(CALLS_ENABLED_KEY)) {
-                settings.getBoolean(CALLS_ENABLED_KEY, true)
-            } else {
-                true
-            }
+        val callsEnabled = settings.getBoolean(CALLS_ENABLED_KEY, true)
         return ServerConfigData(
             serverIp = ip,
             apiPort = apiPort,
@@ -136,6 +160,15 @@ object Settings {
             httpsEnabled = https,
             callsEnabled = callsEnabled,
         )
+    }
+
+    /** Repairs invalid stored ports (e.g. legacy iOS int 0 in NSUserDefaults). */
+    private suspend fun normalizeStoredPort(key: String, default: Int): Int {
+        if (!settings.contains(key)) return default
+        val raw = settings.getInt(key, default)
+        if (raw in 1..65535) return raw
+        settings.putInt(key, default)
+        return default
     }
 
     private suspend fun writeServerConfig(value: ServerConfigData) {
@@ -172,8 +205,34 @@ object Settings {
         runIO { settings.remove(DEVICE_SESSIONS_CACHE_KEY) }
     }
 
+    /** Suspend read for coroutine / single [runBlocking] callers (e.g. schema migration on the DB thread). */
+    internal suspend fun readLastKnownServerInstanceIdRaw(): String =
+        settings.getString(LAST_SERVER_INSTANCE_ID_KEY, "")
+
     /** Last known [ServerInstanceIdResponse.instanceId] from the configured API (empty until first fetch). */
     var lastKnownServerInstanceId: String
-        get() = runBlocking { settings.getString(LAST_SERVER_INSTANCE_ID_KEY, "") }
+        get() = runBlocking { readLastKnownServerInstanceIdRaw() }
         set(value) = runIO { settings.putString(LAST_SERVER_INSTANCE_ID_KEY, value) }
+
+    /** App version for which the user last dismissed the release-notes prompt. */
+    var lastAcknowledgedAppVersion: String
+        get() = runBlocking { settings.getString(LAST_ACKNOWLEDGED_APP_VERSION_KEY, "") }
+        set(value) = runIO { settings.putString(LAST_ACKNOWLEDGED_APP_VERSION_KEY, value) }
+
+    /** When true, the automatic post-update release-notes dialog is suppressed. */
+    var releaseNotesPermanentlyHidden: Boolean
+        get() = runBlocking { settings.getBoolean(RELEASE_NOTES_PERMANENTLY_HIDDEN_KEY, false) }
+        set(value) = runIO { settings.putBoolean(RELEASE_NOTES_PERMANENTLY_HIDDEN_KEY, value) }
+}
+
+/** Platform default for [enterToSend] when [ENTER_TO_SEND_KEY] is unset. */
+internal expect fun defaultEnterToSend(): Boolean
+
+/** Main-screen bottom navigation bar style. */
+enum class NavBarStyle {
+    /** Standard [androidx.compose.material3.NavigationBar] with icon + text labels. */
+    Traditional,
+
+    /** Floating, fully-rounded pill bar (drag-to-swap, colorful haze). */
+    Floating,
 }

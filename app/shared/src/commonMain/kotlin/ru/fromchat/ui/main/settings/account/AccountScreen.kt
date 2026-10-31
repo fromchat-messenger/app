@@ -1,5 +1,3 @@
-@file:Suppress("AssignedValueIsNeverRead")
-
 package ru.fromchat.ui.main.settings.account
 
 import androidx.compose.foundation.layout.Column
@@ -9,21 +7,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.rounded.AccountCircle
+import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MediumTopAppBar
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,14 +26,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
-import com.pr0gramm3r101.components.Category
-import com.pr0gramm3r101.components.ListItem
+import ru.fromchat.utils.components.Category
+import ru.fromchat.utils.components.ListItem
+import ru.fromchat.utils.conditional
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
 import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
-import ru.fromchat.back
 import ru.fromchat.cancel
 import ru.fromchat.ic_yandex
 import ru.fromchat.logout
@@ -55,8 +47,12 @@ import ru.fromchat.settings_account_title
 import ru.fromchat.settings_change_password
 import ru.fromchat.settings_security_change_password_sub
 import ru.fromchat.ui.components.Text
+import ru.fromchat.ui.main.settings.SettingsDetailTopBar
+import ru.fromchat.ui.main.settings.rememberSettingsCollapsingScrollBehavior
+import ru.fromchat.ui.main.settings.rememberSettingsDetailHazeState
+import ru.fromchat.ui.main.settings.settingsDetailHazeSource
+import ru.fromchat.ui.main.settings.settingsDetailUseCollapsingTopBar
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AccountScreen(
     onBack: () -> Unit,
@@ -65,7 +61,9 @@ fun AccountScreen(
     onChangeYandexId: () -> Unit,
     onDeleteAccount: () -> Unit,
 ) {
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val useCollapsing = settingsDetailUseCollapsingTopBar()
+    val scrollBehavior = rememberSettingsCollapsingScrollBehavior()
+    val hazeState = rememberSettingsDetailHazeState()
     val scope = rememberCoroutineScope()
     var showLogoutConfirm by remember { mutableStateOf(false) }
     var yandexAvailable by remember { mutableStateOf(false) }
@@ -76,22 +74,24 @@ fun AccountScreen(
     }
 
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        // Match Profile / shell — `surfaceContainerLowest` mismatches the pane behind in two-pane.
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            MediumTopAppBar(
-                title = { Text(stringResource(Res.string.settings_account_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(Res.string.back))
-                    }
-                },
-                scrollBehavior = scrollBehavior
+            SettingsDetailTopBar(
+                title = stringResource(Res.string.settings_account_title),
+                onBack = onBack,
+                hazeState = hazeState,
+                scrollBehavior = scrollBehavior,
             )
         }
     ) { innerPadding ->
         Column(
             Modifier
                 .fillMaxWidth()
+                .settingsDetailHazeSource(hazeState)
+                .conditional(useCollapsing) {
+                    Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
+                }
                 .verticalScroll(rememberScrollState())
                 .padding(innerPadding)
         ) {
@@ -103,14 +103,13 @@ fun AccountScreen(
                     headline = stringResource(Res.string.settings_change_password),
                     supportingText = stringResource(Res.string.settings_security_change_password_sub),
                     onClick = onChangePassword,
-                    leadingContent = { Icon(Icons.Filled.Key, null) },
+                    leadingContent = { Icon(Icons.Rounded.Key, null) },
                     divider = true,
                     trailingContent = {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                             contentDescription = null,
-                            modifier = Modifier.size(24.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                 )
@@ -124,10 +123,9 @@ fun AccountScreen(
                         divider = true,
                         trailingContent = {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                                 contentDescription = null,
-                                modifier = Modifier.size(24.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                modifier = Modifier.size(24.dp)
                             )
                         }
                     )
@@ -137,7 +135,7 @@ fun AccountScreen(
                     headline = stringResource(Res.string.settings_account_delete),
                     supportingText = stringResource(Res.string.settings_account_delete_d),
                     onClick = onDeleteAccount,
-                    leadingContent = { Icon(Icons.Filled.AccountCircle, null) },
+                    leadingContent = { Icon(Icons.Rounded.AccountCircle, null) },
                     divider = true
                 )
 
@@ -146,10 +144,9 @@ fun AccountScreen(
                     onClick = { showLogoutConfirm = true },
                     leadingContent = {
                         Icon(
-                            Icons.AutoMirrored.Filled.Logout,
+                            Icons.AutoMirrored.Rounded.Logout,
                             null,
-                            Modifier.size(24.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            Modifier.size(24.dp)
                         )
                     }
                 )

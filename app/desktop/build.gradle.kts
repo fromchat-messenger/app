@@ -1,0 +1,1729 @@
+import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.file.Files
+import java.nio.file.Path
+import java.util.zip.ZipFile
+
+plugins {
+    kotlin("jvm")
+    alias(libs.plugins.compose.multiplatform)
+    alias(libs.plugins.compose.compiler)
+}
+
+val javafxVersion = libs.versions.openjfx.get()
+val javafxClassifier = openjfxClassifier()
+val javafxModules = listOf("base", "graphics", "controls", "media", "web", "swing")
+
+dependencies {
+    if (isWindowsArm64Host()) {
+        val composeDesktopVersion = libs.versions.compose.multiplatform.get()
+        implementation("org.jetbrains.compose.desktop:desktop-jvm-windows-arm64:$composeDesktopVersion")
+        implementation("org.jetbrains.skiko:skiko-awt-runtime-windows-arm64:0.150.1")
+        implementation("org.jetbrains.skiko:skiko-awt-runtime-angle-windows-arm64:0.150.1")
+    } else {
+        implementation(compose.desktop.currentOs)
+    }
+    implementation(libs.compose.material3)
+    implementation(libs.compose.materialIconsExtended)
+    implementation(libs.compose.components.resources)
+    implementation(project(":app:shared"))
+    implementation(libs.kotlinx.coroutines.swing)
+    implementation(libs.jna.platform)
+    // StatusNotifierItem tray on Linux: pure-Java D-Bus client (no GTK/JNA), plus an slf4j
+    // provider so dbus-java's internal logging does not just print a "no provider" notice.
+    implementation(libs.dbus.java.core)
+    implementation(libs.dbus.java.transport.native.unixsocket)
+    implementation(libs.slf4j.jdk14)
+    // OpenJFX publishes empty jars without a classifier; declare every module
+    // with the host classifier and exclude transitive stubs.
+    javafxModules.forEach { module ->
+        implementation("org.openjfx:javafx-$module:$javafxVersion:$javafxClassifier") {
+            exclude(group = "org.openjfx")
+        }
+    }
+}
+
+configurations.configureEach {
+    if (isWindowsArm64Host()) {
+        exclude(group = "org.jetbrains.skiko", module = "skiko-awt-runtime-windows-x64")
+    }
+}
+
+val desktopWindowIconPng = layout.projectDirectory.file("src/main/resources/app_window_icon.png")
+val desktopWindowIconIco = layout.projectDirectory.file("icons/app_window_icon.ico")
+val desktopWindowIconIcns = layout.projectDirectory.file("icons/app_window_icon.icns")
+val dmgBackgroundDir = layout.projectDirectory.dir("dmg-background")
+val dmgStageDir = layout.buildDirectory.dir("dmg-background/stage")
+val dmgDistDir = layout.buildDirectory.dir("dmg-background/dist")
+val debugAppBundle = layout.buildDirectory.dir("compose/binaries/main/app/FromChat.app")
+val releaseAppBundle = layout.buildDirectory.dir("compose/binaries/main-release/app/FromChat.app")
+val testDmgOutput = layout.buildDirectory.file("distributions/FromChat-test.dmg")
+val releaseDmgOutput = layout.buildDirectory.file("distributions/FromChat.dmg")
+
+private fun hostCpuArch(): String {
+    val arch = System.getProperty("os.arch").orEmpty().lowercase()
+    if (arch.contains("aarch64") || arch == "arm64") return "aarch64"
+    val nativeArch = System.getenv("PROCESSOR_ARCHITEW6432")?.uppercase()
+        ?: System.getenv("PROCESSOR_ARCHITECTURE")?.uppercase()
+    if (nativeArch == "ARM64") return "aarch64"
+    return when {
+        arch.contains("amd64") || arch == "x86_64" -> "x86_64"
+        else -> arch
+    }
+}
+
+private fun isWindowsArm64Host(): Boolean {
+    if (project.findProperty("windowsArm64") != null) return true
+    val os = System.getProperty("os.name").orEmpty().lowercase()
+    return os.contains("win") && hostCpuArch() == "aarch64"
+}
+
+/** jpackage packageVersion (MAJOR.MINOR.BUILD); strips pre-release suffixes like `-beta`. */
+private fun jpackagePackageVersion(versionName: String): String {
+    val match = Regex("""^(\d+)\.(\d+)\.(\d+)""").find(versionName.trim())
+        ?: error("Cannot derive jpackage packageVersion from versionName=$versionName")
+    return match.destructured.let { (major, minor, patch) -> "$major.$minor.$patch" }
+}
+
+/** CI / packaging label: `x64` or `arm64`. Override with `-PdesktopArch=…`. */
+fun desktopReleaseArchLabel(): String {
+    project.findProperty("desktopArch")?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+    return when (hostCpuArch()) {
+        "aarch64" -> "arm64"
+        else -> "x64"
+    }
+}
+
+private fun syncWindowsArm64SkikoNatives(appDir: File, classpath: Iterable<File>) {
+    appDir.listFiles()
+        ?.filter { it.name.startsWith("skiko", ignoreCase = true) && it.name.contains("x64", ignoreCase = true) }
+        ?.forEach { it.delete() }
+
+    val arm64Runtime = classpath.firstOrNull {
+        it.name.contains("skiko-awt-runtime-windows-arm64", ignoreCase = true)
+    } ?: error("Missing skiko-awt-runtime-windows-arm64 on runtime classpath")
+
+    arm64Runtime.copyTo(appDir.resolve(arm64Runtime.name), overwrite = true)
+
+    ZipFile(arm64Runtime).use { zip ->
+        zip.entries().asIterator().forEach { entry ->
+            if (entry.isDirectory) return@forEach
+            val fileName = File(entry.name).name
+            if (!fileName.startsWith("skiko", ignoreCase = true)) return@forEach
+            zip.getInputStream(entry).use { input ->
+                appDir.resolve(fileName).outputStream().use { output -> input.copyTo(output) }
+            }
+        }
+    }
+
+    val angleRuntime = classpath.firstOrNull {
+        it.name.contains("skiko-awt-runtime-angle-windows-arm64", ignoreCase = true)
+    } ?: error("Missing skiko-awt-runtime-angle-windows-arm64 on runtime classpath")
+
+    angleRuntime.copyTo(appDir.resolve(angleRuntime.name), overwrite = true)
+    ZipFile(angleRuntime).use { zip ->
+        zip.entries().asIterator().forEach { entry ->
+            if (entry.isDirectory) return@forEach
+            val fileName = File(entry.name).name
+            if (!fileName.endsWith(".dll", ignoreCase = true)) return@forEach
+            zip.getInputStream(entry).use { input ->
+                appDir.resolve(fileName).outputStream().use { output -> input.copyTo(output) }
+            }
+        }
+    }
+}
+
+/**
+ * GPU-path JVM args for the *packaging host*.
+ *
+ * Compose's platform DSL (`windows { }`, `macOS { }`, …) has no `jvmArgs` of its own: an
+ * unqualified `jvmArgs(...)` inside one resolves to [JvmApplication.jvmArgs], the single
+ * application-level list, which the plugin writes into the launcher config of **every** platform
+ * it packages. So these args have to be added here, per host, instead of inside `windows { }`.
+ *
+ * OPENGL is right on Linux and Windows x64, ANGLE (D3D11) is required on Windows ARM64, and
+ * macOS must get nothing: Skiko defaults to Metal there, and asking for OPENGL throws
+ * "MacOS does not support OPENGL rendering API" in SkiaLayer's constructor, killing the app
+ * before the first frame.
+ */
+/** Keep packaged/desktop dev runs from reserving multi-GB default heaps on large-RAM hosts. */
+private fun desktopMemoryJvmArgs(): List<String> =
+    listOf(
+        "-Xmx768m",
+        "-XX:+UseStringDeduplication",
+    )
+
+private fun hostGpuJvmArgs(): List<String> =
+    if (isWindowsArm64Host()) {
+        // Windows ARM64: OpenGL is unsupported; ANGLE (D3D11) is the supported GPU path in Skiko.
+        listOf("-Dskiko.rendering.angle.enabled=true")
+    } else if (System.getProperty("os.name").orEmpty().lowercase().contains("win")) {
+        listOf("-Dskiko.renderApi=OPENGL", "-Dsun.java2d.d3d=true")
+    } else if (System.getProperty("os.name").orEmpty().lowercase().contains("mac")) {
+        emptyList()
+    } else {
+        listOf("-Dskiko.renderApi=OPENGL")
+    }
+
+private fun jdkReportsArch(javaExe: File): String? {
+    if (!javaExe.isFile) return null
+    val props = ProcessBuilder(javaExe.absolutePath, "-XshowSettings:properties", "-version")
+        .redirectErrorStream(true)
+        .start()
+        .inputStream
+        .bufferedReader()
+        .readText()
+    val line = props.lineSequence().firstOrNull { it.trimStart().startsWith("os.arch =") }
+    return line?.substringAfter("=")?.trim()
+}
+
+/** Major Java version of a JDK home: release file first, `java -version` fallback. */
+private fun jdkMajorVersion(home: File): Int? {
+    File(home, "release").takeIf { it.isFile }?.readText()?.let { text ->
+        Regex("""JAVA_VERSION="(\d+)""").find(text)?.groupValues?.get(1)?.toIntOrNull()?.let { return it }
+    }
+    val javaExe = sequenceOf(File(home, "bin/java.exe"), File(home, "bin/java"))
+        .firstOrNull { it.isFile } ?: return null
+    val out = runCatching {
+        ProcessBuilder(javaExe.absolutePath, "-version").redirectErrorStream(true)
+            .start().inputStream.bufferedReader().readText()
+    }.getOrNull() ?: return null
+    return Regex("""version "(\d+)""").find(out)?.groupValues?.get(1)?.toIntOrNull()
+}
+
+private val PE_MACHINE_AMD64 = 0x8664
+private val PE_MACHINE_ARM64 = 0xAA64
+
+private fun peMachineType(file: File): Int {
+    val bytes = file.readBytes()
+    check(bytes.size >= 0x40) { "PE file too small: ${file.absolutePath}" }
+    val peOffset = ByteBuffer.wrap(bytes, 0x3C, 4).order(ByteOrder.LITTLE_ENDIAN).int
+    check(peOffset in 0 until bytes.size - 6) { "Invalid PE offset in ${file.name}" }
+    return ByteBuffer.wrap(bytes, peOffset + 4, 2).order(ByteOrder.LITTLE_ENDIAN).short.toInt() and 0xFFFF
+}
+
+private fun expectedPeMachine(): Int =
+    if (isWindowsArm64Host()) PE_MACHINE_ARM64 else PE_MACHINE_AMD64
+
+private fun assertWindowsBinaryArch(file: File, label: String) {
+    val actual = peMachineType(file)
+    val expected = expectedPeMachine()
+    check(actual == expected) {
+        "$label has wrong architecture (PE machine=0x${actual.toString(16)}, " +
+            "expected=0x${expected.toString(16)}): ${file.absolutePath}"
+    }
+}
+
+private fun assertWindowsAppImageArch(appImageRoot: File) {
+    if (!System.getProperty("os.name").orEmpty().lowercase().contains("win")) return
+    val launcher = appImageRoot.resolve("${appImageRoot.name}.exe")
+    val jli = appImageRoot.resolve("runtime/bin/jli.dll")
+    check(launcher.isFile) { "Missing app launcher: $launcher" }
+    check(jli.isFile) { "Missing bundled JRE: $jli" }
+    assertWindowsBinaryArch(launcher, "App launcher")
+    assertWindowsBinaryArch(jli, "Bundled JRE (jli.dll)")
+}
+
+/** MSVC/UCRT beside the launcher + explicit runtime path for clean Windows VMs. */
+fun stageWindowsJpackageRuntime(appImageRoot: File) {
+    if (!System.getProperty("os.name").orEmpty().lowercase().contains("win")) return
+    val launcher = findJpackageAppExe(appImageRoot)
+    val launcherDir = launcher.parentFile ?: return
+    val runtimeBin = appImageRoot.resolve("runtime/bin")
+    if (!runtimeBin.isDirectory) return
+
+    val cfg = appImageRoot.resolve("app/FromChat.cfg")
+    if (cfg.isFile) {
+        val text = cfg.readText()
+        if (!text.contains("app.runtime=")) {
+            val runtimeLine = $$"app.runtime=$APPDIR\\..\\runtime"
+            val updated = if (text.contains("[Application]")) {
+                text.replace("[Application]", "[Application]\n$runtimeLine")
+            } else {
+                "[Application]\n$runtimeLine\n$text"
+            }
+            cfg.writeText(updated)
+        }
+    }
+
+    val dllNames = listOf(
+        "vcruntime140.dll",
+        "vcruntime140_1.dll",
+        "msvcp140.dll",
+        "msvcp140_1.dll",
+        "msvcp140_2.dll",
+        "ucrtbase.dll",
+    )
+    for (name in dllNames) {
+        val src = runtimeBin.resolve(name)
+        if (!src.isFile) continue
+        for (targetDir in listOf(launcherDir, runtimeBin, runtimeBin.resolve("server"))) {
+            if (!targetDir.isDirectory) continue
+            val target = targetDir.resolve(name)
+            if (!target.isFile) {
+                src.copyTo(target, overwrite = false)
+            }
+        }
+    }
+}
+
+/** Desktop compile target — must stay in sync with `kotlin { jvmToolchain(desktopJvmTarget) }`. */
+private val desktopJvmTarget = 25
+
+/**
+ * ProGuard version used by the Compose release tasks.
+ *
+ * The Compose plugin defaults to 7.8.0, which cannot process the Java 25 class files
+ * produced by `jvmToolchain(desktopJvmTarget)` — ProGuard then fails to load the JDK
+ * itself and reports `can't find referenced class java.lang.Class` /
+ * `the configuration refers to the unknown class 'java.lang.String'`.
+ * 7.9.0 added Java 25 support; 7.10.0 is the first release that also understands the
+ * Kotlin 2.4 metadata this project compiles against.
+ */
+private val proguardVersion = "7.10.0"
+
+fun resolvePackagingJdkHome(): String {
+    // The desktop module compiles to jvmToolchain(desktopJvmTarget) classes; jpackage must
+    // bundle a runtime >= that or the installed app dies at launch with
+    // UnsupportedClassVersionError on stderr (invisible: launcher is a GUI process).
+    fun stale(source: String, home: String, major: Int) {
+        project.logger.warn(
+            "Ignoring packaging JDK from $source: $home runs Java $major but desktop targets " +
+                "$desktopJvmTarget — bundling it would break the installed app.",
+        )
+    }
+
+    // Compose Desktop's release tasks run ProGuard and jlink on this JDK, and both take the JDK
+    // from <javaHome>/jmods: the plugin builds ProGuard's -libraryjars by walking that directory,
+    // and jlink defaults its --module-path to it. Adoptium stopped shipping the jmods/ directory
+    // with JDK 25 archives, so a jmods-less JDK leaves ProGuard with no java.* classes at all
+    // (a million "can't find superclass or interface java.lang.Object" warnings) and makes
+    // createRuntimeImage fail outright. Fail noisily here rather than in that wall of text.
+    fun withJmods(home: String): String {
+        if (!File(home, "jmods").isDirectory) {
+            project.logger.warn(
+                "Packaging JDK $home ships no jmods/ directory. The release build needs one: " +
+                    "Compose Desktop reads the JDK from <javaHome>/jmods, so ProGuard will " +
+                    "report \"can't find superclass or interface java.lang.Object\" for every " +
+                    "class and jlink will fail in createRuntimeImage. Point FROMCHAT_PACKAGING_JDK " +
+                    "at a JDK that ships jmods (e.g. Azul Zulu $desktopJvmTarget).",
+            )
+        }
+        return home
+    }
+
+    System.getenv("FROMCHAT_PACKAGING_JDK")?.takeIf { it.isNotBlank() }?.let { candidate ->
+        val major = jdkMajorVersion(File(candidate))
+        if (major != null && major < desktopJvmTarget) {
+            stale("FROMCHAT_PACKAGING_JDK", candidate, major)
+        } else {
+            if (isWindowsArm64Host()) {
+                val arch = jdkReportsArch(File(candidate, "bin/java.exe"))
+                check(arch == "aarch64") {
+                    "FROMCHAT_PACKAGING_JDK must be ARM64 on Windows ARM64 (os.arch=$arch): $candidate"
+                }
+            }
+            return withJmods(candidate)
+        }
+    }
+    System.getenv("JAVA_HOME")?.takeIf { it.isNotBlank() }?.let { home ->
+        if (File(home, "bin/jpackage").isFile || File(home, "bin/jpackage.exe").isFile) {
+            val major = jdkMajorVersion(File(home))
+            if (major != null && major < desktopJvmTarget) {
+                stale("JAVA_HOME", home, major)
+            } else {
+                if (isWindowsArm64Host()) {
+                    val arch = jdkReportsArch(File(home, "bin/java.exe"))
+                    check(arch == "aarch64") {
+                        "JAVA_HOME must be ARM64 on Windows ARM64 (os.arch=$arch): $home"
+                    }
+                }
+                return withJmods(home)
+            }
+        }
+    }
+    val userHome = System.getProperty("user.home")
+    val os = System.getProperty("os.name").orEmpty().lowercase()
+    val wantArm = hostCpuArch() == "aarch64"
+    val candidates = buildList {
+        if (os.contains("mac")) {
+            add("$userHome/.gradle/jdks/eclipse_adoptium-17-aarch64-os_x.2/jdk-17.0.19+10/Contents/Home")
+            add("/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home")
+            add("/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home")
+            add("/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home")
+            add("/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home")
+        }
+        if (os.contains("win")) {
+            if (wantArm) {
+                add("C:/Program Files/Eclipse Adoptium/jdk-21.0.12.101-hotspot-arm64")
+                add("C:/Program Files/Eclipse Adoptium/jdk-17.0.20.8-hotspot-arm64")
+            }
+            File("C:/Program Files/Eclipse Adoptium").takeIf { it.isDirectory }?.listFiles()
+                ?.filter { it.isDirectory && (!wantArm || it.name.contains("arm64", ignoreCase = true)) }
+                ?.sortedByDescending { it.name }
+                ?.forEach { add(it.absolutePath.replace('\\', '/')) }
+            add("C:/Program Files/Java/jdk-17")
+            add("C:/Program Files/Microsoft/jdk-17")
+        }
+        if (os.contains("linux")) {
+            if (wantArm) {
+                add("/usr/lib/jvm/temurin-17-jdk-aarch64")
+                add("/usr/lib/jvm/java-17-openjdk-aarch64")
+            }
+            add("/usr/lib/jvm/temurin-17-jdk-amd64")
+            add("/usr/lib/jvm/temurin-21-jdk-amd64")
+            add("/usr/lib/jvm/java-17-openjdk-amd64")
+            add("/usr/lib/jvm/java-21-openjdk-amd64")
+            add("/usr/lib/jvm/java-17-openjdk")
+            add("/usr/lib/jvm/java-21-openjdk")
+            // Distro-specific layouts (Arch: /usr/lib/jvm/java-17-temurin, etc.) have
+            // no fixed name — scan /usr/lib/jvm for anything that carries jpackage.
+            File("/usr/lib/jvm").listFiles()
+                ?.filter { it.isDirectory && File(it, "bin/jpackage").isFile }
+                ?.sortedByDescending { it.name }
+                ?.forEach { add(it.absolutePath) }
+            // Gradle-provisioned toolchain JDKs (auto-downloaded per jvmToolchain)
+            // include jpackage in every Temurin download and exist on every machine
+            // that built this project.
+            File(userHome, ".gradle/jdks").listFiles()
+                ?.filter { it.isDirectory && File(it, "bin/jpackage").isFile }
+                ?.sortedByDescending { it.name }
+                ?.forEach { add(it.absolutePath) }
+        }
+        System.getProperty("java.home")?.let { add(it) }
+    }
+    candidates.firstOrNull { home ->
+        val jpackage = File(home, "bin/jpackage.exe").takeIf { it.isFile }
+            ?: File(home, "bin/jpackage").takeIf { it.isFile }
+        if (jpackage == null) return@firstOrNull false
+        val major = jdkMajorVersion(File(home))
+        if (major != null && major < desktopJvmTarget) return@firstOrNull false
+        if (!isWindowsArm64Host()) return@firstOrNull true
+        jdkReportsArch(File(home, "bin/java.exe")) == "aarch64"
+    }?.let { return withJmods(it) }
+
+    // Toolchain fallback: foojay provisions the jvmToolchain JDK on every machine that builds
+    // this project, and the full JDK ships jpackage — so the bundled runtime always matches the
+    // compiled classes. Layouts differ (flat dir on Windows, nested Contents/Home on macOS), so
+    // search recursively.
+    fun findJdkWithJpackage(dir: File): File? {
+        if (File(dir, "bin/jpackage.exe").isFile || File(dir, "bin/jpackage").isFile) return dir
+        dir.listFiles()?.forEach { child ->
+            if (child.isDirectory) findJdkWithJpackage(child)?.let { return it }
+        }
+        return null
+    }
+    val gradleHome = File(System.getenv("GRADLE_USER_HOME") ?: "$userHome/.gradle", "jdks")
+    gradleHome.listFiles()?.sortedByDescending { it.name }?.forEach { entry ->
+        if (!entry.isDirectory) return@forEach
+        val jdk = findJdkWithJpackage(entry) ?: return@forEach
+        if ((jdkMajorVersion(jdk) ?: 0) < desktopJvmTarget) return@forEach
+        if (isWindowsArm64Host() && jdkReportsArch(File(jdk, "bin/java.exe")) != "aarch64") {
+            return@forEach
+        }
+        return withJmods(jdk.absolutePath.replace('\\', '/'))
+    }
+
+    error(
+        if (isWindowsArm64Host()) {
+            "No ARM64 JDK $desktopJvmTarget+ with jpackage found. Run scripts\\ensure-windows-arm64-jdk.cmd or set FROMCHAT_PACKAGING_JDK."
+        } else {
+            "No JDK $desktopJvmTarget+ with jpackage found. Install Temurin $desktopJvmTarget+ or set FROMCHAT_PACKAGING_JDK."
+        },
+    )
+}
+
+compose.desktop {
+    application {
+        mainClass = "FromChat"
+        javaHome = resolvePackagingJdkHome()
+        // Application-level, and per host: an unqualified jvmArgs() inside
+        // nativeDistributions.<platform> { } lands here anyway and then leaks into every platform's
+        // launcher config. See hostGpuJvmArgs().
+        jvmArgs(*(desktopMemoryJvmArgs() + hostGpuJvmArgs() + hostScalingJvmArgs()).toTypedArray())
+
+        buildTypes.release.proguard {
+            version = proguardVersion
+            configurationFiles.from(project.file("proguard-rules.pro"))
+        }
+
+        nativeDistributions {
+            packageName = "FromChat"
+            val versionName = rootProject.extra["versionName"] as String
+            val nativePackageVersion = jpackagePackageVersion(versionName)
+            packageVersion = nativePackageVersion
+            description =
+                if (project.findProperty("betaDesktop") != null) "FromChat Beta" else "FromChat"
+            copyright = "© FromChat"
+            includeAllModules = true
+
+            // macOS DMG uses the custom create-dmg pipeline (packageReleaseDmg), not jpackage.
+            // Linux .AppImage is built via appimagetool (packageLinuxAppImage), not TargetFormat.AppImage.
+            val osName = System.getProperty("os.name").orEmpty().lowercase()
+            when {
+                osName.contains("linux") -> {
+                    targetFormats(
+                        org.jetbrains.compose.desktop.application.dsl.TargetFormat.Deb,
+                        org.jetbrains.compose.desktop.application.dsl.TargetFormat.Rpm,
+                    )
+                }
+                osName.contains("win") -> {
+                    // App-image via createReleaseDistributable; custom Rust setup wraps it.
+                    targetFormats(
+                        org.jetbrains.compose.desktop.application.dsl.TargetFormat.Exe,
+                    )
+                }
+            }
+
+            modules(
+                "javafx.base",
+                "javafx.graphics",
+                "javafx.controls",
+                "javafx.media",
+                "javafx.web",
+                "javafx.swing",
+            )
+
+            // Without iconFile, packaged apps (and macOS dock via jpackage) use Compose's default logo.
+            linux {
+                iconFile.set(desktopWindowIconPng)
+                packageVersion = nativePackageVersion
+                rpmPackageVersion = nativePackageVersion
+            }
+            windows {
+                // jpackage on Windows requires .ico; a PNG is ignored and the Java cup stays.
+                iconFile.set(desktopWindowIconIco)
+                packageVersion = nativePackageVersion
+                exePackageVersion = nativePackageVersion
+            }
+            macOS {
+                bundleID = "ru.fromchat.desktop"
+                dockName = "FromChat"
+                iconFile.set(desktopWindowIconIcns)
+                // Tray icons as NSImage templates (menu bar light/dark tint). Also set in Main.kt.
+                jvmArgs("-Dapple.awt.enableTemplateImages=true")
+                infoPlist {
+                    extraKeysRawXml = """
+                        <key>CFBundleDisplayName</key>
+                        <string>FromChat</string>
+                        <key>NSUserNotificationAlertStyle</key>
+                        <string>banner</string>
+                        <key>LSApplicationCategoryType</key>
+                        <string>public.app-category.social-networking</string>
+                        <key>CFBundleURLTypes</key>
+                        <array>
+                          <dict>
+                            <key>CFBundleURLName</key>
+                            <string>FromChat</string>
+                            <key>CFBundleURLSchemes</key>
+                            <array>
+                              <string>fromchat</string>
+                            </array>
+                          </dict>
+                        </array>
+                    """.trimIndent()
+                }
+            }
+        }
+    }
+}
+
+kotlin {
+    jvmToolchain(desktopJvmTarget)
+}
+
+val macNotificationsSource = layout.projectDirectory.file("src/nativeDarwin/MacNotificationCenter.m")
+val macNotificationsDylib = layout.buildDirectory.file("natives/libfromchat_notifications.dylib")
+val compileMacNotifications = tasks.register<Exec>("compileMacNotifications") {
+    onlyIf {
+        System.getProperty("os.name").orEmpty().lowercase().contains("mac")
+    }
+    inputs.file(macNotificationsSource)
+    outputs.file(macNotificationsDylib)
+    // jni.h is only resolvable on macOS — resolve lazily in doFirst, not at
+    // registration time, so task-graph creation succeeds on Linux/Windows too.
+    doFirst {
+        macNotificationsDylib.get().asFile.parentFile.mkdirs()
+        val jdkHomes = buildList {
+            System.getenv("JAVA_HOME")?.let { add(it) }
+            System.getProperty("java.home")?.let { add(it) }
+            // Gradle-provisioned toolchain JDKs carry include/jni.h.
+            File(System.getProperty("user.home"), ".gradle/jdks").listFiles()
+                ?.filter { it.isDirectory && File(it, "include/jni.h").isFile }
+                ?.forEach { add(it.absolutePath) }
+        }
+        val jniInclude = listOfNotNull(
+            *jdkHomes.map { "$it/include" }.toTypedArray(),
+            "/opt/homebrew/opt/openjdk/include",
+            "/opt/homebrew/opt/openjdk@26/include",
+            "/Library/Java/JavaVirtualMachines/openjdk.jdk/Contents/Home/include",
+        ).first { file("$it/jni.h").isFile }
+        commandLine(
+            "clang",
+            "-shared",
+            "-fobjc-arc",
+            "-fobjc-exceptions",
+            "-fPIC",
+            "-mmacosx-version-min=11.0",
+            "-arch", "arm64",
+            "-arch", "x86_64",
+            "-framework", "Foundation",
+            "-framework", "AppKit",
+            "-framework", "UserNotifications",
+            "-framework", "CoreGraphics",
+            "-framework", "CoreServices",
+            "-I", jniInclude,
+            "-I", "$jniInclude/darwin",
+            "-o", macNotificationsDylib.get().asFile.absolutePath,
+            macNotificationsSource.asFile.absolutePath,
+        )
+    }
+}
+
+tasks.named<Copy>("processResources") {
+    dependsOn(compileMacNotifications)
+    from(layout.buildDirectory.dir("natives")) {
+        include("*.dylib")
+        into("natives")
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    }
+}
+
+/**
+ * Compose Desktop puts the whole runtime classpath on the unnamed module path.
+ * JavaFX 11+ must be loaded as named modules via --module-path / --add-modules,
+ * and those jars must not also sit on the regular classpath.
+ *
+ * On macOS, [UNUserNotificationCenter] aborts a bare `java` process
+ * (`bundleProxyForCurrentProcess is nil`). :run is therefore launched from a
+ * FromChat.app wrapper so Notification Center sees `ru.fromchat.desktop`.
+ */
+private fun Project.fromChatGradleDevDataDir(): String {
+    val variant = if (
+        gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
+    ) {
+        "release"
+    } else {
+        "beta"
+    }
+    return rootProject.layout.buildDirectory.get().asFile
+        .resolve("dev-data/$variant")
+        .absolutePath
+}
+
+fun JavaExec.configureFromChatDesktopJvm() {
+    val javafxJars = classpath.files.filter { file ->
+        javafxModules.any { module -> file.name.startsWith("javafx-$module-") }
+    }
+    classpath = project.files(classpath.files.filterNot { it in javafxJars.toSet() })
+    val dockIconArgs = buildList {
+        val os = System.getProperty("os.name").orEmpty().lowercase()
+        if (os.contains("mac")) {
+            val png = desktopWindowIconPng.asFile
+            val icns = desktopWindowIconIcns.asFile
+            when {
+                icns.isFile -> add("-Xdock:icon=${icns.absolutePath}")
+                png.isFile -> add("-Xdock:icon=${png.absolutePath}")
+            }
+            add("-Xdock:name=FromChat")
+        }
+    }
+    jvmArgs(
+        dockIconArgs + buildList {
+            if (!System.getProperty("os.name").orEmpty().lowercase().contains("mac")) {
+                addAll(hostGpuJvmArgs())
+                addAll(hostScalingJvmArgs())
+            }
+            addAll(
+                listOf(
+                    "-Dfromchat.dev.data.dir=${project.fromChatGradleDevDataDir()}",
+                    "-Dapple.awt.enableTemplateImages=true",
+                    "--module-path",
+                    javafxJars.joinToString(File.pathSeparator) { it.absolutePath },
+                    "--add-modules",
+                    "javafx.controls,javafx.web,javafx.swing,javafx.media,javafx.graphics,javafx.base",
+                    "--add-opens",
+                    "javafx.graphics/com.sun.javafx.application=ALL-UNNAMED",
+                ),
+            )
+        },
+    )
+}
+
+fun prepareFromChatDevApp(javaHome: File, destApp: File) {
+    val macosDir = destApp.resolve("Contents/MacOS")
+    val resourcesDir = destApp.resolve("Contents/Resources")
+    macosDir.mkdirs()
+    resourcesDir.mkdirs()
+    val destExec = macosDir.resolve("FromChat")
+    val stamp = resourcesDir.resolve("java-home.txt")
+    val javaHomePath = javaHome.absolutePath
+    if (!destExec.isFile || stamp.takeIf { it.isFile }?.readText() != javaHomePath) {
+        javaHome.resolve("bin/java").copyTo(destExec, overwrite = true)
+        destExec.setExecutable(true, false)
+        ProcessBuilder(
+            "install_name_tool",
+            "-add_rpath",
+            javaHome.resolve("lib").absolutePath,
+            destExec.absolutePath,
+        ).inheritIO().start().waitFor()
+        stamp.writeText(javaHomePath)
+    }
+    destApp.resolve("Contents/Info.plist").writeText(
+        """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>CFBundleExecutable</key>
+            <string>FromChat</string>
+            <key>CFBundleIdentifier</key>
+            <string>ru.fromchat.desktop</string>
+            <key>CFBundleName</key>
+            <string>FromChat</string>
+            <key>CFBundleDisplayName</key>
+            <string>FromChat</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleShortVersionString</key>
+            <string>1.0.0</string>
+            <key>CFBundleVersion</key>
+            <string>1</string>
+            <key>CFBundleIconFile</key>
+            <string>app_window_icon.icns</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>11.0</string>
+            <key>LSApplicationCategoryType</key>
+            <string>public.app-category.social-networking</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+            <key>NSUserNotificationAlertStyle</key>
+            <string>banner</string>
+            <key>CFBundleURLTypes</key>
+            <array>
+                <dict>
+                    <key>CFBundleURLName</key>
+                    <string>FromChat</string>
+                    <key>CFBundleURLSchemes</key>
+                    <array>
+                        <string>fromchat</string>
+                    </array>
+                </dict>
+            </array>
+        </dict>
+        </plist>
+        """.trimIndent() + "\n",
+    )
+    destApp.resolve("Contents/PkgInfo").writeText("APPL????")
+    val icns = desktopWindowIconIcns.asFile
+    if (icns.isFile) {
+        icns.copyTo(resourcesDir.resolve("app_window_icon.icns"), overwrite = true)
+    }
+    ProcessBuilder(
+        "codesign",
+        "--force",
+        "--sign",
+        "-",
+        "--identifier",
+        "ru.fromchat.desktop",
+        destApp.absolutePath,
+    ).inheritIO().start().waitFor()
+}
+
+val runningOnMac = System.getProperty("os.name").orEmpty().lowercase().contains("mac")
+
+tasks.matching { it.name == "run" }.configureEach {
+    if (this !is JavaExec) return@configureEach
+    if (runningOnMac) return@configureEach
+    doFirst { configureFromChatDesktopJvm() }
+}
+
+afterEvaluate {
+    if (!runningOnMac) return@afterEvaluate
+    val runTask = tasks.findByName("run") as? JavaExec ?: return@afterEvaluate
+    runTask.actions.clear()
+    runTask.doFirst { runTask.configureFromChatDesktopJvm() }
+    runTask.doLast {
+        val javaHomeFile = runTask.javaLauncher.orNull?.metadata?.installationPath?.asFile
+            ?: file(System.getProperty("java.home"))
+        val app = layout.buildDirectory.get().asFile.resolve("macos-dev-bundle/FromChat.app")
+        prepareFromChatDevApp(javaHomeFile, app)
+        val command = buildList {
+            add(app.resolve("Contents/MacOS/FromChat").absolutePath)
+            addAll(runTask.allJvmArgs)
+            add("-classpath")
+            add(runTask.classpath.asPath)
+            add(runTask.mainClass.get())
+            addAll(runTask.args)
+        }
+        val process = ProcessBuilder(command)
+            .directory(runTask.workingDir)
+            .redirectInput(ProcessBuilder.Redirect.INHERIT)
+            .redirectOutput(ProcessBuilder.Redirect.INHERIT)
+            .redirectError(ProcessBuilder.Redirect.INHERIT)
+        process.environment().putAll(runTask.environment.mapValues { it.value.toString() })
+        process.environment()["JAVA_HOME"] = javaHomeFile.absolutePath
+        val exit = process.start().waitFor()
+        if (exit != 0) {
+            throw GradleException("FromChat exited with $exit")
+        }
+    }
+}
+
+private fun openjfxClassifier(): String {
+    val os = System.getProperty("os.name").lowercase()
+    val isArm = hostCpuArch() == "aarch64"
+    return when {
+        os.contains("mac") && isArm -> "mac-aarch64"
+        os.contains("mac") -> "mac"
+        os.contains("win") -> "win"
+        isArm -> "linux-aarch64"
+        else -> "linux"
+    }
+}
+
+val runningOnMacOs = System.getProperty("os.name").orEmpty().lowercase().contains("mac")
+
+private val ciDmgToolsReady =
+    providers.environmentVariable("FROMCHAT_DMG_TOOLS_READY").map { it == "1" }.orElse(false)
+
+val dmgPlaywrightBrowsersDir = dmgBackgroundDir.dir(".playwright-browsers")
+
+val installDmgBackgroundTools = tasks.register<Exec>("installDmgBackgroundTools") {
+    onlyIf { runningOnMacOs && !ciDmgToolsReady.get() }
+    workingDir = dmgBackgroundDir.asFile
+    inputs.file(dmgBackgroundDir.file("package.json"))
+    inputs.file(dmgBackgroundDir.file("package-lock.json"))
+    outputs.dir(dmgBackgroundDir.dir("node_modules/playwright"))
+    outputs.dir(dmgPlaywrightBrowsersDir)
+    commandLine(
+        "bash",
+        "-lc",
+        $$"""
+        export PLAYWRIGHT_BROWSERS_PATH="$${dmgPlaywrightBrowsersDir.asFile.absolutePath}"
+        mkdir -p "$PLAYWRIGHT_BROWSERS_PATH"
+        if [ ! -f node_modules/playwright/package.json ]; then
+          npm install --no-fund --no-audit
+        fi
+        npx playwright install chromium
+        """.trimIndent(),
+    )
+}
+
+val stageDmgBackground = tasks.register<Copy>("stageDmgBackground") {
+    onlyIf { runningOnMacOs }
+    dependsOn(":app:shared:prepareComposeResourcesTaskForCommonMain")
+    mustRunAfter(installDmgBackgroundTools)
+    from(dmgBackgroundDir) {
+        exclude("node_modules/**")
+    }
+    into(dmgStageDir)
+    doLast {
+        val sharedLogo = rootProject.project(":app:shared").layout.buildDirectory
+            .file("generated/compose/resourceGenerator/preparedResources/commonMain/composeResources/drawable/logo_square.png")
+            .get().asFile
+        if (sharedLogo.isFile) {
+            val target = dmgStageDir.get().asFile.resolve("assets/logo_square.png")
+            target.parentFile.mkdirs()
+            sharedLogo.copyTo(target, overwrite = true)
+        } else {
+            logger.lifecycle("Compose logo not generated; using bundled dmg-background/assets/logo_square.png")
+        }
+    }
+}
+
+val exportDmgBackground = tasks.register<Exec>("exportDmgBackground") {
+    onlyIf { runningOnMacOs }
+    dependsOn(stageDmgBackground, installDmgBackgroundTools)
+    workingDir = dmgBackgroundDir.asFile
+    val stage = dmgStageDir.get().asFile.absolutePath
+    val dist = dmgDistDir.get().asFile.absolutePath
+    inputs.dir(dmgStageDir)
+    inputs.file(dmgBackgroundDir.file("export.mjs"))
+    inputs.file(dmgBackgroundDir.file("dmg-config.json"))
+    outputs.dir(dmgDistDir)
+    outputs.file(dmgDistDir.map { it.file("icon-positions.json") })
+    outputs.file(dmgDistDir.map { it.file("dmg-background@2x.png") })
+    commandLine(
+        "bash",
+        "-lc",
+        """
+        export PLAYWRIGHT_BROWSERS_PATH="${dmgPlaywrightBrowsersDir.asFile.absolutePath}"
+        node export.mjs '${stage}' '${dist}'
+        """.trimIndent(),
+    )
+}
+
+fun TaskContainer.registerPackageDmgTask(
+    name: String,
+    appBundle: Provider<Directory>,
+    dmgOutput: Provider<RegularFile>,
+    distributableTask: String,
+    scriptName: String,
+) = register<Exec>(name) {
+    onlyIf { runningOnMacOs }
+    group = "compose desktop"
+    dependsOn(distributableTask, exportDmgBackground)
+    val positionsFile = dmgDistDir.map { it.file("icon-positions.json") }
+    val dmgScript = layout.buildDirectory.file("dmg-background/$scriptName")
+    inputs.dir(appBundle)
+    inputs.dir(dmgDistDir)
+    inputs.file(positionsFile)
+    outputs.file(dmgOutput)
+    doFirst {
+        val app = appBundle.get().asFile
+        check(app.isDirectory) {
+            "Missing ${app.absolutePath}. Run :app:desktop:$distributableTask first."
+        }
+        val positions = positionsFile.get().asFile
+        check(positions.isFile) { "Missing ${positions.absolutePath}" }
+        val script = dmgScript.get().asFile
+        script.parentFile.mkdirs()
+        script.writeText(
+            $$"""
+            #!/usr/bin/env bash
+            set -euo pipefail
+            POSITIONS='$${positions.absolutePath}'
+            APP='$${app.absolutePath}'
+            OUT='$${dmgOutput.get().asFile.absolutePath}'
+            DIST='$${dmgDistDir.get().asFile.absolutePath}'
+            STAGING="${TMPDIR:-/tmp}/fromchat-dmg-staging-$RANDOM"
+            rm -rf "$OUT" "$STAGING"
+            mkdir -p "$STAGING"
+            cp -R "$APP" "$STAGING/"
+            WINDOW_SIZE=($(node -e "const c=require('$POSITIONS').createDmg; console.log(c.windowSize.join(' '))"))
+            ICON_SIZE=$(node -e "console.log(require('$POSITIONS').createDmg.iconSize)")
+            APP_POS=($(node -e "const i=require('$POSITIONS').createDmg.icons.find(x=>x[0]==='FromChat.app'); console.log(i[1], i[2])"))
+            APPS_POS=($(node -e "const i=require('$POSITIONS').createDmg.icons.find(x=>x[0]==='Applications'); console.log(i[1], i[2])"))
+            (
+              cd "$DIST"
+              create-dmg \
+                --volname "FromChat" \
+                --window-size "${WINDOW_SIZE[0]}" "${WINDOW_SIZE[1]}" \
+                --icon-size "$ICON_SIZE" \
+                --icon "FromChat.app" "${APP_POS[0]}" "${APP_POS[1]}" \
+                --hide-extension "FromChat.app" \
+                --app-drop-link "${APPS_POS[0]}" "${APPS_POS[1]}" \
+                --app-drop-link-name "Программы" \
+                --text-size 14 \
+                --background "dmg-background@2x.png" \
+                "$OUT" \
+                "$STAGING"
+            )
+            rm -rf "$STAGING"
+            """.trimIndent() + "\n",
+        )
+        script.setExecutable(true)
+        commandLine(script.absolutePath)
+    }
+}
+
+tasks.registerPackageDmgTask(
+    name = "packageTestDmg",
+    appBundle = debugAppBundle,
+    dmgOutput = testDmgOutput,
+    distributableTask = "createDistributable",
+    scriptName = "package-test-dmg.sh",
+).configure {
+    description = "Build debug app bundle, export DMG background, and package FromChat-test.dmg."
+}
+
+tasks.registerPackageDmgTask(
+    name = "packageReleaseDmg",
+    appBundle = releaseAppBundle,
+    dmgOutput = releaseDmgOutput,
+    distributableTask = "createReleaseDistributable",
+    scriptName = "package-release-dmg.sh",
+).configure {
+    description =
+        "Build release app (ProGuard + jpackage), export DMG background, and package FromChat.dmg. ProGuard may take 10–20 minutes."
+}
+
+tasks.register("packageDmg") {
+    group = "compose desktop"
+    description = "Alias for packageReleaseDmg (full release DMG pipeline)."
+    dependsOn("packageReleaseDmg")
+}
+
+val desktopVersionName = rootProject.extra["versionName"] as String
+val desktopDistDir = layout.buildDirectory.dir("distributions/release")
+val runningOnLinux = System.getProperty("os.name").orEmpty().lowercase().contains("linux")
+val runningOnWindows = System.getProperty("os.name").orEmpty().lowercase().contains("win")
+
+/**
+ * Skiko's Skia is built GLES-only for linux/arm64 (skia_gl_standard="gles"), so its
+ * GPU blacklist rejects working hardware contexts (notably Parallels virgl). The launch
+ * environment caps the reported Mesa GL version (MESA_GL_VERSION_OVERRIDE=3.0, set by
+ * [ru.fromchat.desktop.MainKt]); this build-time patch additionally shadows the checker
+ * inside this app's own jar, which precedes skiko-awt.jar on the jpackage classpath.
+ * The VM/dev environment needs it and real-Linux users gain a working GPU path, so it
+ * is on by default on Linux; opt out with -PskikoVirglWorkaround=false.
+ */
+val skikoVirglWorkaround =
+    providers.gradleProperty("skikoVirglWorkaround").map { it != "false" }.orElse(true)
+
+if (runningOnLinux && skikoVirglWorkaround.get()) {
+    val skikoPatchClasses = layout.buildDirectory.dir("skiko-virgl-patch-classes")
+    val compileSkikoVirglPatch = tasks.register<JavaCompile>("compileSkikoVirglPatch") {
+        // The patch class shadows org.jetbrains.skiko.GraphicsApi_jvmKt; compiling against
+        // the real skiko jar fails the build if a future skiko changes its signature.
+        description = "Compile the shadowed skiko GPU-check for the linux/arm64 GLES Skia."
+        source = fileTree("skiko-patch")
+        classpath = configurations
+            .getByName("runtimeClasspath")
+            .filter { it.name.startsWith("skiko-awt-") }
+        destinationDirectory.set(skikoPatchClasses)
+        options.release.set(17)
+    }
+    tasks.named<org.gradle.jvm.tasks.Jar>("jar").configure {
+        // desktop-*.jar is the FIRST app.classpath entry a jpackage deb writes, so a
+        // class of the same FQ-name wins over the copy inside skiko-awt.jar.
+        dependsOn(compileSkikoVirglPatch)
+        from(skikoPatchClasses)
+    }
+}
+
+
+/** AppDir icons for appimagetool (file manager + embedded AppImage icon). */
+private fun stageLinuxAppImageIcons(stage: File, iconSrc: File) {
+    if (!iconSrc.isFile) {
+        logger.warn("AppImage icon missing at ${iconSrc.absolutePath}")
+        return
+    }
+    val rootIcon = stage.resolve("fromchat.png")
+    iconSrc.copyTo(rootIcon, overwrite = true)
+    stage.resolve(".DirIcon").let { link ->
+        link.delete()
+        Files.createSymbolicLink(link.toPath(), Path.of("fromchat.png"))
+    }
+    for (size in listOf("256x256", "512x512")) {
+        val dest = stage.resolve("usr/share/icons/hicolor/$size/apps/fromchat.png")
+        dest.parentFile.mkdirs()
+        iconSrc.copyTo(dest, overwrite = true)
+    }
+}
+
+private fun writeLinuxAppImageDesktopFile(stage: File) {
+    stage.resolve("fromchat.desktop").writeText(
+        """
+        [Desktop Entry]
+        Name=FromChat
+        Exec=AppRun
+        Icon=fromchat
+        Type=Application
+        Categories=Network;InstantMessaging;
+        StartupWMClass=FromChat
+        """.trimIndent() + "\n",
+    )
+}
+
+val releaseAppImageDir = layout.buildDirectory.dir("compose/binaries/main-release/app/FromChat")
+val debugAppImageDir = layout.buildDirectory.dir("compose/binaries/main/app/FromChat")
+val linuxAppImageOutput = desktopDistDir.map {
+    it.file("FromChat-$desktopVersionName-linux-${desktopReleaseArchLabel()}.AppImage")
+}
+val windowsSetupOutput = desktopDistDir.map {
+    it.file("FromChat-Setup-$desktopVersionName-windows-${desktopReleaseArchLabel()}.exe")
+}
+val windowsUniversalSetupOutput = desktopDistDir.map {
+    it.file("FromChat-Setup-$desktopVersionName-windows-universal.exe")
+}
+val windowsBetaSetupOutput = desktopDistDir.map { it.file("FromChat-Setup-$desktopVersionName.exe") }
+val macDmgReleaseOutput = desktopDistDir.map {
+    it.file("FromChat-$desktopVersionName-macOS-${desktopReleaseArchLabel()}.dmg")
+}
+
+val releaseProguardOutputDir = layout.buildDirectory.dir("compose/tmp/main-release/proguard")
+val ciPrebuiltProguardDir = layout.buildDirectory.dir("prebuilt/main-release/proguard")
+val ciProguardExportDir = layout.buildDirectory.dir("ci/proguard")
+
+fun useCiPrebuiltProguard(): Boolean =
+    System.getenv("FROMCHAT_PREBUILT_PROGUARD") == "1"
+
+tasks.register<Copy>("exportReleaseProguardForCi") {
+    group = "compose desktop"
+    description = "Compile, ProGuard, and export release jars for CI (run once on Linux x64)."
+    dependsOn("proguardReleaseJars")
+    from(releaseProguardOutputDir)
+    into(ciProguardExportDir)
+}
+
+/**
+ * Platform-native artifacts resolved for *this* host, e.g. `skiko-awt-runtime-macos-arm64-*.jar`
+ * and `javafx-graphics-27-mac-aarch64.jar`. Skiko and JavaFX each pick their library by
+ * os/arch at runtime, so a bundle simply needs the matching jars on the classpath.
+ */
+private val platformNativeJar = Regex(
+    """^(skiko-awt-runtime-.+|javafx-[a-z]+-\d+-(?:linux|mac|win|windows)(?:-[a-z0-9]+)?)\.jar$""",
+    RegexOption.IGNORE_CASE,
+)
+
+private val hostPlatformNatives = providers.provider {
+    configurations.getByName("runtimeClasspath").files.filter { platformNativeJar.matches(it.name) }
+}
+
+tasks.register<Copy>("stageCiPrebuiltProguard") {
+    group = "compose desktop"
+    description = "Stage downloaded CI ProGuard jars into compose release tmp before packaging."
+    onlyIf { useCiPrebuiltProguard() }
+    from(ciPrebuiltProguardDir)
+    // ProGuard runs once, on Linux x64, so the prebuilt jars carry that host's natives
+    // (skiko-awt-runtime-linux-x64, javafx-*-linux) and nothing for any other target. Packaging
+    // that set as-is ships an app with no natives of its own, which dies on startup with
+    // "UnsatisfiedLinkError: Can't load library .../libskiko-<os>-<arch>". Add this host's own
+    // natives alongside them; Skiko and JavaFX load by os/arch, so the foreign copies are inert.
+    from(hostPlatformNatives)
+    into(releaseProguardOutputDir)
+    doFirst {
+        check(ciPrebuiltProguardDir.get().asFile.isDirectory) {
+            "Missing prebuilt ProGuard at ${ciPrebuiltProguardDir.get().asFile}"
+        }
+        val natives = hostPlatformNatives.get()
+        check(natives.isNotEmpty()) {
+            "No platform-native artifacts on this host's runtimeClasspath; the app would ship " +
+                "without Skiko/JavaFX natives. Looked for ${platformNativeJar.pattern}."
+        }
+        logger.lifecycle("Staged ${natives.size} platform-native jars for this host:")
+        natives.forEach { logger.lifecycle("  ${it.name}") }
+    }
+}
+
+tasks.register("packageReleaseFromPrebuiltProguard") {
+    group = "compose desktop"
+    description = "Package release desktop for the current OS using CI prebuilt ProGuard jars."
+    dependsOn("stageCiPrebuiltProguard")
+    when {
+        runningOnMacOs -> dependsOn("packageReleaseMac")
+        runningOnLinux -> dependsOn("packageReleaseLinux")
+        runningOnWindows -> dependsOn("packageReleaseWindows")
+        else -> doFirst { error("Unsupported OS for packageReleaseFromPrebuiltProguard") }
+    }
+}
+
+tasks.register("packageReleaseMac") {
+    group = "compose desktop"
+    description = "Build release macOS DMG and copy to distributions/release."
+    onlyIf { runningOnMacOs }
+    dependsOn("packageReleaseDmg")
+    outputs.file(macDmgReleaseOutput)
+    doLast {
+        val outDir = desktopDistDir.get().asFile
+        outDir.mkdirs()
+        val src = releaseDmgOutput.get().asFile
+        check(src.isFile) { "Missing ${src.absolutePath}" }
+        src.copyTo(macDmgReleaseOutput.get().asFile, overwrite = true)
+    }
+}
+
+val packageLinuxAppImage = tasks.register<Exec>("packageLinuxAppImage") {
+    group = "compose desktop"
+    description = "Build a Linux .AppImage from the release app-image using appimagetool."
+    onlyIf { runningOnLinux }
+    dependsOn("createReleaseDistributable")
+    inputs.dir(releaseAppImageDir)
+    outputs.file(linuxAppImageOutput)
+    doFirst {
+        val appDir = releaseAppImageDir.get().asFile
+        check(appDir.isDirectory) { "Missing ${appDir.absolutePath}" }
+        val out = linuxAppImageOutput.get().asFile
+        out.parentFile.mkdirs()
+        val stage = layout.buildDirectory.get().asFile.resolve("appimage-stage/FromChat.AppDir")
+        stage.deleteRecursively()
+        stage.mkdirs()
+        appDir.copyRecursively(stage, overwrite = true)
+        val nestedExe = sequenceOf(
+            stage.resolve("FromChat"),
+            stage.resolve("bin/FromChat"),
+        ).firstOrNull { it.isFile }
+            ?: stage.walkTopDown().firstOrNull { it.isFile && it.name == "FromChat" && !it.path.contains("/runtime/") }
+            ?: error("FromChat executable not found under ${appDir.absolutePath}")
+        val appRun = stage.resolve("AppRun")
+        val rel = stage.toPath().relativize(nestedExe.toPath()).toString()
+        appRun.writeText(
+            $$"""
+            #!/bin/sh
+            SELF="$(dirname "$(readlink -f "$0")")"
+            case "$(uname -m)" in
+              aarch64|arm64)
+                if [ -z "$MESA_GL_VERSION_OVERRIDE" ]; then
+                  export MESA_GL_VERSION_OVERRIDE=3.0
+                fi
+                ;;
+            esac
+            exec "$SELF/$$rel" "$@"
+            """.trimIndent() + "\n",
+        )
+        appRun.setExecutable(true)
+        nestedExe.setExecutable(true)
+        writeLinuxAppImageDesktopFile(stage)
+        stageLinuxAppImageIcons(stage, desktopWindowIconPng.asFile)
+        commandLine(
+            "bash",
+            "-lc",
+            $$"""
+            set -euo pipefail
+            TOOL="${APPIMAGETOOL:-appimagetool}"
+            if ! command -v "$TOOL" >/dev/null 2>&1; then
+              echo "appimagetool not found. Install it or set APPIMAGETOOL." >&2
+              exit 1
+            fi
+            ARCH="$(uname -m)"
+            export ARCH
+            "$TOOL" --no-check-permissions "$${stage.absolutePath}" "$${out.absolutePath}"
+            """.trimIndent(),
+        )
+    }
+}
+
+/**
+ * Linux desktop scale for AWT.
+ *
+ * Compose derives `LocalDensity` from the AWT device configuration, and on a HiDPI or
+ * fractional-scaled desktop Java often still reports 96 DPI — the app then renders at 1:1 and looks
+ * tiny on a 2K screen. GDK exports the real scale as GDK_SCALE (integer) times GDK_DPI_SCALE
+ * (fractional); `sun.java2d.uiScale` is what AWT/Compose pick that up from.
+ *
+ * Only set when it is actually above 1:1, so unscaled setups keep Java's own detection.
+ */
+private fun hostScalingJvmArgs(): List<String> {
+    if (!System.getProperty("os.name").orEmpty().lowercase().contains("linux")) return emptyList()
+    val gdkScale = System.getenv("GDK_SCALE")?.toDoubleOrNull() ?: 1.0
+    val dpiScale = System.getenv("GDK_DPI_SCALE")?.toDoubleOrNull() ?: 1.0
+    val scale = gdkScale * dpiScale
+    if (scale <= 1.0) return emptyList()
+    return listOf("-Dsun.java2d.uiScale=$scale")
+}
+
+tasks.register("packageReleaseLinux") {
+    group = "compose desktop"
+    description = "Build release Linux deb, rpm, and AppImage."
+    onlyIf { runningOnLinux }
+    if (runningOnLinux) {
+        dependsOn("packageReleaseDeb", "packageReleaseRpm", packageLinuxAppImage)
+    }
+    doLast {
+        val outDir = desktopDistDir.get().asFile
+        outDir.mkdirs()
+        val binaries = layout.buildDirectory.get().asFile.resolve("compose/binaries/main-release")
+        binaries.walkTopDown()
+            .filter { it.isFile && (it.extension == "deb" || it.extension == "rpm") }
+            .forEach { file ->
+                if (file.extension == "deb") injectDebRuntimeDependencies(file)
+                val arch = desktopReleaseArchLabel()
+                val renamed = "FromChat-$desktopVersionName-linux-$arch.${file.extension}"
+                file.copyTo(outDir.resolve(renamed), overwrite = true)
+            }
+    }
+}
+
+/**
+ * Development build of the Linux deb: the same jpackage output, but without ProGuard.
+ *
+ * ProGuard takes 10-20 minutes and OOMs on a small machine, while only obfuscating — every code
+ * path under test still runs identically. This task exists so a local dev loop is a couple of
+ * minutes rather than a CI round trip. It is NOT a release artifact: unminified, verbose logs, and
+ * it also stamps the tray dependency and a dev name so it is never mistaken for a real build.
+ */
+tasks.register("packageDevLinuxDeb") {
+    group = "compose desktop"
+    description = "Build the Linux deb for local development (no ProGuard, dev identity)."
+    onlyIf { runningOnLinux }
+    if (runningOnLinux) {
+        dependsOn("packageDeb")
+    }
+    doLast {
+        val deb = layout.buildDirectory.get().asFile
+            .resolve("compose/binaries/main/deb")
+            .walkTopDown()
+            .firstOrNull { it.isFile && it.extension == "deb" && it.name.startsWith("fromchat") }
+        checkNotNull(deb) { "packageDeb produced no .deb" }
+        // Same tray fix-up as the release path; without it a fresh install has no tray host.
+        injectDebRuntimeDependencies(deb)
+        val outDir = desktopDistDir.get().asFile
+        outDir.mkdirs()
+        val renamed = outDir.resolve("FromChat-dev-linux-${desktopReleaseArchLabel()}.deb")
+        deb.copyTo(renamed, overwrite = true)
+        logger.lifecycle("Dev deb: ${renamed.absolutePath}")
+    }
+}
+
+/**
+ * Adds the tray runtime dependency to the generated .deb control file.
+ *
+ * AWT's Linux tray is not built into the JDK: it `dlopen`s libappindicator, and when that is
+ * absent `SystemTray.isSupported()` is false — so the tray icon never appears and left/right
+ * clicks do nothing, with nothing in the log. jpackage cannot be told about dependencies through
+ * Compose's `linux { }` DSL, so the control file ships with no `Depends` at all and the package
+ * pulls nothing in. The Ayatana build is the maintained one; the legacy name is kept as an
+ * alternative for older distributions.
+ *
+ * Best effort on purpose: a failure here must not fail the release, it only leaves the deb as
+ * jpackage produced it (status quo, tray broken) instead of shipping a broken package.
+ */
+private fun injectDebRuntimeDependencies(deb: File) {
+    val trayDeps = "libayatana-appindicator3-1 | libappindicator3-1, libdbus-1-3"
+    runCatching {
+        val members = readArMembers(deb.readBytes()).toMutableList()
+        val index = members.indexOfFirst { it.name.startsWith("control.tar") }
+        check(index >= 0) { "no control.tar member in ${deb.name}" }
+        val controlName = members[index].name
+        val work = Files.createTempDirectory("fromchat-deb").toFile()
+        try {
+            val controlTar = work.resolve(controlName)
+            controlTar.writeBytes(members[index].data)
+            val controlDir = File(work, "control").apply { mkdirs() }
+            // jpackage on a modern dpkg emits **zstd** control/data tars (control.tar.zst), so the
+            // compression has to be detected from the member name and preserved on rebuild — a
+            // plain tar left under a .zst name is a malformed package.
+            when {
+                controlName.endsWith(".zst") -> runCommand("tar", "--zstd", "-xf", controlTar.absolutePath, "-C", controlDir.absolutePath)
+                controlName.endsWith(".gz") -> runCommand("tar", "xzf", controlTar.absolutePath, "-C", controlDir.absolutePath)
+                controlName.endsWith(".xz") -> runCommand("tar", "xJf", controlTar.absolutePath, "-C", controlDir.absolutePath)
+                else -> runCommand("tar", "xf", controlTar.absolutePath, "-C", controlDir.absolutePath)
+            }
+            val controlFile = sequenceOf("control", "./control")
+                .map { File(controlDir, it) }.firstOrNull { it.isFile }
+                ?: error("no control file inside $controlName")
+            // Strip *every* Depends line first: jpackage may or may not emit one, and replacing plus
+            // prepending used to leave the control file with two.
+            val patched = "Depends: $trayDeps\n" +
+                controlFile.readText().replace(Regex("(?m)^Depends:.*\\R?"), "")
+            controlFile.writeText(patched)
+            val rebuilt = File(work, "rebuilt-$controlName")
+            when {
+                controlName.endsWith(".zst") -> runCommand("tar", "--zstd", "-cf", rebuilt.absolutePath, "-C", controlDir.absolutePath, ".")
+                controlName.endsWith(".gz") -> runCommand("tar", "czf", rebuilt.absolutePath, "-C", controlDir.absolutePath, ".")
+                controlName.endsWith(".xz") -> runCommand("tar", "cJf", rebuilt.absolutePath, "-C", controlDir.absolutePath, ".")
+                else -> runCommand("tar", "cf", rebuilt.absolutePath, "-C", controlDir.absolutePath, ".")
+            }
+            val rebuiltBytes = rebuilt.readBytes()
+            // Self-check: refuse to write a control member whose compression or content is wrong,
+            // so a mangled package can never leave this task.
+            if (controlName.endsWith(".zst")) {
+                check(
+                    rebuiltBytes.size > 4 &&
+                        rebuiltBytes[0] == 0x28.toByte() && rebuiltBytes[1] == 0xB5.toByte() &&
+                        rebuiltBytes[2] == 0x2F.toByte() && rebuiltBytes[3] == 0xFD.toByte(),
+                ) { "rebuilt $controlName is not zstd-framed" }
+            }
+            check(controlDir.listFiles().orEmpty().isNotEmpty()) { "control tar came out empty" }
+            members[index] = members[index].copy(data = rebuiltBytes)
+            deb.writeBytes(writeArMembers(members))
+            logger.lifecycle("Injected tray runtime deps into ${deb.name}: $trayDeps")
+        } finally {
+            work.deleteRecursively()
+        }
+    }.onFailure {
+        logger.warn("Could not inject tray deps into ${deb.name} (leaving it as jpackage built it): ${it.message}")
+    }
+}
+
+/** One `ar` member: its 60-byte header (kept verbatim so odd members survive) and payload. */
+private data class ArMember(val name: String, val header: ByteArray, val data: ByteArray) {
+    override fun equals(other: Any?): Boolean =
+        this === other || (other is ArMember && name == other.name && data.contentEquals(other.data))
+
+    override fun hashCode(): Int = 31 * name.hashCode() + data.contentHashCode()
+}
+
+/**
+ * Reads the Debian `ar` container in pure Kotlin. Shelling out to `ar` is not an option: BSD ar
+ * (macOS) injects a `__.SYMDEF SORTED` member while GNU ar (Linux, where this actually runs) does
+ * not, and rewriting a package with the wrong dialect corrupts it. The format is trivial — an
+ * 8-byte magic followed by 60-byte headers — and `dpkg-deb` only needs member order preserved with
+ * `debian-binary` first.
+ */
+private fun readArMembers(raw: ByteArray): List<ArMember> {
+    require(raw.size > 68 && String(raw, 0, 8) == "!<arch>\n") { "not an ar archive" }
+    val members = ArrayList<ArMember>()
+    var offset = 8
+    while (offset + 60 <= raw.size) {
+        val header = raw.copyOfRange(offset, offset + 60)
+        val name = String(header, 0, 16).trim().trimEnd('/')
+        val size = String(header, 48, 10).trim().toIntOrNull()
+            ?: if (name == "/" || name == "//") 0 else error("bad ar size in header for '$name'")
+        val start = offset + 60
+        require(start + size <= raw.size) { "ar member '$name' runs past end of archive" }
+        members += ArMember(name, header, raw.copyOfRange(start, start + size))
+        offset = start + size + (size % 2) // members are 2-byte aligned
+    }
+    check(members.isNotEmpty()) { "empty ar archive" }
+    return members
+}
+
+private fun writeArMembers(members: List<ArMember>): ByteArray {
+    val out = ByteArrayOutputStream()
+    out.write("!<arch>\n".toByteArray())
+    members.forEach { member ->
+        val size = member.data.size.toString()
+        check(size.length <= 10) { "ar member '${member.name}' too large" }
+        val header = member.header.copyOf()
+        // Refresh the size field (bytes 48..58), leaving name/mtime/uid/gid/mode/magic as-is.
+        for (i in 0 until 10) header[48 + i] = ' '.code.toByte()
+        size.forEachIndexed { i, c -> header[48 + i] = c.code.toByte() }
+        out.write(header)
+        out.write(member.data)
+        if (member.data.size % 2 == 1) out.write('\n'.code)
+    }
+    return out.toByteArray()
+}
+
+private fun runCommand(vararg command: String): String =
+    ProcessBuilder(command.asList()).redirectErrorStream(true).start().inputStream.bufferedReader().readText()
+
+val windowsSetupDir = layout.projectDirectory.dir("windows-setup")
+val windowsRustReleaseDir = windowsSetupDir.dir("target/release")
+val windowsRustBinaryNames = listOf(
+    "FromChat-Installer.exe",
+    "FromChat-Installer-Helper.exe",
+    "fromchat-portable-launcher.exe",
+    "fromchat-pack.exe",
+    "fromchat-icon-patch.exe",
+)
+
+fun findJpackageAppExe(appImageDir: File): File {
+    val direct = listOf(
+        appImageDir.resolve("FromChat.exe"),
+        appImageDir.resolve("app/FromChat.exe"),
+    )
+    direct.firstOrNull { it.isFile }?.let { return it }
+    return appImageDir.walkTopDown()
+        .first { file ->
+            file.isFile && file.name.equals("FromChat.exe", ignoreCase = true)
+        }
+}
+
+fun windowsRustBinariesReady(): Boolean =
+    windowsRustBinaryNames.all { name ->
+        windowsRustReleaseDir.asFile.resolve(name).isFile
+    }
+
+fun shouldBuildWindowsSetupRust(): Boolean =
+    runningOnWindows && (
+        System.getenv("FROMCHAT_SKIP_RUST_BUILD") != "1" || !windowsRustBinariesReady()
+    )
+
+val buildWindowsSetupRust = tasks.register<Exec>("buildWindowsSetupRust") {
+    group = "compose desktop"
+    description = "Build Rust setup, helper, and portable launcher (Windows only)."
+    onlyIf { shouldBuildWindowsSetupRust() }
+    workingDir = windowsSetupDir.asFile
+    commandLine("cargo", "build", "--release", "--workspace")
+    environment("FROMCHAT_SETUP_VERSION", desktopVersionName)
+    inputs.property("setupVersion", desktopVersionName)
+    inputs.dir(windowsSetupDir.dir("setup"))
+    inputs.dir(windowsSetupDir.dir("helper"))
+    inputs.dir(windowsSetupDir.dir("portable-launcher"))
+    inputs.dir(windowsSetupDir.dir("common"))
+    inputs.dir(windowsSetupDir.dir("pack"))
+    inputs.dir(windowsSetupDir.dir("icon-patch"))
+    inputs.dir(windowsSetupDir.dir("assets"))
+    inputs.file(windowsSetupDir.file("Cargo.toml"))
+    doFirst {
+        val releaseDir = windowsRustReleaseDir.asFile
+        val keepNames = windowsRustBinaryNames.toSet()
+        if (releaseDir.isDirectory) {
+            releaseDir.listFiles()?.forEach { file ->
+                if (
+                    file.isFile &&
+                    file.extension.equals("exe", ignoreCase = true) &&
+                    file.name !in keepNames
+                ) {
+                    file.delete()
+                }
+            }
+        }
+    }
+    windowsRustBinaryNames.forEach { name ->
+        outputs.file(windowsRustReleaseDir.file(name))
+    }
+}
+
+val ensureWindowsRustBinaries = tasks.register("ensureWindowsRustBinaries") {
+    group = "compose desktop"
+    description = "Build or verify pre-staged Windows Rust installer tooling."
+    onlyIf { runningOnWindows }
+    if (shouldBuildWindowsSetupRust()) {
+        dependsOn(buildWindowsSetupRust)
+    } else {
+        doLast {
+            check(windowsRustBinariesReady()) {
+                "Missing Windows Rust binaries under ${windowsRustReleaseDir.asFile}. " +
+                    "Run buildWindowsSetupRust or restore CI artifacts."
+            }
+        }
+    }
+}
+
+val patchWindowsJpackageIcon = tasks.register<Exec>("patchWindowsJpackageIcon") {
+    group = "compose desktop"
+    description = "Embed branded icon into jpackage FromChat.exe (Task Manager)."
+    onlyIf { runningOnWindows }
+    dependsOn(ensureWindowsRustBinaries)
+    mustRunAfter("createDistributable")
+    doFirst {
+        val appImageDir = debugAppImageDir.get().asFile
+        check(appImageDir.isDirectory) { "Missing app image at ${appImageDir.absolutePath}" }
+        val exe = findJpackageAppExe(appImageDir)
+        val patcher = windowsRustReleaseDir.asFile.resolve("fromchat-icon-patch.exe")
+        check(patcher.isFile) { "Missing $patcher — build windows-setup workspace first." }
+        commandLine(patcher.absolutePath, exe.absolutePath)
+    }
+}
+
+val patchWindowsJpackageReleaseIcon = tasks.register<Exec>("patchWindowsJpackageReleaseIcon") {
+    group = "compose desktop"
+    description = "Embed branded icon into release jpackage FromChat.exe."
+    onlyIf { runningOnWindows }
+    dependsOn(ensureWindowsRustBinaries, "createReleaseDistributable")
+    doFirst {
+        val appImageDir = releaseAppImageDir.get().asFile
+        check(appImageDir.isDirectory) { "Missing app image at ${appImageDir.absolutePath}" }
+        val exe = findJpackageAppExe(appImageDir)
+        val patcher = windowsRustReleaseDir.asFile.resolve("fromchat-icon-patch.exe")
+        check(patcher.isFile) { "Missing $patcher — build windows-setup workspace first." }
+        commandLine(patcher.absolutePath, exe.absolutePath)
+    }
+}
+
+val windowsPrebuiltX64AppImage = layout.buildDirectory.dir("prebuilt/windows-x64/app/FromChat")
+val windowsPrebuiltArm64AppImage = layout.buildDirectory.dir("prebuilt/windows-arm64/app/FromChat")
+
+fun Exec.configureWindowsPackTask(
+    appImageDir: Provider<Directory>?,
+    setupOutput: Provider<RegularFile>,
+    registrationId: String = "FromChat",
+    prebuiltOnly: Boolean = false,
+) {
+    appImageDir?.let { inputs.dir(it).withPropertyName("appImage") }
+    inputs.dir(windowsRustReleaseDir).withPropertyName("windowsSetupRust")
+    inputs.property("packVersion", desktopVersionName)
+    inputs.property("registrationId", registrationId)
+    inputs.property("prebuiltOnly", prebuiltOnly)
+    outputs.file(setupOutput)
+    doFirst {
+        val nativeAppDir = appImageDir?.get()?.asFile
+        if (!prebuiltOnly) {
+            check(nativeAppDir != null && nativeAppDir.isDirectory) {
+                "Missing ${nativeAppDir?.absolutePath}"
+            }
+        }
+        val prebuiltX64 = windowsPrebuiltX64AppImage.get().asFile
+        val prebuiltArm64 = windowsPrebuiltArm64AppImage.get().asFile
+        desktopDistDir.get().asFile.mkdirs()
+        val releaseDir = windowsRustReleaseDir.asFile
+        val packer = listOf("fromchat-pack.exe", "fromchat-pack")
+            .map { releaseDir.resolve(it) }
+            .firstOrNull { it.isFile }
+            ?: error("Missing fromchat-pack. Build windows-setup workspace first.")
+        val setupBin = releaseDir.resolve("FromChat-Installer.exe").takeIf { it.isFile }
+            ?: releaseDir.resolve("FromChat-Installer")
+        val helperBin = releaseDir.resolve("FromChat-Installer-Helper.exe").takeIf { it.isFile }
+            ?: releaseDir.resolve("FromChat-Installer-Helper")
+        val launcherBin = releaseDir.resolve("fromchat-portable-launcher.exe").takeIf { it.isFile }
+            ?: releaseDir.resolve("fromchat-portable-launcher")
+        val packArgs = mutableListOf(
+            packer.absolutePath,
+            "--version",
+            desktopVersionName,
+            "--registration-id",
+            registrationId,
+            "--setup-out",
+            setupOutput.get().asFile.absolutePath,
+            "--setup-bin",
+            setupBin.absolutePath,
+            "--helper-bin",
+            helperBin.absolutePath,
+            "--launcher-bin",
+            launcherBin.absolutePath,
+        )
+        var packed = false
+        if (prebuiltX64.isDirectory) {
+            packArgs += listOf("--app-image-x64", prebuiltX64.absolutePath)
+            packed = true
+        } else if (!prebuiltOnly && nativeAppDir != null && nativeAppDir.isDirectory && !isWindowsArm64Host()) {
+            packArgs += listOf("--app-image-x64", nativeAppDir.absolutePath)
+            packed = true
+        }
+        if (prebuiltArm64.isDirectory) {
+            packArgs += listOf("--app-image-arm64", prebuiltArm64.absolutePath)
+            packed = true
+        } else if (!prebuiltOnly && nativeAppDir != null && nativeAppDir.isDirectory && isWindowsArm64Host()) {
+            packArgs += listOf("--app-image-arm64", nativeAppDir.absolutePath)
+            packed = true
+        }
+        check(packed) {
+            if (prebuiltOnly) {
+                "packUniversalWindows needs both prebuilt/windows-x64 and prebuilt/windows-arm64 app images"
+            } else {
+                "No Windows app-image payload for setup EXE"
+            }
+        }
+        commandLine(packArgs)
+    }
+}
+
+tasks.register<Exec>("packUniversalWindows") {
+    group = "compose desktop"
+    description = "Pack a universal Windows setup EXE from prebuilt x64 + arm64 app images."
+    onlyIf { runningOnWindows }
+    dependsOn(ensureWindowsRustBinaries)
+    configureWindowsPackTask(
+        appImageDir = null,
+        setupOutput = windowsUniversalSetupOutput,
+        prebuiltOnly = true,
+    )
+}
+
+tasks.register<Exec>("packSetupOnly") {
+    group = "compose desktop"
+    description = "Repack setup EXE from existing app-image + Rust (skips ProGuard)."
+    onlyIf { runningOnWindows }
+    dependsOn(ensureWindowsRustBinaries, "createReleaseDistributable", "patchWindowsJpackageReleaseIcon")
+    configureWindowsPackTask(
+        appImageDir = releaseAppImageDir,
+        setupOutput = windowsSetupOutput,
+    )
+}
+
+tasks.register<Exec>("packageBetaWindows") {
+    group = "compose desktop"
+    description = "Build debug Windows app-image (no ProGuard) and beta setup EXE."
+    onlyIf { runningOnWindows }
+    dependsOn("createDistributable", ensureWindowsRustBinaries, patchWindowsJpackageIcon)
+    configureWindowsPackTask(
+        appImageDir = debugAppImageDir,
+        setupOutput = windowsBetaSetupOutput,
+        registrationId = "FromChat Beta",
+    )
+    doFirst {
+        check(project.findProperty("betaDesktop") != null) {
+            "Run with -PbetaDesktop (e.g. gradlew :app:desktop:packageBetaWindows -PbetaDesktop)"
+        }
+        if (isWindowsArm64Host()) {
+            val packagingJdk = File(resolvePackagingJdkHome(), "bin/java.exe")
+            val arch = jdkReportsArch(packagingJdk)
+            check(arch == "aarch64") {
+                "packageBetaWindows on Windows ARM64 requires ARM64 packaging JDK (os.arch=$arch): $packagingJdk"
+            }
+            val gradleJava = File(System.getProperty("java.home"), "bin/java.exe")
+            val gradleArch = jdkReportsArch(gradleJava)
+            check(gradleArch == "aarch64") {
+                "Gradle must run on ARM64 JDK on Windows ARM64 (os.arch=$gradleArch). " +
+                    "Run scripts\\ensure-windows-arm64-jdk.cmd before gradlew."
+            }
+        }
+        val outDir = desktopDistDir.get().asFile
+        if (outDir.isDirectory) {
+            outDir.listFiles()?.forEach { file ->
+                if (
+                    file.isFile &&
+                    file.name.startsWith("FromChat-Setup-") &&
+                    file.name.endsWith(".exe", ignoreCase = true) &&
+                    file.name != windowsBetaSetupOutput.get().asFile.name
+                ) {
+                    file.delete()
+                }
+            }
+        }
+        if (isWindowsArm64Host()) {
+            val appDir = debugAppImageDir.get().asFile.resolve("app")
+            syncWindowsArm64SkikoNatives(appDir, configurations.runtimeClasspath.get().files)
+        }
+    }
+}
+
+afterEvaluate {
+    val exportingProguardForCi = gradle.startParameter.taskNames.any {
+        it.contains("exportReleaseProguardForCi")
+    }
+    tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
+        onlyIf {
+            exportingProguardForCi ||
+                !useCiPrebuiltProguard() ||
+                !ciPrebuiltProguardDir.get().asFile.isDirectory
+        }
+    }
+    if (useCiPrebuiltProguard()) {
+        val stagePrebuilt = tasks.named("stageCiPrebuiltProguard")
+        tasks.matching {
+            it.name == "createReleaseDistributable" ||
+                it.name == "createReleaseDistributableImpl" ||
+                (it.name.startsWith("packageRelease") && it.name != "packageReleaseFromPrebuiltProguard")
+        }.configureEach {
+            dependsOn(stagePrebuilt)
+        }
+    }
+    tasks.matching { it.name == "createRuntimeImage" || it.name == "createReleaseRuntimeImage" }.configureEach {
+        if (!isWindowsArm64Host()) return@configureEach
+        inputs.property("packagingJdkHome", resolvePackagingJdkHome())
+        doLast {
+            val runtimeDir = when (name) {
+                "createReleaseRuntimeImage" -> layout.buildDirectory.dir("compose/tmp/main-release/runtime")
+                else -> layout.buildDirectory.dir("compose/tmp/main/runtime")
+            }
+            val jli = runtimeDir.get().asFile.resolve("bin/jli.dll")
+            check(jli.isFile) { "Missing runtime image JRE: $jli" }
+            assertWindowsBinaryArch(jli, "createRuntimeImage output")
+        }
+    }
+    tasks.matching { it.name == "createDistributable" || it.name == "createReleaseDistributable" }.configureEach {
+        doLast {
+            val appImageRoot = when (name) {
+                "createReleaseDistributable" -> releaseAppImageDir.get().asFile
+                else -> debugAppImageDir.get().asFile
+            }
+            assertWindowsAppImageArch(appImageRoot)
+            stageWindowsJpackageRuntime(appImageRoot)
+            if (!isWindowsArm64Host()) return@doLast
+            val appDir = appImageRoot.resolve("app")
+            syncWindowsArm64SkikoNatives(appDir, configurations.runtimeClasspath.get().files)
+            val natives = appDir.listFiles()?.map { it.name }.orEmpty()
+            check(natives.none { it.contains("windows-x64", ignoreCase = true) }) {
+                "App image still contains x64 Skiko on Windows ARM64: $appDir"
+            }
+            check(natives.any { it.contains("windows-arm64", ignoreCase = true) }) {
+                "App image is missing ARM64 Skiko runtime: $appDir"
+            }
+            check(natives.any { it.equals("libEGL.dll", ignoreCase = true) }) {
+                "App image is missing ANGLE libEGL.dll: $appDir"
+            }
+            check(natives.any { it.equals("libGLESv2.dll", ignoreCase = true) }) {
+                "App image is missing ANGLE libGLESv2.dll: $appDir"
+            }
+        }
+    }
+}
+
+tasks.register<Exec>("packageReleaseWindows") {
+    group = "compose desktop"
+    description = "Build release Windows app-image, then setup EXE."
+    onlyIf { runningOnWindows }
+    if (runningOnWindows) {
+        dependsOn("createReleaseDistributable", ensureWindowsRustBinaries, patchWindowsJpackageReleaseIcon)
+    }
+    configureWindowsPackTask(
+        appImageDir = releaseAppImageDir,
+        setupOutput = windowsSetupOutput,
+    )
+}
+
+tasks.register("packageReleaseWindowsAppImage") {
+    group = "compose desktop"
+    description = "Build release Windows app-image and patch launcher icon (no setup EXE)."
+    onlyIf { runningOnWindows }
+    dependsOn("createReleaseDistributable", patchWindowsJpackageReleaseIcon)
+}
+
+tasks.register("packageReleaseDesktop") {
+    group = "compose desktop"
+    description = "Build the release desktop package for the current OS."
+    when {
+        runningOnMacOs -> dependsOn("packageReleaseMac")
+        runningOnLinux -> dependsOn("packageReleaseLinux")
+        runningOnWindows -> dependsOn("packageReleaseWindows")
+        else -> doFirst { error("Unsupported OS for packageReleaseDesktop") }
+    }
+}
+

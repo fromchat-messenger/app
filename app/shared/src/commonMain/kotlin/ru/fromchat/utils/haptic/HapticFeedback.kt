@@ -2,7 +2,6 @@ package ru.fromchat.utils.haptic
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import ru.fromchat.utils.haptic.HapticFeedbackEvent
 import ru.fromchat.ui.components.rememberHapticFeedbackInternal
 
 @Composable

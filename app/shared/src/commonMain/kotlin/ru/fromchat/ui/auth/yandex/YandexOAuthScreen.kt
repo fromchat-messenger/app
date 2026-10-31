@@ -8,11 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButtonDefaults
+import ru.fromchat.ui.components.ChromeBackIconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -31,14 +27,14 @@ import io.ktor.client.call.body
 import io.ktor.client.plugins.ClientRequestException
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.schema.core.ErrorResponse
 import ru.fromchat.auth_yandex_failed
 import ru.fromchat.back
 import ru.fromchat.ui.LocalNavController
-import ru.fromchat.ui.isAppInDarkTheme
+import ru.fromchat.ui.theme.isAppInDarkTheme
 
 private const val LOG_TAG = "YandexOAuthScreen"
 
@@ -55,7 +51,6 @@ internal fun YandexOAuthScreen() {
     var busy by remember { mutableStateOf(false) }
     var webViewCanGoBack by remember { mutableStateOf(false) }
     val failedMessage = stringResource(Res.string.auth_yandex_failed)
-    val backLabel = stringResource(Res.string.back)
     val darkTheme = isAppInDarkTheme()
     val screenId = remember { (100000..999999).random().toString(16) }
 
@@ -157,15 +152,7 @@ internal fun YandexOAuthScreen() {
                 .safeDrawingPadding()
                 .padding(start = 12.dp, top = 12.dp),
         ) {
-            FilledIconButton(
-                onClick = { cancel() },
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                ),
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = backLabel)
-            }
+            ChromeBackIconButton(onClick = { cancel() })
         }
     }
 }

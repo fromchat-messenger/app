@@ -8,11 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButtonDefaults
+import ru.fromchat.ui.components.ChromeBackIconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,7 +28,7 @@ import ru.fromchat.api.ApiClient
 import ru.fromchat.back
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.auth.yandex.YandexOAuthWebView
-import ru.fromchat.ui.isAppInDarkTheme
+import ru.fromchat.ui.theme.isAppInDarkTheme
 import ru.fromchat.ui.main.settings.SettingsRoutes
 
 @Composable
@@ -45,7 +41,6 @@ fun ChangeYandexOAuthScreen(onBack: () -> Unit) {
     var chromeColor by remember { mutableStateOf(fallbackColor) }
     var busy by remember { mutableStateOf(false) }
     var webViewCanGoBack by remember { mutableStateOf(false) }
-    val backLabel = stringResource(Res.string.back)
 
     LaunchedEffect(authorizeUrl, codeVerifier) {
         if (authorizeUrl.isNullOrBlank() || codeVerifier.isNullOrBlank()) {
@@ -111,15 +106,7 @@ fun ChangeYandexOAuthScreen(onBack: () -> Unit) {
                 .safeDrawingPadding()
                 .padding(start = 12.dp, top = 12.dp),
         ) {
-            FilledIconButton(
-                onClick = { cancel() },
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                ),
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = backLabel)
-            }
+            ChromeBackIconButton(onClick = { cancel() })
         }
     }
 }

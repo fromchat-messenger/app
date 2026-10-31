@@ -26,8 +26,7 @@ object CacheValidator {
     ): Boolean {
         val groupId = groupIdFromConversationId(conversationId)
         if (groupId != null) {
-            if (groupId != GENERAL_PUBLIC_GROUP_ID) return false
-            return message.user_id > 0
+            return groupId == GENERAL_PUBLIC_GROUP_ID && message.user_id > 0
         }
         val peer = dmPeerUserId ?: return false
         val self = currentUserId ?: return false

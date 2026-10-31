@@ -1,6 +1,5 @@
 package ru.fromchat.api.local.workers
 
-import android.R
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -105,7 +104,7 @@ class AttachmentDownloadForegroundService : Service() {
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(contentText)
-            .setSmallIcon(R.drawable.stat_sys_download)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -173,7 +172,7 @@ class AttachmentDownloadForegroundService : Service() {
         fun updateProgress(app: Context, percent: Int, displayLabel: String?) {
             val pct = percent.coerceIn(0, 100)
             val now = System.currentTimeMillis()
-            val forceUpdate = pct <= 1 || pct >= 100
+            val forceUpdate = pct !in 2..<100
             if (!forceUpdate && now - lastNotifUpdateMs < NOTIFICATION_MIN_INTERVAL_MS) {
                 return
             }

@@ -2,7 +2,6 @@ package ru.fromchat.api.local.db.store
 
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -10,13 +9,12 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.messages.ChatListPreviewPendingIndicator
 import ru.fromchat.api.local.messages.ChatListPreviewState
 import ru.fromchat.api.local.messages.ChatListPreviewStrings
 import ru.fromchat.api.local.messages.GENERAL_PUBLIC_GROUP_ID
-import ru.fromchat.api.local.messages.buildChatListPreview
 import ru.fromchat.api.local.messages.buildChatListPreviewFromEnvelope
 import ru.fromchat.api.local.messages.buildChatListPreviewState
 import ru.fromchat.api.local.db.aspectRatioFromDimensionPair
@@ -47,9 +45,9 @@ import ru.fromchat.api.local.cache.DecryptedFileCache
 import ru.fromchat.api.local.cache.DecryptedImageCache
 import ru.fromchat.api.local.download.DownloadedFileRegistry
 import ru.fromchat.api.local.download.readImageDimensionsFromBytes
-import com.pr0gramm3r101.utils.crypto.Base64
+import ru.fromchat.utils.crypto.Base64
 import ru.fromchat.ui.chat.utils.attachPublicReplyReferences
-import ru.fromchat.ui.chat.isImageFilename
+import ru.fromchat.ui.chat.media.isImageFilename
 import ru.fromchat.ui.chat.utils.dedupeMessagesByClientId
 import ru.fromchat.ui.chat.utils.dropSupersededOptimisticMessages
 import kotlin.concurrent.Volatile
@@ -87,9 +85,9 @@ object MessageCacheStore {
         db.messageDatabaseQueries
             .selectMessagesByConversation(instanceId, conversationId)
             .asFlow()
-            .mapToList(Dispatchers.Default)
+            .mapToList(messageDatabaseDispatcher)
             .mapLatest { rows ->
-                withContext(Dispatchers.Default) {
+                withContext(messageDatabaseDispatcher) {
                     val raw = hydrateReplyReferencesFromRows(rows)
                     val withoutSuperseded = dropSupersededOptimisticMessages(raw, ApiClient.user?.id)
                     val hydrated = hydrateAttachmentPreviewsFromDisk(withoutSuperseded)
@@ -140,32 +138,34 @@ object MessageCacheStore {
     ): ChatListPreviewState? {
         if (instanceId.isBlank()) return null
         val convId = conversationIdForPublic()
-        val recent = resolvePreviewSourceMessageRow(instanceId, convId) ?: return null
-        val message = enrichQueuedOutboundUi(listOf(recent.toAppMessage()), convId).firstOrNull()
-            ?: return null
-        return buildChatListPreviewState(message, strings, ApiClient.user?.id)
-            .let { state ->
-                state.copy(
-                    text = state.text?.trim()?.takeIf { it.isNotEmpty() },
-                )
+        val recent = resolvePreviewSourceMessageRow(instanceId, convId)
+        val message = recent?.toAppMessage()?.let {
+            enrichQueuedOutboundUi(listOf(it), convId).firstOrNull()
+        }
+        val base = message?.let {
+            buildChatListPreviewState(it, strings, ApiClient.user?.id).let { state ->
+                state.copy(text = state.text?.trim()?.takeIf { text -> text.isNotEmpty() })
             }
+        } ?: ChatListPreviewState(text = null)
+        return withPublicUnread(base, instanceId, convId)
     }
 
     suspend fun loadRecentPublicChatPreviewState(
         strings: ChatListPreviewStrings,
         limit: Long = 1,
-    ): ChatListPreviewState? = withContext(Dispatchers.Default) {
+    ): ChatListPreviewState? = withContext(messageDatabaseDispatcher) {
         val convId = conversationIdForPublic()
         val iid = instanceId()
-        val recent = resolvePreviewSourceMessageRow(iid, convId) ?: return@withContext null
-        val message = enrichQueuedOutboundUi(listOf(recent.toAppMessage()), convId).firstOrNull()
-            ?: return@withContext null
-        buildChatListPreviewState(message, strings, ApiClient.user?.id)
-            .let { state ->
-                state.copy(
-                    text = state.text?.trim()?.takeIf { it.isNotEmpty() },
-                )
+        val recent = resolvePreviewSourceMessageRow(iid, convId)
+        val message = recent?.toAppMessage()?.let {
+            enrichQueuedOutboundUi(listOf(it), convId).firstOrNull()
+        }
+        val base = message?.let {
+            buildChatListPreviewState(it, strings, ApiClient.user?.id).let { state ->
+                state.copy(text = state.text?.trim()?.takeIf { text -> text.isNotEmpty() })
             }
+        } ?: ChatListPreviewState(text = null)
+        withPublicUnread(base, iid, convId)
     }
 
     suspend fun replacePublicMessages(messages: List<Message>, replaceAll: Boolean = false) {
@@ -183,7 +183,7 @@ object MessageCacheStore {
             dropSupersededOptimisticMessages(before, ApiClient.user?.id),
         ).let { sortMessagesForChatDisplay(it) }
         val iid = instanceId()
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             purgeSupersededPendingRows(iid, convId, before, merged)
         }
         replaceMessages(convId, merged, replaceAll = replaceAll)
@@ -217,7 +217,7 @@ object MessageCacheStore {
         ).let { sortMessagesForChatDisplay(it) }
         val hydrated = hydrateReplyToInMemory(merged)
         val iid = instanceId()
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             purgeSupersededPendingRows(iid, convId, before, hydrated)
         }
         replaceMessages(convId, hydrated, replaceAll = replaceAll)
@@ -271,7 +271,7 @@ object MessageCacheStore {
         val cid = clientMessageId.trim()
         if (cid.isEmpty()) return
         val iid = instanceId()
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             db.messageDatabaseQueries.updateMessageSendStatusByClientMessageId(
                 sendStatus = "failed",
                 instanceId = iid,
@@ -285,7 +285,7 @@ object MessageCacheStore {
         val cid = clientMessageId.trim()
         if (cid.isEmpty()) return
         val iid = instanceId()
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             db.messageDatabaseQueries.updateMessageSendStatusByClientMessageId(
                 sendStatus = "pending",
                 instanceId = iid,
@@ -335,7 +335,7 @@ object MessageCacheStore {
     }
 
     suspend fun confirmPublicMessage(clientMessageId: String, confirmed: Message) {
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             var resolved = confirmed.resolvePublicAttachmentLayout()
             resolved = hydrateAttachmentPreviewFromDisk(resolved)
             ProfileCache.mergePreviewFromPublicMessage(resolved)
@@ -411,7 +411,7 @@ object MessageCacheStore {
         if (messageId <= 0 || !DecryptedImageCache.isDecryptedImageCacheUri(localPreviewUri)) return
         val convId = conversationIdForPublic()
         val iid = instanceId()
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             val row = db.messageDatabaseQueries
                 .selectMessageById(iid, convId, messageId.toLong())
                 .executeAsOneOrNull() ?: return@withContext
@@ -444,7 +444,7 @@ object MessageCacheStore {
         if (messageId <= 0 || !DecryptedImageCache.isDecryptedImageCacheUri(localPreviewUri)) return
         val convId = conversationIdForDm(otherUserId)
         val iid = instanceId()
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             val row = db.messageDatabaseQueries
                 .selectMessageById(iid, convId, messageId.toLong())
                 .executeAsOneOrNull() ?: return@withContext
@@ -473,7 +473,7 @@ object MessageCacheStore {
             "MessageCache",
             "markMessageDeleted (soft) convId=$conversationId messageId=$messageId",
         )
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             db.messageDatabaseQueries.markMessageDeleted(
                 instanceId = iid,
                 id = messageId.toLong(),
@@ -489,7 +489,7 @@ object MessageCacheStore {
         previewStrings?.let { listPreviewStrings = it }
         val iid = instanceId()
         val currentUserId = ApiClient.user?.id
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             val upserts = conversations.map { conv ->
                 val conversationId = conversationIdForDm(conv.user.id)
                 val displayLabel = when {
@@ -497,10 +497,6 @@ object MessageCacheStore {
                     else -> conv.user.displayName?.trim()?.takeIf { it.isNotEmpty() }
                         ?: conv.user.username.trim()
                 }
-                val localUnread = db.messageDatabaseQueries
-                    .countUnreadInboundDmMessages(iid, conversationId, conv.user.id.toLong())
-                    .executeAsOne()
-                    .toInt()
                 UpsertDmConversationRow(
                     conversationId = conversationId,
                     otherUserId = conv.user.id,
@@ -511,7 +507,12 @@ object MessageCacheStore {
                         currentUserId,
                         previewStrings,
                     ),
-                    unreadCount = maxOf(conv.unreadCount, localUnread),
+                    unreadCount = localDmUnreadCount(
+                        iid,
+                        conversationId,
+                        conv.user.id,
+                        conv.unreadCount,
+                    ),
                     updatedAt = conv.lastMessage.timestamp,
                 )
             }
@@ -580,7 +581,7 @@ object MessageCacheStore {
 
     suspend fun pruneEmptyConversations() {
         val iid = instanceId()
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             db.messageDatabaseQueries.transaction {
                 pruneEmptyConversationsLocked(iid)
             }
@@ -594,7 +595,7 @@ object MessageCacheStore {
     suspend fun ensureDmConversationRow(otherUserId: Int, displayName: String? = null) {
         val iid = instanceId()
         val convId = conversationIdForDm(otherUserId)
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             val existing = db.messageDatabaseQueries
                 .selectConversationById(iid, convId)
                 .executeAsOneOrNull()
@@ -641,7 +642,7 @@ object MessageCacheStore {
         if (otherUserId <= 0) return
         val iid = instanceId()
         val convId = conversationIdForDm(otherUserId)
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             val existing = db.messageDatabaseQueries
                 .selectConversationById(iid, convId)
                 .executeAsOneOrNull() ?: run {
@@ -697,23 +698,20 @@ object MessageCacheStore {
         }
     }
 
-    suspend fun markDmConversationReadLocally(otherUserId: Int, upToEnvelopeId: Int? = null) {
+    suspend fun markDmConversationReadLocally(otherUserId: Int, messageIds: List<Int>? = null) {
         val iid = instanceId()
         val convId = conversationIdForDm(otherUserId)
-        withContext(Dispatchers.Default) {
-            if (upToEnvelopeId != null && upToEnvelopeId > 0) {
-                db.messageDatabaseQueries.markInboundDmMessagesReadUpTo(
-                    instanceId = iid,
-                    conversationId = convId,
-                    userId = otherUserId.toLong(),
-                    id = upToEnvelopeId.toLong(),
-                )
-            } else {
+        withContext(messageDatabaseDispatcher) {
+            if (messageIds.isNullOrEmpty()) {
                 db.messageDatabaseQueries.markAllInboundDmMessagesRead(
                     instanceId = iid,
                     conversationId = convId,
                     userId = otherUserId.toLong(),
                 )
+            } else {
+                messageIds.filter { it > 0 }.forEach { id ->
+                    db.messageDatabaseQueries.markPublicMessageRead(iid, convId, id.toLong())
+                }
             }
             val unreadCount = db.messageDatabaseQueries
                 .countUnreadInboundDmMessages(iid, convId, otherUserId.toLong())
@@ -730,7 +728,7 @@ object MessageCacheStore {
     suspend fun selectUnreadPublicMessageIds(): List<Int> {
         val iid = instanceId()
         val convId = conversationIdForPublic()
-        return withContext(Dispatchers.Default) {
+        return withContext(messageDatabaseDispatcher) {
             db.messageDatabaseQueries
                 .selectUnreadPublicMessageIds(iid, convId)
                 .executeAsList()
@@ -738,18 +736,36 @@ object MessageCacheStore {
         }
     }
 
-    suspend fun markPublicMessagesReadLocally() {
+    suspend fun isPublicMessageRead(messageId: Int): Boolean {
+        if (messageId <= 0) return true
         val iid = instanceId()
         val convId = conversationIdForPublic()
-        withContext(Dispatchers.Default) {
-            db.messageDatabaseQueries.markPublicMessagesRead(iid, convId)
+        return withContext(messageDatabaseDispatcher) {
+            db.messageDatabaseQueries
+                .selectMessageById(iid, convId, messageId.toLong())
+                .executeAsOneOrNull()
+                ?.isRead == 1L
+        }
+    }
+
+    suspend fun markPublicMessagesReadLocally(messageIds: List<Int>? = null) {
+        val iid = instanceId()
+        val convId = conversationIdForPublic()
+        withContext(messageDatabaseDispatcher) {
+            if (messageIds == null) {
+                db.messageDatabaseQueries.markPublicMessagesRead(iid, convId)
+            } else {
+                messageIds.filter { it > 0 }.forEach { id ->
+                    db.messageDatabaseQueries.markPublicMessageRead(iid, convId, id.toLong())
+                }
+            }
         }
     }
 
     suspend fun archiveDmConversation(otherUserId: Int) {
         val iid = instanceId()
         val convId = conversationIdForDm(otherUserId)
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             db.messageDatabaseQueries.updateConversationArchived(
                 archived = 1L,
                 instanceId = iid,
@@ -762,7 +778,7 @@ object MessageCacheStore {
     suspend fun deleteDmConversation(otherUserId: Int) {
         val iid = instanceId()
         val convId = conversationIdForDm(otherUserId)
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             val messages = db.messageDatabaseQueries
                 .selectMessagesByConversation(iid, convId)
                 .executeAsList()
@@ -788,7 +804,7 @@ object MessageCacheStore {
 
     suspend fun purgePendingNotFromUser(userId: Int) {
         val iid = instanceId()
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             val foreign = db.messageDatabaseQueries
                 .selectForeignPendingMessages(iid, userId.toLong())
                 .executeAsList()
@@ -810,7 +826,7 @@ object MessageCacheStore {
     suspend fun purgeAllPendingForInstance() {
         val iid = runCatching { instanceId() }.getOrNull()?.trim().orEmpty()
         if (iid.isEmpty()) return
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             val pending = db.messageDatabaseQueries
                 .selectAllPendingMessagesForInstance(iid)
                 .executeAsList()
@@ -838,7 +854,7 @@ object MessageCacheStore {
     }
 
     suspend fun loadCachedDmConversations(): List<CachedConversation> =
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             loadCachedDmConversationsRows(instanceId())
         }
 
@@ -860,7 +876,12 @@ object MessageCacheStore {
                     lastMessagePendingIndicator = previewState?.pendingIndicator
                         ?: ChatListPreviewPendingIndicator.None,
                     lastMessageUploadProgress = previewState?.uploadProgress,
-                    unreadCount = row.unreadCount.toInt(),
+                    unreadCount = localDmUnreadCount(
+                        instanceId,
+                        row.id,
+                        row.otherUserId?.toInt() ?: 0,
+                        row.unreadCount.toInt(),
+                    ),
                 )
             }
     }
@@ -870,20 +891,20 @@ object MessageCacheStore {
         val conversationsFlow = db.messageDatabaseQueries
             .selectActiveDmConversationsForInstance(instanceId)
             .asFlow()
-            .mapToList(Dispatchers.Default)
+            .mapToList(messageDatabaseDispatcher)
         val messagesFlow = db.messageDatabaseQueries
             .selectMessagesForInstance(instanceId)
             .asFlow()
-            .mapToList(Dispatchers.Default)
+            .mapToList(messageDatabaseDispatcher)
         val pendingFlow = db.messageDatabaseQueries
             .selectAllPendingMessagesForInstance(instanceId)
             .asFlow()
-            .mapToList(Dispatchers.Default)
+            .mapToList(messageDatabaseDispatcher)
         val outboxFlow = db.messageDatabaseQueries
             .selectPendingOutboxForInstance(instanceId)
             .asFlow()
-            .mapToList(Dispatchers.Default)
-        val notifierFlow = DmConversationListNotifier.events.map { Unit }
+            .mapToList(messageDatabaseDispatcher)
+        val notifierFlow = DmConversationListNotifier.events.map {  }
         return merge(conversationsFlow, messagesFlow, pendingFlow, outboxFlow, notifierFlow)
             .mapLatest { loadCachedDmConversations() }
     }
@@ -897,15 +918,15 @@ object MessageCacheStore {
         val messagesFlow = db.messageDatabaseQueries
             .selectMessagesByConversation(instanceId, convId)
             .asFlow()
-            .mapToList(Dispatchers.Default)
+            .mapToList(messageDatabaseDispatcher)
         val pendingFlow = db.messageDatabaseQueries
             .selectAllPendingMessagesForInstance(instanceId)
             .asFlow()
-            .mapToList(Dispatchers.Default)
+            .mapToList(messageDatabaseDispatcher)
         val outboxFlow = db.messageDatabaseQueries
             .selectPendingOutboxForInstance(instanceId)
             .asFlow()
-            .mapToList(Dispatchers.Default)
+            .mapToList(messageDatabaseDispatcher)
         return merge(messagesFlow, pendingFlow, outboxFlow)
             .mapLatest { loadRecentPublicChatPreviewState(strings) }
     }
@@ -931,6 +952,37 @@ object MessageCacheStore {
             }
     }
 
+    private fun withPublicUnread(
+        state: ChatListPreviewState,
+        instanceId: String,
+        conversationId: String,
+    ): ChatListPreviewState {
+        val selfId = ApiClient.user?.id?.toLong() ?: return state
+        return state.copy(
+            unreadCount = db.messageDatabaseQueries
+                .countUnreadPublicInboundMessages(instanceId, conversationId, selfId)
+                .executeAsOne()
+                .toInt(),
+        )
+    }
+
+    private fun localDmUnreadCount(
+        instanceId: String,
+        conversationId: String,
+        otherUserId: Int,
+        serverUnread: Int,
+    ): Int {
+        if (otherUserId <= 0) return serverUnread.coerceAtLeast(0)
+        val inbound = db.messageDatabaseQueries
+            .countInboundDmMessages(instanceId, conversationId, otherUserId.toLong())
+            .executeAsOne()
+        if (inbound <= 0L) return serverUnread.coerceAtLeast(0)
+        return db.messageDatabaseQueries
+            .countUnreadInboundDmMessages(instanceId, conversationId, otherUserId.toLong())
+            .executeAsOne()
+            .toInt()
+    }
+
     private fun resolvePreviewSourceMessageRow(
         instanceId: String,
         conversationId: String,
@@ -953,7 +1005,7 @@ object MessageCacheStore {
     private suspend fun syncDmConversationPreviewFromCache(otherUserId: Int) {
         val iid = instanceId()
         val convId = conversationIdForDm(otherUserId)
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             var row = db.messageDatabaseQueries
                 .selectConversationById(iid, convId)
                 .executeAsOneOrNull()
@@ -1003,7 +1055,7 @@ object MessageCacheStore {
         if (envelopeId <= 0) return true
         val iid = instanceId()
         val convId = conversationIdForDm(otherUserId)
-        return withContext(Dispatchers.Default) {
+        return withContext(messageDatabaseDispatcher) {
             db.messageDatabaseQueries
                 .selectMessageById(iid, convId, envelopeId.toLong())
                 .executeAsOneOrNull()
@@ -1014,7 +1066,7 @@ object MessageCacheStore {
     private suspend fun clearConversationMessages(conversationId: String) {
         val iid = instanceId()
         Logger.d("MessageCache", "clearConversationMessages convId=$conversationId")
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             db.messageDatabaseQueries.deleteMessagesForConversation(iid, conversationId)
         }
     }
@@ -1025,27 +1077,27 @@ object MessageCacheStore {
             "MessageCache",
             "deleteByClientMessageId convId=$conversationId clientId=$clientMessageId",
         )
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             db.messageDatabaseQueries.deleteMessageByClientMessageId(iid, conversationId, clientMessageId)
         }
     }
 
     private suspend fun deleteMessageById(conversationId: String, messageId: Int) {
         val iid = instanceId()
-        val beforeCount = withContext(Dispatchers.Default) {
+        val beforeCount = withContext(messageDatabaseDispatcher) {
             db.messageDatabaseQueries
                 .selectMessagesByConversation(iid, conversationId)
                 .executeAsList()
                 .size
         }
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             db.messageDatabaseQueries.deleteMessageById(
                 instanceId = iid,
                 conversationId = conversationId,
                 id = messageId.toLong(),
             )
         }
-        val afterCount = withContext(Dispatchers.Default) {
+        val afterCount = withContext(messageDatabaseDispatcher) {
             db.messageDatabaseQueries
                 .selectMessagesByConversation(iid, conversationId)
                 .executeAsList()
@@ -1060,11 +1112,10 @@ object MessageCacheStore {
 
     private suspend fun upsertSingle(conversationId: String, msg: Message) {
         val iid = instanceId()
-        withContext(Dispatchers.Default) {
-            val existingReplyToId = db.messageDatabaseQueries
+        withContext(messageDatabaseDispatcher) {
+            val existing = db.messageDatabaseQueries
                 .selectMessageById(iid, conversationId, msg.id.toLong())
                 .executeAsOneOrNull()
-                ?.replyToId
             db.messageDatabaseQueries.upsertMessage(
                 instanceId = iid,
                 id = msg.id.toLong(),
@@ -1072,9 +1123,9 @@ object MessageCacheStore {
                 userId = msg.user_id.toLong(),
                 content = storedMessageContent(msg),
                 timestamp = msg.timestamp,
-                isRead = if (msg.is_read) 1L else 0L,
+                isRead = mergedIsRead(existing?.isRead, msg.is_read),
                 isEdited = if (msg.is_edited) 1L else 0L,
-                replyToId = resolveReplyToIdForPersistence(msg, existingReplyToId),
+                replyToId = resolveReplyToIdForPersistence(msg, existing?.replyToId),
                 clientMessageId = msg.client_message_id,
                 deletedFlag = 0L,
                 sendStatus = if (msg.id < 0) "pending" else "sent"
@@ -1090,13 +1141,12 @@ object MessageCacheStore {
             !confirmed.files.isNullOrEmpty() -> encodePersistedPublicMessage(confirmed)
             else -> confirmed.content
         }
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             db.messageDatabaseQueries.transaction {
-                val existingReplyToId = db.messageDatabaseQueries
+                val existing = db.messageDatabaseQueries
                     .selectMessagesByConversation(iid, conversationId)
                     .executeAsList()
                     .firstOrNull { it.clientMessageId == clientMessageId }
-                    ?.replyToId
                 db.messageDatabaseQueries.deleteMessageByClientMessageId(iid, conversationId, clientMessageId)
                 db.messageDatabaseQueries.upsertMessage(
                     instanceId = iid,
@@ -1105,9 +1155,9 @@ object MessageCacheStore {
                     userId = confirmed.user_id.toLong(),
                     content = storedContent,
                     timestamp = confirmed.timestamp,
-                    isRead = if (confirmed.is_read) 1L else 0L,
+                    isRead = mergedIsRead(existing?.isRead, confirmed.is_read),
                     isEdited = if (confirmed.is_edited) 1L else 0L,
-                    replyToId = resolveReplyToIdForPersistence(confirmed, existingReplyToId),
+                    replyToId = resolveReplyToIdForPersistence(confirmed, existing?.replyToId),
                     clientMessageId = confirmed.client_message_id,
                     deletedFlag = 0L,
                     sendStatus = "sent"
@@ -1123,7 +1173,7 @@ object MessageCacheStore {
     private suspend fun loadMessages(conversationId: String): List<Message> {
         val iid = instanceId()
         OutgoingMessageCoordinator.pruneStaleAttachmentOutboxForInstance(iid)
-        return withContext(Dispatchers.Default) {
+        return withContext(messageDatabaseDispatcher) {
             val rows = db.messageDatabaseQueries
                 .selectMessagesByConversation(iid, conversationId)
                 .executeAsList()
@@ -1146,7 +1196,7 @@ object MessageCacheStore {
 
     private suspend fun loadRecentMessages(conversationId: String, limit: Long): List<Message> {
         val iid = instanceId()
-        return withContext(Dispatchers.Default) {
+        return withContext(messageDatabaseDispatcher) {
             val rows = db.messageDatabaseQueries
                 .selectRecentMessagesByConversation(iid, conversationId, limit)
                 .executeAsList()
@@ -1157,7 +1207,7 @@ object MessageCacheStore {
 
     private suspend fun loadPendingMessages(conversationId: String): List<Message> {
         val iid = instanceId()
-        return withContext(Dispatchers.Default) {
+        return withContext(messageDatabaseDispatcher) {
             db.messageDatabaseQueries
                 .selectPendingMessagesByConversation(iid, conversationId)
                 .executeAsList()
@@ -1331,6 +1381,9 @@ object MessageCacheStore {
             ?: existingReplyToId?.takeIf { it > 0L }
     }
 
+    private fun mergedIsRead(existingIsRead: Long?, incomingIsRead: Boolean): Long =
+        if (existingIsRead == 1L || incomingIsRead) 1L else 0L
+
     private fun DbMessage.toAppMessage(): Message {
         val uid = userId.toInt()
         val self = ApiClient.user
@@ -1418,7 +1471,7 @@ object MessageCacheStore {
 
     suspend fun clearAll() {
         Logger.d("MessageCache", "clearAll")
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             db.messageDatabaseQueries.purgeAllCache()
         }
     }
@@ -1452,7 +1505,7 @@ object MessageCacheStore {
         }
         val validated = CacheValidator.filterMessages(conversationId, messages, self)
         val iid = instanceId()
-        val beforeCount = withContext(Dispatchers.Default) {
+        val beforeCount = withContext(messageDatabaseDispatcher) {
             db.messageDatabaseQueries
                 .selectMessagesByConversation(iid, conversationId)
                 .executeAsList()
@@ -1463,11 +1516,14 @@ object MessageCacheStore {
             "replaceMessages convId=$conversationId replaceAll=$replaceAll " +
                 "incoming=${messages.size} validated=${validated.size} rowsBefore=$beforeCount",
         )
-        withContext(Dispatchers.Default) {
-            val existingReplyToIds = db.messageDatabaseQueries
+        withContext(messageDatabaseDispatcher) {
+            val existingRows = db.messageDatabaseQueries
                 .selectMessagesByConversation(iid, conversationId)
                 .executeAsList()
-                .associate { it.id.toInt() to it.replyToId }
+            val existingReplyToIds = existingRows.associate { it.id.toInt() to it.replyToId }
+            val existingReadIds = existingRows.mapNotNull { row ->
+                row.id.toInt().takeIf { row.isRead == 1L }
+            }.toSet()
             if (replaceAll) {
                 db.messageDatabaseQueries.transaction {
                     db.messageDatabaseQueries.deleteMessagesForConversation(iid, conversationId)
@@ -1479,7 +1535,10 @@ object MessageCacheStore {
                             userId = msg.user_id.toLong(),
                             content = storedMessageContent(msg),
                             timestamp = msg.timestamp,
-                            isRead = if (msg.is_read) 1L else 0L,
+                            isRead = mergedIsRead(
+                                if (msg.id in existingReadIds) 1L else 0L,
+                                msg.is_read,
+                            ),
                             isEdited = if (msg.is_edited) 1L else 0L,
                             replyToId = resolveReplyToIdForPersistence(msg, existingReplyToIds[msg.id]),
                             clientMessageId = msg.client_message_id,
@@ -1495,7 +1554,7 @@ object MessageCacheStore {
                 }
             }
         }
-        val afterCount = withContext(Dispatchers.Default) {
+        val afterCount = withContext(messageDatabaseDispatcher) {
             db.messageDatabaseQueries
                 .selectMessagesByConversation(iid, conversationId)
                 .executeAsList()
@@ -1516,7 +1575,7 @@ object MessageCacheStore {
         val cid = clientMessageId.trim()
         if (cid.isEmpty()) return false
         val iid = instanceId()
-        return withContext(Dispatchers.Default) {
+        return withContext(messageDatabaseDispatcher) {
             db.messageDatabaseQueries
                 .selectSentMessageIdByClientMessageId(iid, conversationId, cid)
                 .executeAsOneOrNull() != null
@@ -1529,7 +1588,7 @@ object MessageCacheStore {
     )
 
     suspend fun findMessageForAttachmentStorageKey(storageKey: String): AttachmentResumeTarget? =
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             val key = storageKey.trim()
             if (key.isEmpty()) return@withContext null
             val iid = runCatching { instanceId() }.getOrNull() ?: return@withContext null

@@ -29,7 +29,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import com.pr0gramm3r101.utils.conditional
+import ru.fromchat.utils.conditional
 
 internal const val SearchBarSharedElement = "search_bar_shared_element"
 

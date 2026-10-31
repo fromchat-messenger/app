@@ -1,8 +1,10 @@
 package ru.fromchat.ui.auth
 
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -14,17 +16,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
-import com.pr0gramm3r101.utils.crypto.deriveAuthSecret
+import ru.fromchat.utils.crypto.deriveAuthSecret
 import io.ktor.client.call.body
 import io.ktor.client.plugins.ClientRequestException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import org.jetbrains.compose.resources.stringResource
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.crypto.IdentityKeyManager
 import ru.fromchat.api.instance.ServerProbeResult
+import ru.fromchat.api.instance.apiBaseUrlFor
 import ru.fromchat.api.instance.probeServer
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.db.clearAccountCacheOnLogout
@@ -46,6 +49,7 @@ import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.TextCta
 import ru.fromchat.ui.components.rememberExpressiveStepFlow
 import ru.fromchat.ui.components.showLoggedSnackbar
+import ru.fromchat.ui.theme.extraStatusBars
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -76,13 +80,42 @@ internal sealed interface RegisterResult {
     data class Error(val message: String, val cause: Throwable? = null) : RegisterResult
 }
 
-private const val AUTH_SERVER_PROBE_TIMEOUT_MS = 5_000L
+private const val AUTH_SERVER_PROBE_TAG = "AuthServerProbe"
+/** Must cover HTTPS→HTTP fallback plus `/instance_id` (up to 10s per attempt). */
+private const val AUTH_SERVER_PROBE_TIMEOUT_MS = 25_000L
 
-internal suspend fun probeCurrentServer() = runCatching {
-    withTimeout(AUTH_SERVER_PROBE_TIMEOUT_MS.milliseconds) {
-        probeServer(Settings.readServerConfig()) is ServerProbeResult.Supported
+internal suspend fun probeCurrentServer(): Boolean {
+    val config = Settings.readServerConfig()
+    val apiBase = apiBaseUrlFor(config)
+    Logger.i(
+        AUTH_SERVER_PROBE_TAG,
+        "probe start storedHost=${config.serverIp} apiPort=${config.apiPort} " +
+            "https=${config.httpsEnabled} url=$apiBase",
+    )
+    return runCatching {
+        withTimeout(AUTH_SERVER_PROBE_TIMEOUT_MS.milliseconds) {
+            val result = probeServer(config)
+            when (result) {
+                is ServerProbeResult.Supported ->
+                    Logger.i(
+                        AUTH_SERVER_PROBE_TAG,
+                        "probe ok instanceId=${result.instanceId} pingMs=${result.pingMs} " +
+                            "callsOk=${result.callsOk}",
+                    )
+                else ->
+                    Logger.w(AUTH_SERVER_PROBE_TAG, "probe not supported: $result url=$apiBase")
+            }
+            result is ServerProbeResult.Supported
+        }
+    }.getOrElse { e ->
+        Logger.w(
+            AUTH_SERVER_PROBE_TAG,
+            "probe failed within ${AUTH_SERVER_PROBE_TIMEOUT_MS}ms url=$apiBase",
+            e,
+        )
+        false
     }
-}.getOrDefault(false)
+}
 
 private suspend fun fullLogin(
     username: String,
@@ -225,7 +258,7 @@ internal fun ChangeServerButton(modifier: Modifier = Modifier) {
     TextCta(
         onClick = { navController.navigate("serverConfig") },
         modifier = Modifier.padding(horizontal = SettingsStepHorizontalPadding).then(modifier),
-        leadingIcon = Icons.Filled.Storage,
+        leadingIcon = Icons.Rounded.Storage,
     ) {
         Text(stringResource(Res.string.change_server))
     }
@@ -433,74 +466,39 @@ fun AuthScreen(
     }
 
     val yandexStep = yandexParams
-    ExpressiveStepFlowScaffold(
-        flowState = flowState,
-        pages = listOf(
-            usernameStepPage(
-                username = username,
-                onUsernameChange = { username = it },
-                onContinue = {
-                    flowState.pagerState.animateScrollToPage(AuthFlowStep.Password.ordinal)
-                },
-                onSnackbar = ::snackbar,
-            ),
-            passwordStepPage(
-                username = username,
-                password = password,
-                onPasswordChange = { password = it },
-                onLoginSuccess = wrappedAuthSuccess,
-                onNeedsRegister = { required, params, captchaReq, captcha ->
-                    Logger.i(
-                        SmartCaptchaLog.TAG,
-                        "onNeedsRegister yandexRequired=$required captchaRequired=$captchaReq " +
-                            "clientKey=${SmartCaptchaLog.redactKey(captcha?.client_key)}",
-                    )
-                    yandexRequired = required
-                    yandexParams = params
-                    captchaRequired = captchaReq
-                    captchaParams = captcha
-                    registrationProof = null
-                    captchaToken = null
-                    flowState.pagerState.animateScrollToPage(AuthFlowStep.ConfirmPassword.ordinal)
-                },
-                onSnackbar = ::snackbar,
-            ),
-            confirmPasswordStepPage(
-                confirmPassword = confirmPassword,
-                onConfirmPasswordChange = { confirmPassword = it },
-                password = password,
-                onContinue = {
-                    val captchaKey = captchaParams?.client_key?.trim().orEmpty()
-                    when {
-                        yandexRequired && yandexParams != null -> {
-                            Logger.i(SmartCaptchaLog.TAG, "confirm → YandexId (captcha skipped)")
-                            flowState.pagerState.animateScrollToPage(AuthFlowStep.YandexId.ordinal)
-                        }
-                        captchaRequired && captchaToken.isNullOrBlank() && captchaKey.isNotEmpty() -> {
-                            openCaptchaRoute(captchaKey)
-                        }
-                        else -> {
-                            Logger.i(
-                                SmartCaptchaLog.TAG,
-                                "confirm → Profile captchaRequired=$captchaRequired " +
-                                    "hasToken=${!captchaToken.isNullOrBlank()}",
-                            )
-                            flowState.pagerState.animateScrollToPage(AuthFlowStep.Profile.ordinal)
-                        }
-                    }
-                },
-                onSnackbar = ::snackbar,
-            ),
-            if (yandexStep != null) {
-                yandexIdStepPage(
-                    yandex = yandexStep,
-                    onProof = { proof ->
-                        registrationProof = proof
-                        flowState.pagerState.animateScrollToPage(AuthFlowStep.Profile.ordinal)
+    AuthContentFrame { widePanel ->
+        ExpressiveStepFlowScaffold(
+            flowState = flowState,
+            pages = listOf(
+                usernameStepPage(
+                    username = username,
+                    onUsernameChange = { username = it },
+                    onContinue = {
+                        flowState.pagerState.animateScrollToPage(AuthFlowStep.Password.ordinal)
                     },
                     onSnackbar = ::snackbar,
-                )
-            } else {
+                ),
+                passwordStepPage(
+                    username = username,
+                    password = password,
+                    onPasswordChange = { password = it },
+                    onLoginSuccess = wrappedAuthSuccess,
+                    onNeedsRegister = { required, params, captchaReq, captcha ->
+                        Logger.i(
+                            SmartCaptchaLog.TAG,
+                            "onNeedsRegister yandexRequired=$required captchaRequired=$captchaReq " +
+                                "clientKey=${SmartCaptchaLog.redactKey(captcha?.client_key)}",
+                        )
+                        yandexRequired = required
+                        yandexParams = params
+                        captchaRequired = captchaReq
+                        captchaParams = captcha
+                        registrationProof = null
+                        captchaToken = null
+                        flowState.pagerState.animateScrollToPage(AuthFlowStep.ConfirmPassword.ordinal)
+                    },
+                    onSnackbar = ::snackbar,
+                ),
                 confirmPasswordStepPage(
                     confirmPassword = confirmPassword,
                     onConfirmPasswordChange = { confirmPassword = it },
@@ -508,33 +506,85 @@ fun AuthScreen(
                     onContinue = {
                         val captchaKey = captchaParams?.client_key?.trim().orEmpty()
                         when {
-                            captchaRequired && captchaToken.isNullOrBlank() && captchaKey.isNotEmpty() -> {
+                            yandexRequired && yandexParams != null -> {
+                                Logger.i(SmartCaptchaLog.TAG, "confirm → YandexId (captcha skipped)")
+                                flowState.pagerState.animateScrollToPage(AuthFlowStep.YandexId.ordinal)
+                            }
+                            captchaRequired &&
+                                captchaToken.isNullOrBlank() &&
+                                captchaKey.isNotEmpty() -> {
                                 openCaptchaRoute(captchaKey)
                             }
                             else -> {
-                                Logger.i(SmartCaptchaLog.TAG, "yandex-placeholder confirm → Profile")
+                                Logger.i(
+                                    SmartCaptchaLog.TAG,
+                                    "confirm → Profile captchaRequired=$captchaRequired " +
+                                        "hasToken=${!captchaToken.isNullOrBlank()}",
+                                )
                                 flowState.pagerState.animateScrollToPage(AuthFlowStep.Profile.ordinal)
                             }
                         }
                     },
                     onSnackbar = ::snackbar,
-                )
-            },
-            profileStepPage(
-                username = username,
-                displayName = displayName,
-                onDisplayNameChange = { displayName = it },
-                bio = bio,
-                onBioChange = { bio = it },
-                password = password,
-                registrationProof = registrationProof,
-                captchaToken = captchaToken,
-                onRegisterSuccess = wrappedAuthSuccess,
-                onUsernameTaken = resetToUsername,
-                onSnackbar = ::snackbar,
+                ),
+                if (yandexStep != null) {
+                    yandexIdStepPage(
+                        yandex = yandexStep,
+                        onProof = { proof ->
+                            registrationProof = proof
+                            flowState.pagerState.animateScrollToPage(AuthFlowStep.Profile.ordinal)
+                        },
+                        onSnackbar = ::snackbar,
+                    )
+                } else {
+                    confirmPasswordStepPage(
+                        confirmPassword = confirmPassword,
+                        onConfirmPasswordChange = { confirmPassword = it },
+                        password = password,
+                        onContinue = {
+                            val captchaKey = captchaParams?.client_key?.trim().orEmpty()
+                            when {
+                                captchaRequired &&
+                                    captchaToken.isNullOrBlank() &&
+                                    captchaKey.isNotEmpty() -> {
+                                    openCaptchaRoute(captchaKey)
+                                }
+                                else -> {
+                                    Logger.i(
+                                        SmartCaptchaLog.TAG,
+                                        "yandex-placeholder confirm → Profile",
+                                    )
+                                    flowState.pagerState.animateScrollToPage(AuthFlowStep.Profile.ordinal)
+                                }
+                            }
+                        },
+                        onSnackbar = ::snackbar,
+                    )
+                },
+                profileStepPage(
+                    username = username,
+                    displayName = displayName,
+                    onDisplayNameChange = { displayName = it },
+                    bio = bio,
+                    onBioChange = { bio = it },
+                    password = password,
+                    registrationProof = registrationProof,
+                    captchaToken = captchaToken,
+                    onRegisterSuccess = wrappedAuthSuccess,
+                    onUsernameTaken = resetToUsername,
+                    onSnackbar = ::snackbar,
+                ),
             ),
-        ),
-        snackbarHostState = snackbarHostState,
-        onBackAtFirstPage = wrappedBackToWelcome,
-    )
+            snackbarHostState = snackbarHostState,
+            onBackAtFirstPage = wrappedBackToWelcome,
+            trailingTopBarActions = { PreAuthOverflowMenu() },
+            contentBackground = MaterialTheme.colorScheme.background,
+            // Wide panel: system bars cleared by [AuthContentFrame]. Compact: haze under status bar.
+            topBarWindowInsets = if (widePanel) {
+                WindowInsets(0, 0, 0, 0)
+            } else {
+                WindowInsets.extraStatusBars
+            },
+        )
+    }
 }

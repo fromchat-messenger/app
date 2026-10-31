@@ -3,7 +3,7 @@ package ru.fromchat.ui.auth
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
@@ -24,6 +24,7 @@ import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.schema.core.ErrorResponse
+import ru.fromchat.logging.Logger
 import ru.fromchat.auth_server_connect_failed
 import ru.fromchat.auth_step_username_body
 import ru.fromchat.auth_step_username_title
@@ -39,6 +40,9 @@ import ru.fromchat.ui.components.ExpressiveStepPageHeader
 import ru.fromchat.ui.components.SettingsPasswordOutlineFieldShape
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.expressiveStepFieldColors
+import ru.fromchat.ui.components.expressiveStepSingleLineKeyboardOptions
+import ru.fromchat.ui.components.expressiveStepSubmitKeyboardActions
+import ru.fromchat.ui.components.expressiveStepSubmitOnEnter
 import ru.fromchat.ui.components.trackImeScrollTarget
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 import ru.fromchat.username
@@ -46,6 +50,8 @@ import ru.fromchat.username_chars_error
 import ru.fromchat.username_length_error
 
 /** Matches backend `is_valid_username`: English letters, digits, hyphen, underscore. */
+private const val USERNAME_STEP_TAG = "AuthUsernameStep"
+
 private fun isAllowedUsernameChar(ch: Char) =
     ch in 'a'..'z' || ch in 'A'..'Z' || ch in '0'..'9' || ch == '_' || ch == '-'
 
@@ -70,9 +76,59 @@ internal fun usernameStepPage(
     val nextLabel = stringResource(Res.string.settings_next)
     val hasProhibitedChars = username.trim().any { !isAllowedUsernameChar(it) }
 
+    fun attemptSubmit() {
+        if (busy || hasProhibitedChars) return
+        val trimmed = username.trim()
+        if (trimmed.isBlank()) {
+            onSnackbar(fillAll, null)
+            return
+        }
+        if (trimmed.length !in 3..20) {
+            onSnackbar(usernameLenError, null)
+            return
+        }
+        onUsernameChange(trimmed)
+        scope.launch {
+            busy = true
+            Logger.i(USERNAME_STEP_TAG, "submit start username=$trimmed")
+            try {
+                if (!probeCurrentServer()) {
+                    Logger.w(USERNAME_STEP_TAG, "submit aborted: server probe failed username=$trimmed")
+                    onSnackbar(serverFail, null)
+                } else {
+                    try {
+                        Logger.i(USERNAME_STEP_TAG, "auth username step request username=$trimmed")
+                        ApiClient.authUsernameStep(trimmed)
+                        Logger.i(USERNAME_STEP_TAG, "auth username step ok → password username=$trimmed")
+                        onContinue()
+                    } catch (e: ClientRequestException) {
+                        Logger.w(
+                            USERNAME_STEP_TAG,
+                            "auth username step HTTP ${e.response.status.value} username=$trimmed",
+                            e,
+                        )
+                        val detail = if (e.response.status.value == 400) {
+                            runCatching { e.response.body<ErrorResponse>().detail }
+                                .getOrNull()
+                                ?.ifBlank { null }
+                        } else {
+                            null
+                        }
+                        onSnackbar(detail ?: unexpected, e)
+                    } catch (e: Exception) {
+                        Logger.e(USERNAME_STEP_TAG, "auth username step error username=$trimmed", e)
+                        onSnackbar(unexpected, e)
+                    }
+                }
+            } finally {
+                busy = false
+            }
+        }
+    }
+
     return ExpressiveStepPage(
         hero = ExpressiveHeroSpec(
-            icon = Icons.Filled.Person,
+            icon = Icons.Rounded.Person,
             polygon = MaterialShapes.Cookie4Sided.normalized(),
             containerColor = colorScheme.primaryContainer,
             contentColor = colorScheme.onPrimaryContainer,
@@ -95,8 +151,11 @@ internal fun usernameStepPage(
                     .fillMaxWidth()
                     .focusRequester(focusRequester)
                     .trackImeScrollTarget(imeScroll, ExpressiveStepLazyListIndices.STEPS_BODY)
+                    .expressiveStepSubmitOnEnter(::attemptSubmit)
                     .padding(horizontal = SettingsStepHorizontalPadding),
                 singleLine = true,
+                keyboardOptions = expressiveStepSingleLineKeyboardOptions(),
+                keyboardActions = expressiveStepSubmitKeyboardActions(::attemptSubmit),
                 isError = hasProhibitedChars,
                 supportingText = if (hasProhibitedChars) {
                     { Text(usernameCharsError) }
@@ -110,45 +169,7 @@ internal fun usernameStepPage(
         listFooter = { ChangeServerButton() },
         button = {
             ActionButton(
-                onClick = {
-                    if (busy || hasProhibitedChars) return@ActionButton
-                    val trimmed = username.trim()
-                    if (trimmed.isBlank()) {
-                        onSnackbar(fillAll, null)
-                        return@ActionButton
-                    }
-                    if (trimmed.length !in 3..20) {
-                        onSnackbar(usernameLenError, null)
-                        return@ActionButton
-                    }
-                    onUsernameChange(trimmed)
-                    scope.launch {
-                        busy = true
-                        try {
-                            if (!probeCurrentServer()) {
-                                onSnackbar(serverFail, null)
-                            } else {
-                                try {
-                                    ApiClient.authUsernameStep(trimmed)
-                                    onContinue()
-                                } catch (e: ClientRequestException) {
-                                    val detail = if (e.response.status.value == 400) {
-                                        runCatching { e.response.body<ErrorResponse>().detail }
-                                            .getOrNull()
-                                            ?.ifBlank { null }
-                                    } else {
-                                        null
-                                    }
-                                    onSnackbar(detail ?: unexpected, e)
-                                } catch (e: Exception) {
-                                    onSnackbar(unexpected, e)
-                                }
-                            }
-                        } finally {
-                            busy = false
-                        }
-                    }
-                },
+                onClick = ::attemptSubmit,
                 enabled = !busy && !hasProhibitedChars,
                 loading = busy,
                 modifier = Modifier.fillMaxWidth(),

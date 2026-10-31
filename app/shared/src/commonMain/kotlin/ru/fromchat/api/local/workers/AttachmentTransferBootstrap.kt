@@ -4,9 +4,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.db.store.MessageDatabaseProvider
+import ru.fromchat.api.local.db.store.messageDatabaseDispatcher
 import ru.fromchat.api.local.download.AttachmentDownloadNotifier
 import ru.fromchat.api.local.send.DmAttachmentOutboxPayload
 import ru.fromchat.api.local.send.OutgoingMessageCoordinator
@@ -14,7 +16,7 @@ import ru.fromchat.api.local.send.PublicAttachmentOutboxPayload
 import ru.fromchat.api.local.send.scheduleOutboxProcessing
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.cache.repairInterruptedUploadArtifacts
-import ru.fromchat.api.PublicChatProfileSync
+import ru.fromchat.api.sync.PublicChatProfileSync
 import ru.fromchat.api.instance.applyCachedSessionInstanceIfAvailable
 import ru.fromchat.api.instance.scheduleSessionInstanceNetworkRefresh
 
@@ -50,9 +52,11 @@ object AttachmentTransferBootstrap {
     }
 
     private suspend fun repairPendingAttachmentArtifacts(instanceId: String) {
-        val rows = MessageDatabaseProvider.database.messageDatabaseQueries
-            .selectPendingOutboxForInstance(instanceId)
-            .executeAsList()
+        val rows = withContext(messageDatabaseDispatcher) {
+            MessageDatabaseProvider.database.messageDatabaseQueries
+                .selectPendingOutboxForInstance(instanceId)
+                .executeAsList()
+        }
         for (row in rows) {
             if (
                 row.kind != OutgoingMessageCoordinator.KIND_SEND_DM_ATTACHMENT &&

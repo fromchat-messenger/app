@@ -1,6 +1,5 @@
 package ru.fromchat.api.local.db.store
 
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import ru.fromchat.api.schema.chats.publicchat.PublicChatProfile
@@ -30,14 +29,14 @@ object PublicChatProfileCacheStore {
         )
     }
 
-    suspend fun get(instanceId: String): PublicChatProfile? = withContext(Dispatchers.Default) {
+    suspend fun get(instanceId: String): PublicChatProfile? = withContext(messageDatabaseDispatcher) {
         getImmediate(instanceId)
     }
 
     suspend fun put(instanceId: String, profile: PublicChatProfile) {
         val id = instanceId.trim()
         if (id.isEmpty()) return
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             putImmediate(id, profile)
         }
     }
@@ -45,7 +44,7 @@ object PublicChatProfileCacheStore {
     suspend fun remove(instanceId: String) {
         val id = instanceId.trim()
         if (id.isEmpty()) return
-        withContext(Dispatchers.Default) {
+        withContext(messageDatabaseDispatcher) {
             MessageDatabaseProvider.database.messageDatabaseQueries.deletePublicChatProfileForInstance(id)
         }
     }

@@ -7,7 +7,8 @@ import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.db.store.InstanceRegistryStore
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.config.ServerConfigData
-import ru.fromchat.legal.DocumentRepository
+import ru.fromchat.logging.Logger
+import ru.fromchat.ui.main.settings.about.legal.DocumentRepository
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 
@@ -29,6 +30,7 @@ sealed interface ApplyServerResult {
 }
 
 private const val CALLS_PROBE_MS = 1_500L
+private const val PROBE_LOG_TAG = "AuthServerProbe"
 
 /** True when [error] looks like a TLS/SSL handshake failure (safe to fall back to HTTP). */
 fun Throwable.isSslProtocolError(): Boolean {
@@ -43,7 +45,9 @@ fun Throwable.isSslProtocolError(): Boolean {
             msg.contains("SSL", ignoreCase = true) ||
             msg.contains("TLS", ignoreCase = true) ||
             msg.contains("certificate", ignoreCase = true) ||
-            msg.contains("handshake", ignoreCase = true)
+            msg.contains("handshake", ignoreCase = true) ||
+            msg.contains("App Transport Security", ignoreCase = true) ||
+            msg.contains("NSURLErrorDomain", ignoreCase = true)
         ) {
             return true
         }
@@ -71,13 +75,24 @@ suspend fun probeCallsReachable(config: ServerConfigData) = runCatching {
     }
 }.getOrDefault(false)
 
-suspend fun probeServer(config: ServerConfigData) =
-    probeServerEndpoint(
+suspend fun probeServer(config: ServerConfigData): ServerProbeResult {
+    val (resolvedConfig, result) = probeServerEndpoint(
         host = config.serverIp,
         port = config.apiPort,
         httpsPreferred = config.httpsEnabled,
-        schemeExplicit = true,
-    ).second
+        schemeExplicit = false,
+    )
+    if (result is ServerProbeResult.Supported) {
+        val merged = resolvedConfig.copy(
+            callsEnabled = config.callsEnabled,
+            callsPort = resolvedConfig.apiPort,
+        )
+        if (merged != config) {
+            ServerConfig.updateServerConfig(merged)
+        }
+    }
+    return result
+}
 
 /**
  * Builds configs to try: explicit scheme only, or HTTPS then HTTP on SSL errors.
@@ -111,8 +126,23 @@ suspend fun probeServerEndpoint(
             )
 
             lastConfig = config
+            val attemptUrl = apiBaseUrlFor(config)
+            Logger.i(
+                PROBE_LOG_TAG,
+                "endpoint attempt ${index + 1}/${size} scheme=${if (https) "https" else "http"} url=$attemptUrl " +
+                    "explicitScheme=$schemeExplicit",
+            )
             val (result, failure) = probeServerOnce(config)
             lastResult = result
+            if (failure != null) {
+                Logger.w(
+                    PROBE_LOG_TAG,
+                    "endpoint attempt failed result=$result url=$attemptUrl",
+                    failure,
+                )
+            } else {
+                Logger.i(PROBE_LOG_TAG, "endpoint attempt result=$result url=$attemptUrl")
+            }
 
             when (result) {
                 is ServerProbeResult.Supported,
@@ -145,34 +175,48 @@ private suspend fun probeServerOnce(
     InstanceIdGuard.probeConfig = config
 
     try {
+        val resolve = runCatching {
+            resolveInstanceId(
+                config = config,
+                apiBaseUrl = apiBase,
+                forceNetwork = true,
+                allowCachedOnFailure = false,
+            )
+        }.getOrElse { e ->
+            Logger.e(PROBE_LOG_TAG, "resolveInstanceId threw url=$apiBase", e)
+            return ServerProbeResult.Unreachable to e
+        }
+
         val pingMs = time.elapsedNow().inWholeMilliseconds.toInt().coerceAtLeast(0)
 
-        return ServerProbeResult.Supported(
-            when (
-                val resolve = resolveInstanceId(
-                    config = config,
-                    apiBaseUrl = apiBase,
-                    forceNetwork = true,
-                    allowCachedOnFailure = false,
-                )
-            ) {
-                is InstanceIdResolveResult.Cached -> resolve.instanceId
-                is InstanceIdResolveResult.Fetched -> resolve.instanceId
-                is InstanceIdResolveResult.InstanceIdChanged -> resolve.newId
-                InstanceIdResolveResult.Unsupported ->
-                    return ServerProbeResult.Unsupported to null
-                InstanceIdResolveResult.Timeout ->
-                    return ServerProbeResult.Timeout to null
-                InstanceIdResolveResult.Unreachable -> {
-                    val failure = runCatching {
-                        ApiClient.fetchServerInstanceId(apiBase)
-                    }.exceptionOrNull()
-                    return ServerProbeResult.Unreachable to failure
-                }
-            },
-            probeCallsReachable(config),
-            pingMs
-        ) to null
+        return when (resolve) {
+            is InstanceIdResolveResult.Cached ->
+                ServerProbeResult.Supported(
+                    resolve.instanceId,
+                    probeCallsReachable(config),
+                    pingMs,
+                ) to null
+            is InstanceIdResolveResult.Fetched ->
+                ServerProbeResult.Supported(
+                    resolve.instanceId,
+                    probeCallsReachable(config),
+                    pingMs,
+                ) to null
+            is InstanceIdResolveResult.InstanceIdChanged ->
+                ServerProbeResult.Supported(
+                    resolve.newId,
+                    probeCallsReachable(config),
+                    pingMs,
+                ) to null
+            InstanceIdResolveResult.Unsupported -> ServerProbeResult.Unsupported to null
+            InstanceIdResolveResult.Timeout -> ServerProbeResult.Timeout to null
+            InstanceIdResolveResult.Unreachable -> {
+                val failure = runCatching {
+                    ApiClient.fetchServerInstanceId(apiBase)
+                }.exceptionOrNull()
+                ServerProbeResult.Unreachable to failure
+            }
+        }
     } finally {
         InstanceIdGuard.probeConfig = null
     }

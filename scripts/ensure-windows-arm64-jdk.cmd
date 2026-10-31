@@ -1,0 +1,98 @@
+@echo off
+setlocal EnableExtensions EnableDelayedExpansion
+
+rem Ensure a native Windows ARM64 JDK is available for Gradle/jpackage builds.
+rem x64 JDKs under emulation package x64 Skiko/JavaFX natives and break the desktop app.
+
+if /I not "%PROCESSOR_ARCHITECTURE%"=="ARM64" (
+  if /I not "%PROCESSOR_ARCHITEW6432%"=="ARM64" (
+    exit /b 0
+  )
+)
+
+set "JDK_ROOT=C:\Program Files\Eclipse Adoptium"
+set "JDK_HOME="
+set "JDK_FALLBACK=%LOCALAPPDATA%\Programs\Eclipse Adoptium\jdk-21-arm64"
+
+rem Packaging needs Java 25 (kotlin jvmToolchain(25)): an older bundled runtime crashes the
+rem installed app at launch with UnsupportedClassVersionError. Adoptium ships no Temurin 25
+rem for Windows ARM64, so prefer an installed 25 or the Gradle-provisioned toolchain JDK.
+for /d %%D in ("%JDK_ROOT%\jdk-25*") do (
+  if not defined JDK_HOME if exist "%%D\bin\java.exe" (
+    echo %%D | findstr /i arm64 >nul
+    if not errorlevel 1 set "JDK_HOME=%%D"
+  )
+)
+for /d %%D in ("%USERPROFILE%\.gradle\jdks\*-25-*") do (
+  if not defined JDK_HOME if exist "%%D\bin\java.exe" (
+    "%%D\bin\java.exe" -XshowSettings:properties -version 2>&1 | findstr /i /c:"os.arch = aarch64" >nul
+    if not errorlevel 1 set "JDK_HOME=%%D"
+  )
+)
+
+rem Legacy fallback: any ARM64 JDK (Java 21 is fine as the Gradle daemon JVM — build.gradle.kts
+rem then falls back to the Java 25 toolchain JDK for jpackage).
+if not defined JDK_HOME for /d %%D in ("%JDK_ROOT%\jdk-*-arm64") do (
+  if not defined JDK_HOME if exist "%%D\bin\java.exe" set "JDK_HOME=%%D"
+)
+if not defined JDK_HOME for /d %%D in ("%JDK_ROOT%\jdk-*aarch64*") do (
+  if not defined JDK_HOME if exist "%%D\bin\java.exe" set "JDK_HOME=%%D"
+)
+
+rem Hosted Windows ARM64 runners already ship an ARM64 Temurin 21 as JAVA_HOME, but it lives in
+rem the hostedtoolcache, not under JDK_ROOT — so the loops above miss it and fall through to the
+rem download below. Prefer it: Invoke-WebRequest + Expand-Archive of a ~180 MB JDK burns minutes
+rem and can stall long enough to look like a hung job. Java 21 is fine as the Gradle daemon JVM
+rem (build.gradle.kts falls back to the Java 25 toolchain JDK for jpackage).
+if not defined JDK_HOME if defined JAVA_HOME (
+  if exist "%JAVA_HOME%\bin\java.exe" (
+    "%JAVA_HOME%\bin\java.exe" -XshowSettings:properties -version 2>&1 | findstr /i /c:"os.arch = aarch64" >nul
+    if not errorlevel 1 set "JDK_HOME=%JAVA_HOME%"
+  )
+)
+
+if not defined JDK_HOME (
+  for /d %%D in ("%JDK_ROOT%\jdk-*") do (
+    if not defined JDK_HOME if exist "%%D\bin\java.exe" (
+      "%%D\bin\java.exe" -XshowSettings:properties -version 2>&1 | findstr /i /c:"os.arch = aarch64" >nul
+      if not errorlevel 1 set "JDK_HOME=%%D"
+    )
+  )
+)
+
+if defined JDK_HOME goto :verify
+
+echo Installing Temurin JDK 21 for Windows ARM64...
+set "TMP_ZIP=%TEMP%\fromchat-temurin21-arm64.zip"
+set "TMP_DIR=%TEMP%\fromchat-temurin21-arm64"
+set "JDK_HOME=%JDK_ROOT%\jdk-21.0.12.101-hotspot-arm64"
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$zip='%TMP_ZIP%'; $tmp='%TMP_DIR%'; $dest='%JDK_HOME%'; $fallback='%JDK_FALLBACK%';" ^
+  "try { New-Item -ItemType Directory -Force -Path $dest | Out-Null } catch { $dest = $fallback; New-Item -ItemType Directory -Force -Path $dest | Out-Null };" ^
+  "Invoke-WebRequest -Uri 'https://api.adoptium.net/v3/binary/latest/21/ga/windows/aarch64/jdk/hotspot/normal/eclipse?project=jdk' -OutFile $zip;" ^
+  "if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp };" ^
+  "Expand-Archive -Path $zip -DestinationPath $tmp -Force;" ^
+  "$inner = Get-ChildItem $tmp -Directory | Select-Object -First 1;" ^
+  "Copy-Item -Path (Join-Path $inner.FullName '*') -Destination $dest -Recurse -Force"
+
+if not exist "%JDK_HOME%\bin\java.exe" set "JDK_HOME=%JDK_FALLBACK%"
+
+if not exist "%JDK_HOME%\bin\java.exe" (
+  echo ERROR: Failed to install ARM64 JDK under %JDK_ROOT%
+  exit /b 1
+)
+
+:verify
+"%JDK_HOME%\bin\java.exe" -XshowSettings:properties -version 2>&1 | findstr /i /c:"os.arch = aarch64" >nul
+if errorlevel 1 (
+  echo ERROR: %JDK_HOME% is not an ARM64 JDK ^(os.arch must be aarch64^).
+  exit /b 1
+)
+
+set "JAVA_HOME=%JDK_HOME%"
+set "FROMCHAT_PACKAGING_JDK=%JDK_HOME%"
+set "PATH=%JDK_HOME%\bin;%PATH%"
+echo Using ARM64 JDK: %JDK_HOME%
+endlocal & set "JAVA_HOME=%JAVA_HOME%" & set "FROMCHAT_PACKAGING_JDK=%FROMCHAT_PACKAGING_JDK%" & set "PATH=%PATH%"
+exit /b 0

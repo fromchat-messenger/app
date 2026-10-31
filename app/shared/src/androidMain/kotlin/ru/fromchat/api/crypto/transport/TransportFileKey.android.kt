@@ -2,7 +2,7 @@ package ru.fromchat.api.crypto.transport
 
 import com.ionspin.kotlin.crypto.LibsodiumInitializer
 import com.ionspin.kotlin.crypto.box.Box
-import com.pr0gramm3r101.utils.crypto.Base64
+import ru.fromchat.utils.crypto.Base64
 import ru.fromchat.api.crypto.backup.BackupCryptoPlatform
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec

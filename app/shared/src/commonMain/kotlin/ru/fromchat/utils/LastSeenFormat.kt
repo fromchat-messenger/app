@@ -39,7 +39,6 @@ import ru.fromchat.weekday_thu
 import ru.fromchat.weekday_tue
 import ru.fromchat.weekday_wed
 import kotlin.time.Clock
-import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 
 private fun formatFromXmlTemplate(template: String, vararg args: Any): String {
@@ -128,7 +127,6 @@ fun rememberLastSeenFormatStrings(): LastSeenFormatStrings {
 /**
  * Readable last-seen line in local time (24h), using strings from [rememberLastSeenFormatStrings].
  */
-@OptIn(ExperimentalTime::class)
 fun formatLastSeen(online: Boolean, lastSeenIso: String?, s: LastSeenFormatStrings): String {
     if (online) return s.online
     val iso = lastSeenIso ?: return ""

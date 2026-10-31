@@ -9,6 +9,7 @@ import kotlinx.coroutines.withTimeout
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.db.store.InstanceRegistryStore
 import ru.fromchat.config.ServerConfigData
+import kotlin.time.Duration.Companion.milliseconds
 
 private val UUID_REGEX =
     Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
@@ -42,7 +43,7 @@ suspend fun resolveInstanceId(
     }
 
     val fetchResult = runCatching {
-        withTimeout(INSTANCE_FETCH_MS) {
+        withTimeout(INSTANCE_FETCH_MS.milliseconds) {
             ApiClient.fetchServerInstanceId(apiBaseUrl)
         }
     }

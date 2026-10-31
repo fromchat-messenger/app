@@ -9,7 +9,7 @@ import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.api.ApiClient
 
 private const val EXTRA_REPLY_CHAT_TYPE = "notification_reply_chat_type"
@@ -27,7 +27,7 @@ class NotificationReplyReceiver : BroadcastReceiver() {
         )
 
         val replyText = RemoteInput.getResultsFromIntent(intent)?.let { input ->
-            (input.getCharSequence(NotificationHelper.KEY_TEXT_REPLY)
+            (input.getCharSequence(KEY_TEXT_REPLY)
                 ?: input.getCharSequence("key_text_reply"))
         }
             ?.toString()
@@ -47,7 +47,11 @@ class NotificationReplyReceiver : BroadcastReceiver() {
         val parentMessageId = intent.getIntExtra(EXTRA_REPLY_PARENT_MESSAGE_ID, -1).takeIf { it > 0 }
 
         Logger.d("NotificationReply", "Received reply for $chatType (length=${replyText.length})")
-        NotificationManagerCompat.from(context).cancel(NotificationHelper.summaryNotificationId())
+        val notificationId = intent.getIntExtra("notification_id", 0)
+        if (intent.hasExtra("notification_id")) {
+            NotificationManagerCompat.from(context).cancel(notificationId)
+        }
+        MessageNotificationCoordinator.dismissAll()
 
         GlobalScope.launch(Dispatchers.IO) {
             try {

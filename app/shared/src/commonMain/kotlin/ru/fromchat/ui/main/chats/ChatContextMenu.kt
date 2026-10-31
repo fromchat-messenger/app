@@ -13,15 +13,18 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Chat
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.automirrored.rounded.Chat
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.MarkEmailRead
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,7 +36,8 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import com.pr0gramm3r101.utils.scaleOnPress
+import ru.fromchat.utils.scaleOnPress
+import kotlinx.coroutines.channels.Channel
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.action_delete
@@ -57,6 +61,14 @@ internal fun ChatContextMenuMeasurer(
     screenHeightPx: Int,
     onMeasured: (IntSize) -> Unit,
 ) {
+    val latestOnMeasured = rememberUpdatedState(onMeasured)
+    val measuredSizes = remember { Channel<IntSize>(Channel.CONFLATED) }
+    LaunchedEffect(Unit) {
+        for (size in measuredSizes) {
+            latestOnMeasured.value(size)
+        }
+    }
+
     SubcomposeLayout(Modifier.size(0.dp)) { _ ->
         val looseConstraints = Constraints(
             minWidth = 0,
@@ -84,8 +96,9 @@ internal fun ChatContextMenuMeasurer(
             )
         }.map { it.measure(looseConstraints) }
         val measured = placeables.firstOrNull()?.let { IntSize(it.width, it.height) } ?: IntSize.Zero
+        // Do not write Compose state during measure (LookaheadMeasuring under SharedTransition).
         if (measured != IntSize.Zero) {
-            onMeasured(measured)
+            measuredSizes.trySend(measured)
         }
         layout(0, 0) {
             placeables.forEach { it.placeRelative(-10000, -10000) }
@@ -221,7 +234,7 @@ internal fun ChatContextMenuContent(
                 when (state.target) {
                     ChatContextMenuTarget.Public -> {
                         ChatContextMenuItem(
-                            icon = Icons.AutoMirrored.Filled.Chat,
+                            icon = Icons.AutoMirrored.Rounded.Chat,
                             text = labelMessage,
                             onClick = onMessage,
                         )
@@ -234,13 +247,13 @@ internal fun ChatContextMenuContent(
                         }
                         if (hasPublicLink) {
                             ChatContextMenuItem(
-                                icon = Icons.Filled.Link,
+                                icon = Icons.Rounded.Link,
                                 text = labelLink,
                                 onClick = onLink,
                             )
                         }
                         ChatContextMenuItem(
-                            icon = Icons.Filled.CheckCircle,
+                            icon = Icons.Rounded.CheckCircle,
                             text = labelSelect,
                             onClick = onSelect,
                         )
@@ -248,7 +261,7 @@ internal fun ChatContextMenuContent(
 
                     ChatContextMenuTarget.Dm -> {
                         ChatContextMenuItem(
-                            icon = Icons.AutoMirrored.Filled.Chat,
+                            icon = Icons.AutoMirrored.Rounded.Chat,
                             text = labelMessage,
                             onClick = onMessage,
                         )
@@ -260,7 +273,7 @@ internal fun ChatContextMenuContent(
                             )
                         }
                         ChatContextMenuItem(
-                            icon = Icons.Filled.Link,
+                            icon = Icons.Rounded.Link,
                             text = labelLink,
                             onClick = onLink,
                         )
@@ -272,7 +285,7 @@ internal fun ChatContextMenuContent(
                             )
                         }
                         ChatContextMenuItem(
-                            icon = Icons.Filled.CheckCircle,
+                            icon = Icons.Rounded.CheckCircle,
                             text = labelSelect,
                             onClick = onSelect,
                         )

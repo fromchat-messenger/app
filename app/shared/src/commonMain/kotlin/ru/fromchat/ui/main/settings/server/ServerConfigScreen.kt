@@ -19,16 +19,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Dns
-import androidx.compose.material.icons.filled.FlashOn
-import androidx.compose.material.icons.filled.RestartAlt
-import androidx.compose.material.icons.filled.Storage
+import ru.fromchat.ui.components.ChromeBackIconButton
+import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.FlashOn
+import androidx.compose.material.icons.rounded.RestartAlt
+import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -65,13 +64,13 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.pr0gramm3r101.utils.navigateAndWipeBackStack
-import com.pr0gramm3r101.utils.toDp
+import ru.fromchat.utils.navigateAndWipeBackStack
+import ru.fromchat.utils.toDp
+import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeProgressive
-import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.blur.hazeBlur
+import dev.chrisbanes.haze.blur.materials.HazeMaterials
 import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
-import dev.chrisbanes.haze.materials.HazeMaterials
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -108,17 +107,21 @@ import ru.fromchat.server_config_unsupported_no_instance_id
 import ru.fromchat.server_ip_hint
 import ru.fromchat.server_ip_label
 import ru.fromchat.ui.LocalNavController
+import ru.fromchat.ui.auth.AuthContentFrame
 import ru.fromchat.ui.components.CtaShape
 import ru.fromchat.ui.components.DisabledBringIntoViewSpec
 import ru.fromchat.ui.components.ExpressiveIconFrame
 import ru.fromchat.ui.components.FromChatSnackbarHost
 import ru.fromchat.ui.components.HazeActionButton
-import com.pr0gramm3r101.utils.LastAnchoredBottomArrangement
+import ru.fromchat.utils.LastAnchoredBottomArrangement
 import ru.fromchat.ui.components.LazyListFocusScrollEffect
 import ru.fromchat.ui.components.SettingsPasswordOutlineFieldShape
 import ru.fromchat.ui.components.rememberLazyListFocusScrollState
 import ru.fromchat.ui.components.trackLazyListFocus
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
+import ru.fromchat.ui.main.settings.settingsDetailShowBackButton
+import ru.fromchat.ui.main.settings.settingsDetailWindowInsets
+import ru.fromchat.ui.theme.extraStatusBars
 
 private object ServerConfigLazyListIndices {
     const val SERVER_IP_FIELD = 2
@@ -129,7 +132,6 @@ private object ServerConfigLazyListIndices {
     ExperimentalMaterial3Api::class,
     ExperimentalMaterial3ExpressiveApi::class,
     ExperimentalAnimationApi::class,
-    ExperimentalHazeMaterialsApi::class,
 )
 @Composable
 fun ServerConfigScreen() {
@@ -231,7 +233,12 @@ fun ServerConfigScreen() {
         disabledContainerColor = Color.Transparent,
     )
 
-    Box(Modifier.fillMaxSize()) {
+    val preAuth = ApiClient.token.isNullOrBlank()
+
+    @Composable
+    fun ServerConfigContent() {
+        val listBackground = scheme.background
+
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             contentWindowInsets = WindowInsets.navigationBars,
@@ -332,29 +339,32 @@ fun ServerConfigScreen() {
             },
             topBar = {
                 TopAppBar(
-                    title = {},
-                    navigationIcon = {
-                        IconButton(onClick = navController::navigateUp) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(Res.string.back)
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Transparent,
-                        scrolledContainerColor = Color.Transparent
-                    ),
-                    modifier = Modifier.hazeEffect(state = actionHazeState, style = HazeMaterials.thin()) {
-                        progressive = HazeProgressive.verticalGradient(
-                            startIntensity = 1f,
-                            endIntensity = 0f,
-                        )
-                    }
-                )
+                        windowInsets = settingsDetailWindowInsets(),
+                        title = {},
+                        navigationIcon = {
+                            if (settingsDetailShowBackButton()) {
+                                ChromeBackIconButton(onClick = navController::navigateUp)
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent,
+                            scrolledContainerColor = Color.Transparent,
+                        ),
+                        modifier = Modifier.hazeBlur(
+                            input = HazeInput.Backdrop(actionHazeState),
+                            style = HazeMaterials.thin().then {
+                                progressive(
+                                    HazeProgressive.verticalGradient(
+                                        startIntensity = 1f,
+                                        endIntensity = 0f,
+                                    ),
+                                )
+                            },
+                        ),
+                    )
             }
         ) { innerPadding ->
-            val floatingHeaderClearance = WindowInsets.statusBars.getTop(density).toDp(density) + 68.dp
+            val floatingHeaderClearance = WindowInsets.extraStatusBars.getTop(density).toDp(density) + 68.dp
             val bottomInsetPadding = innerPadding.calculateBottomPadding()
             val serverConfigListState = rememberLazyListState()
             var listViewportBounds by remember { mutableStateOf<Rect?>(null) }
@@ -373,7 +383,7 @@ fun ServerConfigScreen() {
                     modifier = Modifier
                         .fillMaxSize()
                         .consumeWindowInsets(innerPadding)
-                        .background(MaterialTheme.colorScheme.background)
+                        .background(listBackground)
                         .hazeSource(actionHazeState)
                         .onGloballyPositioned { listViewportBounds = it.boundsInWindow() },
                         contentPadding = PaddingValues(bottom = bottomInsetPadding),
@@ -403,7 +413,7 @@ fun ServerConfigScreen() {
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                     ) {
                                         ExpressiveIconFrame(
-                                            icon = Icons.Filled.Storage,
+                                            icon = Icons.Rounded.Storage,
                                             containerSize = 96.dp,
                                             iconSize = 34.dp,
                                             containerColor = scheme.primaryContainer,
@@ -416,6 +426,7 @@ fun ServerConfigScreen() {
                                         Text(
                                             text = stringResource(Res.string.server_config_title),
                                             style = MaterialTheme.typography.headlineMedium,
+                                            color = scheme.onSurface,
                                             modifier = Modifier.fillMaxWidth(),
                                             textAlign = TextAlign.Center,
                                         )
@@ -461,7 +472,7 @@ fun ServerConfigScreen() {
                                     imeAction = ImeAction.Done,
                                 ),
                                 leadingIcon = {
-                                    Icon(Icons.Filled.Dns, null)
+                                    Icon(Icons.Rounded.Dns, null)
                                 }
                             )
                         }
@@ -512,7 +523,7 @@ fun ServerConfigScreen() {
                                     contentPadding = contentPadding
                                 ) {
                                     ActionButtonContent(
-                                        imageVector = Icons.Filled.FlashOn,
+                                        imageVector = Icons.Rounded.FlashOn,
                                         text = stringResource(Res.string.server_config_action_check),
                                     )
                                 }
@@ -528,7 +539,7 @@ fun ServerConfigScreen() {
                                     contentPadding = contentPadding
                                 ) {
                                     ActionButtonContent(
-                                        imageVector = Icons.Filled.RestartAlt,
+                                        imageVector = Icons.Rounded.RestartAlt,
                                         text = stringResource(Res.string.server_config_action_reset)
                                     )
                                 }
@@ -561,5 +572,13 @@ fun ServerConfigScreen() {
                 }
             }
         }
+    }
+
+    if (preAuth) {
+        AuthContentFrame { _ ->
+            ServerConfigContent()
+        }
+    } else {
+        ServerConfigContent()
     }
 }

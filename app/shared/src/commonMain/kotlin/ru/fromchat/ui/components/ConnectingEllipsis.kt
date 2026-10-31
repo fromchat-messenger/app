@@ -5,7 +5,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.LocalTextStyle
-import ru.fromchat.ui.components.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,6 +18,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.TextUnit
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Animated "..." that grows to three dots, clears, and repeats. Uses [LocalTextStyle] when
@@ -43,10 +43,10 @@ fun ConnectingEllipsis(
             while (isActive) {
                 for (n in 1..3) {
                     visibleDots = n
-                    delay(stepMs)
+                    delay(stepMs.milliseconds)
                 }
                 visibleDots = 0
-                delay(stepMs / 2)
+                delay((stepMs / 2).milliseconds)
             }
         }
 

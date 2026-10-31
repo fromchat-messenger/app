@@ -8,7 +8,6 @@ import ru.fromchat.api.crypto.decryptEnvelope
 import ru.fromchat.api.local.db.parseDmMessageContent
 import ru.fromchat.api.local.db.store.MessageRepository
 import ru.fromchat.api.local.db.store.ProfileCache
-import ru.fromchat.api.local.messages.ActiveDmChatTracker
 import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.api.schema.messages.dm.DmEnvelope
 import ru.fromchat.api.schema.websocket.types.DmDeletedData
@@ -54,24 +53,49 @@ object DmInboundMessageProcessor {
           MessageRepository.upsertDmMessage(otherUserId, hydrated)
         }
       } else {
-        val isRead = ActiveDmChatTracker.isActive(otherUserId)
-        val inbound = hydrated.copy(is_read = isRead)
-        MessageRepository.upsertDmMessage(otherUserId, inbound)
+        MessageRepository.upsertDmMessage(otherUserId, hydrated)
       }
     }
   }
+
+  /**
+   * Decrypts and builds a page of DM history without touching the cache, so a history
+   * rebuild can replace the whole conversation in a single cache write (one DB flow
+   * emission) instead of one full-conversation load + upsert per message.
+   */
+  suspend fun processHistoryPage(envelopes: List<DmEnvelope>, otherUserId: Int): List<Message> =
+    withContext(Dispatchers.Default) {
+      val currentUserId = ApiClient.user?.id ?: return@withContext emptyList()
+      val built = envelopes.mapNotNull { envelope ->
+        if (envelope.senderId != currentUserId && envelope.recipientId != currentUserId) {
+          return@mapNotNull null
+        }
+        val outcome = runCatching { decryptEnvelope(envelope, currentUserId) }.getOrNull()
+        val plaintext = outcome ?: ""
+        buildMessage(envelope, plaintext, outcome == null, currentUserId, otherUserId)
+      }
+      val byId = built.associateBy { it.id }
+      built.map { msg ->
+        val replyId = msg.dmEnvelope?.replyToId?.takeIf { it > 0 }
+        if (replyId != null && msg.reply_to == null) {
+          byId[replyId]?.let { msg.copy(reply_to = it) } ?: msg
+        } else {
+          msg
+        }
+      }
+    }
 
   suspend fun processDeleted(element: JsonElement) {
     val data = runCatching {
       ApiClient.json.decodeFromJsonElement(DmDeletedData.serializer(), element)
     }.getOrNull() ?: run {
-      ru.fromchat.Logger.w("DmInbox", "processDeleted decode failed")
+      ru.fromchat.logging.Logger.w("DmInbox", "processDeleted decode failed")
       return
     }
 
     val currentUserId = ApiClient.user?.id ?: return
     if (data.senderId != currentUserId && data.recipientId != currentUserId) {
-      ru.fromchat.Logger.d(
+      ru.fromchat.logging.Logger.d(
         "DmInbox",
         "processDeleted skipNotParticipant messageId=${data.id} " +
           "senderId=${data.senderId} recipientId=${data.recipientId} self=$currentUserId",
@@ -84,7 +108,7 @@ object DmInboundMessageProcessor {
       else -> data.senderId
     } ?: return
 
-    ru.fromchat.Logger.i(
+    ru.fromchat.logging.Logger.i(
       "DmInbox",
       "processDeleted messageId=${data.id} otherUserId=$otherUserId " +
         "senderId=${data.senderId} recipientId=${data.recipientId}",
@@ -176,7 +200,7 @@ object DmInboundMessageProcessor {
       user_id = envelope.senderId,
       content = dec.text,
       timestamp = envelope.timestamp,
-      is_read = envelope.senderId == currentUserId,
+      is_read = envelope.isReadByViewer(currentUserId),
       is_edited = false,
       username = username,
       displayName = displayName,

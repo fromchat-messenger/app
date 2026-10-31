@@ -1,6 +1,6 @@
 package ru.fromchat.api.local.cache
 
-import com.pr0gramm3r101.utils.files.PlatformFileSystem
+import ru.fromchat.utils.files.PlatformFileSystem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -349,9 +349,8 @@ object DecryptedFileCache {
 
         ensureAttachmentDownloadActive(key)
         if (downloaded.path != outputPath) {
-            runCatching {
-                copyOutboundFileToPath("file://${downloaded.path}", outputPath)
-            }.onFailure {
+            // Plain path: "file://" URIs need percent-encoding and data dirs contain spaces.
+            runCatching { copyOutboundFileToPath(downloaded.path, outputPath) }.onFailure {
                 ApiClient.clearPartialEncryptedDownload(key)
                 AttachmentDownloadNotifier.emit(
                     AttachmentDownloadProgress.Failed(key, "cache_write_failed"),

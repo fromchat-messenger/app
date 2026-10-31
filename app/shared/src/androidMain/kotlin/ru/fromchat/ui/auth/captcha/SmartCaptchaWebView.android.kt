@@ -27,9 +27,47 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 
 private const val SMARTCAPTCHA_WEBVIEW_BASE = "https://smartcaptcha.cloud.yandex.ru/webview"
+
+private class SmartCaptchaJsBridge(
+    private val instanceId: String,
+    private val mainHandler: Handler,
+    private val deliverToken: (String) -> Unit,
+    private val deliverChallengeVisible: () -> Unit,
+    private val deliverChallengeHidden: () -> Unit,
+    private val deliverError: (String) -> Unit,
+) {
+    @JavascriptInterface
+    fun onGetToken(token: String) {
+        val cleaned = token.trim()
+        Logger.i(
+            SmartCaptchaLog.TAG,
+            "JS onGetToken id=$instanceId ${SmartCaptchaLog.redactToken(cleaned)}",
+        )
+        mainHandler.post {
+            if (cleaned.isNotEmpty()) {
+                deliverToken(cleaned)
+            } else {
+                Logger.w(SmartCaptchaLog.TAG, "JS onGetToken empty id=$instanceId")
+                deliverError("")
+            }
+        }
+    }
+
+    @JavascriptInterface
+    fun onChallengeVisible() {
+        Logger.i(SmartCaptchaLog.TAG, "JS onChallengeVisible id=$instanceId")
+        mainHandler.post(deliverChallengeVisible)
+    }
+
+    @JavascriptInterface
+    fun onChallengeHidden() {
+        Logger.i(SmartCaptchaLog.TAG, "JS onChallengeHidden id=$instanceId")
+        mainHandler.post(deliverChallengeHidden)
+    }
+}
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -69,38 +107,15 @@ actual fun SmartCaptchaWebView(
         }
     }
 
-    val bridge = remember {
-        val mainHandler = Handler(Looper.getMainLooper())
-        object {
-            @JavascriptInterface
-            fun onGetToken(token: String) {
-                val cleaned = token.trim()
-                Logger.i(
-                    SmartCaptchaLog.TAG,
-                    "JS onGetToken id=$instanceId ${SmartCaptchaLog.redactToken(cleaned)}",
-                )
-                mainHandler.post {
-                    if (cleaned.isNotEmpty()) {
-                        onTokenState.value(cleaned)
-                    } else {
-                        Logger.w(SmartCaptchaLog.TAG, "JS onGetToken empty id=$instanceId")
-                        onErrorState.value("")
-                    }
-                }
-            }
-
-            @JavascriptInterface
-            fun onChallengeVisible() {
-                Logger.i(SmartCaptchaLog.TAG, "JS onChallengeVisible id=$instanceId")
-                mainHandler.post { onChallengeVisibleState.value() }
-            }
-
-            @JavascriptInterface
-            fun onChallengeHidden() {
-                Logger.i(SmartCaptchaLog.TAG, "JS onChallengeHidden id=$instanceId")
-                mainHandler.post { onChallengeHiddenState.value() }
-            }
-        }
+    val bridge = remember(instanceId) {
+        SmartCaptchaJsBridge(
+            instanceId = instanceId,
+            mainHandler = Handler(Looper.getMainLooper()),
+            deliverToken = { onTokenState.value(it) },
+            deliverChallengeVisible = { onChallengeVisibleState.value() },
+            deliverChallengeHidden = { onChallengeHiddenState.value() },
+            deliverError = { onErrorState.value(it) },
+        )
     }
 
     DisposableEffect(webView, lifecycleOwner) {
@@ -134,6 +149,7 @@ actual fun SmartCaptchaWebView(
                 setBackgroundColor(backgroundArgb)
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
+                @SuppressLint("JavascriptInterface")
                 addJavascriptInterface(bridge, "NativeClient")
                 webViewClient = object : WebViewClient() {
                     override fun shouldOverrideUrlLoading(

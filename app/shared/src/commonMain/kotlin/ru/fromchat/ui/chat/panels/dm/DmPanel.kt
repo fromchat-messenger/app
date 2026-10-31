@@ -29,16 +29,16 @@ import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.api.schema.messages.dm.DmEnvelope
 import ru.fromchat.api.schema.websocket.WebSocketMessage
 import ru.fromchat.api.schema.websocket.types.DmDeletedData
-import ru.fromchat.ui.profile.displayNameText
-import ru.fromchat.ui.profile.isRedactedPeerAccount
-import ru.fromchat.Logger
+import ru.fromchat.ui.profile.widget.displayNameText
+import ru.fromchat.ui.profile.widget.isRedactedPeerAccount
+import ru.fromchat.logging.Logger
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.api.crypto.CorruptedDmMessagePlaceholder
 import ru.fromchat.api.crypto.DmCiphertextCorruptedException
 import ru.fromchat.api.crypto.decryptEnvelope
 import ru.fromchat.api.local.AttachmentMediaLog
-import ru.fromchat.ui.chat.AvatarInfo
-import ru.fromchat.ui.chat.ChatPanel
+import ru.fromchat.ui.chat.chrome.AvatarInfo
+import ru.fromchat.ui.chat.chrome.ChatPanel
 import ru.fromchat.api.local.cache.DecryptedFileCache
 import ru.fromchat.api.local.cache.DecryptedImageCache
 import ru.fromchat.ui.chat.utils.DmTypingHandler
@@ -50,7 +50,7 @@ import ru.fromchat.ui.chat.utils.dropSupersededOptimisticMessages
 import ru.fromchat.ui.chat.utils.imageAspectRatioForMessage
 import ru.fromchat.ui.chat.utils.preserveReplyToFromExisting
 import ru.fromchat.ui.chat.utils.resolveDmReplyToId
-import ru.fromchat.ui.chat.isImageFilename
+import ru.fromchat.ui.chat.media.isImageFilename
 import ru.fromchat.api.local.send.seedOutboundFileAsDownloaded
 
 class DmPanel(
@@ -66,6 +66,7 @@ class DmPanel(
     private val json = Json { ignoreUnknownKeys = true }
     private var otherDisplayName: String = ""
     private var otherProfilePicture: String? = null
+    private var peerTitleApplied = false
     private val dmEnvelopeMutex = Mutex()
     private val loadMessagesMutex = Mutex()
     private var messagesLoaded = false
@@ -167,9 +168,20 @@ class DmPanel(
                     "titleBlank=${displayName.isBlank()}",
             )
             cached?.let { UserStatusStore.update(it.id, it.online, it.lastSeen) }
+            val picture = cached?.profilePicture
+            // Rebuilds merge profile previews for every message in the history: the revision
+            // bumps dozens of times while this peer's cached row stays identical. Only touch
+            // state when the resolved title/avatar actually changed.
+            if (
+                peerTitleApplied &&
+                displayName == otherDisplayName && picture == otherProfilePicture
+            ) {
+                return@launch
+            }
+            peerTitleApplied = true
             withContext(Dispatchers.Main) {
                 if (displayName.isNotBlank()) {
-                    applyPeerTitle(displayName, cached?.profilePicture)
+                    applyPeerTitle(displayName, picture)
                 } else {
                     updateState {
                         it.copy(title = "", titleAvatar = null, profileUserId = otherUserId)
@@ -586,10 +598,7 @@ class DmPanel(
             user_id = envelope.senderId,
             content = dec.text,
             timestamp = envelope.timestamp,
-            is_read = when {
-                envelope.senderId == currentUserId -> true
-                else -> ActiveDmChatTracker.isActive(otherUserId)
-            },
+            is_read = envelope.isReadByViewer(currentUserId),
             is_edited = false,
             username = senderUsername,
             displayName = senderDisplayName,

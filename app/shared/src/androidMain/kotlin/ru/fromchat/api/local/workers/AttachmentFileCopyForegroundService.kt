@@ -1,6 +1,5 @@
 package ru.fromchat.api.local.workers
 
-import android.R
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -52,7 +51,7 @@ class AttachmentFileCopyForegroundService : Service() {
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(contentText)
-            .setSmallIcon(R.drawable.stat_sys_download_done)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)

@@ -1,0 +1,26 @@
+package ru.fromchat.ui.chat.utils
+
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.draganddrop.DragAndDropEvent
+import androidx.compose.ui.geometry.Offset
+
+actual class AttachmentDropPermissionsHost
+
+@Composable
+actual fun rememberAttachmentDropPermissionsHost(): AttachmentDropPermissionsHost =
+    AttachmentDropPermissionsHost()
+
+actual fun dragPointerInWindow(event: DragAndDropEvent): Offset? = null
+
+actual fun attachmentDropKind(event: DragAndDropEvent): AttachmentDropKind =
+    AttachmentDropKind.Unknown
+
+actual fun extractDroppedText(event: DragAndDropEvent): String? = null
+
+actual fun acceptsAttachmentDrop(event: DragAndDropEvent): Boolean = false
+
+actual fun handleAttachmentDrop(
+    host: AttachmentDropPermissionsHost,
+    event: DragAndDropEvent,
+    onUris: (List<String>) -> Unit,
+): Boolean = false

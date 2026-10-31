@@ -9,7 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.core.net.toUri
 import androidx.exifinterface.media.ExifInterface
-import com.pr0gramm3r101.utils.UtilsLibrary
+import ru.fromchat.utils.UtilsLibrary
 
 private fun orientation(uri: Uri) = when {
     uri.scheme in arrayOf("content", "file") -> {

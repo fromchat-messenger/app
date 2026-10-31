@@ -23,7 +23,6 @@ import ru.fromchat.month_name_nov
 import ru.fromchat.month_name_oct
 import ru.fromchat.month_name_sep
 import ru.fromchat.profile_registration_date
-import kotlin.time.ExperimentalTime
 
 private fun formatFromXmlTemplate(template: String, vararg args: Any): String {
     var result = template
@@ -67,7 +66,6 @@ fun rememberRegistrationDateFormatStrings(): RegistrationDateFormatStrings {
     }
 }
 
-@OptIn(ExperimentalTime::class)
 private fun parseRegistrationLocalDate(iso: String): LocalDate? {
     parseMessageInstant(iso)?.let {
         return it.toLocalDateTime(TimeZone.currentSystemDefault()).date
@@ -77,7 +75,6 @@ private fun parseRegistrationLocalDate(iso: String): LocalDate? {
 }
 
 /** Formats an ISO registration timestamp as e.g. "13 june 2026" (localized). */
-@OptIn(ExperimentalTime::class)
 fun formatProfileRegistrationDate(
     createdAtIso: String?,
     strings: RegistrationDateFormatStrings,

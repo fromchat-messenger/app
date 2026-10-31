@@ -1,6 +1,6 @@
 package ru.fromchat.api.local.cache
 
-import com.pr0gramm3r101.utils.files.PlatformFileSystem
+import ru.fromchat.utils.files.PlatformFileSystem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -17,9 +17,9 @@ import ru.fromchat.api.local.download.AttachmentDownloadScheduler
 import ru.fromchat.api.local.download.checkAttachmentDownloadActive
 import ru.fromchat.api.local.download.ensureAttachmentDownloadActive
 import ru.fromchat.ui.chat.utils.AttachmentDownloadVisibility
-import ru.fromchat.api.local.cache.DecryptedImageCache.storageKey
 import ru.fromchat.api.local.download.LocalDecodedImageCache
 import ru.fromchat.api.local.download.ChatPreviewDecodeSize
+import ru.fromchat.api.local.download.decodeImageBytes
 import ru.fromchat.api.local.download.decodeLocalImageFile
 
 /**
@@ -142,18 +142,35 @@ object DecryptedImageCache {
         }
     }
 
+    /** Decode embedded thumbnail bytes synchronously for first frame (no network). */
+    fun decodeEmbeddedPlaceholderThumb(memoryKey: String, serverThumbBytes: ByteArray?): androidx.compose.ui.graphics.ImageBitmap? {
+        LocalDecodedImageCache.peekThumb(memoryKey)?.let { return it }
+        val thumbBytes = serverThumbBytes?.takeIf { it.isNotEmpty() } ?: return null
+        val target = ChatPreviewDecodeSize(
+            ATTACHMENT_DISK_THUMB_MAX_EDGE_PX,
+            ATTACHMENT_DISK_THUMB_MAX_EDGE_PX,
+        )
+        return decodeImageBytes(thumbBytes, target.widthPx, target.heightPx)?.also { bitmap ->
+            LocalDecodedImageCache.putThumb(memoryKey, bitmap)
+        }
+    }
+
     suspend fun decodePlaceholderThumb(
         memoryKey: String,
         messageId: Int,
         fileIndex: Int,
         clientMessageId: String?,
         serverThumbBytes: ByteArray?,
+        publicNormalFilePath: String? = null,
     ): androidx.compose.ui.graphics.ImageBitmap? = withContext(Dispatchers.Default) {
         peekPlaceholderThumb(memoryKey, messageId, fileIndex, clientMessageId)?.let {
             return@withContext it
         }
         // Prefer server base64 before generating a disk thumb from a huge full file.
-        val thumbBytes = serverThumbBytes?.takeIf { it.isNotEmpty() }
+        var thumbBytes = serverThumbBytes?.takeIf { it.isNotEmpty() }
+        if (thumbBytes == null && !publicNormalFilePath.isNullOrBlank()) {
+            thumbBytes = ApiClient.fetchPublicThumbnailBytes(publicNormalFilePath)
+        }
         if (thumbBytes != null) {
             val target = ChatPreviewDecodeSize(
                 ATTACHMENT_DISK_THUMB_MAX_EDGE_PX,
@@ -453,9 +470,18 @@ object DecryptedImageCache {
 
         ensureAttachmentDownloadActive(key)
         if (downloaded.path != outputPath) {
+            // Pass the plain path: a "file://" URI requires percent-encoded paths and the
+            // data dir often contains spaces ("Application Support", "FromChat Beta").
             runCatching {
-                copyOutboundFileToPath("file://${downloaded.path}", outputPath)
+                copyOutboundFileToPath(downloaded.path, outputPath)
             }.onFailure {
+                AttachmentMediaLog.download(
+                    "plain_persist_copy_failed",
+                    "key" to key,
+                    "src" to downloaded.path,
+                    "dst" to outputPath,
+                    "err" to (it.message ?: it::class.simpleName),
+                )
                 ApiClient.clearPartialEncryptedDownload(key)
                 AttachmentDownloadNotifier.emit(
                     AttachmentDownloadProgress.Failed(key, "cache_write_failed"),

@@ -1,0 +1,120 @@
+package ru.fromchat.desktop
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.FrameWindowScope
+import androidx.compose.ui.window.WindowExceptionHandler
+import androidx.compose.ui.window.WindowState
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.awt.ComposeWindow
+import ru.fromchat.logging.Logger
+import ru.fromchat.api.local.db.isSqliteBusy
+import ru.fromchat.ui.theme.FromChatTheme
+import ru.fromchat.ui.theme.LocalExtraStatusBarTop
+import ru.fromchat.ui.theme.getColorScheme
+import ru.fromchat.ui.theme.isAppInDarkTheme
+import java.awt.image.BufferedImage
+
+internal fun desktopThemeBackgroundCompose(darkTheme: Boolean): Color =
+    if (darkTheme) Color(0xFF1C1B1F) else Color(0xFFFFFBFE)
+
+@OptIn(ExperimentalComposeUiApi::class)
+internal fun installDesktopWindowExceptionHandler(window: ComposeWindow) {
+    window.exceptionHandler = WindowExceptionHandler { throwable ->
+        if (isSqliteBusy(throwable)) {
+            if (!DatabaseLockGate.onSqliteBusy(throwable)) {
+                Logger.w("DesktopWindow", "Suppressed SQLITE_BUSY in composition", throwable)
+            }
+        } else {
+            Logger.e("DesktopWindow", "uncaught in composition", throwable)
+        }
+    }
+}
+
+@Composable
+internal fun FrameWindowScope.DesktopRootSurface(
+    appName: String,
+    windowIcon: Painter,
+    dockIconImage: BufferedImage?,
+    customFrame: Boolean,
+    windowState: WindowState,
+    onCloseRequest: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val appInDarkTheme = isAppInDarkTheme()
+    val windowChrome = desktopThemeBackgroundCompose(appInDarkTheme)
+
+    LaunchedEffect(window, appName, windowChrome) {
+        window.title = appName
+        windowChrome.toAwtColor().also {
+            window.background = it
+            window.contentPane.background = it
+            if (customFrame && isWindowsOs()) {
+                updateWindowsNativeCaptionBackground(window, it)
+            }
+        }
+
+        if (customFrame && isWindowsOs()) {
+            installWindowsNativeCaptionChrome(window)
+            applyWindowsRoundedCorners(window)
+        }
+        applyDesktopEdgeToEdgeChrome(window.rootPane)
+        dockIconImage?.let { image ->
+            window.iconImages = listOf(image)
+            applyDockIcon(image)
+        }
+    }
+
+    DisposableEffect(window) {
+        installDesktopWindowExceptionHandler(window)
+        onDispose {}
+    }
+
+    FromChatTheme(darkTheme = appInDarkTheme) {
+        CompositionLocalProvider(
+            LocalExtraStatusBarTop provides when {
+                customFrame -> WindowsTitleBarHeight
+                else -> 0.dp
+            },
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(windowChrome),
+            ) {
+                content()
+                if (customFrame) {
+                    MaterialTheme(colorScheme = getColorScheme(appInDarkTheme, dynamicColor = false)) {
+                        WindowsDesktopTitleBar(
+                            title = appName,
+                            windowIcon = windowIcon,
+                            window = window,
+                            windowState = windowState,
+                            onCloseRequest = onCloseRequest,
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .fillMaxWidth()
+                                .zIndex(10_000f),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun Color.toAwtColor() =
+    java.awt.Color(red, green, blue, alpha)

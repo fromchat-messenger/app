@@ -9,7 +9,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.cache.DecryptedImageCache
@@ -25,6 +25,7 @@ import ru.fromchat.api.local.download.AttachmentDownloadProgress
 import ru.fromchat.api.local.send.OutgoingMessageCoordinator
 import ru.fromchat.api.schema.chats.publicchat.PublicChatProfile
 import ru.fromchat.api.schema.messages.Message
+import ru.fromchat.api.schema.messages.hasMoreOlderHistory
 import ru.fromchat.api.schema.messages.publicchat.SendMessageResponse
 import ru.fromchat.api.schema.messages.publicchat.resolvePublicAttachmentLayout
 import ru.fromchat.api.schema.websocket.WebSocketMessage
@@ -32,14 +33,17 @@ import ru.fromchat.api.schema.websocket.types.MessageDeletedData
 import ru.fromchat.api.schema.websocket.types.ReactionUpdateData
 import ru.fromchat.api.schema.websocket.types.TypingUpdateData
 import ru.fromchat.api.schema.websocket.types.WebSocketUpdatesData
-import ru.fromchat.ui.chat.AvatarInfo
-import ru.fromchat.ui.chat.ChatPanel
+import ru.fromchat.ui.chat.chrome.AvatarInfo
+import ru.fromchat.ui.chat.chrome.ChatPanel
+import ru.fromchat.ui.chat.utils.dedupeMessagesByClientId
 import ru.fromchat.ui.chat.utils.PublicChatTypingHandler
 import ru.fromchat.ui.chat.utils.TypingHandler
 import ru.fromchat.ui.chat.utils.attachPublicReplyReferences
 import ru.fromchat.ui.chat.utils.mergeDatabaseMessagesWithPanelState
 import ru.fromchat.ui.chat.utils.mergeMessageUiFields
 import ru.fromchat.ui.chat.utils.preserveReplyToFromExisting
+
+private const val PUBLIC_CHAT_PAGE_SIZE = 50
 
 class PublicChatPanel(
     /** Stable cache / panel id (not localized; hardcoded in [ru.fromchat.ui.chat.utils.PublicChatPanelCache]). */
@@ -63,7 +67,16 @@ class PublicChatPanel(
         val order = compareBy<Message> { it.timestamp }.thenBy { it.id }
         val a = shown.sortedWith(order)
         val b = fromNetwork.sortedWith(order)
-        if (a.size != b.size) return true
+        if (a.size != b.size) {
+            if (b.size > a.size) return true
+            // Network page is a subset of the cached history: only flag a real difference
+            // when an incoming id/text/edited state doesn't already match the UI.
+            val byId = a.associateBy { it.id }
+            return b.any { y ->
+                val x = byId[y.id] ?: return@any true
+                x.content != y.content || x.is_edited != y.is_edited
+            }
+        }
         for (i in a.indices) {
             val x = a[i]
             val y = b[i]
@@ -339,8 +352,8 @@ class PublicChatPanel(
         }
         if (ahead.isEmpty() && older.isEmpty() && inFlight.isEmpty()) return merged
         val combined = merged + ahead + older + inFlight
-        return ru.fromchat.api.local.messages.sortMessagesForChatDisplay(
-            ru.fromchat.ui.chat.utils.dedupeMessagesByClientId(combined),
+        return sortMessagesForChatDisplay(
+            dedupeMessagesByClientId(combined),
         )
     }
 
@@ -400,7 +413,7 @@ class PublicChatPanel(
                 "loadMessages: network refresh cachedCount=${cached.size}",
             )
             val responseResult = withContext(Dispatchers.Default) {
-                runCatching { ApiClient.getMessages(limit = 50) }
+                runCatching { ApiClient.getMessages(limit = PUBLIC_CHAT_PAGE_SIZE) }
             }
             val response = responseResult.getOrNull()
 
@@ -409,7 +422,7 @@ class PublicChatPanel(
                 ProfileCache.mergePreviewFromPublicMessages(networkMessages)
                 val optimisticSnapshot = snapshotPendingOptimisticMessages()
                 val pendingStr = debugPendingKeys().takeIf { it.isNotBlank() } ?: "(none)"
-                val optIds = optimisticSnapshot.mapNotNull { it.client_message_id }.ifEmpty { listOf<String>() }
+                val optIds = optimisticSnapshot.mapNotNull { it.client_message_id }.ifEmpty { listOf() }
                 Logger.d(
                     "PublicChatPanel",
                     "loadMessages: pendingKeys=$pendingStr optimisticSnapshot=$optIds " +
@@ -428,7 +441,7 @@ class PublicChatPanel(
                         if (withSenders != shown) {
                             updateState { it.copy(messages = sortMessagesForChatDisplay(withSenders)) }
                         }
-                        if (_state.hasMoreMessages) setHasMoreMessages(false)
+                        setHasMoreMessages(response.hasMoreOlderHistory(PUBLIC_CHAT_PAGE_SIZE))
                         if (_state.isLoading) setLoading(false)
                         mergedForCache = mergeNetworkHistoryWithShown(shown, networkMessages)
                     } else {
@@ -447,7 +460,7 @@ class PublicChatPanel(
                                     "restoring optimistic count=${optimisticSnapshot.size}",
                             )
                             restorePendingOptimisticMessages(optimisticSnapshot)
-                            setHasMoreMessages(false) // TODO: Implement has_more from API
+                            setHasMoreMessages(response.hasMoreOlderHistory(PUBLIC_CHAT_PAGE_SIZE))
                             setLoading(false)
                             mergedForCache = mergeNetworkHistoryWithShown(
                                 panelMessagesForDbMerge(),
@@ -504,26 +517,34 @@ class PublicChatPanel(
         val messages = _state.messages
         if (messages.isEmpty()) return
 
-        val oldestMessage = messages.first()
+        val oldestMessage = messages.firstOrNull { it.id > 0 } ?: return
         setLoadingMore(true)
         try {
             val response = withContext(Dispatchers.Default) {
-                ApiClient.getMessages(limit = 50, beforeId = oldestMessage.id)
+                ApiClient.getMessages(limit = PUBLIC_CHAT_PAGE_SIZE, beforeId = oldestMessage.id)
             }
             if (response.messages.isNotEmpty()) {
                 val olderRaw = response.messages.map { it.resolvePublicAttachmentLayout() }
                 ProfileCache.mergePreviewFromPublicMessages(olderRaw)
                 val older = ProfileCache.enrichPublicMessagesForDisplay(olderRaw.reversed())
-                updateState { currentState ->
-                    currentState.copy(
-                        messages = older + currentState.messages
-                    )
+                val existingIds = _state.messages.map { it.id }.toSet()
+                val newOlder = older.filter { it.id > 0 && it.id !in existingIds }
+                if (newOlder.isNotEmpty()) {
+                    updateState { currentState ->
+                        currentState.copy(
+                            messages = newOlder + currentState.messages,
+                        )
+                    }
+                    withContext(Dispatchers.Default) {
+                        MessageCacheStore.replacePublicMessages(_state.messages, replaceAll = true)
+                    }
+                    setHasMoreMessages(response.hasMoreOlderHistory(PUBLIC_CHAT_PAGE_SIZE))
+                } else {
+                    setHasMoreMessages(false)
                 }
-                withContext(Dispatchers.Default) {
-                    MessageCacheStore.replacePublicMessages(_state.messages, replaceAll = true)
-                }
+            } else {
+                setHasMoreMessages(false)
             }
-            setHasMoreMessages(false) // TODO: Implement has_more from API
         } catch (_: Exception) {
             // Handle error
         } finally {

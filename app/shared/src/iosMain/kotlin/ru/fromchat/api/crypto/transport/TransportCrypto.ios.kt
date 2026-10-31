@@ -4,10 +4,9 @@ import com.ionspin.kotlin.crypto.LibsodiumInitializer
 import com.ionspin.kotlin.crypto.box.Box
 import com.ionspin.kotlin.crypto.box.crypto_box_NONCEBYTES
 import com.ionspin.kotlin.crypto.util.LibsodiumRandom
-import com.pr0gramm3r101.utils.crypto.Base64
+import ru.fromchat.utils.crypto.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import ru.fromchat.api.crypto.transport.TransportCiphertext
 
 actual object TransportCrypto {
     actual suspend fun encryptWithTransportKey(

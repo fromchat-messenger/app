@@ -1,0 +1,1364 @@
+package ru.fromchat.desktop
+
+import androidx.compose.foundation.background
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.graphics.toPainter
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.KeyShortcut
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.FrameWindowScope
+import androidx.compose.ui.window.MenuBar
+import androidx.compose.ui.window.Notification
+import androidx.compose.ui.window.Tray
+import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPlacement
+import androidx.compose.ui.window.application
+import androidx.compose.ui.window.rememberTrayState
+import androidx.compose.ui.window.rememberWindowState
+import ru.fromchat.utils.UtilsLibrary
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import com.sun.jna.Library
+import com.sun.jna.Native
+import org.jetbrains.compose.resources.stringResource
+import ru.fromchat.AppBuildInfo
+import ru.fromchat.AppForeground
+import ru.fromchat.logging.Logger
+import ru.fromchat.Res
+import ru.fromchat.action_copy
+import ru.fromchat.action_select
+import ru.fromchat.api.ApiClient
+import ru.fromchat.api.local.WebSocketManager
+import ru.fromchat.api.local.db.MessageDatabaseConcurrency
+import ru.fromchat.api.local.db.isSqliteBusy
+import ru.fromchat.api.local.db.store.ConnectionStateStore
+import ru.fromchat.api.local.db.store.ConnectionStatus
+import ru.fromchat.api.local.db.store.messageDatabaseCoroutineDispatcher
+import ru.fromchat.api.local.workers.AttachmentTransferBootstrap
+import ru.fromchat.app_name
+import ru.fromchat.app_name_beta
+import ru.fromchat.config.Settings
+import ru.fromchat.desktop_about_app
+import ru.fromchat.desktop_cut
+import ru.fromchat.desktop_menu_edit
+import ru.fromchat.desktop_menu_file
+import ru.fromchat.desktop_menu_window
+import ru.fromchat.desktop_minimize
+import ru.fromchat.desktop_new_chat
+import ru.fromchat.desktop_paste
+import ru.fromchat.desktop_quit
+import ru.fromchat.desktop_search_conversations
+import ru.fromchat.desktop_select_all
+import ru.fromchat.desktop_show_app
+import ru.fromchat.desktop_tray_show
+import ru.fromchat.desktop_zoom
+import ru.fromchat.status_connected
+import ru.fromchat.status_connecting
+import ru.fromchat.status_disconnected
+import ru.fromchat.notifications.MessageNotificationCoordinator
+import ru.fromchat.ui.App
+import ru.fromchat.ui.main.handleAppMenuShortcutKeyEvent
+import ru.fromchat.ui.theme.LocalExtraStatusBarTop
+import ru.fromchat.ui.theme.Theme
+import ru.fromchat.ui.theme.getColorScheme
+import ru.fromchat.ui.theme.isAppInDarkTheme
+import java.awt.Desktop
+import java.awt.Image
+import java.awt.KeyboardFocusManager
+import java.awt.RenderingHints
+import java.awt.Taskbar
+import java.awt.desktop.AppReopenedListener
+import java.awt.event.ActionEvent
+import java.awt.image.BufferedImage
+import java.io.BufferedReader
+import java.io.ByteArrayInputStream
+import java.io.File
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.net.Socket
+import java.nio.charset.StandardCharsets
+import java.util.concurrent.atomic.AtomicBoolean
+import javax.imageio.ImageIO
+import javax.swing.JComponent
+import javax.swing.SwingUtilities
+import javax.swing.UIManager
+import javax.swing.plaf.ColorUIResource
+import kotlin.math.roundToInt
+import javax.swing.text.DefaultEditorKit
+import kotlin.concurrent.thread
+import kotlin.time.Duration.Companion.milliseconds
+import org.jetbrains.skia.Image as SkiaImage
+
+private object DesktopApplicationBootstrap {
+    private val scope = CoroutineScope(
+        SupervisorJob() +
+            messageDatabaseCoroutineDispatcher +
+            kotlinx.coroutines.CoroutineExceptionHandler { _, throwable ->
+                if (isSqliteBusy(throwable)) {
+                    if (!DatabaseLockGate.onSqliteBusy(throwable)) {
+                        Logger.w("Desktop", "Suppressed SQLITE_BUSY in bootstrap coroutine", throwable)
+                    }
+                } else {
+                    Logger.e("Desktop", "uncaught in bootstrap coroutine", throwable)
+                }
+            },
+    )
+    private var started = false
+
+    fun launchOnApplicationStart() {
+        if (started) return
+        started = true
+        AppForeground.setForeground(true)
+        scope.launch {
+            runCatching { ApiClient.loadPersistedData() }
+            runCatching { AttachmentTransferBootstrap.runColdStart() }
+        }
+    }
+}
+
+private object DesktopSingleInstance {
+    private const val PORT = 38_741
+    private val running = AtomicBoolean(false)
+
+    /**
+     * @return true if this process owns the instance and should show UI;
+     * false if another instance is already running (deep link forwarded).
+     */
+    fun acquireOrForward(args: Array<String>): Boolean {
+        val deepLink = args.firstOrNull { DesktopDeepLinkBus.isFromChatUri(it) }
+        return try {
+            val server = ServerSocket(PORT, 8, InetAddress.getByName("127.0.0.1"))
+            running.set(true)
+            thread(name = "fromchat-deeplink-ipc", isDaemon = true) {
+                while (running.get()) {
+                    runCatching {
+                        server.accept().use { socket ->
+                            val line = BufferedReader(
+                                InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8),
+                            ).readLine()?.trim().orEmpty()
+                            if (DesktopDeepLinkBus.isFromChatUri(line)) {
+                                DesktopDeepLinkBus.handleUri(line)
+                            }
+                        }
+                    }
+                }
+            }
+            if (deepLink != null) {
+                DesktopDeepLinkBus.handleUri(deepLink)
+            }
+            true
+        } catch (_: Exception) {
+            if (deepLink != null) {
+                runCatching {
+                    Socket("127.0.0.1", PORT).use { socket ->
+                        OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8).use { out ->
+                            out.write(deepLink)
+                            out.write("\n")
+                            out.flush()
+                        }
+                    }
+                }
+            }
+            false
+        }
+    }
+
+    fun release() {
+        running.set(false)
+    }
+}
+
+private object DesktopProtocolRegistration {
+    private const val SCHEME = "fromchat"
+
+    fun register() {
+        runCatching {
+            when {
+                isMacOs() -> Unit // Packaged macOS builds declare CFBundleURLTypes in Info.plist.
+                isWindowsOs() -> registerWindows()
+                isLinuxOs() -> registerLinux()
+            }
+        }
+    }
+
+    private fun javaLauncherCommand(): String {
+        val javaHome = System.getProperty("java.home")
+        val javaBin = if (isWindowsOs()) "$javaHome\\bin\\javaw.exe" else "$javaHome/bin/java"
+        val classPath = System.getProperty("java.class.path")
+        val main = "FromChat"
+        // Keep relaunches on the same render pipeline (see mesaGlVersionOverridePrefix).
+        val mesaPrefix =
+            if (isWindowsOs()) "" else mesaGlVersionOverridePrefix()
+        return if (isWindowsOs()) {
+            "\"$javaBin\" -cp \"$classPath\" $main"
+        } else {
+            "$mesaPrefix$javaBin -cp ${shellQuote(classPath)} $main"
+        }
+    }
+
+    private fun shellQuote(value: String): String =
+        "'" + value.replace("'", "'\\''") + "'"
+
+    private fun registerWindows() {
+        val command = javaLauncherCommand() + " \"%1\""
+        val base = "HKCU\\Software\\Classes\\$SCHEME"
+        listOf(
+            listOf("reg", "add", base, "/ve", "/d", "URL:FromChat Protocol", "/f"),
+            listOf("reg", "add", base, "/v", "URL Protocol", "/d", "", "/f"),
+            listOf("reg", "add", "$base\\shell\\open\\command", "/ve", "/d", command, "/f"),
+        ).forEach { args ->
+            ProcessBuilder(args).redirectErrorStream(true).start().waitFor()
+        }
+    }
+
+    private fun registerLinux() {
+        val appsDir = File(
+            System.getProperty("user.home"),
+            ".local/share/applications"
+        ).also {
+            it.mkdirs()
+        }
+
+        val desktop = File(appsDir, "fromchat-url-handler.desktop").also {
+            it.writeText(
+                """
+                |[Desktop Entry]
+                |Type=Application
+                |Name=FromChat URL Handler
+                |Exec=${javaLauncherCommand()} %u
+                |StartupNotify=false
+                |MimeType=x-scheme-handler/$SCHEME;
+                |NoDisplay=true
+                """.trimMargin(),
+            )
+        }
+
+        ProcessBuilder("xdg-mime", "default", desktop.name, "x-scheme-handler/$SCHEME")
+            .redirectErrorStream(true)
+            .start()
+            .waitFor()
+
+        ProcessBuilder("update-desktop-database", appsDir.absolutePath)
+            .redirectErrorStream(true)
+            .start()
+            .waitFor()
+    }
+}
+
+fun main(args: Array<String>) {
+    LinuxArm64MesaEnvironment.applyIfNeeded()
+    Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+        if (isSqliteBusy(throwable)) {
+            if (!DatabaseLockGate.onSqliteBusy(throwable)) {
+                Logger.w("Desktop", "Suppressed SQLITE_BUSY on ${thread.name}", throwable)
+            }
+        } else {
+            Logger.e("Desktop", "uncaught on ${thread.name}", throwable)
+        }
+    }
+
+    configureDesktopAppDataName()
+    // Do NOT set compose.layers.type=WINDOW.
+    // On macOS Metal that mode creates a JWindow + MetalRedrawer per Popup/Dialog; native
+    // IOAccelerator surfaces are retained after dismiss and grew to multi-GB (Activity Monitor
+    // ~7–8 GB) while the Java heap stayed small. Default COMPONENT layers avoid that leak;
+    // context menus already use PopupProperties(clippingEnabled = false).
+    if (isMacOs()) {
+        // Must be set before AWT Toolkit init (do not call getString / Compose here).
+        // Matches Res.string.app_name / app_name_beta.
+        System.setProperty(
+            "apple.awt.application.name",
+            if (AppBuildInfo.isDebug) "FromChat Beta" else "FromChat",
+        )
+        System.setProperty("apple.laf.useScreenMenuBar", "true")
+        // Treat TrayIcon images as NSImage templates so the menu bar tints them for light/dark.
+        // Must be set before CTrayIcon loads (Compose Tray / SystemTray).
+        System.setProperty("apple.awt.enableTemplateImages", "true")
+        val appearanceName = when (runCatching { Settings.theme }.getOrDefault(Theme.AsSystem)) {
+            Theme.Dark -> "NSAppearanceNameDarkAqua"
+            Theme.Light -> "NSAppearanceNameAqua"
+            Theme.AsSystem -> "system"
+        }
+        System.setProperty("apple.awt.application.appearance", appearanceName)
+    }
+    if (!DesktopSingleInstance.acquireOrForward(args)) return
+    DesktopProtocolRegistration.register()
+    // Detect the WM (Hyprland → native frame) before the window is created.
+    initNativeFrameDefaults()
+    if (isWindowsOs()) {
+        if (isWindowsArm64()) {
+            System.setProperty("skiko.rendering.angle.enabled", "true")
+        } else {
+            System.setProperty("skiko.renderApi", "OPENGL")
+        }
+        setWindowsDesktopAppUserModelId(
+            if (AppBuildInfo.isDebug) "FromChat Beta" else "FromChat",
+        )
+    }
+    // Close-to-tray keeps the process + tray; no SMAppService / Login Items registration.
+    args.filter { DesktopDeepLinkBus.isFromChatUri(it) }
+        .forEach { DesktopDeepLinkBus.handleUri(it) }
+
+    // Avoid the AWT default white "control" flash before Compose paints (CMP #1794).
+    applyDesktopWindowChromeBackground()
+
+    val dockIconImage = loadAppIconBufferedImage(tray = false)
+    applyDockIcon(dockIconImage)
+    // Ensure the shell (GNOME taskbar/dock) has a desktop entry matching this app's identity.
+    LinuxAppIdentity.register(dockIconImage)
+    // Re-apply after AWT is fully up — Taskbar can ignore early sets on macOS :run.
+    SwingUtilities.invokeLater { applyDockIcon(dockIconImage) }
+
+    MessageDatabaseConcurrency.onSqliteBusy = { DatabaseLockGate.onSqliteBusy(it) }
+    Runtime.getRuntime().addShutdownHook(Thread { DatabaseLockGate.releaseRuntimeLock() })
+    MessageDatabaseRuntimeLock.tryAcquire()
+
+    // Before `application {}`, not inside it: the remembered window size is computed during the
+    // first composition, so a scale that is only detected one frame later leaves it wrong.
+    DesktopScale.startWatching()
+
+    application {
+        UtilsLibrary.init()
+        var bootstrapStarted by remember { mutableStateOf(false) }
+        val databaseBlocked by DatabaseLockGate.blocked.collectAsState()
+        val lockingProcesses by DatabaseLockGate.processes.collectAsState()
+
+        LaunchedEffect(Unit) {
+            DatabaseLockGate.startMonitoring(this) {
+                if (!bootstrapStarted) {
+                    bootstrapStarted = true
+                    DesktopApplicationBootstrap.launchOnApplicationStart()
+                }
+            }
+        }
+
+        val mac = remember { isMacOs() }
+        val windows = remember { isWindowsOs() }
+        // AWT forbids changing window decorations once a frame is displayable, so a frame
+        // mode change recreates the window: this key is read once per mount, and the
+        // `key()` below remounts the whole Window (fresh ComposeWindow, same windowState)
+        // when the setting changes. Geometry is preserved via DesktopWindowPrefs
+        // persistence and the shared `windowState`.
+        var nativeFrame by remember { mutableStateOf(DesktopWindowSettings.nativeFrame) }
+        // The remount below loses composition state, so after a frame-mode change we reland
+        // on the Appearance screen instead of restoring any UI state (keeps the toggle
+        // simple: no AWT state transfer).
+        var nativeFrameReland by remember { mutableStateOf(false) }
+        val onNativeFrameChange: (Boolean) -> Unit = {
+            nativeFrame = it
+            nativeFrameReland = true
+        }
+        DisposableEffect(Unit) {
+            DesktopWindowSettings.addNativeFrameListener(onNativeFrameChange)
+            onDispose { DesktopWindowSettings.removeNativeFrameListener(onNativeFrameChange) }
+        }
+        val customFrame = !mac && !nativeFrame
+        val windowIcon = remember {
+            dockIconImage?.toPainter() ?: loadAppIconPainter(tray = false)
+        }
+        val appName = stringResource(
+            if (AppBuildInfo.isDebug) Res.string.app_name_beta else Res.string.app_name,
+        )
+
+        if (databaseBlocked) {
+            DatabaseLockWindow(
+                appName = appName,
+                windowIcon = windowIcon,
+                dockIconImage = dockIconImage,
+                processes = lockingProcesses,
+                onKillProcess = { DatabaseLockGate.killProcess(it) },
+                onQuit = { exitApplication() },
+            )
+            return@application
+        }
+
+        // Compose sizes the AWT window from GraphicsConfiguration.defaultTransform.scaleX, which on X11
+        // is an int (1.0 here) and is NOT affected by the LocalDensity override inside Window.
+        // So a forced density lays the content out larger than the window that holds it, which
+        // reads as "ignores scaling" (CMP-6857, still open: JetBrains declined to change this).
+        // Pre-multiplying the dp size keeps the window's pixel size consistent with the content.
+        val forcedScale by DesktopScale.forcedScale.collectAsState()
+        val sizeRatio = remember(forcedScale) { DesktopScale.sizeRatio }
+        val windowState = rememberWindowState(
+            size = remember { DesktopWindowPrefs.loadSize() * sizeRatio },
+            position = remember { DesktopWindowPrefs.loadPosition() },
+        )
+        // Hide until App bootstrap sets startDestination (avoids ~2s empty/white window).
+        var contentReady by remember { mutableStateOf(false) }
+        var windowVisible by remember { mutableStateOf(true) }
+        val trayState = rememberTrayState()
+        // Which resource and which post-processing apply is decided per platform inside
+        // loadAppIconBufferedImage, so the call sites only have to say "this one goes to the tray".
+        val trayIconImage = remember { loadAppIconBufferedImage(tray = true) }
+        val trayIcon = remember(trayIconImage) {
+            trayIconImage?.toPainter() ?: loadAppIconPainter(tray = true)
+        }
+        val traySupported = remember {
+            java.awt.SystemTray.isSupported().also {
+                Logger.i(
+                    "DesktopTray",
+                    "SystemTray.isSupported=$it on ${System.getProperty("os.name")} " +
+                        "(a false here on Linux means libayatana-appindicator3-1 is missing)",
+                )
+            }
+        }
+        val aboutApp = stringResource(Res.string.desktop_about_app)
+        val trayShow = stringResource(Res.string.desktop_tray_show)
+        val quit = stringResource(Res.string.desktop_quit)
+        val connectionStatus by ConnectionStateStore.status.collectAsState()
+        var wsLinked by remember { mutableStateOf(WebSocketManager.isConnected) }
+        // ApiClient.token is not a Compose state; poll so menu items update on login/logout.
+        // Only write when the value changes — avoids MenuBar/Tray recomposition churn every tick.
+        var isLoggedIn by remember { mutableStateOf(!ApiClient.token.isNullOrBlank()) }
+        LaunchedEffect(Unit) {
+            while (true) {
+                val linked = WebSocketManager.isConnected
+                if (wsLinked != linked) wsLinked = linked
+                val loggedIn = !ApiClient.token.isNullOrBlank()
+                if (isLoggedIn != loggedIn) isLoggedIn = loggedIn
+                delay(400.milliseconds)
+            }
+        }
+        // Mirror ConnectionStateStore + WebSocketManager.isConnected (+ logged-out → disconnected).
+        val trayConnectionStatus = when {
+            connectionStatus == ConnectionStatus.CONNECTED ||
+                connectionStatus == ConnectionStatus.UPDATING ||
+                wsLinked -> TrayConnectionStatus.Connected
+            ApiClient.token.isNullOrEmpty() -> TrayConnectionStatus.Disconnected
+            else -> TrayConnectionStatus.Connecting
+        }
+        val wsStatusLabel = when (trayConnectionStatus) {
+            TrayConnectionStatus.Connected -> stringResource(Res.string.status_connected)
+            TrayConnectionStatus.Disconnected -> stringResource(Res.string.status_disconnected)
+            TrayConnectionStatus.Connecting -> stringResource(Res.string.status_connecting)
+        }
+
+        val appInDarkTheme = isAppInDarkTheme()
+        val windowChrome = desktopThemeBackgroundCompose(appInDarkTheme)
+
+        // Armed once the restored geometry has had time to settle; until then nothing is
+        // persisted. See the LaunchedEffect below.
+        var geometryUserDriven by remember { mutableStateOf(false) }
+
+        LaunchedEffect(Unit) {
+            // Safety: never leave the window stuck hidden if bootstrap hangs.
+            delay(8_000.milliseconds)
+            contentReady = true
+        }
+
+        LaunchedEffect(windowState.size, windowState.position) {
+            delay(3_000.milliseconds)
+            // This also fires for the geometry that was just restored, and the window manager may
+            // have clamped that (a window remembered on a bigger screen no longer fits). Writing
+            // the clamped size straight back would replace a good remembered size with a bad one,
+            // permanently and on every launch, so the first quiet pass only arms the saver.
+            if (!geometryUserDriven) {
+                geometryUserDriven = true
+                Logger.i(
+                    "WindowPrefs",
+                    "restored size=${windowState.size} position=${windowState.position} " +
+                        "sizeRatio=$sizeRatio stored=${windowState.size / sizeRatio}",
+                )
+                return@LaunchedEffect
+            }
+            // A maximised window is not the size to remember, or un-maximising would restore it.
+            if (windowState.placement == WindowPlacement.Maximized) return@LaunchedEffect
+            Logger.i(
+                "WindowPrefs",
+                "save size=${windowState.size} position=${windowState.position} " +
+                    "sizeRatio=$sizeRatio stored=${windowState.size / sizeRatio}",
+            )
+            // Undo the pre-multiplication before persisting, otherwise every launch grows the
+            // stored window by the scale factor.
+            DesktopWindowPrefs.save(windowState.size / sizeRatio, windowState.position)
+        }
+
+        DisposableEffect(trayState) {
+            DesktopNotifier.sink = { payload ->
+                val native = mac &&
+                    MacNotificationCenter.deliver(
+                        title = payload.title,
+                        body = payload.body,
+                        subtitle = payload.subtitle,
+                    )
+                Logger.i(
+                    "DesktopNotifier",
+                    "sink mac=$mac nativeDelivered=$native titleLen=${payload.title.length} " +
+                        "subtitleLen=${payload.subtitle.length}",
+                )
+                if (!native) {
+                    if (mac) {
+                        Logger.i("DesktopNotifier", "sink fallback trayState.sendNotification")
+                        trayState.sendNotification(
+                            Notification(title = payload.title, message = payload.displayBody()),
+                        )
+                    } else {
+                        Logger.i("DesktopNotifier", "sink fallback native/AWT notification")
+                        DesktopNotifier.showAwtFallback(payload.title, payload.displayBody())
+                    }
+                }
+            }
+            onDispose {
+                DesktopNotifier.sink = null
+                MessageNotificationCoordinator.uninstall()
+                DesktopSingleInstance.release()
+            }
+        }
+
+        LaunchedEffect(isLoggedIn) {
+            if (isLoggedIn) {
+                MessageNotificationCoordinator.install()
+                MessageNotificationCoordinator.refreshChrome()
+            } else {
+                MessageNotificationCoordinator.uninstall()
+                DesktopTaskbarBadge.setUnreadCount(0)
+            }
+        }
+
+        SideEffect {
+            DesktopAppVisibility.isWindowVisible = windowVisible
+            if (!windowVisible) {
+                DesktopAppVisibility.isWindowFocused = false
+                AppForeground.setWindowFocused(false)
+            }
+        }
+
+        fun showMainWindow(notificationIdentifier: String? = null) {
+            windowVisible = true
+            AppForeground.setForeground(true)
+            DesktopNotifier.deliverPendingLaunch(notificationIdentifier)
+        }
+
+        LaunchedEffect(mac, windowVisible) {
+            if (!mac) return@LaunchedEffect
+            MacNotificationCenter.onActivated = { identifier ->
+                SwingUtilities.invokeLater { showMainWindow(identifier) }
+            }
+            if (!windowVisible || !DesktopNotificationSettings.enabled) {
+                Logger.i(
+                    "MacNotificationCenter",
+                    "startup skip requestAuthorization windowVisible=$windowVisible " +
+                        "enabled=${DesktopNotificationSettings.enabled}",
+                )
+                return@LaunchedEffect
+            }
+            delay(400.milliseconds)
+            Logger.i("MacNotificationCenter", "startup requestAuthorization")
+            MacNotificationCenter.registerAndRequestAuthorization()
+        }
+
+        fun openAbout() {
+            showMainWindow()
+            DesktopMenuCommands.emit(DesktopMenuCommand.OpenAbout)
+        }
+
+        /** Hide window, keep process + tray (close-to-background). Else quit. */
+        fun requestCloseToBackgroundOrQuit() {
+            if (traySupported) {
+                windowVisible = false
+                // Desktop keeps sockets alive while the process runs (see keepWebSocketAliveInBackground).
+                AppForeground.setForeground(true)
+                if (mac) {
+                    Logger.i(MacBackgroundLifecycle.LOG_TAG, "Window closed → background (tray kept, process alive)")
+                }
+            } else {
+                exitApplication()
+            }
+        }
+
+        LaunchedEffect(Unit) {
+            if (!Desktop.isDesktopSupported()) return@LaunchedEffect
+            val desktop = Desktop.getDesktop()
+            if (mac && desktop.isSupported(Desktop.Action.APP_ABOUT)) {
+                desktop.setAboutHandler {
+                    SwingUtilities.invokeLater { openAbout() }
+                }
+            }
+            // ⌘Q / system Quit must fully exit (not close-to-tray).
+            if (desktop.isSupported(Desktop.Action.APP_QUIT_HANDLER)) {
+                desktop.setQuitHandler { _, response ->
+                    DesktopSingleInstance.release()
+                    response.performQuit()
+                    exitApplication()
+                }
+            }
+            // Dock click while window is hidden → show again (macOS AppReopened).
+            if (mac) {
+                desktop.addAppEventListener(
+                    AppReopenedListener {
+                        SwingUtilities.invokeLater { showMainWindow() }
+                    },
+                )
+            }
+        }
+
+        if (traySupported) {
+            if (mac) {
+                Tray(
+                    icon = trayIcon,
+                    state = trayState,
+                    tooltip = appName,
+                    onAction = { showMainWindow() },
+                    menu = {
+                        Item(wsStatusLabel, enabled = false) {}
+                        Separator()
+                        Item(trayShow) { showMainWindow() }
+                        Item(aboutApp) { openAbout() }
+                        Separator()
+                        Item(quit) { exitApplication() }
+                    },
+                )
+            } else if (trayIconImage != null) {
+                DesktopTrayHost(
+                    trayImage = trayIconImage,
+                    tooltip = appName,
+                    statusLabel = wsStatusLabel,
+                    connectionStatus = trayConnectionStatus,
+                    showLabel = trayShow,
+                    aboutLabel = aboutApp,
+                    quitLabel = quit,
+                    onShow = { showMainWindow() },
+                    onAbout = { openAbout() },
+                    onQuit = { exitApplication() },
+                )
+            }
+        }
+
+        key(nativeFrame) {
+                Window(
+                    onCloseRequest = { requestCloseToBackgroundOrQuit() },
+                    title = appName,
+                    state = windowState,
+                    visible = contentReady && (windowVisible || !traySupported),
+                    icon = windowIcon,
+                    undecorated = customFrame,
+                    onPreviewKeyEvent = { event ->
+                        // macOS: menu bar KeyShortcuts call DesktopMenuCommands directly.
+                        if (mac || event.type != KeyEventType.KeyDown) {
+                            return@Window false
+                        }
+                        if (handleAppMenuShortcutKeyEvent(event)) {
+                            if (!isLoggedIn) return@Window false
+                            showMainWindow()
+                            return@Window true
+                        }
+                        if (!event.isCtrlPressed) return@Window false
+                        when {
+                            event.isShiftPressed && event.key == Key.N -> {
+                                showMainWindow()
+                                true
+                            }
+                            event.key == Key.M -> {
+                                windowState.isMinimized = true
+                                true
+                            }
+                            event.key == Key.Q -> {
+                                exitApplication()
+                                true
+                            }
+                            else -> false
+                        }
+                    },
+                ) {
+                    LaunchedEffect(window, appName, windowChrome) {
+                        window.title = appName
+                        windowChrome.toAwtColor().also {
+                            window.background = it
+                            window.contentPane.background = it
+                            if (customFrame && windows) {
+                                updateWindowsNativeCaptionBackground(window, it)
+                            }
+                        }
+        
+                        if (customFrame && windows) {
+                            installWindowsNativeCaptionChrome(window)
+                            applyWindowsRoundedCorners(window)
+                        }
+                        applyDesktopEdgeToEdgeChrome(window.rootPane)
+                        dockIconImage?.let { image ->
+                            window.iconImages = listOf(image)
+                            applyDockIcon(image)
+                        }
+                    }
+        
+                    DisposableEffect(window) {
+                        installDesktopWindowExceptionHandler(window)
+                        AppForeground.setForeground(true)
+                        fun syncWindowFocus(focused: Boolean) {
+                            DesktopAppVisibility.isWindowFocused = focused
+                            AppForeground.setWindowFocused(focused)
+                            if (!focused) MacNotificationCenter.resignActive()
+                            Logger.i(
+                                "DesktopAppVisibility",
+                                "focus=$focused active=${window.isActive} awtFocused=${window.isFocused}",
+                            )
+                        }
+                        val listener = object : java.awt.event.WindowAdapter() {
+                            override fun windowActivated(e: java.awt.event.WindowEvent?) {
+                                syncWindowFocus(true)
+                            }
+        
+                            override fun windowDeactivated(e: java.awt.event.WindowEvent?) {
+                                syncWindowFocus(false)
+                            }
+        
+                            override fun windowGainedFocus(e: java.awt.event.WindowEvent?) {
+                                syncWindowFocus(true)
+                            }
+        
+                            override fun windowLostFocus(e: java.awt.event.WindowEvent?) {
+                                syncWindowFocus(false)
+                            }
+        
+                            override fun windowIconified(e: java.awt.event.WindowEvent?) {
+                                syncWindowFocus(false)
+                            }
+                        }
+                        syncWindowFocus(window.isActive && window.isFocused)
+                        window.addWindowListener(listener)
+                        window.addWindowFocusListener(listener)
+                        onDispose {
+                            window.removeWindowListener(listener)
+                            window.removeWindowFocusListener(listener)
+                        }
+                    }
+        
+                    if (mac) {
+                        FromChatMenuBar(
+                            isLoggedIn = isLoggedIn,
+                            onNewChat = {
+                                showMainWindow()
+                                DesktopMenuCommands.emit(DesktopMenuCommand.NewChat)
+                            },
+                            onSearchConversations = {
+                                showMainWindow()
+                                DesktopMenuCommands.emit(DesktopMenuCommand.SearchConversations)
+                            },
+                            onSelectChats = {
+                                showMainWindow()
+                                DesktopMenuCommands.emit(DesktopMenuCommand.EnterChatListSelection)
+                            },
+                            onShow = { showMainWindow() },
+                            onMinimize = { windowState.isMinimized = true },
+                            onZoom = {
+                                windowState.placement =
+                                    if (windowState.placement == WindowPlacement.Maximized) {
+                                        WindowPlacement.Floating
+                                    } else {
+                                        WindowPlacement.Maximized
+                                    }
+                            },
+                            onQuit = { exitApplication() },
+                        )
+                    }
+        
+                    // Linux only: macOS and Windows already report HiDPI correctly, and forcing a
+                    // value there would override a correct native density (a 1.0 fallback would
+                    // flatten every Retina display).
+                    val forcedScale by DesktopScale.forcedScale.collectAsState()
+                    CompositionLocalProvider(
+                            // AWT and Compose disagree on Linux (AWT read Xft.dpi=192 -> 2.0 while
+                            // Compose sat at 1.0), so the value that drives layout and text is
+                            // Compose's density. null = keep whatever Compose decided.
+                            LocalDensity provides Density(
+                                forcedScale ?: LocalDensity.current.density,
+                                forcedScale?.let { LocalDensity.current.fontScale } ?: 1f,
+                            ),
+                            LocalExtraStatusBarTop provides when {
+                            mac -> 28.dp
+                            customFrame -> WindowsTitleBarHeight
+                            else -> 0.dp
+                        },
+                    ) {
+                        // Inside the provider on purpose: it reports the density actually in
+                        // effect for the app, not the ambient one Compose chose.
+                        DesktopScaleDiagnostics()
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(windowChrome),
+                        ) {
+                            App(
+                                startAtAppearance = nativeFrameReland,
+                                onContentReady = { contentReady = true },
+                            )
+                            if (customFrame) {
+                                MaterialTheme(colorScheme = getColorScheme(appInDarkTheme, dynamicColor = false)) {
+                                    WindowsDesktopTitleBar(
+                                        title = appName,
+                                        windowIcon = windowIcon,
+                                        window = window,
+                                        windowState = windowState,
+                                        onCloseRequest = { requestCloseToBackgroundOrQuit() },
+                                        modifier = Modifier
+                                            .align(Alignment.TopStart)
+                                            .fillMaxWidth()
+                                            .zIndex(10_000f),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+        }
+    }
+}
+
+@Composable
+private fun FrameWindowScope.FromChatMenuBar(
+    isLoggedIn: Boolean,
+    onNewChat: () -> Unit,
+    onSearchConversations: () -> Unit,
+    onSelectChats: () -> Unit,
+    onShow: () -> Unit,
+    onMinimize: () -> Unit,
+    onZoom: () -> Unit,
+    onQuit: () -> Unit,
+) {
+    val file = stringResource(Res.string.desktop_menu_file)
+    val newChat = stringResource(Res.string.desktop_new_chat)
+    val searchConversations = stringResource(Res.string.desktop_search_conversations)
+    val quit = stringResource(Res.string.desktop_quit)
+    val edit = stringResource(Res.string.desktop_menu_edit)
+    val cut = stringResource(Res.string.desktop_cut)
+    val copy = stringResource(Res.string.action_copy)
+    val paste = stringResource(Res.string.desktop_paste)
+    val selectAll = stringResource(Res.string.desktop_select_all)
+    val select = stringResource(Res.string.action_select)
+    val windowMenu = stringResource(Res.string.desktop_menu_window)
+    val minimize = stringResource(Res.string.desktop_minimize)
+    val zoom = stringResource(Res.string.desktop_zoom)
+    val showApp = stringResource(Res.string.desktop_show_app)
+
+    MenuBar {
+        Menu(file, mnemonic = 'F') {
+            if (isLoggedIn) {
+                Item(
+                    newChat,
+                    shortcut = KeyShortcut(Key.N, meta = true),
+                    onClick = onNewChat,
+                )
+
+                Item(
+                    searchConversations,
+                    shortcut = KeyShortcut(Key.F, meta = true),
+                    onClick = onSearchConversations,
+                )
+
+                Separator()
+            }
+
+            Item(
+                quit,
+                shortcut = KeyShortcut(Key.Q, meta = true),
+                onClick = onQuit,
+            )
+        }
+
+        Menu(edit, mnemonic = 'E') {
+            Item(
+                cut,
+                shortcut = KeyShortcut(Key.X, meta = true),
+                onClick = { performAwtEditAction(DefaultEditorKit.cutAction) },
+            )
+
+            Item(
+                copy,
+                shortcut = KeyShortcut(Key.C, meta = true),
+                onClick = { performAwtEditAction(DefaultEditorKit.copyAction) },
+            )
+
+            Item(
+                paste,
+                shortcut = KeyShortcut(Key.V, meta = true),
+                onClick = { performAwtEditAction(DefaultEditorKit.pasteAction) },
+            )
+
+            Separator()
+
+            Item(
+                selectAll,
+                shortcut = KeyShortcut(Key.A, meta = true),
+                onClick = { performAwtEditAction(DefaultEditorKit.selectAllAction) },
+            )
+
+            Item(
+                select,
+                shortcut = KeyShortcut(Key.S, meta = true, shift = true),
+                onClick = onSelectChats,
+            )
+        }
+
+        Menu(windowMenu, mnemonic = 'W') {
+            Item(
+                minimize,
+                shortcut = KeyShortcut(Key.M, meta = true),
+                onClick = onMinimize,
+            )
+
+            Item(zoom, onClick = onZoom)
+
+            Separator()
+
+            Item(
+                showApp,
+                shortcut = KeyShortcut(Key.N, meta = true, shift = true),
+                onClick = onShow,
+            )
+        }
+    }
+}
+
+private fun performAwtEditAction(actionName: String) {
+    val focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner as? JComponent
+        ?: return
+    val action = focusOwner.actionMap.get(actionName) ?: return
+    action.actionPerformed(ActionEvent(focusOwner, ActionEvent.ACTION_PERFORMED, actionName))
+}
+
+/** Beta and release builds must not share the same on-disk data directory. */
+private fun configureDesktopAppDataName() {
+    if (!System.getProperty("fromchat.app.data.name").isNullOrBlank()) return
+    if (AppBuildInfo.isDebug) {
+        System.setProperty("fromchat.app.data.name", "FromChatBeta")
+    }
+}
+
+/**
+ * Skia for linux/arm64 is GLES-only, so against Mesa-run GL it must see version 3.0
+ * (see the skiko-virgl patch in app/desktop/build.gradle.kts). Set before Skiko loads
+ * (here and in the AppImage AppRun) and in generated desktop entries via
+ * [mesaGlVersionOverridePrefix].
+ */
+private object LinuxArm64MesaEnvironment {
+    private interface LibC : Library {
+        fun setenv(name: String, value: String, overwrite: Int): Int
+    }
+
+    private val libc: LibC? =
+        if (isLinuxOs() && System.getProperty("os.arch") == "aarch64") {
+            runCatching { Native.load("c", LibC::class.java) }.getOrNull()
+        } else {
+            null
+        }
+
+    fun applyIfNeeded() {
+        if (!isLinuxOs() || System.getProperty("os.arch") != "aarch64") return
+        if (!System.getenv("MESA_GL_VERSION_OVERRIDE").isNullOrBlank()) return
+        libc?.setenv("MESA_GL_VERSION_OVERRIDE", "3.0", 1)
+    }
+}
+
+private fun mesaGlVersionOverridePrefix(): String =
+    if (isLinuxOs() && System.getProperty("os.arch") == "aarch64") {
+        "env MESA_GL_VERSION_OVERRIDE=3.0 "
+    } else {
+        ""
+    }
+
+/**
+ * GNOME/Wayland app identity for Linux.
+ *
+ * The JVM derives WM_CLASS from the entry-point class (dots → dashes), which for this app is
+ * the default-package [FromChat] wrapper — the launcher name is exactly "FromChat" and matches
+ * the installed desktop file's should-match one. But XDG dirs typically have no FromChat
+ * desktop entry (the deb only ships it under /opt/fromchat/lib, without matching the runtime
+ * WM_CLASS hint), so the shell shows the raw window class with no icon. This installs a
+ * user-level entry matching our identity, the way the app itself already registers handlers
+ * for other desktops.
+ */
+private object LinuxAppIdentity {
+    fun register(dockIcon: BufferedImage?) {
+        if (!isLinuxOs() || dockIcon == null) return
+        runCatching {
+            val dataHome = env("XDG_DATA_HOME")
+                ?.takeIf { it.isNotBlank() }
+                ?: File(System.getProperty("user.home"), ".local/share").absolutePath
+
+            val iconFile = File(dataHome, "icons/fromchat.png").let { file ->
+                file.parentFile?.mkdirs()
+                val image = dockIcon.scaleToAppIconMaxEdge()
+                runCatching { ImageIO.write(image, "png", file) }
+                    .onFailure { error ->
+                        Logger.w("DesktopIcon", "Linux identity icon write failed: ${error.message}")
+                    }
+                file
+            }
+            val applicationsDir = File(dataHome, "applications").apply { mkdirs() }
+            val entry = File(applicationsDir, "fromchat.desktop")
+            val script = buildString {
+                appendLine("[Desktop Entry]")
+                appendLine("Type=Application")
+                appendLine("Name=${desktopAppName()}")
+                appendLine("Comment=${desktopAppName()}")
+                appendLine("Exec=${desktopExec()}")
+                appendLine("Icon=${iconFile.absolutePath}")
+                appendLine("StartupWMClass=FromChat")
+                appendLine("Terminal=false")
+                appendLine("Categories=Network;InstantMessaging;Chat;")
+            }
+            entry.writeText(script)
+            Logger.i("DesktopIcon", "Linux desktop entry installed: ${entry.absolutePath}")
+        }.onFailure { error ->
+            Logger.w("DesktopIcon", "Linux identity registration failed: ${error.message}")
+        }
+    }
+
+    private fun desktopAppName() =
+        if (AppBuildInfo.isDebug) "FromChat Beta" else "FromChat"
+
+    /**
+     * Current invocation as an Exec= value. Under a jpackage app-image this is the launcher
+     * binary; a dev run re-launches through the same java/classpath wrapper main.
+     */
+    private fun desktopExec(): String {
+        val launcher = ProcessHandle.current().info().command().orElse("").takeIf { it.isNotBlank() }
+        val mesaEnvPrefix = mesaGlVersionOverridePrefix()
+        if (launcher != null && launcher.endsWith("bin/java").not()) {
+            return mesaEnvPrefix + desktopQuote(launcher)
+        }
+        val javaBin = File(
+            System.getProperty("java.home"),
+            File.separator + "bin" + File.separator + "java",
+        ).absolutePath
+        val cp = System.getProperty("java.class.path").orEmpty()
+        return desktopQuote(javaBin).let { java ->
+            if (cp.isNotBlank()) {
+                desktopQuote(java) + " -cp " + desktopQuote(cp) + " FromChat"
+            } else {
+                java
+            }
+        }.let { exec -> mesaEnvPrefix + exec }
+    }
+
+    /** Desktop spec Exec quoting: wrap in double quotes and escape backslash/quote. */
+    private fun desktopQuote(value: String) =
+        if (value.any { it.isWhitespace() || it == '"' || it == '\\' } || value.isEmpty()) {
+            "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+        } else {
+            value
+        }
+
+    private fun env(key: String): String? = System.getenv(key)
+
+    private fun BufferedImage.scaleToAppIconMaxEdge(): BufferedImage {
+        val maxEdge = 128
+        if (width <= maxEdge && height <= maxEdge) return this
+        val scale = maxEdge.toFloat() / maxOf(width, height).toFloat()
+        val w = (width * scale).roundToInt().coerceAtLeast(1)
+        val h = (height * scale).roundToInt().coerceAtLeast(1)
+        val scaled = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
+        val graphics = scaled.createGraphics()
+        graphics.setRenderingHint(
+            RenderingHints.KEY_INTERPOLATION,
+            RenderingHints.VALUE_INTERPOLATION_BICUBIC,
+        )
+        graphics.drawImage(this, 0, 0, w, h, null)
+        graphics.dispose()
+        return scaled
+    }
+}
+
+
+/**
+ * JFrame uses UIManager "control" as its default background before Compose draws.
+ * Set it to the app theme background so dark theme never flashes white (CMP #1794).
+ *
+ * Colors match Material3 [darkColorScheme]/[lightColorScheme] defaults used by [ru.fromchat.ui.getColorScheme].
+ */
+private fun applyDesktopWindowChromeBackground() {
+    UIManager.put(
+        "control",
+        ColorUIResource(desktopThemeBackgroundCompose(desktopAppDarkTheme()).toAwtColor()),
+    )
+}
+
+private fun Color.toAwtColor() =
+    java.awt.Color(red, green, blue, alpha)
+
+private fun isSystemAppearanceDark() = desktopSystemDarkTheme()
+
+internal fun applyDockIcon(image: BufferedImage?) {
+    if (image == null) {
+        Logger.w("DesktopIcon", "applyDockIcon skipped — image is null")
+        return
+    }
+
+    runCatching {
+        if (!Taskbar.isTaskbarSupported()) {
+            Logger.w("DesktopIcon", "Taskbar unsupported; dock icon not set")
+            return
+        }
+
+        val taskbar = Taskbar.getTaskbar()
+        if (taskbar.isSupported(Taskbar.Feature.ICON_IMAGE)) {
+            taskbar.iconImage = image
+            Logger.i("DesktopIcon", "Taskbar dock icon set (${image.width}x${image.height})")
+        } else {
+            Logger.w("DesktopIcon", "Taskbar.Feature.ICON_IMAGE unsupported")
+        }
+    }.onFailure { error ->
+        Logger.w("DesktopIcon", "Failed to set dock icon: ${error.message}")
+    }
+}
+
+/**
+ * Loads the desktop tray or window/dock icon from packaged resources.
+ * Tray prefers the flat white+alpha mark (`app_icon`, template-ready); dock/window prefer
+ * the branded AppIcon (`app_window_icon`).
+ *
+ * Uses [BufferedImage.toPainter] so Compose Tray/Window hand the same AWT pixels to the OS
+ * (BitmapPainter → ImageBitmap round-trips can rasterize blank and fall back to Compose's default).
+ *
+ * On macOS, `apple.awt.enableTemplateImages` makes the tray mark an NSImage template so the
+ * menu bar recolors it for the current appearance (set early in [main]).
+ */
+private fun loadAppIconPainter(tray: Boolean): Painter {
+    val image = loadAppIconBufferedImage(tray)
+    if (image == null) {
+        Logger.e(
+            "DesktopIcon",
+            "loadAppIconPainter fell through — no resource decoded (tray=$tray); using solid fallback",
+        )
+        return solidFallbackIcon().toPainter()
+    }
+
+    Logger.i(
+        "DesktopIcon",
+        "loadAppIconPainter ok tray=$tray size=${image.width}x${image.height} type=${image.type}",
+    )
+
+    return image.toPainter()
+}
+
+private fun loadAppIconBufferedImage(tray: Boolean): BufferedImage? {
+    // Only the macOS tray wants the white glyph, because that is the one build that marks the icon
+    // as a template image and lets the system recolour it. Everywhere else the tray host wants the
+    // coloured window icon — and specifically not `app_icon.png`, whose fully transparent pixels
+    // all carry white RGB: a tray host that ignores the alpha channel turns that into a solid
+    // white square as well.
+    val names = if (tray && isMacOs()) {
+        listOf("app_icon.png", "app_icon.webp", "app_window_icon.png", "app_window_icon.webp")
+    } else {
+        listOf("app_window_icon.png", "app_window_icon.webp", "app_icon.png", "app_icon.webp")
+    }
+
+    for (name in names) {
+        return ensureArgb(
+            (
+                decodeImageBytes(
+                    (readClasspathBytes(
+                        name,
+                        listOfNotNull(
+                            DesktopApplicationBootstrap::class.java.classLoader,
+                            Thread.currentThread().contextClassLoader,
+                            ClassLoader.getSystemClassLoader(),
+                        ).distinct()
+                    ) ?: readFileFallbackBytes(name) ?: continue)
+                        .also { if (it.isEmpty()) continue },
+                    name
+                ) ?: continue
+            ).also {
+                if (it.width < 16 || it.height < 16) {
+                    Logger.w(
+                        "DesktopIcon",
+                        "Skipping $name — decoded size ${it.width}x${it.height}"
+                    )
+                    continue
+                }
+            }
+        )
+            .let { if (tray) prepareTrayIcon(it) else it }
+            .also {
+                Logger.i("DesktopIcon", "Loaded $name (${it.width}x${it.height}) tray=$tray")
+            }
+    }
+
+    Logger.e("DesktopIcon", "No icon resource found for tray=$tray (tried $names)")
+    return null
+}
+
+private fun readClasspathBytes(name: String, loaders: List<ClassLoader>): ByteArray? {
+    val paths = listOf(name, "/$name")
+    for (loader in loaders) {
+        loop@ for (path in paths) {
+            val bytes = runCatching {
+                (loader.getResourceAsStream(path) ?: continue@loop)
+                    .use { it.readBytes() }
+            }.onFailure { error ->
+                Logger.w("DesktopIcon", "Failed reading $path from $loader: ${error.message}")
+            }
+            .getOrNull()
+            ?: continue
+
+            if (bytes.isNotEmpty()) {
+                Logger.i("DesktopIcon", "Classpath hit $path via $loader (${bytes.size} bytes)")
+                return bytes
+            }
+        }
+    }
+
+    // Explicit class resource (works when context CL is a filtered compose run CL).
+    loop@ for (path in paths) {
+        val bytes = runCatching {
+            (DesktopApplicationBootstrap::class.java.getResourceAsStream(path) ?: continue@loop)
+                .use { it.readBytes() }
+        }.getOrNull() ?: continue
+
+        if (bytes.isNotEmpty()) {
+            Logger.i("DesktopIcon", "Class resource hit $path (${bytes.size} bytes)")
+            return bytes
+        }
+    }
+
+    return null
+}
+
+/** Last resort when classpath packaging under `:run` omits resources. */
+private fun readFileFallbackBytes(name: String): ByteArray? {
+    for (
+        file in listOf(
+            File("app/desktop/src/main/resources", name),
+            File("src/main/resources", name),
+            File(System.getProperty("user.dir"), "src/main/resources/$name"),
+            File(System.getProperty("user.dir"), "app/desktop/src/main/resources/$name"),
+        )
+    ) {
+        if (!file.isFile) continue
+        val bytes = runCatching { file.readBytes() }.getOrNull() ?: continue
+        if (bytes.isNotEmpty()) {
+            Logger.i("DesktopIcon", "File fallback hit ${file.absolutePath} (${bytes.size} bytes)")
+            return bytes
+        }
+    }
+
+    return null
+}
+
+private fun decodeImageBytes(bytes: ByteArray, name: String): BufferedImage? {
+    val viaImageIo = runCatching {
+        ImageIO.read(ByteArrayInputStream(bytes))
+    }.onFailure { error ->
+        Logger.w("DesktopIcon", "ImageIO failed for $name: ${error.message}")
+    }.getOrNull()
+
+    if (viaImageIo != null) return viaImageIo
+
+    return runCatching {
+        bufferedImageFromComposeArgb(SkiaImage.makeFromEncoded(bytes).toComposeImageBitmap())
+    }.onFailure { error ->
+        Logger.w("DesktopIcon", "Skia decode failed for $name: ${error.message}")
+    }.getOrNull()
+}
+
+private fun ensureArgb(source: BufferedImage): BufferedImage {
+    if (source.type == BufferedImage.TYPE_INT_ARGB) return source
+
+    val out = BufferedImage(source.width, source.height, BufferedImage.TYPE_INT_ARGB)
+    out.createGraphics().apply {
+        drawImage(source, 0, 0, null)
+        dispose()
+    }
+
+    return out
+}
+
+private fun bufferedImageFromComposeArgb(
+    bitmap: androidx.compose.ui.graphics.ImageBitmap,
+): BufferedImage {
+    val w = bitmap.width
+    val h = bitmap.height
+    val pixels = IntArray(w * h)
+    bitmap.readPixels(pixels)
+
+    val out = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
+    out.setRGB(0, 0, w, h, pixels, 0, w)
+
+    return out
+}
+
+private fun prepareTrayIcon(source: BufferedImage): BufferedImage {
+    // The macOS tray source (`app_icon.png`) is a template-ready white-on-transparent
+    // glyph; the menu bar recolors it. Stripping near-white or near-black pixels used to
+    // punch the entire glyph out (blank/transparent tray) — the icon already carries its
+    // own alpha, so nothing needs stripping. The Linux tray gets the coloured icon.
+    return scaleBufferedImage(ensureArgb(source), trayIconSize())
+}
+
+/**
+ * Pixel size the tray host is asked for.
+ *
+ * A tray icon is not laid out, it is drawn once into whatever box the host gives it, so it has to
+ * be pre-sized to that box. AWT's Linux tray is xembed — `XTrayIconPeer` hard-codes a 24x24 canvas
+ * and ignores the desktop scale entirely — so the only thing that matters is being small enough to
+ * scale down into it cleanly, which is why this is no longer derived from the desktop scale: a
+ * 44px source bought no extra sharpness and only invited a crop. `setImageAutoSize(true)` does the
+ * final resize.
+ */
+private fun trayIconSize(): Int =
+    if (isLinuxOs()) 48 else 64
+
+private fun scaleBufferedImage(source: BufferedImage, size: Int): BufferedImage {
+    if (source.width == size && source.height == size) return source
+    val out = BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB)
+
+    out.createGraphics().apply {
+        setRenderingHint(
+            RenderingHints.KEY_INTERPOLATION,
+            RenderingHints.VALUE_INTERPOLATION_BILINEAR,
+        )
+        setRenderingHint(
+            RenderingHints.KEY_RENDERING,
+            RenderingHints.VALUE_RENDER_QUALITY,
+        )
+        drawImage(source.getScaledInstance(size, size, Image.SCALE_SMOOTH), 0, 0, null)
+
+        dispose()
+    }
+
+    return out
+}
+
+/** Opaque mark so Tray never substitutes the Compose default for a blank painter. */
+private fun solidFallbackIcon(): BufferedImage {
+    val out = BufferedImage(32, 32, BufferedImage.TYPE_INT_ARGB)
+    out.createGraphics().apply {
+        color = java.awt.Color(0x1A, 0x73, 0xE8)
+        fillRoundRect(2, 2, 28, 28, 8, 8)
+
+        dispose()
+    }
+
+    return out
+}

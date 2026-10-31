@@ -6,6 +6,8 @@
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>FromChat</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -20,13 +22,32 @@
 	<string>0.3</string>
 	<key>CFBundleVersion</key>
 	<string>03</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.social-networking</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
 	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>FromChat connects to the chat server address you configure, including servers on your local network.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>FromChat needs microphone access for voice and video calls.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>FromChat needs camera access for video calls.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>FromChat needs photo library access so you can attach images to messages.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>FromChat needs permission to save images you export from chats.</string>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>INSendMessageIntent</string>
+		<string>INStartCallIntent</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

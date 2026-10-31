@@ -1,18 +1,20 @@
 package ru.fromchat.api.local.cache
 
-import android.net.Uri
 import android.content.res.AssetFileDescriptor
-import com.pr0gramm3r101.utils.UtilsLibrary
+import android.net.Uri
+import androidx.core.net.toUri
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.InputStream
+import ru.fromchat.utils.UtilsLibrary
 
-private fun uploadDir(instanceId: String): File {
-    val safe = instanceId.replace(Regex("[^a-zA-Z0-9._-]"), "_")
-    return File(UtilsLibrary.context.cacheDir, "fromchat/instances/$safe/uploads").apply { mkdirs() }
-}
+private fun uploadDir(instanceId: String): File =
+    File(
+        UtilsLibrary.context.cacheDir,
+        "fromchat/instances/${instanceId.replace(Regex("[^a-zA-Z0-9._-]"), "_")}/uploads",
+    ).apply { mkdirs() }
 
 private fun safeId(clientMessageId: String): String =
     clientMessageId.replace(Regex("[^a-zA-Z0-9._-]"), "_")
@@ -74,21 +76,20 @@ private fun atomicReplace(part: File, final: File) {
 actual suspend fun queryOutboundUriSizeBytes(fileUri: String): Long? = withContext(Dispatchers.IO) {
     when {
         fileUri.startsWith("content://") -> {
-            val uri = Uri.parse(fileUri)
-            UtilsLibrary.context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { afd: AssetFileDescriptor ->
-                val len = afd.length
-                if (len >= 0L) len else null
+            UtilsLibrary.context.contentResolver.openAssetFileDescriptor(
+                fileUri.toUri(),
+                "r"
+            )?.use { afd: AssetFileDescriptor ->
+                afd.length.takeIf { it >= 0L }
             }
         }
+
         fileUri.startsWith("file://") -> {
-            val path = Uri.parse(fileUri).path ?: return@withContext null
-            val file = File(path)
-            if (!file.isFile) null else file.length()
+            File(fileUri.toUri().path ?: return@withContext null)
+                .takeIf { it.isFile }?.length()
         }
-        else -> {
-            val file = File(fileUri)
-            if (!file.isFile) null else file.length()
-        }
+
+        else -> File(fileUri).takeIf { it.isFile }?.length()
     }
 }
 
@@ -116,7 +117,7 @@ actual suspend fun stageOutboundFileForUpload(
     part.delete()
     val input = when {
         sourceUri.startsWith("content://") || sourceUri.startsWith("file://") ->
-            UtilsLibrary.context.contentResolver.openInputStream(Uri.parse(sourceUri))
+            UtilsLibrary.context.contentResolver.openInputStream(sourceUri.toUri())
         else -> File(sourceUri).takeIf { it.isFile }?.inputStream()
     } ?: throw OutboundFileUnavailableException("Failed to read file from URI")
     input.use { inputStream ->
@@ -155,10 +156,14 @@ actual suspend fun isEncryptedBlobReady(
     clientMessageId: String,
     expectedEncryptedSizeBytes: Long?,
 ): Boolean = withContext(Dispatchers.IO) {
-    val expected = expectedEncryptedSizeBytes?.takeIf { it > 0L } ?: 0L
-    val enc = blobFile(instanceId, clientMessageId)
-    val ok = blobOkFile(instanceId, clientMessageId)
-    if (!readOkMarker(ok, enc, expected)) return@withContext false
+    if (!readOkMarker(
+            blobOkFile(instanceId, clientMessageId),
+            blobFile(instanceId, clientMessageId),
+            expectedEncryptedSizeBytes?.takeIf { it > 0L } ?: 0L,
+        )
+    ) {
+        return@withContext false
+    }
     cipherFile(instanceId, clientMessageId).isFile
 }
 
@@ -219,26 +224,23 @@ private class AndroidOutboundFileInputStream(
 
 actual suspend fun openOutboundFileInputStream(fileUri: String): OutboundFileInputStream? =
     withContext(Dispatchers.IO) {
-        val stream = when {
-            fileUri.startsWith("content://") || fileUri.startsWith("file://") ->
-                UtilsLibrary.context.contentResolver.openInputStream(Uri.parse(fileUri))
-            else -> {
-                val file = File(fileUri)
-                if (!file.isFile) return@withContext null
-                file.inputStream()
-            }
-        } ?: return@withContext null
-        AndroidOutboundFileInputStream(stream)
+        AndroidOutboundFileInputStream(
+            when {
+                fileUri.startsWith("content://") || fileUri.startsWith("file://") ->
+                    UtilsLibrary.context.contentResolver.openInputStream(fileUri.toUri())
+                else -> File(fileUri).takeIf { it.isFile }?.inputStream()
+            } ?: return@withContext null,
+        )
     }
 
 actual suspend fun readOutboundFileBytes(fileUri: String): ByteArray =
     withContext(Dispatchers.IO) {
         when {
             fileUri.startsWith("content://") ->
-                UtilsLibrary.context.contentResolver.openInputStream(Uri.parse(fileUri))?.use { it.readBytes() }
+                UtilsLibrary.context.contentResolver.openInputStream(fileUri.toUri())?.use { it.readBytes() }
                     ?: throw OutboundFileUnavailableException("Failed to read file from URI")
             fileUri.startsWith("file://") -> {
-                val path = Uri.parse(fileUri).path ?: throw OutboundFileUnavailableException("Invalid file URI")
+                val path = fileUri.toUri().path ?: throw OutboundFileUnavailableException("Invalid file URI")
                 val file = File(path)
                 if (!file.isFile) throw OutboundFileUnavailableException("File no longer exists")
                 file.readBytes()
@@ -257,7 +259,7 @@ actual suspend fun copyOutboundFileToPath(sourceUri: String, destinationPath: St
         dest.parentFile?.mkdirs()
         val input = when {
             sourceUri.startsWith("content://") || sourceUri.startsWith("file://") ->
-                UtilsLibrary.context.contentResolver.openInputStream(Uri.parse(sourceUri))
+                UtilsLibrary.context.contentResolver.openInputStream(sourceUri.toUri())
             else -> File(sourceUri.removePrefix("file://")).takeIf { it.isFile }?.inputStream()
         } ?: throw OutboundFileUnavailableException("Failed to read file from URI")
         input.use { inputStream ->
@@ -324,9 +326,11 @@ actual suspend fun readEncryptedUploadBlobRange(
     }
 }
 
-actual suspend fun saveUploadTransportCipherJson(instanceId: String, clientMessageId: String, json: String) {
-    saveUploadTransportCipherJsonAtomic(instanceId, clientMessageId, json)
-}
+actual suspend fun saveUploadTransportCipherJson(
+    instanceId: String,
+    clientMessageId: String,
+    json: String,
+) = saveUploadTransportCipherJsonAtomic(instanceId, clientMessageId, json)
 
 actual suspend fun saveUploadTransportCipherJsonAtomic(
     instanceId: String,

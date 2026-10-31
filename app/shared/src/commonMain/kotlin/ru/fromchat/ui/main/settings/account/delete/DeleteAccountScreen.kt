@@ -1,6 +1,5 @@
 package ru.fromchat.ui.main.settings.account.delete
 
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
@@ -64,7 +63,6 @@ internal fun deleteErrorMessage(error: Throwable, errUnexpected: String) =
         ?: error.message
         ?: errUnexpected
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun DeleteAccountScreen(onBack: () -> Unit, onDeleted: () -> Unit) {
     val scope = rememberCoroutineScope()

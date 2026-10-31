@@ -1,6 +1,6 @@
 package ru.fromchat.api.local.download
 
-import com.pr0gramm3r101.utils.files.PlatformFileSystem
+import ru.fromchat.utils.files.PlatformFileSystem
 import io.ktor.client.HttpClient
 import io.ktor.client.request.header
 import io.ktor.client.request.prepareGet
@@ -11,9 +11,9 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentLength
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.readAvailable
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import ru.fromchat.api.local.cache.FileWriteSink
-import kotlin.coroutines.coroutineContext
 
 private const val DOWNLOAD_CHUNK_BYTES = 256 * 1024
 
@@ -73,7 +73,7 @@ private suspend fun streamChannelToFile(
     val buffer = ByteArray(DOWNLOAD_CHUNK_BYTES)
     FileWriteSink(path = outputPath, append = append).use { sink ->
         while (!channel.isClosedForRead) {
-            coroutineContext.ensureActive()
+            currentCoroutineContext().ensureActive()
             val read = channel.readAvailable(buffer, offset = 0, length = buffer.size)
             when {
                 read > 0 -> {

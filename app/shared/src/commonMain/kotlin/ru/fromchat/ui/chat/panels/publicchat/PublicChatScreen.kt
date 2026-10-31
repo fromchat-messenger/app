@@ -16,10 +16,9 @@ import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.db.store.ConnectionStateStore
 import ru.fromchat.api.local.db.store.MessageRepository
-import ru.fromchat.api.local.db.store.ConnectionStatus
 import ru.fromchat.api.local.send.OutgoingMessageCoordinator
 import ru.fromchat.api.local.send.scheduleOutboxProcessing
-import ru.fromchat.ui.chat.ChatScreen
+import ru.fromchat.ui.chat.chrome.ChatScreen
 import ru.fromchat.ui.chat.utils.PublicChatPanelCache
 import ru.fromchat.utils.NetworkConnectivity
 

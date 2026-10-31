@@ -9,30 +9,68 @@ inputs:
 runs:
   using: composite
   steps:
+    # Path lists must stay identical to cache-gradle-build: actions/cache skips the save when the
+    # restore and save paths do not match.
     - name: Save Android Gradle build cache
       if: inputs.scope == 'android'
       uses: actions/cache/save@v5
       continue-on-error: true
       with:
-        key: gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts', 'gradle.properties', 'build.gradle.kts', 'app/desktop/build.gradle.kts', 'app/desktop/proguard-rules.pro', 'app/shared/build.gradle.kts', 'app/android/build.gradle.kts', 'utils/shared/build.gradle.kts', 'utils/android/build.gradle.kts') }}
+        key: gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts', 'gradle.properties', 'build.gradle.kts', 'app/desktop/build.gradle.kts', 'app/desktop/proguard-rules.pro', 'app/shared/build.gradle.kts', 'app/android/build.gradle.kts') }}
         path: |
           .gradle
           build
           app/shared/build
           app/android/build
-          utils/shared/build
-          utils/android/build
-    - name: Save Gradle build cache
-      if: inputs.scope != 'android'
+          !app/android/build/outputs
+    - name: Save Build JAR Gradle build cache
+      if: inputs.scope == 'build-jar'
       uses: actions/cache/save@v5
       continue-on-error: true
       with:
-        key: gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts', 'gradle.properties', 'build.gradle.kts', 'app/desktop/build.gradle.kts', 'app/desktop/proguard-rules.pro', 'app/shared/build.gradle.kts', 'app/android/build.gradle.kts', 'utils/shared/build.gradle.kts', 'utils/android/build.gradle.kts') }}
+        # compose/tmp is kept only here — it holds ProGuard's output jars, so this is the one scope
+        # where dropping them would make proguardReleaseJars re-run its ~8 minutes every time.
+        key: gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts', 'gradle.properties', 'build.gradle.kts', 'app/desktop/build.gradle.kts', 'app/desktop/proguard-rules.pro', 'app/shared/build.gradle.kts', 'app/android/build.gradle.kts') }}
         path: |
           .gradle
           build
-          app/desktop/build
           app/shared/build
-          app/android/build
-          utils/shared/build
-          utils/android/build
+          app/desktop/build
+          !app/desktop/build/distributions
+          !app/desktop/build/ci
+          !app/desktop/build/compose/binaries
+    # Restore-only for the desktop packaging scopes (linux-*, windows-package-*,
+    # macos-*): measurements showed their build trees are ~1.3–2 GB each and are
+    # dominated by installer outputs (deb/rpm/AppImage/DMG/Setup.exe), the jpackage
+    # runtime image copied up to four times, and staged ProGuard jars — all of which
+    # regenerate from the Build JAR artifact in a few minutes. Saving six 1.3–2 GB
+    # entries per run kept the repo pinned at the 10 GB cache cap and LRU-evicted
+    # the entries that actually matter (build-jar, android, windows-rust) within
+    # minutes. Their restores now fall back to the build-jar scope via restore-keys.
+    # (Note: actions/cache negated path patterns cannot exclude subtrees of an
+    # included parent directory — actions/toolkit#713 — so "!distributions" style
+    # exclusions are no-ops here; not saving at all is the only reliable trim.)
+    - name: Save Gradle build cache (windows-tools only)
+      if: >-
+        inputs.scope != 'android' && inputs.scope != 'build-jar' &&
+        !startsWith(inputs.scope, 'linux-') &&
+        !startsWith(inputs.scope, 'windows-package-') &&
+        !startsWith(inputs.scope, 'macos-')
+      # Path list must stay byte-identical to the generic restore list in
+      # cache-gradle-build: actions/cache refuses to save when the restore and save
+      # paths differ, and the version stamp (hash of the path list) gates any later
+      # restore — including cross-scope restore-key fallbacks. compose/tmp is kept
+      # here on purpose (holds ProGuard's output jars; small); see the matching
+      # comment in cache-gradle-build.
+      uses: actions/cache/save@v5
+      continue-on-error: true
+      with:
+        key: gradle-build-${{ runner.os }}-${{ runner.arch }}-v2-${{ inputs.scope }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts', 'gradle.properties', 'build.gradle.kts', 'app/desktop/build.gradle.kts', 'app/desktop/proguard-rules.pro', 'app/shared/build.gradle.kts', 'app/android/build.gradle.kts') }}
+        path: |
+          .gradle
+          build
+          app/shared/build
+          app/desktop/build
+          !app/desktop/build/distributions
+          !app/desktop/build/ci
+          !app/desktop/build/compose/binaries

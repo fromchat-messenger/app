@@ -2,7 +2,6 @@ package ru.fromchat.ui.main.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,22 +10,18 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Brush
-import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Wallpaper
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.automirrored.rounded.KeyboardReturn
+import androidx.compose.material.icons.rounded.Brush
+import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Tab
+import androidx.compose.material.icons.rounded.ViewInAr
+import androidx.compose.material.icons.rounded.Wallpaper
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MediumTopAppBar
 import androidx.compose.material3.Scaffold
-import ru.fromchat.ui.components.Text
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -37,52 +32,70 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.pr0gramm3r101.components.Category
-import com.pr0gramm3r101.components.ListItem
-import com.pr0gramm3r101.components.SwitchListItem
-import com.pr0gramm3r101.utils.materialYouAvailable
+import ru.fromchat.utils.components.Category
+import ru.fromchat.utils.components.ListItem
+import ru.fromchat.utils.components.SwitchListItem
+import ru.fromchat.utils.conditional
+import ru.fromchat.utils.materialYouAvailable
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
+import ru.fromchat.appearance_nav_bar_floating
+import ru.fromchat.appearance_nav_bar_show_titles
+import ru.fromchat.appearance_nav_bar_show_titles_d
+import ru.fromchat.appearance_nav_bar_style
+import ru.fromchat.appearance_nav_bar_style_d
+import ru.fromchat.appearance_nav_bar_traditional
+import ru.fromchat.appearance_window_frame
+import ru.fromchat.appearance_window_frame_d
 import ru.fromchat.as_system
-import ru.fromchat.back
+import ru.fromchat.config.NavBarStyle
 import ru.fromchat.config.Settings
 import ru.fromchat.dark
+import ru.fromchat.enter_to_send
+import ru.fromchat.enter_to_send_d
 import ru.fromchat.light
 import ru.fromchat.materialYou
 import ru.fromchat.materialYou_d
 import ru.fromchat.settings_category_appearance
 import ru.fromchat.theme
-import ru.fromchat.ui.Theme
-import ru.fromchat.ui.dynamicThemeEnabled
-import ru.fromchat.ui.theme
+import ru.fromchat.ui.theme.Theme
+import ru.fromchat.ui.components.Text
+import ru.fromchat.ui.theme.dynamicThemeEnabled
+import ru.fromchat.ui.theme.navBarShowTitle
+import ru.fromchat.ui.theme.navBarStyle
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AppearanceScreen(onBack: () -> Unit) {
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val useCollapsing = settingsDetailUseCollapsingTopBar()
+    val scrollBehavior = rememberSettingsCollapsingScrollBehavior()
+    val hazeState = rememberSettingsDetailHazeState()
 
     var materialYouSwitch by remember {
         mutableStateOf(Settings.materialYou && materialYouAvailable)
     }
+    var enterToSendSwitch by remember { mutableStateOf(Settings.enterToSend) }
     var themeChipIndex by remember { mutableIntStateOf(Settings.theme.ordinal) }
+    val nativeFrameSupported = isDesktopNativeFrameSupported()
+    var nativeFrameSwitch by remember { mutableStateOf(isDesktopNativeFrameEnabled()) }
 
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            MediumTopAppBar(
-                title = { Text(stringResource(Res.string.settings_category_appearance)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(Res.string.back))
-                    }
-                },
-                scrollBehavior = scrollBehavior
+            SettingsDetailTopBar(
+                title = stringResource(Res.string.settings_category_appearance),
+                onBack = onBack,
+                hazeState = hazeState,
+                scrollBehavior = scrollBehavior,
             )
         }
     ) { innerPadding ->
         Column(
             Modifier
                 .fillMaxWidth()
+                .settingsDetailHazeSource(hazeState)
+                .conditional(useCollapsing) {
+                    Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
+                }
                 .verticalScroll(rememberScrollState())
                 .padding(innerPadding)
         ) {
@@ -102,12 +115,38 @@ fun AppearanceScreen(onBack: () -> Unit) {
                     },
                     divider = true,
                     leadingContent = {
-                        Icon(Icons.Filled.Wallpaper, null)
+                        Icon(Icons.Rounded.Wallpaper, null)
                     }
                 )
+                SwitchListItem(
+                    headline = stringResource(Res.string.enter_to_send),
+                    supportingText = stringResource(Res.string.enter_to_send_d),
+                    checked = enterToSendSwitch,
+                    onCheckedChange = {
+                        enterToSendSwitch = it
+                        Settings.enterToSend = it
+                    },
+                    divider = true,
+                    leadingContent = {
+                        Icon(Icons.AutoMirrored.Rounded.KeyboardReturn, null)
+                    }
+                )
+                if (nativeFrameSupported) {
+                    SwitchListItem(
+                        headline = stringResource(Res.string.appearance_window_frame),
+                        supportingText = stringResource(Res.string.appearance_window_frame_d),
+                        checked = nativeFrameSwitch,
+                        onCheckedChange = {
+                            nativeFrameSwitch = it
+                            setDesktopNativeFrameEnabled(it)
+                        },
+                        divider = true,
+                        leadingContent = { Icon(Icons.Rounded.ViewInAr, null) }
+                    )
+                }
                 ListItem(
                     headline = stringResource(Res.string.theme),
-                    leadingContent = { Icon(Icons.Filled.Brush, null) },
+                    leadingContent = { Icon(Icons.Rounded.Brush, null) },
                     bottomContent = {
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             val options = listOf(
@@ -120,7 +159,6 @@ fun AppearanceScreen(onBack: () -> Unit) {
                                     onClick = {
                                         themeChipIndex = index
                                         Settings.theme = Theme.entries[index]
-                                        theme = Theme.entries[index]
                                     },
                                     selected = index == themeChipIndex,
                                     leadingIcon = {
@@ -128,9 +166,9 @@ fun AppearanceScreen(onBack: () -> Unit) {
                                             Spacer(Modifier.width(16.dp))
                                         }
                                         when (index) {
-                                            0 -> Icon(Icons.Filled.Settings, null)
-                                            1 -> Icon(Icons.Filled.LightMode, null)
-                                            2 -> Icon(Icons.Filled.DarkMode, null)
+                                            0 -> Icon(Icons.Rounded.Settings, null)
+                                            1 -> Icon(Icons.Rounded.LightMode, null)
+                                            2 -> Icon(Icons.Rounded.DarkMode, null)
                                             else -> Unit
                                         }
                                     },
@@ -143,6 +181,65 @@ fun AppearanceScreen(onBack: () -> Unit) {
                     }
                 )
             }
+
+            Category(
+                Modifier.padding(top = 8.dp),
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+            ) {
+                ListItem(
+                    headline = stringResource(Res.string.appearance_nav_bar_style),
+                    supportingText = stringResource(Res.string.appearance_nav_bar_style_d),
+                    leadingContent = { Icon(Icons.Rounded.Brush, null) },
+                    divider = true,
+                    bottomContent = {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            NavBarStyle.entries.forEach { style ->
+                                FilterChip(
+                                    onClick = {
+                                        Settings.navBarStyle = style
+                                        navBarStyle = style
+                                    },
+                                    selected = navBarStyle == style,
+                                    label = {
+                                        Text(
+                                            text = if (style == NavBarStyle.Traditional) {
+                                                stringResource(Res.string.appearance_nav_bar_traditional)
+                                            } else {
+                                                stringResource(Res.string.appearance_nav_bar_floating)
+                                            },
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
+                )
+                SwitchListItem(
+                    headline = stringResource(Res.string.appearance_nav_bar_show_titles),
+                    supportingText = stringResource(Res.string.appearance_nav_bar_show_titles_d),
+                    leadingContent = {
+                        Icon(
+                            imageVector = Icons.Rounded.Tab,
+                            contentDescription = null
+                        )
+                    },
+                    enabled = navBarStyle == NavBarStyle.Floating,
+                    checked = navBarShowTitle,
+                    onCheckedChange = {
+                        Settings.navBarShowTitle = it
+                        navBarShowTitle = it
+                    },
+                    divider = false
+                )
+            }
         }
     }
 }
+
+/** True on desktop, where the window frame can be switched to the OS-drawn one. */
+expect fun isDesktopNativeFrameSupported(): Boolean
+
+expect fun isDesktopNativeFrameEnabled(): Boolean
+
+expect fun setDesktopNativeFrameEnabled(enabled: Boolean)

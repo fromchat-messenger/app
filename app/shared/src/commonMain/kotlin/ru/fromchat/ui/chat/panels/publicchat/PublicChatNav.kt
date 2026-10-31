@@ -7,9 +7,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavController
+import androidx.navigation.NavOptionsBuilder
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.db.store.PublicChatProfileCache
-import ru.fromchat.ui.chat.rememberChatNavigationGate
+import ru.fromchat.ui.chat.chrome.rememberChatNavigationGate
 import ru.fromchat.ui.chat.utils.PublicChatPanelCache
 import ru.fromchat.ui.profile.PublicChatProfileScreen
 import ru.fromchat.utils.haptic.HapticFeedbackEvent
@@ -23,12 +24,30 @@ object PublicChatNav {
     const val SHARED_HEADER_KEY = "public-chat-header"
 }
 
+/**
+ * Opens the public chat, replacing any prior conversation/profile above the main `chat` root.
+ *
+ * No-ops when public chat is already the top destination (avoids NavHost enter/exit
+ * for re-selecting the same conversation in list–detail).
+ */
+fun NavController.navigateToPublicChat(
+    builder: NavOptionsBuilder.() -> Unit = {},
+) {
+    if (currentBackStackEntry?.destination?.route == PublicChatNav.CHAT_ROUTE) return
+
+    navigate(PublicChatNav.CHAT_ROUTE) {
+        popUpTo(graph.startDestinationId) { saveState = true }
+        launchSingleTop = true
+        builder()
+    }
+}
+
 @Composable
 fun PublicChatChatRoute(
     scrollToMessageId: Int? = null,
     navController: NavController,
-    sharedTransitionScope: SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
     modifier: Modifier = Modifier,
 ) {
     val haptic = rememberHapticFeedback()
@@ -78,7 +97,7 @@ fun PublicChatProfileRoute(
         onChat = {
             runNav {
                 haptic(HapticFeedbackEvent.ProfileClosed)
-                navController.popBackStack()
+                navController.navigateToPublicChat()
             }
         },
         modifier = modifier.fillMaxSize(),

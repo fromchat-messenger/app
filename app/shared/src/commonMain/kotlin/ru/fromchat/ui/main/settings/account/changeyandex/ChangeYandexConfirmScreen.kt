@@ -21,10 +21,10 @@ import org.jetbrains.compose.resources.vectorResource
 import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.schema.user.auth.YandexOAuthParams
-import ru.fromchat.auth.yandex.YANDEX_OAUTH_REDIRECT_URI
-import ru.fromchat.auth.yandex.buildYandexAuthorizeUrl
-import ru.fromchat.auth.yandex.generatePkcePair
-import ru.fromchat.auth.yandex.resolveYandexClientId
+import ru.fromchat.api.yandex.YANDEX_OAUTH_REDIRECT_URI
+import ru.fromchat.api.yandex.buildYandexAuthorizeUrl
+import ru.fromchat.api.yandex.generatePkcePair
+import ru.fromchat.api.yandex.resolveYandexClientId
 import ru.fromchat.auth_yandex_client_mismatch
 import ru.fromchat.config.Settings
 import ru.fromchat.error_unexpected
@@ -42,7 +42,7 @@ import ru.fromchat.ui.components.ExpressiveStepPageHeader
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.rememberExpressiveStepFlow
 import ru.fromchat.ui.components.showReplacingSnackbar
-import ru.fromchat.ui.isAppInDarkTheme
+import ru.fromchat.ui.theme.isAppInDarkTheme
 import ru.fromchat.ui.main.settings.SettingsRoutes
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)

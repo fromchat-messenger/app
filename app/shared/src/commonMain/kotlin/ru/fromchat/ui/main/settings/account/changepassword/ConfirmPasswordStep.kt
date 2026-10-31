@@ -3,7 +3,7 @@ package ru.fromchat.ui.main.settings.account.changepassword
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
@@ -16,7 +16,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import com.pr0gramm3r101.utils.crypto.deriveAuthSecret
+import ru.fromchat.utils.crypto.deriveAuthSecret
 import io.ktor.client.plugins.ClientRequestException
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -67,7 +67,7 @@ internal fun confirmPasswordStepPage(
 
     return ExpressiveStepPage(
         hero = ExpressiveHeroSpec(
-            icon = Icons.Filled.VerifiedUser,
+            icon = Icons.Rounded.VerifiedUser,
             polygon = MaterialShapes.Cookie7Sided.normalized(),
             containerColor = scheme.primaryContainer,
             contentColor = scheme.onPrimaryContainer,

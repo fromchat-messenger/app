@@ -1,7 +1,7 @@
 package ru.fromchat.api.crypto
 
-import com.pr0gramm3r101.utils.crypto.Base64
-import com.pr0gramm3r101.utils.settings.secureSettings
+import ru.fromchat.utils.crypto.Base64
+import ru.fromchat.utils.settings.secureSettings
 import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.post
@@ -13,7 +13,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.schema.user.keys.PublicKeyResponse
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.api.crypto.backup.BackupCrypto
 import ru.fromchat.api.crypto.backup.PrivateKeyBundle

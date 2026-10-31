@@ -114,7 +114,20 @@ case "$( uname )" in                #(
   NONSTOP* )        nonstop=true ;;
 esac
 
-
+# macOS: Xcode and other GUI tools often invoke gradlew without JAVA_HOME. Kotlin/Native
+# linking shells out to bash; use Android Studio JBR and FORK launch (see gradle.properties).
+if [ -z "${JAVA_HOME:-}" ] && [ "$darwin" = true ]; then
+    for as_jbr in \
+        "/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
+        "/Applications/Android Studio Preview.app/Contents/jbr/Contents/Home"
+    do
+        if [ -x "$as_jbr/bin/java" ]; then
+            JAVA_HOME=$as_jbr
+            export JAVA_HOME
+            break
+        fi
+    done
+fi
 
 # Determine the Java command to use to start the JVM.
 if [ -n "$JAVA_HOME" ] ; then

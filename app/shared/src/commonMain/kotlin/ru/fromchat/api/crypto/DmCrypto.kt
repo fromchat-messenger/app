@@ -1,8 +1,8 @@
 package ru.fromchat.api.crypto
 
-import com.pr0gramm3r101.utils.crypto.PasswordHash
-import com.pr0gramm3r101.utils.files.PlatformFileSystem
-import ru.fromchat.Logger
+import ru.fromchat.utils.crypto.PasswordHash
+import ru.fromchat.utils.files.PlatformFileSystem
+import ru.fromchat.logging.Logger
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.schema.messages.dm.DmEnvelope
 import ru.fromchat.api.schema.messages.dm.DmFile

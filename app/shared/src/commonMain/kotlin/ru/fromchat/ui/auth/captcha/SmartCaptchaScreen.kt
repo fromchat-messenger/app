@@ -8,13 +8,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import ru.fromchat.ui.components.ChromeBackIconButton
 import androidx.compose.material3.CircularWavyProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TopAppBar
@@ -31,7 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.intl.Locale
 import org.jetbrains.compose.resources.stringResource
-import ru.fromchat.Logger
+import ru.fromchat.logging.Logger
 import ru.fromchat.Res
 import ru.fromchat.auth_captcha_failed
 import ru.fromchat.auth_captcha_title
@@ -43,7 +38,6 @@ import ru.fromchat.ui.components.Text
  * Full-route SmartCaptcha screen (shown after password confirm when Yandex OAuth is off).
  * Returns a token / error via [SmartCaptchaNav] saved-state results.
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun SmartCaptchaScreen() {
     val navController = LocalNavController.current
@@ -115,12 +109,7 @@ internal fun SmartCaptchaScreen() {
             TopAppBar(
                 title = { Text(stringResource(Res.string.auth_captcha_title)) },
                 navigationIcon = {
-                    IconButton(onClick = { cancel() }) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(Res.string.back),
-                        )
-                    }
+                    ChromeBackIconButton(onClick = { cancel() })
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = barColor,

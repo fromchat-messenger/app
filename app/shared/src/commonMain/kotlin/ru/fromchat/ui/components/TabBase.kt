@@ -9,7 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import com.pr0gramm3r101.utils.resetFocus
+import ru.fromchat.utils.resetFocus
 
 @Composable
 inline fun TabBase(

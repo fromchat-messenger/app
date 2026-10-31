@@ -1,6 +1,6 @@
 package ru.fromchat.api.local.cache
 
-import com.pr0gramm3r101.utils.UtilsLibrary
+import ru.fromchat.utils.UtilsLibrary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import ru.fromchat.api.local.db.store.MessageDatabaseProvider
