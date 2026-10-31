@@ -188,6 +188,7 @@ jobs:
             app/shared/build
             app/desktop/build/classes
             app/desktop/build/libs
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 3
 
@@ -620,6 +621,9 @@ jobs:
     if: needs.resolve-version.outputs.should_build == 'true'
     runs-on: macos-latest
     timeout-minutes: 120
+    env:
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.vfs.watch=false
+      ORG_GRADLE_PROJECT_org.gradle.workers.max: "4"
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/restore-git-mtimes
