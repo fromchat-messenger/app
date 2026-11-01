@@ -291,7 +291,7 @@ fun NavGraphBuilder.settingsDetailDestinations(
 
     // Same route string as pre-auth server config on the root graph; fine on a nested graph.
     composable(SettingsRoutes.ServerConfig) {
-        ServerConfigScreen()
+        ServerConfigScreen(rootNavController = rootNavController)
     }
 }
 

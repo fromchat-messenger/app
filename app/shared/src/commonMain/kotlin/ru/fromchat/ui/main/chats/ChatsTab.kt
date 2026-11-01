@@ -797,7 +797,7 @@ fun ChatsTab(
     }
 
     val titleKey = when {
-        connectionStatus == ConnectionStatus.UPDATING -> "updating"
+        connectionStatus == ConnectionStatus.UPDATING && WebSocketManager.isConnected -> "updating"
         !online || (connectionStatus == ConnectionStatus.CONNECTING && !WebSocketManager.isConnected) -> "connecting"
         else -> "fromchat"
     }

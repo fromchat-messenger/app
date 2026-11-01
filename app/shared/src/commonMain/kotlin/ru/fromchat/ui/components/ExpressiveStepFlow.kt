@@ -633,6 +633,7 @@ fun ExpressiveStepFlowScaffold(
                         viewportBoundsInWindow = listViewportBounds,
                         contentPaddingTop = innerPadding.calculateTopPadding(),
                         contentPaddingBottom = innerPadding.calculateBottomPadding(),
+                        imeScrollEnabled = { isPageTransitionSettled },
                         predictiveBackProgress = { flowState.predictiveProgress },
                     )
 

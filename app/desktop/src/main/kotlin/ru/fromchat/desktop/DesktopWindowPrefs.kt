@@ -3,6 +3,7 @@ package ru.fromchat.desktop
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowPosition
+import ru.fromchat.utils.settings.jvmPreferencesNode
 import java.util.prefs.Preferences
 
 /**
@@ -21,8 +22,8 @@ internal object DesktopWindowPrefs {
     private const val X_KEY = "desktop_window_x"
     private const val Y_KEY = "desktop_window_y"
 
-    private val prefs: Preferences =
-        Preferences.userRoot().node("ru.fromchat.settings")
+    private val prefs: Preferences
+        get() = Preferences.userRoot().node(jvmPreferencesNode("ru.fromchat.settings"))
 
     fun loadSize(): DpSize {
         val width = prefs.getFloat(WIDTH_KEY, 0f)

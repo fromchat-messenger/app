@@ -43,6 +43,10 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberTrayState
 import androidx.compose.ui.window.rememberWindowState
 import ru.fromchat.utils.UtilsLibrary
+import ru.fromchat.utils.files.applyFromChatLauncherEnvironment
+import ru.fromchat.utils.files.configurePortableLayoutFromInstallDir
+import ru.fromchat.utils.files.desktopSingleInstanceScopeKey
+import ru.fromchat.utils.files.isPortableDesktop
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
@@ -148,8 +152,14 @@ private object DesktopApplicationBootstrap {
 }
 
 private object DesktopSingleInstance {
-    private const val PORT = 38_741
+    private const val INSTALLED_BASE_PORT = 38_741
+    private const val PORTABLE_BASE_PORT = 39_741
     private val running = AtomicBoolean(false)
+
+    private fun port(): Int {
+        val base = if (isPortableDesktop()) PORTABLE_BASE_PORT else INSTALLED_BASE_PORT
+        return base + (desktopSingleInstanceScopeKey().hashCode() and 0x7ff)
+    }
 
     /**
      * @return true if this process owns the instance and should show UI;
@@ -157,8 +167,9 @@ private object DesktopSingleInstance {
      */
     fun acquireOrForward(args: Array<String>): Boolean {
         val deepLink = args.firstOrNull { DesktopDeepLinkBus.isFromChatUri(it) }
+        val port = port()
         return try {
-            val server = ServerSocket(PORT, 8, InetAddress.getByName("127.0.0.1"))
+            val server = ServerSocket(port, 8, InetAddress.getByName("127.0.0.1"))
             running.set(true)
             thread(name = "fromchat-deeplink-ipc", isDaemon = true) {
                 while (running.get()) {
@@ -181,7 +192,7 @@ private object DesktopSingleInstance {
         } catch (_: Exception) {
             if (deepLink != null) {
                 runCatching {
-                    Socket("127.0.0.1", PORT).use { socket ->
+                    Socket("127.0.0.1", port).use { socket ->
                         OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8).use { out ->
                             out.write(deepLink)
                             out.write("\n")
@@ -278,6 +289,10 @@ private object DesktopProtocolRegistration {
 
 fun main(args: Array<String>) {
     LinuxArm64MesaEnvironment.applyIfNeeded()
+    applyFromChatLauncherEnvironment()
+    configurePortableLayoutFromInstallDir()
+    applyWindowsPortableShellDisplayNameEarly()
+    applyWindowsDesktopAppUserModelIdEarly()
     Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
         if (isSqliteBusy(throwable)) {
             if (!DatabaseLockGate.onSqliteBusy(throwable)) {
@@ -322,9 +337,6 @@ fun main(args: Array<String>) {
         } else {
             System.setProperty("skiko.renderApi", "OPENGL")
         }
-        setWindowsDesktopAppUserModelId(
-            if (AppBuildInfo.isDebug) "FromChat Beta" else "FromChat",
-        )
     }
     // Close-to-tray keeps the process + tray; no SMAppService / Login Items registration.
     args.filter { DesktopDeepLinkBus.isFromChatUri(it) }

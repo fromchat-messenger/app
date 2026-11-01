@@ -13,7 +13,7 @@ use fromchat_installer_common::{
     write_install_icon, finalize_install_launcher, find_jpackage_app_exe, FromChatEdition,
     patch_jpackage_exe_icon,
     HelperCommand, InstalledFromChat, ProgressEvent,
-    BRANDING_PNG, SETUP_HELPER_EXE, SETUP_INSTALLER_EXE, SETUP_MAGIC, UNINSTALL_SETUP_EXE, VISIBLE_PORTABLE_EXE,
+    BRANDING_PNG, HIDDEN_APP_EXE, SETUP_HELPER_EXE, SETUP_INSTALLER_EXE, SETUP_MAGIC, UNINSTALL_SETUP_EXE,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -1408,18 +1408,8 @@ fn run_portable(tx: Sender<ProgressEvent>, dest: PathBuf) -> anyhow::Result<()> 
     });
     extract_zstd_tar(bundle.payload_zstd()?, &dest)?;
     let _ = tx.send(ProgressEvent::Progress { fraction: 0.7 });
-    let launcher_path = dest.join(VISIBLE_PORTABLE_EXE);
-    std::fs::write(&launcher_path, &bundle.launcher)?;
-    let _ = tx.send(ProgressEvent::Status {
-        message: i18n::HIDING_FILES.into(),
-    });
-    #[cfg(windows)]
-    {
-        fromchat_installer_common::hide_all_except(&dest, VISIBLE_PORTABLE_EXE)?;
-        let data = dest.join("fromchat-data");
-        std::fs::create_dir_all(&data)?;
-        fromchat_installer_common::set_hidden(&data, true)?;
-    }
+    fromchat_installer_common::finalize_portable_directory(&dest, &bundle.meta.registration_id)?;
+    let launcher_path = dest.join(HIDDEN_APP_EXE);
     let _ = tx.send(ProgressEvent::Progress { fraction: 1.0 });
     let _ = tx.send(ProgressEvent::Done {
         launch_path: launcher_path.to_string_lossy().into_owned(),

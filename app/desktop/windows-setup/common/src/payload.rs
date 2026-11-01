@@ -6,9 +6,14 @@ use std::path::{Path, PathBuf};
 
 pub const SETUP_MAGIC: &[u8; 8] = b"FCHSETUP";
 pub const SETUP_MAGIC_V2: &[u8; 8] = b"FCHSETU2";
+/** Windows portable: pre-extracted jpackage tree; `FromChat.cfg` sets `-Dfromchat.portable=true`. */
 pub const PORTABLE_MAGIC: &[u8; 8] = b"FCHPORT1";
 pub const VISIBLE_PORTABLE_EXE: &str = "FromChat Portable.exe";
+/// Legacy split layout; migrated back to a single [HIDDEN_APP_EXE].
+pub const INTERNAL_PORTABLE_APP_EXE: &str = "FromChat-App.exe";
 pub const HIDDEN_APP_EXE: &str = "FromChat.exe";
+pub const PORTABLE_DATA_DIR: &str = "fromchat-data";
+pub const PORTABLE_BETA_DATA_DIR: &str = "fromchat-data-beta";
 pub const SETUP_INSTALLER_EXE: &str = "FromChat-Installer.exe";
 pub const SETUP_HELPER_EXE: &str = "FromChat-Installer-Helper.exe";
 pub const PIPE_NAME: &str = r"\\.\pipe\FromChat-Installer-Helper";

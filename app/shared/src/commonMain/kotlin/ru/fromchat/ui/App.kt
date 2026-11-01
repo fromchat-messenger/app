@@ -124,6 +124,10 @@ import ru.fromchat.ui.main.nav.mutedExitTransition
 import ru.fromchat.ui.main.nav.navigateReplacingMainDetail
 import ru.fromchat.ui.main.nav.profileDetailDestinations
 import ru.fromchat.ui.main.settings.SettingsRoutes
+import ru.fromchat.ui.main.settings.about.AboutDialogHost
+import ru.fromchat.ui.main.settings.about.LocalOpenAbout
+import ru.fromchat.ui.main.settings.about.isShowingAboutRoute
+import ru.fromchat.ui.main.settings.about.popAboutRouteIfShowing
 import ru.fromchat.ui.main.nav.settingsDetailDestinations
 import ru.fromchat.ui.components.LocalPaneHazeState
 import ru.fromchat.ui.components.ScreenSurface
@@ -392,6 +396,23 @@ fun App(
             val widthSizeClass = currentWindowAdaptiveInfo().widthSizeClass
             val isDesktopListDetail = widthSizeClass != WindowWidthSizeClass.COMPACT
             var pendingMainTab by remember { mutableIntStateOf(MAIN_PAGE_CHATS) }
+            var aboutDialogVisible by remember { mutableStateOf(false) }
+            var carryAboutFullScreenAfterShrink by remember { mutableStateOf(false) }
+
+            fun openAboutPresentation() {
+                if (isDesktopListDetail) {
+                    if (!ApiClient.token.isNullOrBlank()) {
+                        pendingMainTab = MAIN_PAGE_SETTINGS
+                    }
+                    aboutDialogVisible = true
+                } else if (ApiClient.token.isNullOrBlank()) {
+                    navController.navigate(SettingsRoutes.About) {
+                        launchSingleTop = true
+                    }
+                } else {
+                    navController.navigateReplacingMainDetail(SettingsRoutes.About)
+                }
+            }
 
             // Handle startup/deep-link navigation targets (profile links)
             LaunchedEffect(
@@ -508,6 +529,34 @@ fun App(
                         carryOpenChatAfterModeSwitch = rootOpenDm
                     }
                     else -> carryOpenChatAfterModeSwitch = 0
+                }
+
+                when {
+                    !isDesktopListDetail && aboutDialogVisible -> {
+                        aboutDialogVisible = false
+                        NavTransitionMuting.mute()
+                        carryAboutFullScreenAfterShrink = true
+                    }
+                    isDesktopListDetail && navController.isShowingAboutRoute() -> {
+                        navController.popAboutRouteIfShowing()
+                        NavTransitionMuting.mute()
+                        aboutDialogVisible = true
+                        if (!ApiClient.token.isNullOrBlank()) {
+                            pendingMainTab = MAIN_PAGE_SETTINGS
+                        }
+                    }
+                }
+            }
+            LaunchedEffect(carryAboutFullScreenAfterShrink, isDesktopListDetail) {
+                if (!carryAboutFullScreenAfterShrink || isDesktopListDetail) return@LaunchedEffect
+                carryAboutFullScreenAfterShrink = false
+                if (ApiClient.token.isNullOrBlank()) {
+                    navController.navigate(SettingsRoutes.About) {
+                        launchSingleTop = true
+                    }
+                } else {
+                    pendingMainTab = MAIN_PAGE_SETTINGS
+                    navController.navigateReplacingMainDetail(SettingsRoutes.About)
                 }
             }
             // The detail NavHost / graph may need a few frames to exist after an expand;
@@ -652,6 +701,7 @@ fun App(
             }
             CompositionLocalProvider(
                 LocalNavController provides navController,
+                LocalOpenAbout provides { openAboutPresentation() },
                 LocalDesktopChatsNavController provides
                     if (isDesktopListDetail) chatsDetailNavController else null,
                 LocalDesktopSettingsNavController provides
@@ -664,24 +714,7 @@ fun App(
                     LaunchedEffect(Unit) {
                         DesktopMenuCommands.commands.collect { command ->
                             if (command != DesktopMenuCommand.OpenAbout) return@collect
-                            // Logged-out: same root About as Welcome/auth overflow — never mount
-                            // the empty chat list–detail shell.
-                            if (ApiClient.token.isNullOrBlank()) {
-                                navController.navigate(SettingsRoutes.About) {
-                                    launchSingleTop = true
-                                }
-                                return@collect
-                            }
-                            pendingMainTab = MAIN_PAGE_SETTINGS
-                            if (isDesktopListDetail) {
-                                settingsDetailNavController.navigateReplacingMainDetail(
-                                    route = SettingsRoutes.About,
-                                )
-                            } else {
-                                navController.navigateReplacingMainDetail(
-                                    route = SettingsRoutes.About,
-                                )
-                            }
+                            openAboutPresentation()
                         }
                     }
 
@@ -912,6 +945,17 @@ fun App(
 
                             ChatFullscreenImageHost(Modifier.fillMaxSize())
                             CallOverlay(Modifier.fillMaxSize())
+                            val aboutDocumentNavController =
+                                if (isDesktopListDetail && !ApiClient.token.isNullOrBlank()) {
+                                    settingsDetailNavController
+                                } else {
+                                    navController
+                                }
+                            AboutDialogHost(
+                                visible = aboutDialogVisible,
+                                onDismiss = { aboutDialogVisible = false },
+                                documentNavController = aboutDocumentNavController,
+                            )
                             if (showReleaseNotesPrompt) {
                                 ReleaseNotesDialog(onDismiss = { showReleaseNotesPrompt = false })
                             }

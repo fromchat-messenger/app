@@ -19,6 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import ru.fromchat.ui.components.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -75,7 +76,30 @@ private const val URL_WEBSITE = "https://fromchat.ru"
 
 @Composable
 fun AboutScreen() {
-    val useCollapsing = settingsDetailUseCollapsingTopBar()
+    if (aboutUsesDialogPresentation()) {
+        val navController = LocalNavController.current
+        val openAbout = LocalOpenAbout.current
+        LaunchedEffect(Unit) {
+            navController.popAboutRouteIfShowing()
+            openAbout()
+        }
+        return
+    }
+
+    val navController = LocalNavController.current
+    AboutScreenLayout(
+        onNavigateUp = { navController.navigateUp() },
+        useCloseButton = false,
+    )
+}
+
+@Composable
+internal fun AboutScreenLayout(
+    onNavigateUp: () -> Unit,
+    useCloseButton: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val useCollapsing = settingsDetailUseCollapsingTopBar() && !useCloseButton
     val scrollBehavior = rememberSettingsCollapsingScrollBehavior()
     val hazeState = rememberSettingsDetailHazeState()
     val navController = LocalNavController.current
@@ -87,13 +111,19 @@ fun AboutScreen() {
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        modifier = modifier,
+        containerColor = if (useCloseButton) {
+            MaterialTheme.colorScheme.surface
+        } else {
+            MaterialTheme.colorScheme.background
+        },
         topBar = {
             SettingsDetailTopBar(
                 title = stringResource(Res.string.about),
-                onBack = { navController.navigateUp() },
+                onBack = onNavigateUp,
                 hazeState = hazeState,
-                scrollBehavior = scrollBehavior,
+                scrollBehavior = if (useCollapsing) scrollBehavior else null,
+                useCloseButton = useCloseButton,
             )
         },
     ) { innerPadding ->

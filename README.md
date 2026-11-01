@@ -46,7 +46,7 @@ Desktop заменяет бывший Electron-клиент в репозито�
 
 **CI:** `.github/workflows/release.yml` запускается только через `workflow_dispatch` (обязательный input `version`; тег `v*` создавать заранее не нужно — publish создаёт его сам), затем загрузка в GitHub Release.
 
-**Windows portable:** в папке виден только `FromChat Portable.exe`; остальной runtime — Hidden. Данные в Hidden `fromchat-data/` рядом с EXE.
+**Windows portable:** установщик распаковывает готовую папку (jpackage). Запуск — только **`FromChat.exe`**; portable задаётся в **`FromChat.cfg`**. Данные в `fromchat-data/` или `fromchat-data-beta/`; не AppData. При запуске ничего не распаковывается.
 
 **Установка:** Windows `%LOCALAPPDATA%\FromChat`, macOS `~/Library/Application Support/FromChat`, Linux `~/.local/share/FromChat` (миграция с `~/.fromchat/cache` при наличии).
 

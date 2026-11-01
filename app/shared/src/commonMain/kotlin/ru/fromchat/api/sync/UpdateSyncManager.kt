@@ -90,6 +90,7 @@ object UpdateSyncManager {
         _lastSeq.value = 0
         _lastMissedCount.value = null
         gapDetectionInProgress = false
+        ConnectionStateStore.onUpdating(start = false)
         ConnectionStateStore.updateSeqAndMissed(lastSeq = 0, missedCount = null)
     }
 
@@ -107,6 +108,11 @@ object UpdateSyncManager {
      * (e.g. prior ack-deadlock timeouts), falls back to a full history rebuild so the UI
      * is not left with first+last holes filled only by slow incremental envelopes.
      */
+    fun onWebSocketSessionEnded() {
+        gapDetectionInProgress = false
+        ConnectionStateStore.onUpdating(start = false)
+    }
+
     suspend fun runGapDetectionIfNeeded() {
         if (gapDetectionInProgress) {
             Logger.d("UpdateSyncManager", "Gap detection already in progress, ignoring request")
@@ -120,7 +126,19 @@ object UpdateSyncManager {
         }
 
         gapDetectionInProgress = true
-        ConnectionStateStore.onUpdating(start = true)
+        var updatingShown = false
+
+        fun showUpdatingUi() {
+            if (updatingShown) return
+            updatingShown = true
+            ConnectionStateStore.onUpdating(start = true)
+        }
+
+        fun hideUpdatingUi() {
+            if (!updatingShown) return
+            updatingShown = false
+            ConnectionStateStore.onUpdating(start = false)
+        }
 
         try {
             initializeFromStorage(ApiClient.user?.id)
@@ -133,6 +151,13 @@ object UpdateSyncManager {
 
                 val response = requestGetUpdates(token, startSeq)
                 if (response == null) {
+                    if (!WebSocketManager.isConnected) {
+                        Logger.d(
+                            "UpdateSyncManager",
+                            "getUpdates skipped — WebSocket disconnected (lastSeq=$startSeq)",
+                        )
+                        break
+                    }
                     consecutiveFailures++
                     Logger.w(
                         "UpdateSyncManager",
@@ -144,6 +169,7 @@ object UpdateSyncManager {
                             "UpdateSyncManager",
                             "Gap catch-up stalled — rebuilding from history",
                         )
+                        showUpdatingUi()
                         rebuildStateFromHistory()
                         break
                     }
@@ -162,6 +188,7 @@ object UpdateSyncManager {
 
                 when (response.status) {
                     "tooLong" -> {
+                        showUpdatingUi()
                         initializeFromStorage(ApiClient.user?.id)
                         if (_lastSeq.value >= response.lastSeq) {
                             Logger.i(
@@ -182,6 +209,9 @@ object UpdateSyncManager {
                         break
                     }
                     "ok" -> {
+                        if (response.missedCount > 0 || response.hasMore) {
+                            showUpdatingUi()
+                        }
                         // Envelopes for this chunk are applied on the receive path before this
                         // response is delivered; advance cursor here only when there was nothing to apply.
                         if (response.lastSeq > _lastSeq.value && response.missedCount == 0) {
@@ -204,6 +234,7 @@ object UpdateSyncManager {
                             )
                             consecutiveFailures++
                             if (consecutiveFailures >= 2) {
+                                showUpdatingUi()
                                 val ok = rebuildStateFromHistory()
                                 if (ok) {
                                     persistLastSeq(response.lastSeq)
@@ -224,7 +255,7 @@ object UpdateSyncManager {
         } catch (t: Throwable) {
             Logger.w("UpdateSyncManager", "Gap detection failed: ${t.message}", t)
         } finally {
-            ConnectionStateStore.onUpdating(start = false)
+            hideUpdatingUi()
             gapDetectionInProgress = false
         }
     }

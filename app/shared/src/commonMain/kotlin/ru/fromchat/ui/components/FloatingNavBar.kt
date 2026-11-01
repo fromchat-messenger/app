@@ -46,6 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import dev.chrisbanes.haze.HazeState
+import ru.fromchat.ui.theme.isAppInDarkTheme
 import kotlin.math.abs
 
 /**
@@ -190,7 +191,7 @@ fun FloatingNavBar(
         }
     }
 
-    val surfaceColor = if (hazeState != null) Color.Transparent else containerColor
+    val darkTheme = isAppInDarkTheme()
 
     // Outer Box: fill parent width, center horizontally. Inner Surface: natural
     // width capped at 620dp so it reads as a floating pill (not full-width).
@@ -200,8 +201,8 @@ fun FloatingNavBar(
     ) {
         Surface(
             shape = CircleShape,
-            color = surfaceColor,
-            shadowElevation = 8.dp,
+            color = if (hazeState != null) Color.Transparent else containerColor,
+            shadowElevation = if (darkTheme) 8.dp else 0.dp,
             modifier = Modifier
                 .widthIn(max = 620.dp)
                 .zIndex(1f)

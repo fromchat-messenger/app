@@ -1,13 +1,18 @@
 package ru.fromchat.ui.main.settings
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardReturn
@@ -18,17 +23,21 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Tab
 import androidx.compose.material.icons.rounded.ViewInAr
 import androidx.compose.material.icons.rounded.Wallpaper
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -63,6 +72,7 @@ import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.theme.dynamicThemeEnabled
 import ru.fromchat.ui.theme.navBarShowTitle
 import ru.fromchat.ui.theme.navBarStyle
+import ru.fromchat.ui.theme.theme
 
 @Composable
 fun AppearanceScreen(onBack: () -> Unit) {
@@ -155,26 +165,22 @@ fun AppearanceScreen(onBack: () -> Unit) {
                                 stringResource(Res.string.dark)
                             )
                             options.forEachIndexed { index, label ->
-                                FilterChip(
+                                AppearanceFilterChip(
+                                    selected = index == themeChipIndex,
                                     onClick = {
                                         themeChipIndex = index
-                                        Settings.theme = Theme.entries[index]
+                                        val selected = Theme.entries[index]
+                                        Settings.theme = selected
+                                        theme = selected
                                     },
-                                    selected = index == themeChipIndex,
+                                    label = label,
                                     leadingIcon = {
-                                        if (index == 0) {
-                                            Spacer(Modifier.width(16.dp))
-                                        }
                                         when (index) {
-                                            0 -> Icon(Icons.Rounded.Settings, null)
-                                            1 -> Icon(Icons.Rounded.LightMode, null)
-                                            2 -> Icon(Icons.Rounded.DarkMode, null)
-                                            else -> Unit
+                                            0 -> Icon(Icons.Rounded.Settings, contentDescription = null)
+                                            1 -> Icon(Icons.Rounded.LightMode, contentDescription = null)
+                                            2 -> Icon(Icons.Rounded.DarkMode, contentDescription = null)
                                         }
                                     },
-                                    label = {
-                                        Text(text = label, overflow = TextOverflow.Ellipsis)
-                                    }
                                 )
                             }
                         }
@@ -194,22 +200,17 @@ fun AppearanceScreen(onBack: () -> Unit) {
                     bottomContent = {
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             NavBarStyle.entries.forEach { style ->
-                                FilterChip(
+                                AppearanceFilterChip(
+                                    selected = navBarStyle == style,
                                     onClick = {
                                         Settings.navBarStyle = style
                                         navBarStyle = style
                                     },
-                                    selected = navBarStyle == style,
-                                    label = {
-                                        Text(
-                                            text = if (style == NavBarStyle.Traditional) {
-                                                stringResource(Res.string.appearance_nav_bar_traditional)
-                                            } else {
-                                                stringResource(Res.string.appearance_nav_bar_floating)
-                                            },
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
+                                    label = if (style == NavBarStyle.Traditional) {
+                                        stringResource(Res.string.appearance_nav_bar_traditional)
+                                    } else {
+                                        stringResource(Res.string.appearance_nav_bar_floating)
+                                    },
                                 )
                             }
                         }
@@ -237,9 +238,58 @@ fun AppearanceScreen(onBack: () -> Unit) {
     }
 }
 
-/** True on desktop, where the window frame can be switched to the OS-drawn one. */
+/** True on Windows/Linux desktop where the window frame can be switched; false on macOS (always native). */
 expect fun isDesktopNativeFrameSupported(): Boolean
 
 expect fun isDesktopNativeFrameEnabled(): Boolean
 
 expect fun setDesktopNativeFrameEnabled(enabled: Boolean)
+
+@Composable
+private fun AppearanceFilterChip(
+    selected: Boolean,
+    onClick: () -> Unit,
+    label: String,
+    leadingIcon: (@Composable () -> Unit)? = null,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val interactionSource = remember { MutableInteractionSource() }
+    val hovered by interactionSource.collectIsHoveredAsState()
+    val containerColor = when {
+        selected -> scheme.secondaryContainer
+        hovered -> scheme.surfaceContainerHighest
+        else -> scheme.surfaceContainerHigh
+    }
+    val contentColor = if (selected) scheme.onSecondaryContainer else scheme.onSurface
+    val chipShape = RoundedCornerShape(8.dp)
+
+    Surface(
+        shape = chipShape,
+        color = containerColor,
+        shadowElevation = 0.dp,
+        modifier = Modifier
+            .clip(chipShape)
+            .hoverable(interactionSource)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+            ),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            CompositionLocalProvider(LocalContentColor provides contentColor) {
+                leadingIcon?.invoke()
+                Text(
+                    text = label,
+                    overflow = TextOverflow.Ellipsis,
+                    color = contentColor,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
+    }
+}

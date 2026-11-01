@@ -3,6 +3,7 @@ package ru.fromchat.ui.components
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -15,6 +16,7 @@ import androidx.compose.ui.graphics.Color
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.back
+import ru.fromchat.cd_close
 import ru.fromchat.more
 
 /** Opacity for [chromeFilledIconButtonColors] container tint. */
@@ -68,6 +70,29 @@ fun ChromeBackIconButton(
     ) {
         Icon(
             imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+            contentDescription = contentDescription,
+        )
+    }
+}
+
+@Composable
+fun ChromeCloseIconButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    contentDescription: String = stringResource(Res.string.cd_close),
+    colors: IconButtonColors? = null,
+    interactionSource: MutableInteractionSource? = null,
+) {
+    ChromeFilledIconButton(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        colors = colors,
+        interactionSource = interactionSource,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Close,
             contentDescription = contentDescription,
         )
     }

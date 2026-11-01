@@ -61,7 +61,11 @@ fun WelcomeScreen(
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            Box(modifier = Modifier.align(Alignment.TopEnd)) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(end = 4.dp),
+            ) {
                 PreAuthOverflowMenu()
             }
 

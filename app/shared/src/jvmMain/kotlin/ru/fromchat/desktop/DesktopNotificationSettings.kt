@@ -1,5 +1,6 @@
 package ru.fromchat.desktop
 
+import ru.fromchat.utils.settings.jvmPreferencesNode
 import java.util.prefs.Preferences
 
 object DesktopNotificationSettings {
@@ -13,5 +14,5 @@ object DesktopNotificationSettings {
         }
 
     private fun preferences(): Preferences =
-        Preferences.userRoot().node(PREF_NODE)
+        Preferences.userRoot().node(jvmPreferencesNode(PREF_NODE))
 }

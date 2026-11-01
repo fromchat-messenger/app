@@ -501,7 +501,7 @@ fun ChatScreen(
     }
 
     val subtitleKey = when {
-        connectionStatus == ConnectionStatus.UPDATING -> "updating"
+        connectionStatus == ConnectionStatus.UPDATING && WebSocketManager.isConnected -> "updating"
         !online || (connectionStatus == ConnectionStatus.CONNECTING && !WebSocketManager.isConnected) -> "connecting"
         currentTypingUsers.isNotEmpty() -> "typing"
         panel.usesPublicGroupSubtitle -> {
@@ -1441,16 +1441,25 @@ fun ChatScreen(
                                             scope.launch { panel.cancelQueuedMessage(msg) }
                                         },
                                         onRetryOutboundAttachment = { msg ->
-                                            val cid = msg.client_message_id?.trim().orEmpty()
-                                            if (cid.isNotEmpty()) {
-                                                panel.updateMessageByClientMessageId(cid) {
-                                                    it.copy(
-                                                        uploadError = null,
-                                                        uploadProgress = 0,
+                                            scope.launch {
+                                                val cid = msg.client_message_id?.trim().orEmpty()
+                                                if (cid.isEmpty()) return@launch
+                                                runCatching {
+                                                    panel.updateMessageByClientMessageId(cid) {
+                                                        it.copy(
+                                                            uploadError = null,
+                                                            uploadProgress = 0,
+                                                        )
+                                                    }
+                                                    OutgoingMessageCoordinator
+                                                        .retryDmAttachmentUpload(cid)
+                                                }.onFailure { error ->
+                                                    Logger.e(
+                                                        "ChatScreen",
+                                                        "attachment retry failed cid=${cid.take(12)}",
+                                                        error,
                                                     )
                                                 }
-                                                OutgoingMessageCoordinator
-                                                    .retryDmAttachmentUpload(cid)
                                             }
                                         },
                                         onReplyClick = scrollToChatMessage,

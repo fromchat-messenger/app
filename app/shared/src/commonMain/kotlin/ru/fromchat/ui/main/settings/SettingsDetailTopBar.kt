@@ -4,6 +4,7 @@ import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.animate
 import androidx.compose.foundation.layout.WindowInsets
 import ru.fromchat.ui.components.ChromeBackIconButton
+import ru.fromchat.ui.components.ChromeCloseIconButton
 import androidx.compose.material3.MediumTopAppBar
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -103,13 +104,23 @@ private fun SettingsDetailBackButton(onBack: () -> Unit) {
 }
 
 @Composable
+private fun SettingsDetailCloseButton(onClose: () -> Unit) {
+    ChromeCloseIconButton(onClick = onClose)
+}
+
+@Composable
 fun SettingsDetailTopBar(
     title: String,
     onBack: () -> Unit,
     hazeState: HazeState,
     scrollBehavior: TopAppBarScrollBehavior? = null,
+    useCloseButton: Boolean = false,
 ) {
-    val topBarWindowInsets = settingsDetailWindowInsets()
+    val topBarWindowInsets = if (useCloseButton) {
+        WindowInsets(0, 0, 0, 0)
+    } else {
+        settingsDetailWindowInsets()
+    }
     val topBarColors = settingsDetailTopBarColors()
     val topBarBlur = Modifier.settingsDetailTopBarHazeBlur(hazeState)
     val titleContent: @Composable () -> Unit = {
@@ -120,7 +131,11 @@ fun SettingsDetailTopBar(
         )
     }
     val navigationIcon: @Composable () -> Unit = {
-        SettingsDetailBackButton(onBack = onBack)
+        if (useCloseButton) {
+            SettingsDetailCloseButton(onClose = onBack)
+        } else {
+            SettingsDetailBackButton(onBack = onBack)
+        }
     }
     if (settingsDetailUseCollapsingTopBar()) {
         MediumTopAppBar(

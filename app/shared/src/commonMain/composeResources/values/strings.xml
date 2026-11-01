@@ -368,7 +368,7 @@
     <string name="enter_to_send">Send on Enter</string>
     <string name="enter_to_send_d">Enter sends the message. Shift+Enter adds a new line.</string>
     <string name="theme">Look</string>
-    <string name="as_system">Same as phone</string>
+    <string name="as_system">System</string>
     <string name="light">Light</string>
     <string name="dark">Dark</string>
     <string name="debug_tools">Debug API</string>

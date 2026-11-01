@@ -36,7 +36,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.Surface
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.WavyProgressIndicatorDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -79,7 +78,6 @@ import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.AttachmentMediaLog
 import ru.fromchat.api.local.cache.DecryptedImageCache
-import ru.fromchat.api.local.cache.UPLOAD_ERROR_FILE_TOO_LARGE
 import ru.fromchat.api.local.download.AttachmentDownloadNotifier
 import ru.fromchat.api.local.download.AttachmentDownloadScheduler
 import ru.fromchat.api.local.download.ChatPreviewDecodeSize
@@ -87,11 +85,7 @@ import ru.fromchat.api.local.download.LocalDecodedImageCache
 import ru.fromchat.api.local.send.previewSeedDecodeSize
 import ru.fromchat.api.schema.messages.dm.DmEnvelope
 import ru.fromchat.api.schema.messages.dm.DmFile
-import ru.fromchat.attachment_retry
-import ru.fromchat.attachment_upload_failed
-import ru.fromchat.attachment_upload_failed_too_large
 import ru.fromchat.cd_attachment_retry
-import ru.fromchat.cd_attachment_upload_retry
 import ru.fromchat.ui.chat.message.messageBubbleContentColor
 import ru.fromchat.ui.chat.message.messageBubbleSupportingContentColor
 import ru.fromchat.ui.chat.message.MessageGroupInfo
@@ -415,10 +409,11 @@ private fun ChatImageTileContent(
     }
     val hasFullPreview = fullBitmap != null
     val hasPlaceholder = placeholderBitmap != null
+    val uploadFailed = !uploadError.isNullOrBlank()
     var decryptFinished by remember(bitmapStateKey) {
         mutableStateOf(fullBitmap != null || placeholderBitmap != null)
     }
-    val showOutboundBlurOverlay = (isOutboundPending || isUploading || awaitingServerAck) &&
+    val showOutboundBlurOverlay = (isOutboundPending || isUploading || awaitingServerAck || uploadFailed) &&
         (hasLocalSource || hasFullPreview || hasPlaceholder)
     val treatAsOutbound = isOutboundPending || isUploading || awaitingServerAck
     val outboundOverlayAlpha = remember(showOutboundBlurOverlay) {
@@ -903,23 +898,23 @@ private fun ChatImageTileContent(
                 model = localUri ?: displayLocalUri,
                 previewBitmap = fullBitmap,
                 uploadProgress = when {
+                    uploadFailed -> null
                     isUploading || awaitingServerAck -> uploadProgress ?: 0
                     else -> null
                 },
+                uploadFailed = uploadFailed,
+                onRetryUpload = onRetryUpload,
+                isAuthor = isAuthor,
                 clipShape = clipShape,
                 contentScale = imageContentScale,
-                onCancelUpload = if (isUploading && !awaitingServerAck) onCancelUpload else null,
+                onCancelUpload = if (isUploading && !awaitingServerAck && !uploadFailed) {
+                    onCancelUpload
+                } else {
+                    null
+                },
                 modifier = Modifier
                     .matchParentSize()
                     .alpha(outboundOverlayAlpha.value),
-            )
-        }
-        if (treatAsOutbound && !uploadError.isNullOrBlank() && onRetryUpload != null) {
-            AttachmentUploadFailedOverlay(
-                isAuthor = isAuthor,
-                errorKey = uploadError,
-                onRetry = onRetryUpload,
-                modifier = Modifier.matchParentSize(),
             )
         }
     }
@@ -972,6 +967,9 @@ private fun UploadingImageOverlay(
     clipShape: RoundedCornerShape,
     contentScale: ContentScale = ContentScale.Fit,
     onCancelUpload: (() -> Unit)? = null,
+    uploadFailed: Boolean = false,
+    onRetryUpload: (() -> Unit)? = null,
+    isAuthor: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier) {
@@ -1011,18 +1009,36 @@ private fun UploadingImageOverlay(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center,
         ) {
-            if (onCancelUpload != null) {
-                CancellableAttachmentProgressIndicator(
-                    progress = uploadProgress,
-                    onCancel = onCancelUpload,
-                    iconSize = 24.dp,
-                    modifier = Modifier.size(56.dp),
-                )
-            } else {
-                ExpressiveUploadIndicator(
-                    uploadProgress = uploadProgress,
-                    modifier = Modifier.size(56.dp),
-                )
+            val showFailedOverlay = uploadFailed && onRetryUpload != null
+            var retainedRetry by remember { mutableStateOf<(() -> Unit)?>(null) }
+            if (showFailedOverlay) {
+                retainedRetry = onRetryUpload
+            }
+            AnimatedContent(
+                targetState = showFailedOverlay,
+                transitionSpec = { attachmentLeadingTransitionSpec() },
+                label = "uploadOverlayState",
+            ) { showFailed ->
+                if (showFailed) {
+                    retainedRetry?.let { retry ->
+                        AttachmentUploadRetryIconButton(
+                            onRetry = retry,
+                            modifier = Modifier.size(56.dp),
+                        )
+                    }
+                } else if (onCancelUpload != null) {
+                    CancellableAttachmentProgressIndicator(
+                        progress = uploadProgress,
+                        onCancel = onCancelUpload,
+                        iconSize = 24.dp,
+                        modifier = Modifier.size(56.dp),
+                    )
+                } else {
+                    ExpressiveUploadIndicator(
+                        uploadProgress = uploadProgress,
+                        modifier = Modifier.size(56.dp),
+                    )
+                }
             }
         }
     }
@@ -1185,45 +1201,6 @@ internal fun decodeAttachmentThumbnailBase64(value: String): ByteArray? {
 }
 
 @Composable
-private fun AttachmentUploadFailedOverlay(
-    isAuthor: Boolean,
-    errorKey: String,
-    onRetry: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val failedText = when (errorKey) {
-        UPLOAD_ERROR_FILE_TOO_LARGE -> stringResource(Res.string.attachment_upload_failed_too_large)
-        else -> stringResource(Res.string.attachment_upload_failed)
-    }
-    val retryText = stringResource(Res.string.attachment_retry)
-    val retryCd = stringResource(Res.string.cd_attachment_upload_retry)
-    val headlineColor = messageBubbleContentColor(isAuthor)
-    Box(
-        modifier = modifier
-            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.35f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.padding(horizontal = 12.dp),
-        ) {
-            Text(
-                text = failedText,
-                style = MaterialTheme.typography.bodySmall,
-                color = headlineColor,
-            )
-            TextButton(
-                onClick = onRetry,
-                modifier = Modifier.semantics { contentDescription = retryCd },
-            ) {
-                Text(text = retryText, color = headlineColor)
-            }
-        }
-    }
-}
-
-@Composable
 private fun AttachmentImageLoadFailedOverlay(
     isAuthor: Boolean,
     onRetry: () -> Unit,
@@ -1299,6 +1276,8 @@ internal fun ExpressiveFileAttachmentRow(
     uploadProgress: Int?,
     isDownloaded: Boolean = false,
     onCancelProgress: (() -> Unit)? = null,
+    uploadFailed: Boolean = false,
+    onRetryUpload: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val headlineColor = messageBubbleContentColor(isAuthor)
@@ -1328,6 +1307,8 @@ internal fun ExpressiveFileAttachmentRow(
             uploadProgress = uploadProgress,
             isAuthor = isAuthor,
             onCancelProgress = onCancelProgress ?: {},
+            uploadFailed = uploadFailed,
+            onRetryUpload = onRetryUpload,
             modifier = Modifier.size(leadingSize),
         )
         Column(

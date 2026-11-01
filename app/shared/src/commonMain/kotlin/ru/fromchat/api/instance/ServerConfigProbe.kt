@@ -4,9 +4,12 @@ import kotlinx.coroutines.withTimeout
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.WebSocketManager
 import ru.fromchat.api.local.cache.CacheContext
+import ru.fromchat.api.local.db.clearAccountCacheOnLogout
 import ru.fromchat.api.local.db.store.InstanceRegistryStore
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.config.ServerConfigData
+import ru.fromchat.config.Settings
+import ru.fromchat.api.sync.ChatListSync
 import ru.fromchat.logging.Logger
 import ru.fromchat.ui.main.settings.about.legal.DocumentRepository
 import kotlin.time.Duration.Companion.milliseconds
@@ -227,12 +230,39 @@ suspend fun applyServerConfig(
     instanceId: String,
     callsOk: Boolean,
 ) {
+    val previousConfig = runCatching { Settings.readServerConfig() }.getOrNull()
+    val previousConfigKey = previousConfig?.configKey().orEmpty()
+    val previousInstanceId = CacheContext.activeInstanceId.value.trim()
+
     val tentative = config.copy(callsEnabled = callsOk, callsPort = config.apiPort)
+    val configKeyChanged =
+        previousConfigKey.isNotEmpty() && previousConfigKey != tentative.configKey()
+
+    if (configKeyChanged && previousInstanceId.isNotEmpty()) {
+        clearAccountCacheOnLogout(previousInstanceId)
+    }
+
     ServerConfig.updateServerConfig(tentative)
     DocumentRepository.invalidate()
+    Settings.lastKnownServerInstanceId = instanceId.trim()
+
     val userId = ApiClient.user?.id
     InstanceRegistryStore.rebindServerInstance(tentative, instanceId)
     CacheContext.setActiveInstance(instanceId, userId)
+}
+
+private suspend fun finishLoggedInSessionAfterServerApply(instanceId: String) {
+    when (bootstrapSessionInstance(hasToken = true, forceNetwork = true)) {
+        SessionBootstrapResult.Ready,
+        SessionBootstrapResult.OfflineCached,
+        -> {
+            ChatListSync.ensureStarted()
+            runCatching { ChatListSync.syncFromNetwork() }
+        }
+        SessionBootstrapResult.LogoutRequired -> {
+            runCatching { logoutIfInstanceUnsupported() }
+        }
+    }
 }
 
 suspend fun applyServerAndNavigate(
@@ -241,7 +271,6 @@ suspend fun applyServerAndNavigate(
     bearer: String,
     onNavigateLogin: suspend () -> Unit,
     onNavigateChat: suspend () -> Unit,
-    onLogoutOldHost: suspend () -> Unit,
 ): ApplyServerResult {
     val apiBase = apiBaseUrlFor(config)
     val token = bearer.trim()
@@ -258,6 +287,7 @@ suspend fun applyServerAndNavigate(
             applyServerConfig(config, probe.instanceId, probe.callsOk)
             WebSocketManager.disconnect()
             WebSocketManager.connect(forceRestart = true)
+            finishLoggedInSessionAfterServerApply(probe.instanceId)
             onNavigateChat()
             return ApplyServerResult.Applied
         }
@@ -267,9 +297,9 @@ suspend fun applyServerAndNavigate(
         }
 
         ApiClient.CheckAuthResult.NotAuthenticated -> {
-            onLogoutOldHost()
             applyServerConfig(config, probe.instanceId, probe.callsOk)
             WebSocketManager.disconnect()
+            ApiClient.clearLocalSession()
             onNavigateLogin()
             return ApplyServerResult.Applied
         }

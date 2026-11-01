@@ -224,7 +224,8 @@ object WebSocketManager {
 
                         notifySessionReady()
 
-                        for (frame in incoming) {
+                        try {
+                            for (frame in incoming) {
                             val text = (frame as? Frame.Text)?.readText() ?: continue
                             logD("Received payload: $text")
                             try {
@@ -265,6 +266,9 @@ object WebSocketManager {
                             } catch (e: Throwable) {
                                 logW("Received malformed payload: ${e.message}", e)
                             }
+                        }
+                        } finally {
+                            UpdateSyncManager.onWebSocketSessionEnded()
                         }
                     }
                 } catch (e: Throwable) {

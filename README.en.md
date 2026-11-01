@@ -46,7 +46,7 @@ Outputs land under `app/desktop/build/distributions/release/`.
 
 **CI:** `.github/workflows/release.yml` runs on `workflow_dispatch` only (required `version` input; the `v*` tag does not need to exist beforehand — the publish step creates it), then uploads assets to a GitHub Release.
 
-**Windows portable:** extracts into a folder where only `FromChat Portable.exe` is visible; other runtime files are Hidden. Data is stored in a Hidden `fromchat-data/` next to that EXE (`-Dfromchat.portable=true`).
+**Windows portable:** the installer unpacks a full app folder (jpackage layout). Run **`FromChat.exe`** only — portable mode is set in **`FromChat.cfg`** (`-Dfromchat.portable=true`). Data in `fromchat-data/` or `fromchat-data-beta/`; separate from AppData. No self-extract on launch.
 
 **Installed data:** Windows `%LOCALAPPDATA%\FromChat`, macOS `~/Library/Application Support/FromChat`, Linux `~/.local/share/FromChat` (migrates from legacy `~/.fromchat/cache` when present).
 

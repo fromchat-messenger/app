@@ -34,6 +34,7 @@ import ru.fromchat.about
 import ru.fromchat.logs_title
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.theme.extraStatusBars
+import ru.fromchat.ui.main.settings.about.LocalOpenAbout
 import ru.fromchat.ui.main.settings.SettingsRoutes
 
 /** Margin between the window edge and the wide [AuthContentFrame] panel. */
@@ -79,6 +80,7 @@ fun AuthContentFrame(
 @Composable
 fun PreAuthOverflowMenu() {
     val navController = LocalNavController.current
+    val openAbout = LocalOpenAbout.current
     var menuExpanded by remember { mutableStateOf(false) }
 
     Box {
@@ -94,7 +96,7 @@ fun PreAuthOverflowMenu() {
                 },
                 onClick = {
                     menuExpanded = false
-                    navController.navigate(SettingsRoutes.About)
+                    openAbout()
                 },
             )
             DropdownMenuItem(

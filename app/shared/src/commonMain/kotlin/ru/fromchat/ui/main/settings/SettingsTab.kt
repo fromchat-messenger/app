@@ -59,6 +59,7 @@ import ru.fromchat.ui.main.desktop.LocalDesktopSettingsNavController
 import ru.fromchat.ui.main.LocalMainChromeInsets
 import ru.fromchat.ui.main.mainPagerBottomInset
 import ru.fromchat.ui.main.nav.navigateReplacingMainDetail
+import ru.fromchat.ui.main.settings.about.LocalOpenAbout
 import ru.fromchat.ui.main.settings.rememberSettingsDetailHazeState
 import ru.fromchat.ui.main.settings.settingsDetailHazeSource
 import ru.fromchat.ui.main.settings.settingsDetailTopBarColors
@@ -70,6 +71,7 @@ val SettingsStepHorizontalPadding = 24.dp
 fun SettingsTab() {
     val navController =
         LocalDesktopSettingsNavController.current ?: LocalNavController.current
+    val openAbout = LocalOpenAbout.current
     val isTwoPane = currentWindowAdaptiveInfo().widthSizeClass != WindowWidthSizeClass.COMPACT
     val hazeState = rememberSettingsDetailHazeState()
     val listSurfaceColor = if (LocalConversationListDetailActive.current) {
@@ -180,7 +182,7 @@ fun SettingsTab() {
                     iconPreset = ExpressiveTints.Purple,
                     headline = stringResource(Res.string.about),
                     supportingText = stringResource(Res.string.settings_hub_about_sub),
-                    onClick = { openDetail(SettingsRoutes.About) },
+                    onClick = { openAbout() },
                     divider = true
                 )
 

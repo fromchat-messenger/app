@@ -186,6 +186,12 @@ object OutgoingMessageCoordinator {
         drainScope.launch { drainOutboxForInstance(id) }
     }
 
+    internal fun runOutboxDrain(instanceId: String) {
+        val id = instanceId.trim()
+        if (id.isEmpty()) return
+        drainScope.launch { drainOutboxForInstance(id) }
+    }
+
     suspend fun enqueuePublicMessage(
         content: String,
         replyToId: Int?,
@@ -419,7 +425,17 @@ object OutgoingMessageCoordinator {
         clearOutboundPaused(cid)
         clearOutboundCancelled(cid)
         AttachmentMediaLog.upload("retry_requested", "job" to cid)
-        kickOutboxDrain(instanceId)
+        drainScope.launch {
+            withContext(Dispatchers.Default) {
+                val row = MessageDatabaseProvider.database.messageDatabaseQueries
+                    .selectOutboxItem(instanceId, cid)
+                    .executeAsOneOrNull()
+                if (row != null) {
+                    MessageCacheStore.clearSendFailed(row.conversationId, cid)
+                }
+            }
+            drainOutboxForInstance(instanceId)
+        }
     }
 
     /** Drops a queued outbound row, local message, and any upload artifacts. */

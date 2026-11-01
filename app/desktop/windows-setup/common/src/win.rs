@@ -391,11 +391,21 @@ pub fn set_hidden(path: &Path, hidden: bool) -> Result<()> {
     Ok(())
 }
 
+/// Portable user data directories (must stay visible in Explorer).
+const VISIBLE_PORTABLE_DATA_DIRS: [&str; 2] = ["fromchat-data", "fromchat-data-beta"];
+
 pub fn hide_all_except(root: &Path, visible_name: &str) -> Result<()> {
     for entry in fs::read_dir(root)? {
         let entry = entry?;
         let name_str = entry.file_name().to_string_lossy().into_owned();
         if name_str.eq_ignore_ascii_case(visible_name) {
+            set_hidden(&entry.path(), false)?;
+            continue;
+        }
+        if VISIBLE_PORTABLE_DATA_DIRS
+            .iter()
+            .any(|dir| name_str.eq_ignore_ascii_case(dir))
+        {
             set_hidden(&entry.path(), false)?;
             continue;
         }

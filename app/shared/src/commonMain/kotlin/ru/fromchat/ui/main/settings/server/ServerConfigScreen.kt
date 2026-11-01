@@ -64,6 +64,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavController
 import ru.fromchat.utils.navigateAndWipeBackStack
 import ru.fromchat.utils.toDp
 import dev.chrisbanes.haze.HazeInput
@@ -134,7 +135,9 @@ private object ServerConfigLazyListIndices {
     ExperimentalAnimationApi::class,
 )
 @Composable
-fun ServerConfigScreen() {
+fun ServerConfigScreen(
+    rootNavController: NavController,
+) {
     val navController = LocalNavController.current
     val scope = rememberCoroutineScope()
     val scheme = MaterialTheme.colorScheme
@@ -292,13 +295,13 @@ fun ServerConfigScreen() {
                                                 bearer = ApiClient.token?.trim().orEmpty(),
                                                 onNavigateLogin = {
                                                     withContext(Dispatchers.Main) {
-                                                        navController.navigateAndWipeBackStack("auth")
+                                                        rootNavController.navigateAndWipeBackStack("auth")
                                                     }
                                                 },
                                                 onNavigateChat = {
                                                     withContext(Dispatchers.Main) {
                                                         if (!navController.popBackStack()) {
-                                                            navController.navigate("chat") {
+                                                            rootNavController.navigate("chat") {
                                                                 popUpTo("welcome") {
                                                                     inclusive = true
                                                                 }
@@ -306,20 +309,9 @@ fun ServerConfigScreen() {
                                                         }
                                                     }
                                                 },
-                                                onLogoutOldHost = {
-                                                    withContext(Dispatchers.Main) {
-                                                        WebSocketManager.disconnect()
-                                                        runCatching { ApiClient.logout() }
-                                                        ApiClient.clearMemorySession()
-                                                        navController.navigateAndWipeBackStack("auth")
-                                                    }
-                                                },
                                             )
                                         ) {
-                                            ApplyServerResult.Applied -> {
-                                                Settings.lastKnownServerInstanceId =
-                                                    probe.instanceId
-                                            }
+                                            ApplyServerResult.Applied -> Unit
                                             ApplyServerResult.ServerUnreachable -> {
                                                 snackbarHostState.showSnackbar(strSnackbarApiFail)
                                             }

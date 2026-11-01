@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -15,6 +16,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Exclamation
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -22,19 +24,27 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import org.jetbrains.compose.resources.stringResource
+import ru.fromchat.Res
+import ru.fromchat.cd_attachment_upload_retry
 import ru.fromchat.ui.chat.components.CancellableAttachmentProgressIndicator
+import ru.fromchat.utils.scaleOnPress
 
 private enum class FileLeadingVisual {
     Download,
     Progress,
+    FailedUpload,
     File,
 }
 
 internal const val AttachmentLeadingTransitionMs = 260
 
-private fun leadingTransitionSpec() =
+internal fun attachmentLeadingTransitionSpec() =
     scaleIn(
         initialScale = 0.82f,
         animationSpec = tween(AttachmentLeadingTransitionMs, easing = FastOutSlowInEasing),
@@ -45,15 +55,48 @@ private fun leadingTransitionSpec() =
         ) + fadeOut(tween(AttachmentLeadingTransitionMs, easing = FastOutSlowInEasing))
 
 @Composable
+internal fun AttachmentUploadRetryIconButton(
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val retryCd = stringResource(Res.string.cd_attachment_upload_retry)
+    val primary = MaterialTheme.colorScheme.primary
+    Box(
+        modifier = modifier
+            .semantics { contentDescription = retryCd }
+            .scaleOnPress(scale = 0.92f, onClick = onRetry, indication = null),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val strokeWidth = size.minDimension * 0.07f
+            drawCircle(
+                color = primary,
+                radius = size.minDimension / 2f - strokeWidth / 2f,
+                style = Stroke(width = strokeWidth),
+            )
+        }
+        Icon(
+            imageVector = Icons.Rounded.Exclamation,
+            contentDescription = null,
+            modifier = Modifier.size(26.dp),
+            tint = primary,
+        )
+    }
+}
+
+@Composable
 internal fun FileAttachmentLeadingSlot(
     isProgressing: Boolean,
     isDownloaded: Boolean,
     uploadProgress: Int?,
     isAuthor: Boolean,
     onCancelProgress: () -> Unit,
+    uploadFailed: Boolean = false,
+    onRetryUpload: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val visual = when {
+        uploadFailed && onRetryUpload != null -> FileLeadingVisual.FailedUpload
         isProgressing -> FileLeadingVisual.Progress
         isDownloaded -> FileLeadingVisual.File
         else -> FileLeadingVisual.Download
@@ -73,10 +116,16 @@ internal fun FileAttachmentLeadingSlot(
     AnimatedContent(
         targetState = visual,
         modifier = modifier,
-        transitionSpec = { leadingTransitionSpec() },
+        transitionSpec = { attachmentLeadingTransitionSpec() },
         label = "fileLeadingIcon",
     ) { target ->
         when (target) {
+            FileLeadingVisual.FailedUpload -> {
+                AttachmentUploadRetryIconButton(
+                    onRetry = onRetryUpload ?: {},
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
             FileLeadingVisual.Progress -> {
                 CancellableAttachmentProgressIndicator(
                     progress = uploadProgress,

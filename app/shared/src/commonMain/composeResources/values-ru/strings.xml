@@ -337,7 +337,7 @@
     <string name="enter_to_send">Отправка по Enter</string>
     <string name="enter_to_send_d">Enter отправляет сообщение. Shift+Enter — новая строка.</string>
     <string name="theme">Оформление</string>
-    <string name="as_system">Как на телефоне</string>
+    <string name="as_system">Системное</string>
     <string name="light">Светлое</string>
     <string name="dark">Тёмное</string>
     <string name="debug_tools">Отладка API</string>

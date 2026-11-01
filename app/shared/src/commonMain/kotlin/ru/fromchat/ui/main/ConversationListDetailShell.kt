@@ -98,6 +98,7 @@ fun ConversationListDetailShell(
     val gapInteractionSource = remember { MutableInteractionSource() }
     val gapHovered by gapInteractionSource.collectIsHoveredAsState()
     val gapActive = gapHovered || gapDragging
+    val resizePointerIcon = listDetailPaneResizePointerIcon()
 
     val paneInsets = WindowInsets.safeDrawing.union(WindowInsets.extraStatusBars)
     val shellBackground = MaterialTheme.colorScheme.background
@@ -113,7 +114,20 @@ fun ConversationListDetailShell(
                 (maxWidth - 8.dp - 8.dp - 320.dp).coerceAtLeast(280.dp)
             val listWidth = storedListWidth.coerceIn(280.dp, maxListWidth)
 
-            Row(Modifier.fillMaxSize()) {
+            Row(
+                Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (gapDragging) {
+                            Modifier.pointerHoverIcon(
+                                resizePointerIcon,
+                                overrideDescendants = true,
+                            )
+                        } else {
+                            Modifier
+                        },
+                    ),
+            ) {
                 AppPanel(
                     Modifier
                         .windowInsetsPadding(paneInsets)
@@ -183,7 +197,7 @@ fun ConversationListDetailShell(
                             .align(Alignment.CenterStart)
                             .zIndex(1f)
                             .background(if (gapActive) Color.Transparent else shellBackground)
-                            .pointerHoverIcon(PointerIcon.Hand)
+                            .pointerHoverIcon(resizePointerIcon)
                             .hoverable(gapInteractionSource)
                             .pointerInput(maxListWidth, density) {
                                 var dragWidth = storedListWidth
@@ -217,6 +231,9 @@ fun ConversationListDetailShell(
         }
     }
 }
+
+/** East–west resize cursor on desktop; default elsewhere (no hover resize). */
+expect fun listDetailPaneResizePointerIcon(): PointerIcon
 
 /**
  * Persists list–detail left pane width in the same JVM prefs node as window size

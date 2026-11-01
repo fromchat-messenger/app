@@ -1,9 +1,9 @@
 package ru.fromchat.logging
 
-import java.awt.Desktop
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.io.File
+import ru.fromchat.utils.files.openLocalFileWithDefaultApp
 
 actual object LogShare {
     actual fun shareText(title: String, text: String) {
@@ -13,11 +13,9 @@ actual object LogShare {
 
     actual fun shareFile(title: String, filePath: String, mimeType: String) {
         runCatching {
-            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
-                Desktop.getDesktop().open(File(filePath))
-            } else {
-                println("LogShare: file at $filePath ($title, $mimeType)")
-            }
+            openLocalFileWithDefaultApp(File(filePath))
+        }.onFailure {
+            println("LogShare: file at $filePath ($title, $mimeType)")
         }
     }
 }

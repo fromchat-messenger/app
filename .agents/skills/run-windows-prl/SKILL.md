@@ -1,6 +1,6 @@
 ---
 name: run-windows-prl
-description: "Build, sync, and install the FromChat Windows desktop app inside a Parallels Windows VM from macOS. Use for local Windows installer iteration without CI."
+description: "Build, sync, and install the FromChat Windows desktop app inside a Parallels Windows VM from macOS. Use for local Windows installer iteration without CI. When using prlctl exec from the host, pass ORG_GRADLE_PROJECT_gitCommitSha and gitHubRepository from the Mac git clone."
 ---
 
 # run-windows-prl
@@ -84,12 +84,31 @@ scripts\stage-windows-x64-prebuilt.cmd <path-to-x64-app-image>
 
 JDK on VM: `scripts\ensure-windows-arm64-jdk.cmd` (also used by CI).
 
+## Git metadata when using `prlctl exec` (important)
+
+Root `build.gradle.kts` resolves `gitCommitSha` / `gitHubRepository` from Gradle properties, then `GITHUB_*` env, then **`git`** in the project dir. Robocopy **excludes `.git`**, so the VM tree has no repo for a local fallback anyway.
+
+`prlctl exec … cmd /c …` runs as the **Windows system profile**. **`git` is usually not on PATH** there, so Gradle fails at configuration with `A problem occurred starting process 'command 'git''`. An **interactive VM login** may work if Git for Windows is on the user PATH — do not rely on that for agent-driven builds.
+
+From macOS, inject the same env CI uses (read values from the Mac clone) **on the same `cmd /c` line** before `build-windows-vm.cmd`:
+
+```bash
+VM_NAME="${FROMCHAT_WINDOWS_VM:-Windows 11}"
+ROOT="$(git -C /path/to/app rev-parse --show-toplevel)"
+SHA="$(git -C "$ROOT" rev-parse HEAD)"
+REPO="$(git -C "$ROOT" remote get-url origin | sed -E 's#.*github.com[:/]([^/]+)/([^/.]+).*#\1/\2#' | sed 's/\.git$//')"
+prlctl exec "$VM_NAME" cmd /c "set ORG_GRADLE_PROJECT_gitCommitSha=${SHA}&& set ORG_GRADLE_PROJECT_gitHubRepository=${REPO}&& C:\FromChat\app\scripts\build-windows-vm.cmd beta"
+```
+
+Use `beta` or `gradle` as the last argument. Applies to any target that runs `gradlew.bat` (`beta`, `gradle`, `pack`, `install`).
+
 ## Typical loop
 
 1. Edit on Mac under `Desktop/FromChat/app`
-2. `./scripts/sync-to-windows-vm.sh gradle` (or `all` — both purge stale Kotlin sources automatically)
-3. `prlctl exec "$VM_NAME" cmd /c "C:\FromChat\app\scripts\build-windows-vm.cmd beta"` (or `gradle` for release)
-4. Pick up the installer on the **Windows Desktop** in the VM (or run step 3 again — copy runs at end of beta/gradle)
+2. From app repo root, run **`build-windows-vm.cmd beta`** or **`gradle`** via `prlctl exec` with **git env vars** (see **Git metadata**). Both targets sync (with purge) before Gradle.
+3. Pick up **`FromChat-Setup-<versionName>.exe`** on the **Windows Desktop** in the VM.
+
+For **installer only** (no upgrade install / launch), use **`beta`** or **`gradle`**, not **`install`**.
 
 App images remain under `app\desktop\build\compose\binaries\` in the VM workspace.
 
@@ -97,8 +116,9 @@ App images remain under `app\desktop\build\compose\binaries\` in the VM workspac
 
 When driving the VM from macOS:
 
-1. `./scripts/sync-to-windows-vm.sh all` (or rely on `build-windows-vm.cmd beta` / `gradle`, which sync first)
-2. `prlctl exec "$VM_NAME" cmd /c "C:\FromChat\app\scripts\build-windows-vm.cmd beta"` (or `gradle` for release)
-3. If copy was skipped: `./scripts/copy-installer-to-mac-desktop.sh` — confirm `Copied installer to Windows Desktop: …`
-4. On **Kotlin compile failure** with paths missing on the Mac tree: run `purge-sources`, sync again, retry build once
-5. Do **not** hand-delete random VM folders except via `purge-sources` — avoids wiping `build/` caches
+1. Confirm VM is running (`prlctl list -a`); default name `Windows 11`, override with `FROMCHAT_WINDOWS_VM`.
+2. Run **`build-windows-vm.cmd beta`** or **`gradle`** via `prlctl exec`, **always** prefixing `ORG_GRADLE_PROJECT_gitCommitSha` and `ORG_GRADLE_PROJECT_gitHubRepository` from the Mac repo (see **Git metadata**). Sync is included in those targets — a separate `./scripts/sync-to-windows-vm.sh` is optional.
+3. Confirm log line `Copied installer to Windows Desktop: …`. If copy was skipped: `./scripts/copy-installer-to-mac-desktop.sh`.
+4. Default to **`beta`** when the user wants an installer on the Desktop without installing the app; use **`gradle`** only when they ask for release packaging.
+5. On **Kotlin compile failure** with paths missing on the Mac tree: run `purge-sources`, sync again, retry build once (still with git env vars on `prlctl exec`).
+6. Do **not** hand-delete random VM folders except via `purge-sources` — avoids wiping `build/` caches

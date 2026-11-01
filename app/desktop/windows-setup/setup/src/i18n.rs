@@ -71,7 +71,7 @@ pub const DONE_OPEN_HINT_DESKTOP: &str =
     "Чтобы открыть FromChat, нажмите на ярлык на рабочем столе или найдите его в меню «Пуск».";
 pub const DONE_OPEN_HINT: &str = "Чтобы открыть FromChat, найдите его в меню «Пуск».";
 pub const DONE_OPEN_HINT_PORTABLE: &str =
-    "Чтобы открыть FromChat, запустите «FromChat Portable.exe» в выбранной папке.";
+    "Чтобы открыть FromChat, запустите «FromChat.exe» в выбранной папке.";
 pub const DONE_TELEGRAM_PREFIX: &str = "Подпишитесь на ";
 pub const DONE_TELEGRAM_CHANNEL_LABEL: &str = "@fromchat_ch";
 pub const DONE_TELEGRAM_MIDDLE: &str =

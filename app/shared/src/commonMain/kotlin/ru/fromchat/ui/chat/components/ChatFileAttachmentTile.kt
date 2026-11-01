@@ -1,12 +1,7 @@
 package ru.fromchat.ui.chat.components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -15,16 +10,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.api.local.cache.DecryptedFileCache
-import ru.fromchat.api.local.cache.UPLOAD_ERROR_FILE_TOO_LARGE
 import ru.fromchat.api.local.download.AttachmentDownloadNotifier
 import ru.fromchat.api.local.download.AttachmentDownloadScheduler
 import ru.fromchat.api.local.download.DmFileDownloader
@@ -34,14 +25,8 @@ import ru.fromchat.api.local.mimeTypeForFilename
 import ru.fromchat.api.schema.messages.dm.DmEnvelope
 import ru.fromchat.api.schema.messages.dm.DmFile
 import ru.fromchat.attachment_open_failed
-import ru.fromchat.attachment_retry
-import ru.fromchat.attachment_upload_failed
-import ru.fromchat.attachment_upload_failed_too_large
-import ru.fromchat.cd_attachment_upload_retry
 import ru.fromchat.ui.chat.media.ExpressiveFileAttachmentRow
-import ru.fromchat.ui.chat.message.messageBubbleContentColor
 import ru.fromchat.ui.chat.utils.showAttachmentOpenFailed
-import ru.fromchat.ui.components.Text
 
 @Composable
 fun ChatFileAttachmentTile(
@@ -223,15 +208,6 @@ fun ChatFileAttachmentTile(
         else -> null
     }
 
-    val failedLabel = when (uploadError) {
-        UPLOAD_ERROR_FILE_TOO_LARGE -> stringResource(Res.string.attachment_upload_failed_too_large)
-        null, "" -> null
-        else -> stringResource(Res.string.attachment_upload_failed)
-    }
-    val retryText = stringResource(Res.string.attachment_retry)
-    val retryCd = stringResource(Res.string.cd_attachment_upload_retry)
-    val headlineColor = messageBubbleContentColor(isAuthor)
-
     Box(modifier = modifier.widthIn(max = 280.dp)) {
         ExpressiveFileAttachmentRow(
             filename = filename,
@@ -247,32 +223,9 @@ fun ChatFileAttachmentTile(
             },
             isDownloaded = showAsDownloadedIcon,
             onCancelProgress = onCancelProgress,
+            uploadFailed = uploadFailed,
+            onRetryUpload = onRetryUpload,
         )
-        if (uploadFailed && failedLabel != null && onRetryUpload != null) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.35f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(horizontal = 12.dp),
-                ) {
-                    Text(
-                        text = failedLabel,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = headlineColor,
-                    )
-                    TextButton(
-                        onClick = onRetryUpload,
-                        modifier = Modifier.semantics { contentDescription = retryCd },
-                    ) {
-                        Text(text = retryText, color = headlineColor)
-                    }
-                }
-            }
-        }
     }
 }
 
