@@ -20,8 +20,8 @@ internal actual object IncognitoContainer {
         hardenIncognitoVolumeDirectory(dir.absolutePath)
         containerPath = File(dir, IncognitoContainerOnDisk.newRandomFileName()).absolutePath
         File(containerPath!!).delete()
-        val io = openIncognitoBlockVolumeIo(containerPath!!)
         blockVolume = IncognitoBlockVolume(key, io)
+        require(incognitoBlockCryptoSelfTest(key)) { "Incognito block crypto self-test failed" }
         IncognitoVolumeFileSystem.attach(blockVolume!!)
         logicalRoot = defaultAppDataRootPath()
     }

@@ -22,6 +22,7 @@ internal actual object IncognitoContainer {
         File(containerPath!!).delete()
         val io = openIncognitoBlockVolumeIo(containerPath!!)
         blockVolume = IncognitoBlockVolume(key, io)
+        require(incognitoBlockCryptoSelfTest(key)) { "Incognito block crypto self-test failed" }
         IncognitoVolumeFileSystem.attach(blockVolume!!)
         logicalRoot = defaultAppDataRootPath()
     }
