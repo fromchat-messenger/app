@@ -288,9 +288,6 @@ private object DesktopProtocolRegistration {
 }
 
 fun main(args: Array<String>) {
-    if (args.contains("--verify-incognito")) {
-        kotlin.system.exitProcess(runIncognitoContainerVerify())
-    }
     LinuxArm64MesaEnvironment.applyIfNeeded()
     applyFromChatLauncherEnvironment()
     configurePortableLayoutFromInstallDir()

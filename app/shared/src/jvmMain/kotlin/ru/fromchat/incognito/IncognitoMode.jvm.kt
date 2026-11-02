@@ -1,11 +1,12 @@
 package ru.fromchat.incognito
 
 import java.io.File
-import java.security.SecureRandom
-import ru.fromchat.utils.files.AppDataRoot
 
 internal actual suspend fun provisionIncognitoVolumeRoot(): String {
-    val volume = File(AppDataRoot.resolve(), ".incognito/${randomHiddenDirectoryName()}").apply { mkdirs() }
+    val volume = File(
+        IncognitoDesktopContainerRoot.systemTempDirectory(),
+        IncognitoObfuscatedTempNames.randomTempDirectoryName(),
+    ).apply { mkdirs() }
     hardenIncognitoVolumeDirectory(volume.absolutePath)
     return volume.absolutePath
 }
@@ -26,14 +27,4 @@ internal actual fun registerIncognitoLifecycleHooks() {
             "fromchat-incognito-shutdown",
         ),
     )
-}
-
-private fun randomHiddenDirectoryName(): String {
-    val alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
-    val length = 8 + SecureRandom().nextInt(5)
-    return buildString(length) {
-        repeat(length) {
-            append(alphabet[SecureRandom().nextInt(alphabet.length)])
-        }
-    }
 }
