@@ -171,6 +171,17 @@ suspend fun probeServerEndpoint(
     return lastConfig to lastResult
 }
 
+/** Persists host/port/https for logged-out users before probe completes (MITM QA, unreachable servers). */
+suspend fun persistPreAuthServerEndpoint(config: ServerConfigData) {
+    if (ApiClient.token?.trim().orEmpty().isNotEmpty()) return
+    ServerConfig.updateServerConfig(
+        config.copy(
+            callsPort = config.apiPort,
+            callsEnabled = false,
+        ),
+    )
+}
+
 private suspend fun probeServerOnce(
     config: ServerConfigData,
 ): Pair<ServerProbeResult, Throwable?> {

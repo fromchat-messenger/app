@@ -89,6 +89,7 @@ import ru.fromchat.config.Settings
 import ru.fromchat.api.instance.ServerProbeResult
 import ru.fromchat.api.instance.ApplyServerResult
 import ru.fromchat.api.instance.applyServerAndNavigate
+import ru.fromchat.api.instance.persistPreAuthServerEndpoint
 import ru.fromchat.api.instance.probeServerEndpoint
 import ru.fromchat.save_continue
 import ru.fromchat.server_config_action_check
@@ -262,6 +263,16 @@ fun ServerConfigScreen(
                                 if (parsed == null) {
                                     snackbarHostState.showSnackbar(strHostError)
                                     return@launch
+                                }
+                                val endpointOnly = ServerConfigData(
+                                    serverIp = parsed.host,
+                                    apiPort = parsed.port,
+                                    callsPort = parsed.port,
+                                    httpsEnabled = parsed.httpsPreferred,
+                                    callsEnabled = false,
+                                )
+                                if (preAuth) {
+                                    persistPreAuthServerEndpoint(endpointOnly)
                                 }
                                 val (tentative, probe) = probeServerEndpoint(
                                     host = parsed.host,

@@ -43,7 +43,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
             return
-        body = json.dumps({"instance_id": "external-mitm-probe"}).encode("utf-8")
+        body = json.dumps({"instance_id": "00000000-0000-4000-8000-000000000001"}).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))

@@ -42,7 +42,7 @@ Simulates a hostile TLS endpoint with a **Charles Proxy–like** certificate nam
 python3 ./scripts/incognito-security/mitm_probe_server.py
 ```
 
-1. In the app, set the server to `127.0.0.1` and the printed port, **HTTPS** on.
+1. In the app, set the server to `127.0.0.1` and the printed port, **HTTPS** on, and tap **Save** (pre-login saves the endpoint even if the probe cannot reach the API).
 2. Enable **Incognito**, enter a username, tap Next.
 3. Expect **Suspicious certificate** / blocked connection — not a normal successful probe.
 

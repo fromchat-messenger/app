@@ -71,8 +71,8 @@ private class IncognitoCompositeTrustManager(
     override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {
         val certs = chain?.filterIsInstance<X509Certificate>()?.toTypedArray()
             ?: throw CertificateException("Empty certificate chain")
+        enforceIncognitoMitmPolicy(host = null, certs)
         system.checkServerTrusted(certs, authType)
-        verifyMitmPolicy(host = null, certs)
     }
 
     override fun checkServerTrusted(
@@ -85,8 +85,8 @@ private class IncognitoCompositeTrustManager(
         val host = (socket as? SSLSocket)?.session?.peerHost?.takeIf { it.isNotBlank() }
             ?: socket?.inetAddress?.hostName?.takeIf { it.isNotBlank() }
             ?: throw CertificateException("Missing TLS host")
+        enforceIncognitoMitmPolicy(host, certs)
         delegateForHost(host).checkServerTrusted(certs, authType)
-        verifyMitmPolicy(host, certs)
     }
 
     override fun checkServerTrusted(
@@ -97,8 +97,8 @@ private class IncognitoCompositeTrustManager(
         val certs = chain?.filterIsInstance<X509Certificate>()?.toTypedArray()
             ?: throw CertificateException("Empty certificate chain")
         val host = engine?.peerHost ?: throw CertificateException("Missing TLS host")
+        enforceIncognitoMitmPolicy(host, certs)
         delegateForHost(host).checkServerTrusted(certs, authType)
-        verifyMitmPolicy(host, certs)
     }
 
     override fun getAcceptedIssuers(): Array<X509Certificate> = system.acceptedIssuers
@@ -110,12 +110,15 @@ private class IncognitoCompositeTrustManager(
         return system
     }
 
-    private fun verifyMitmPolicy(host: String?, chain: Array<X509Certificate>) {
+    private fun enforceIncognitoMitmPolicy(host: String?, chain: Array<X509Certificate>) {
         if (!IncognitoMode.active) return
-        val resolvedHost = host ?: return
-        if (IncognitoTlsHostBypass.isAllowed(resolvedHost)) return
+        val resolvedHost = host?.let { normalizeTlsHost(it) }
+        if (resolvedHost != null && IncognitoTlsHostBypass.isAllowed(resolvedHost)) return
         val marker = detectMitmCertificateMarker(chain) ?: return
-        throw IncognitoMitmCertificateException(normalizeTlsHost(resolvedHost), marker)
+        throw IncognitoMitmCertificateException(
+            host = resolvedHost ?: normalizeTlsHost(host.orEmpty()).ifBlank { "unknown" },
+            matchedMarker = marker,
+        )
     }
 }
 
