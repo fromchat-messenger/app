@@ -1,15 +1,21 @@
 package ru.fromchat.ui.auth
 
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
+import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,8 +25,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.unit.dp
 import io.ktor.client.call.body
 import io.ktor.client.plugins.ClientRequestException
 import kotlinx.coroutines.launch
@@ -57,6 +65,8 @@ import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 import ru.fromchat.username
 import ru.fromchat.username_chars_error
 import ru.fromchat.username_length_error
+import ru.fromchat.utils.components.Category
+import ru.fromchat.utils.components.SwitchListItem
 
 /** Matches backend `is_valid_username`: English letters, digits, hyphen, underscore. */
 private const val USERNAME_STEP_TAG = "AuthUsernameStep"
@@ -219,31 +229,54 @@ internal fun usernameStepPage(
                 shape = SettingsPasswordOutlineFieldShape,
             )
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = SettingsStepHorizontalPadding)
-                    .padding(top = SettingsStepHorizontalPadding),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = incognitoTitle,
-                    modifier = Modifier.weight(1f),
-                )
-                Switch(
-                    checked = incognitoEnabled,
-                    onCheckedChange = onIncognitoChange,
-                )
+            Column(Modifier.fillMaxWidth()) {
+                Category(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = SettingsStepHorizontalPadding)
+                        .padding(top = SettingsStepHorizontalPadding),
+                    margin = PaddingValues(0.dp),
+                    containerColor = if (incognitoEnabled) {
+                        colorScheme.secondaryContainer
+                    } else {
+                        colorScheme.surfaceContainerLow
+                    },
+                ) {
+                    SwitchListItem(
+                        headline = incognitoTitle,
+                        supportingText = incognitoSummary,
+                        checked = incognitoEnabled,
+                        onCheckedChange = onIncognitoChange,
+                        divider = false,
+                        leadingContent = {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(MaterialShapes.Ghostish.normalized().toShape())
+                                    .background(
+                                        if (incognitoEnabled) {
+                                            colorScheme.primaryContainer
+                                        } else {
+                                            colorScheme.surfaceContainerHighest
+                                        },
+                                    ),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.VisibilityOff,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(22.dp),
+                                    tint = if (incognitoEnabled) {
+                                        colorScheme.onPrimaryContainer
+                                    } else {
+                                        colorScheme.onSurfaceVariant
+                                    },
+                                )
+                            }
+                        },
+                    )
+                }
             }
-            Text(
-                text = incognitoSummary,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = SettingsStepHorizontalPadding)
-                    .padding(top = SettingsStepHorizontalPadding / 2),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         },
         listFooter = { ChangeServerButton() },
         button = {

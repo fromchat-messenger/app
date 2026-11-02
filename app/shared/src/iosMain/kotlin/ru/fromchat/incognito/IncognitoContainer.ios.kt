@@ -21,7 +21,7 @@ internal actual object IncognitoContainer {
     actual fun open(key: ByteArray, volumeDirectory: String) {
         volumeDir = volumeDirectory
         NSFileManager.defaultManager.createDirectoryAtPath(volumeDirectory, true, null, null)
-        containerPath = "$volumeDirectory/data.fcv"
+        containerPath = "$volumeDirectory/${IncognitoContainerOnDisk.newRandomFileName()}"
         val live = "$volumeDirectory/.live-${UUID.randomUUID()}"
         NSFileManager.defaultManager.createDirectoryAtPath(live, true, null, null)
         NSFileManager.defaultManager.createDirectoryAtPath("$live/cache", true, null, null)

@@ -25,7 +25,7 @@ private suspend fun verifyGracefulWipe() {
     val containerPath = IncognitoMode.containerFilePathOrNull()
         ?: error("missing container path")
     val sealed = File(containerPath).readBytes()
-    check(IncognitoVault.isSealedPayload(sealed)) { "data.fcv is not sealed" }
+    check(IncognitoVault.isSealedPayload(sealed)) { "container file is not sealed" }
     check(!sealed.decodeToString().contains("SQLite format 3")) { "plaintext in sealed container" }
     val volumeRoot = IncognitoMode.volumeRootOrNull() ?: error("missing volume root")
     IncognitoMode.destroy()

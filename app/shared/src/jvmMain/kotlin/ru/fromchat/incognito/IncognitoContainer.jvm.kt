@@ -26,7 +26,8 @@ internal actual object IncognitoContainer {
     actual fun open(key: ByteArray, volumeDirectory: String) {
         volumeDir = volumeDirectory
         val dir = File(volumeDirectory).apply { mkdirs() }
-        containerPath = File(dir, "data.fcv").absolutePath
+        val fileName = IncognitoContainerOnDisk.newRandomFileName()
+        containerPath = File(dir, fileName).absolutePath
         workRoot = pickWorkRoot().apply { mkdirs() }.absolutePath
         File(workRoot, "cache").mkdirs()
         val container = File(containerPath!!)
