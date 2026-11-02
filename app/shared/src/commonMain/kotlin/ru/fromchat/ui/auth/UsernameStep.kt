@@ -33,8 +33,8 @@ import io.ktor.client.call.body
 import io.ktor.client.plugins.ClientRequestException
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
-import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
+import ru.fromchat.api.instance.isSslProtocolError
 import ru.fromchat.api.schema.core.ErrorResponse
 import ru.fromchat.auth_incognito_enabled_snackbar
 import ru.fromchat.auth_incognito_mode_summary
@@ -44,22 +44,24 @@ import ru.fromchat.auth_step_username_body
 import ru.fromchat.auth_step_username_title
 import ru.fromchat.error_unexpected
 import ru.fromchat.fill_all_fields
-import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.incognito.findIncognitoMitmCertificateException
+import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.incognito.isIncognitoTlsCertificateError
 import ru.fromchat.logging.Logger
+import ru.fromchat.Res
 import ru.fromchat.settings_next
 import ru.fromchat.ui.components.ActionButton
 import ru.fromchat.ui.components.ExpressiveHeroSpec
 import ru.fromchat.ui.components.ExpressiveStepAutoFocusEffect
+import ru.fromchat.ui.components.expressiveStepFieldColors
 import ru.fromchat.ui.components.ExpressiveStepLazyListIndices
 import ru.fromchat.ui.components.ExpressiveStepPage
 import ru.fromchat.ui.components.ExpressiveStepPageHeader
-import ru.fromchat.ui.components.SettingsPasswordOutlineFieldShape
-import ru.fromchat.ui.components.Text
-import ru.fromchat.ui.components.expressiveStepFieldColors
 import ru.fromchat.ui.components.expressiveStepSingleLineKeyboardOptions
 import ru.fromchat.ui.components.expressiveStepSubmitKeyboardActions
 import ru.fromchat.ui.components.expressiveStepSubmitOnEnter
+import ru.fromchat.ui.components.SettingsPasswordOutlineFieldShape
+import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.trackImeScrollTarget
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 import ru.fromchat.username
@@ -82,11 +84,12 @@ internal fun usernameStepPage(
     incognitoEnabled: Boolean,
     onIncognitoChange: (Boolean) -> Unit,
     mitmBypassRetryNonce: Int,
-    tlsBypassRetryNonce: Int,
+    publicHttpBypassRetryNonce: Int,
     onContinue: suspend () -> Unit,
     onSnackbar: (String, Throwable?) -> Unit,
     onTlsCertificateRejected: () -> Unit,
     onMitmCertificateDetected: (String) -> Unit,
+    onPublicHttpWarning: () -> Unit,
 ): ExpressiveStepPage {
     val scope = rememberCoroutineScope()
     val colorScheme = MaterialTheme.colorScheme
@@ -136,8 +139,10 @@ internal fun usernameStepPage(
                     AuthServerProbeOutcome.TlsCertificateRejected -> {
                         onTlsCertificateRejected()
                     }
+                    AuthServerProbeOutcome.PublicHttpUnencrypted -> {
+                        onPublicHttpWarning()
+                    }
                     AuthServerProbeOutcome.Failed -> {
-                        if (incognitoEnabled) IncognitoMode.destroy()
                         Logger.w(USERNAME_STEP_TAG, "submit aborted: server probe failed username=$trimmed")
                         onSnackbar(serverFail, null)
                     }
@@ -166,6 +171,10 @@ internal fun usernameStepPage(
                                 onMitmCertificateDetected(mitm.matchedMarker)
                                 return@launch
                             }
+                            if (isIncognitoTlsCertificateError(e) || (incognitoEnabled && e.isSslProtocolError())) {
+                                onTlsCertificateRejected()
+                                return@launch
+                            }
                             Logger.e(USERNAME_STEP_TAG, "auth username step error username=$trimmed", e)
                             onSnackbar(unexpected, e)
                         }
@@ -183,8 +192,8 @@ internal fun usernameStepPage(
         }
     }
 
-    LaunchedEffect(tlsBypassRetryNonce) {
-        if (tlsBypassRetryNonce > 0) {
+    LaunchedEffect(publicHttpBypassRetryNonce) {
+        if (publicHttpBypassRetryNonce > 0) {
             attemptSubmit()
         }
     }

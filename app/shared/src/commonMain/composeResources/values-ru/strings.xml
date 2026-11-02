@@ -81,6 +81,8 @@
     <string name="incognito_mitm_certificate_warning_title">Подозрительный сертификат</string>
     <string name="incognito_mitm_certificate_warning_body">Сертификат сервера похож на перехват трафика (%1$s). Подключение может раскрыть ваш трафик. Всё равно продолжить?</string>
     <string name="incognito_connect_anyway">Всё равно подключиться</string>
+    <string name="public_http_warning_title">Незашифрованное подключение</string>
+    <string name="public_http_warning_body">Этот сервер использует HTTP без шифрования, что небезопасно. Трафик могут перехватить или изменить любые участники цепочки между вами и сервером (например, ваш провайдер или хостинг сервера).</string>
     <string name="auth_step_username_body">Это ваш логин. С помощью него мы сможем отличить вас от других людей.</string>
     <string name="auth_step_profile_title">Создайте ваш профиль</string>
     <string name="auth_step_profile_body">Введите ваше отображаемое имя и, если хотите, несколько слов о себе.</string>

@@ -6,49 +6,36 @@ Use them while the desktop app is running with **Incognito mode** enabled.
 
 ## 1. No plaintext writes under app data
 
-While incognito is on, session data must go through the encrypted container (under the system temp directory), not into the normal app data tree.
-
 **Linux** (requires `inotify-tools`):
 
 ```bash
-# Terminal A — fail on any create/modify under dev app data (adjust path for your install)
 ./scripts/incognito-security/watch-app-data-writes.sh /workspace/build/dev-data/beta
-
-# Terminal B — run the app, enable incognito, sign in, send messages, quit
-./gradlew :app:desktop:run
+./gradlew :app:desktop:run -Dfromchat.dev.data.dir=/workspace/build/dev-data/beta
 ```
 
-Default app data roots when not using `-Dfromchat.dev.data.dir`:
+The watcher exits with code **1** if anything is written under the watched tree.
 
-- Linux: `~/.local/share/FromChat Beta` (or `FromChat`)
-- macOS: `~/Library/Application Support/FromChat Beta`
-- Windows: use `watch-app-data-writes.ps1` (see below)
+## 2. Hostile network (MITM) against api.fromchat.ru
 
-The watcher exits with code **1** and prints the path if anything is written under the watched tree.
-
-Optional: after incognito is active, note the random session directory under `/tmp` (or `%TEMP%`) and run:
+Simulates interception of **all** TLS to the official API using a Charles-like certificate. The app keeps the default server (`api.fromchat.ru`); do **not** point the client at a custom host.
 
 ```bash
-./scripts/incognito-security/watch-temp-session-writes.sh /tmp/your-session-dir /path/to/container-file
+sudo ./scripts/incognito-security/enable-hostile-network.sh
 ```
 
-Only that session directory and the container file may receive writes; any other file created inside the session dir is reported.
+This adds `127.0.0.1 api.fromchat.ru` to `/etc/hosts` and runs a local TLS proxy on port 443.
 
-## 2. MITM certificate refused
-
-Simulates a hostile TLS endpoint with a **Charles Proxy–like** certificate name. With incognito on, the app must **not** connect silently; you should see the MITM warning (or TLS blocked for official hosts).
+1. Enable **Incognito** in the app (default server, HTTPS).
+2. Sign in or tap **Next** on the username step — expect the in-app **Suspicious certificate** or **Cannot connect safely** Material dialog with **Connect anyway**.
+3. When finished:
 
 ```bash
-python3 ./scripts/incognito-security/mitm_probe_server.py
+sudo ./scripts/incognito-security/disable-hostile-network.sh
 ```
 
-1. In the app, set the server to `127.0.0.1` and the printed port, **HTTPS** on.
-2. Enable **Incognito**, enter a username, tap Next.
-3. Expect **Suspicious certificate** / blocked connection — not a normal successful probe.
-
-Stop the server with Ctrl+C.
+Optional: `./scripts/verify-mitm-probe-cert.sh` checks the Charles-like probe cert subject used by the local proxy scripts.
 
 ## Notes
 
-- These checks are manual QA helpers, not CI gates wired into Gradle.
-- Android/iOS use different storage roots; adapt the watch path or use platform file tools.
+- Manual QA helpers only, not CI gates.
+- Android/iOS need different storage roots for the file watcher.

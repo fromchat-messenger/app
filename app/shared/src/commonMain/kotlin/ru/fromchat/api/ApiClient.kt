@@ -6,6 +6,7 @@ import ru.fromchat.utils.files.PlatformFileSystem
 import ru.fromchat.utils.settings.secureSettings
 import ru.fromchat.utils.settings.settings
 import io.ktor.client.HttpClient
+import io.ktor.client.HttpClientConfig
 import io.ktor.client.call.body
 import io.ktor.client.network.sockets.ConnectTimeoutException
 import io.ktor.client.network.sockets.SocketTimeoutException
@@ -53,37 +54,35 @@ import kotlinx.serialization.json.jsonPrimitive
 import ru.fromchat.api.crypto.IdentityKeyManager
 import ru.fromchat.api.crypto.transport.TransportCiphertext
 import ru.fromchat.api.crypto.transport.TransportCrypto
+import ru.fromchat.api.instance.apiBaseUrlFor
 import ru.fromchat.api.instance.InstanceIdGuard
 import ru.fromchat.api.instance.InstanceIdResolveResult
 import ru.fromchat.api.instance.resolveInstanceId
-import ru.fromchat.api.push.uploadPendingFcmTokenIfAvailable
-import ru.fromchat.api.push.unregisterFcmTokenFromServer
-import ru.fromchat.api.sync.PublicChatProfileSync
-import ru.fromchat.api.sync.UpdateSyncManager
-import ru.fromchat.api.local.WebSocketManager
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.cache.readOutboundFileBytes
-import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.api.local.cache.readOutboundFileBytes
 import ru.fromchat.api.local.db.clearAccountCacheOnLogout
 import ru.fromchat.api.local.db.store.ProfileCache
 import ru.fromchat.api.local.download.streamEncryptedFileToDisk
 import ru.fromchat.api.local.send.scheduleOutboxProcessing
+import ru.fromchat.api.local.WebSocketManager
+import ru.fromchat.api.push.unregisterFcmTokenFromServer
+import ru.fromchat.api.push.uploadPendingFcmTokenIfAvailable
 import ru.fromchat.api.schema.calls.CallSignalingLiveKitControl
 import ru.fromchat.api.schema.calls.CallSignalingLiveKitPayload
 import ru.fromchat.api.schema.calls.LiveKitTokenRequest
 import ru.fromchat.api.schema.calls.LiveKitTokenResponse
+import ru.fromchat.api.schema.chats.publicchat.PublicChatProfile
 import ru.fromchat.api.schema.core.SimpleStatusResponse
-import ru.fromchat.api.schema.messages.MarkReadRequest
-import ru.fromchat.api.schema.messages.MessagesResponse
 import ru.fromchat.api.schema.messages.dm.DmArchiveRequest
 import ru.fromchat.api.schema.messages.dm.DmConversation
 import ru.fromchat.api.schema.messages.dm.DmConversationsResponse
 import ru.fromchat.api.schema.messages.dm.DmHistoryResponse
-import ru.fromchat.api.schema.messages.dm.EditDmRequest
 import ru.fromchat.api.schema.messages.dm.DmMarkReadRequest
 import ru.fromchat.api.crypto.buildE2eeDmEnvelope
 import ru.fromchat.api.instance.InstanceEncryptionMode
 import ru.fromchat.api.instance.InstanceEncryptionStore
+import ru.fromchat.api.schema.messages.dm.EditDmRequest
 import ru.fromchat.api.schema.messages.dm.SendDmEnvelopeRequest
 import ru.fromchat.api.schema.messages.dm.SendDmFile
 import ru.fromchat.api.schema.messages.dm.SendDmRequest
@@ -94,7 +93,8 @@ import ru.fromchat.api.schema.messages.dm.upload.DmUploadCompleteResponse
 import ru.fromchat.api.schema.messages.dm.upload.DmUploadInitRequest
 import ru.fromchat.api.schema.messages.dm.upload.DmUploadInitResponse
 import ru.fromchat.api.schema.messages.dm.upload.DmUploadStatusResponse
-import ru.fromchat.api.schema.chats.publicchat.PublicChatProfile
+import ru.fromchat.api.schema.messages.MarkReadRequest
+import ru.fromchat.api.schema.messages.MessagesResponse
 import ru.fromchat.api.schema.messages.publicchat.SendMessageRequest
 import ru.fromchat.api.schema.messages.publicchat.upload.PublicUploadChunkRequest
 import ru.fromchat.api.schema.messages.publicchat.upload.PublicUploadChunkResponse
@@ -105,16 +105,10 @@ import ru.fromchat.api.schema.messages.publicchat.upload.PublicUploadStatusRespo
 import ru.fromchat.api.schema.server.RegisteredUserCountResponse
 import ru.fromchat.api.schema.server.ServerInstanceIdResponse
 import ru.fromchat.api.schema.server.TransportKeyResponse
-import ru.fromchat.api.schema.user.ChangePasswordApiRequest
-import ru.fromchat.api.schema.user.DeleteAccountRequest
-import ru.fromchat.api.schema.user.FcmTokenRequest
-import ru.fromchat.api.schema.user.User
-import ru.fromchat.api.schema.user.UsersSearchResponse
-import ru.fromchat.api.schema.user.VerifyPasswordRequest
+import ru.fromchat.api.schema.user.auth.AccountYandexResponse
 import ru.fromchat.api.schema.user.auth.AuthPasswordStepRequest
 import ru.fromchat.api.schema.user.auth.AuthUsernameStepRequest
 import ru.fromchat.api.schema.user.auth.AuthUsernameStepResponse
-import ru.fromchat.api.schema.user.auth.AccountYandexResponse
 import ru.fromchat.api.schema.user.auth.ChangeYandexRequest
 import ru.fromchat.api.schema.user.auth.ChangeYandexResponse
 import ru.fromchat.api.schema.user.auth.CheckAuthResponse
@@ -125,8 +119,11 @@ import ru.fromchat.api.schema.user.auth.SmartCaptchaParams
 import ru.fromchat.api.schema.user.auth.YandexExchangeRequest
 import ru.fromchat.api.schema.user.auth.YandexExchangeResponse
 import ru.fromchat.api.schema.user.auth.YandexOAuthParams
+import ru.fromchat.api.schema.user.ChangePasswordApiRequest
+import ru.fromchat.api.schema.user.DeleteAccountRequest
 import ru.fromchat.api.schema.user.devices.DeviceSessionInfo
 import ru.fromchat.api.schema.user.devices.DevicesListResponse
+import ru.fromchat.api.schema.user.FcmTokenRequest
 import ru.fromchat.api.schema.user.keys.BackupBlobRequest
 import ru.fromchat.api.schema.user.keys.BackupBlobResponse
 import ru.fromchat.api.schema.user.keys.PublicKeyResponse
@@ -135,16 +132,22 @@ import ru.fromchat.api.schema.user.profile.UpdateProfileRequest
 import ru.fromchat.api.schema.user.profile.UpdateProfileResponse
 import ru.fromchat.api.schema.user.profile.UserProfile
 import ru.fromchat.api.schema.user.profile.VerifyResponse
-import ru.fromchat.api.schema.websocket.WebSocketCredentials
-import ru.fromchat.api.schema.websocket.WebSocketMessage
+import ru.fromchat.api.schema.user.User
+import ru.fromchat.api.schema.user.UsersSearchResponse
+import ru.fromchat.api.schema.user.VerifyPasswordRequest
 import ru.fromchat.api.schema.websocket.requests.WebSocketDeleteDmRequest
 import ru.fromchat.api.schema.websocket.requests.WebSocketDeleteMessageRequest
 import ru.fromchat.api.schema.websocket.requests.WebSocketEditMessageRequest
 import ru.fromchat.api.schema.websocket.requests.WebSocketSendMessageRequest
 import ru.fromchat.api.schema.websocket.types.DmTypingData
 import ru.fromchat.api.schema.websocket.types.SubscribeStatusData
+import ru.fromchat.api.schema.websocket.WebSocketCredentials
+import ru.fromchat.api.schema.websocket.WebSocketMessage
+import ru.fromchat.api.sync.PublicChatProfileSync
+import ru.fromchat.api.sync.UpdateSyncManager
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.config.Settings
+import ru.fromchat.incognito.IncognitoMode
 import kotlin.concurrent.Volatile
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -307,39 +310,56 @@ object ApiClient {
     }
 
     /** GET-only client: no global 401 handler (used when probing a not-yet-saved server URL). */
-    private val httpProbe by lazy {
-        createPlatformHttpClient {
-            install(ContentNegotiation) {
-                json(json)
-            }
-            install(Logging) {
-                logger = Logger.SIMPLE
-                level = LogLevel.INFO
-            }
-            val currentDevice = currentDeviceInfo()
-            val userAgent = buildLoginUserAgent(
-                osName = currentDevice.osName?.takeIfNotBlank(),
-                osVersion = currentDevice.osVersion?.takeIfNotBlank(),
-                model = currentDevice.model?.takeIfNotBlank(),
-                brand = currentDevice.brand?.takeIfNotBlank(),
-            )
-            defaultRequest {
-                header("User-Agent", userAgent)
-            }
-            HttpResponseValidator {
-                validateResponse { response ->
-                    val instanceHeader = response.headers[InstanceIdGuard.INSTANCE_ID_HEADER]
-                    runCatching {
-                        InstanceIdGuard.onResponseHeader(instanceHeader)
-                    }
-                    if (response.status.value !in (200..299) + 101) {
-                        throw ClientRequestException(
-                            response,
-                            response.status.description,
-                        )
-                    }
+    private fun HttpClientConfig<*>.configureHttpProbeClient() {
+        install(ContentNegotiation) {
+            json(json)
+        }
+        install(Logging) {
+            logger = Logger.SIMPLE
+            level = LogLevel.INFO
+        }
+        val currentDevice = currentDeviceInfo()
+        val userAgent = buildLoginUserAgent(
+            osName = currentDevice.osName?.takeIfNotBlank(),
+            osVersion = currentDevice.osVersion?.takeIfNotBlank(),
+            model = currentDevice.model?.takeIfNotBlank(),
+            brand = currentDevice.brand?.takeIfNotBlank(),
+        )
+        defaultRequest {
+            header("User-Agent", userAgent)
+            header(HttpHeaders.Connection, "close")
+        }
+        engine {
+            pipelining = false
+        }
+        HttpResponseValidator {
+            validateResponse { response ->
+                val instanceHeader = response.headers[InstanceIdGuard.INSTANCE_ID_HEADER]
+                runCatching {
+                    InstanceIdGuard.onResponseHeader(instanceHeader)
+                }
+                if (response.status.value !in (200..299) + 101) {
+                    throw ClientRequestException(
+                        response,
+                        response.status.description,
+                    )
                 }
             }
+        }
+    }
+
+    private val httpProbe by lazy {
+        createPlatformHttpClient {
+            configureHttpProbeClient()
+        }
+    }
+
+    private suspend inline fun <T> withEphemeralHttpProbe(crossinline request: suspend HttpClient.() -> T): T {
+        val client = createPlatformHttpClient { configureHttpProbeClient() }
+        return try {
+            client.request()
+        } finally {
+            client.close()
         }
     }
 
@@ -490,13 +510,20 @@ object ApiClient {
     }
 
 
+    /** Auth steps always use HTTPS while incognito is active (no probe HTTP fallback). */
+    private fun authHttpBaseUrl(): String {
+        val stored = Settings.serverConfig
+        val config = if (IncognitoMode.active) stored.copy(httpsEnabled = true) else stored
+        return apiBaseUrlFor(config).trimEnd('/')
+    }
+
     suspend fun authUsernameStep(username: String): AuthUsernameStepResponse =
-        httpProbe
-            .post("${ServerConfig.apiBaseUrl}/auth/steps/username") {
+        withEphemeralHttpProbe {
+            post("${authHttpBaseUrl()}/auth/steps/username") {
                 contentType(ContentType.Application.Json)
                 setBody(AuthUsernameStepRequest(username = username.trim()))
-            }
-            .body()
+            }.body()
+        }
 
     sealed interface AuthPasswordStepOutcome {
         data class LoggedIn(val response: LoginResponse) : AuthPasswordStepOutcome
@@ -509,8 +536,8 @@ object ApiClient {
     }
 
     suspend fun authPasswordStep(username: String, passwordDerived: String): AuthPasswordStepOutcome {
-        val raw = httpProbe
-            .post("${ServerConfig.apiBaseUrl}/auth/steps/password") {
+        val raw = withEphemeralHttpProbe {
+            post("${authHttpBaseUrl()}/auth/steps/password") {
                 contentType(ContentType.Application.Json)
                 setBody(
                     AuthPasswordStepRequest(
@@ -518,8 +545,8 @@ object ApiClient {
                         password = passwordDerived,
                     ),
                 )
-            }
-            .body<JsonObject>()
+            }.body<JsonObject>()
+        }
         val status = raw["status"]?.jsonPrimitive?.contentOrNull
         return when (status) {
             "needs_register" -> {

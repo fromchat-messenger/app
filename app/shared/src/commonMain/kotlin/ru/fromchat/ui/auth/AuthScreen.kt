@@ -4,10 +4,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Storage
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -24,13 +22,13 @@ import io.ktor.client.plugins.ClientRequestException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import org.jetbrains.compose.resources.stringResource
-import ru.fromchat.logging.Logger
-import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.crypto.IdentityKeyManager
-import ru.fromchat.api.instance.ServerProbeResult
 import ru.fromchat.api.instance.apiBaseUrlFor
+import ru.fromchat.api.instance.isSslProtocolError
 import ru.fromchat.api.instance.probeServer
+import ru.fromchat.api.instance.ServerProbeResult
+import ru.fromchat.api.instance.takeLastIncognitoTlsProbeFailure
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.db.clearAccountCacheOnLogout
 import ru.fromchat.api.schema.core.ErrorResponse
@@ -38,33 +36,31 @@ import ru.fromchat.api.schema.user.auth.LoginResponse
 import ru.fromchat.api.schema.user.auth.RegisterConfirmRequest
 import ru.fromchat.api.schema.user.auth.SmartCaptchaParams
 import ru.fromchat.api.schema.user.auth.YandexOAuthParams
-import ru.fromchat.change_server
 import ru.fromchat.cancel
+import ru.fromchat.change_server
+import ru.fromchat.config.ServerConfigData
 import ru.fromchat.config.Settings
-import ru.fromchat.incognito_tls_certificate_error_body
-import ru.fromchat.incognito_tls_certificate_error_title
-import ru.fromchat.incognito_connect_anyway
-import ru.fromchat.incognito_mitm_certificate_warning_body
-import ru.fromchat.incognito_mitm_certificate_warning_title
-import ru.fromchat.incognito.IncognitoTlsHostBypass
-import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.config.shouldWarnPublicCleartextHttp
 import ru.fromchat.incognito.findIncognitoMitmCertificateException
+import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.incognito.isIncognitoTlsCertificateError
-import ru.fromchat.incognito.useLetsEncryptOnlyForHost
-import ru.fromchat.api.instance.isSslProtocolError
-import ru.fromchat.ui.LocalNavController
+import ru.fromchat.logging.Logger
+import ru.fromchat.Res
 import ru.fromchat.ui.auth.captcha.SmartCaptchaLog
 import ru.fromchat.ui.auth.captcha.SmartCaptchaNav
 import ru.fromchat.ui.auth.register.confirmPasswordStepPage
 import ru.fromchat.ui.auth.register.profileStepPage
 import ru.fromchat.ui.auth.yandex.yandexIdStepPage
 import ru.fromchat.ui.components.ExpressiveStepFlowScaffold
-import ru.fromchat.ui.components.Text
-import ru.fromchat.ui.components.TextCta
 import ru.fromchat.ui.components.rememberExpressiveStepFlow
 import ru.fromchat.ui.components.showLoggedSnackbar
-import ru.fromchat.ui.theme.extraStatusBars
+import ru.fromchat.ui.components.Text
+import ru.fromchat.ui.components.TextCta
+import ru.fromchat.ui.incognito.IncognitoTlsDialogController
+import ru.fromchat.ui.incognito.PublicHttpConnectionBypass
+import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
+import ru.fromchat.ui.theme.extraStatusBars
 import kotlin.time.Duration.Companion.milliseconds
 
 private enum class AuthFlowStep {
@@ -102,8 +98,13 @@ internal sealed interface AuthServerProbeOutcome {
     data object Ok : AuthServerProbeOutcome
     data object Failed : AuthServerProbeOutcome
     data object TlsCertificateRejected : AuthServerProbeOutcome
+    data object PublicHttpUnencrypted : AuthServerProbeOutcome
     data class MitmCertificateDetected(val marker: String) : AuthServerProbeOutcome
 }
+
+private fun authProbeNeedsPublicHttpWarning(config: ServerConfigData): Boolean =
+    shouldWarnPublicCleartextHttp(config) &&
+        !PublicHttpConnectionBypass.isAllowed(config.serverIp)
 
 internal suspend fun probeCurrentServer(): Boolean =
     probeCurrentServerForAuth() is AuthServerProbeOutcome.Ok
@@ -111,6 +112,7 @@ internal suspend fun probeCurrentServer(): Boolean =
 internal suspend fun probeCurrentServerForAuth(): AuthServerProbeOutcome {
     val config = Settings.readServerConfig()
     val apiBase = apiBaseUrlFor(config)
+    takeLastIncognitoTlsProbeFailure()
     Logger.i(
         AUTH_SERVER_PROBE_TAG,
         "probe start storedHost=${config.serverIp} apiPort=${config.apiPort} " +
@@ -129,10 +131,36 @@ internal suspend fun probeCurrentServerForAuth(): AuthServerProbeOutcome {
                 else ->
                     Logger.w(AUTH_SERVER_PROBE_TAG, "probe not supported: $result url=$apiBase")
             }
-            when {
-                result is ServerProbeResult.Supported -> AuthServerProbeOutcome.Ok
-                else -> AuthServerProbeOutcome.Failed
+            val probeOutcome = when {
+                result is ServerProbeResult.Supported -> {
+                    val effective = Settings.readServerConfig()
+                    when {
+                        authProbeNeedsPublicHttpWarning(effective) ->
+                            AuthServerProbeOutcome.PublicHttpUnencrypted
+                        else -> AuthServerProbeOutcome.Ok
+                    }
+                }
+                else -> {
+                    val tlsFailure = takeLastIncognitoTlsProbeFailure()
+                    when {
+                        tlsFailure != null -> {
+                            findIncognitoMitmCertificateException(tlsFailure)?.let { mitm ->
+                                AuthServerProbeOutcome.MitmCertificateDetected(mitm.matchedMarker)
+                            } ?: if (
+                                IncognitoMode.active &&
+                                config.httpsEnabled &&
+                                isIncognitoTlsCertificateError(tlsFailure)
+                            ) {
+                                AuthServerProbeOutcome.TlsCertificateRejected
+                            } else {
+                                AuthServerProbeOutcome.Failed
+                            }
+                        }
+                        else -> AuthServerProbeOutcome.Failed
+                    }
+                }
             }
+            probeOutcome
         }
     }.getOrElse { e ->
         Logger.w(
@@ -146,8 +174,7 @@ internal suspend fun probeCurrentServerForAuth(): AuthServerProbeOutcome {
         when {
             IncognitoMode.active &&
                 config.httpsEnabled &&
-                useLetsEncryptOnlyForHost(config.serverIp) &&
-                (isIncognitoTlsCertificateError(e) || e.isSslProtocolError()) ->
+                isIncognitoTlsCertificateError(e) ->
                 AuthServerProbeOutcome.TlsCertificateRejected
             else -> AuthServerProbeOutcome.Failed
         }
@@ -322,12 +349,22 @@ fun AuthScreen(
     var registrationProof by remember { mutableStateOf(AuthRegisterDraft.registrationProof) }
     var captchaToken by remember { mutableStateOf(AuthRegisterDraft.captchaToken) }
     var incognitoEnabled by remember { mutableStateOf(false) }
-    var showTlsCertificateDialog by remember { mutableStateOf(false) }
-    var showMitmCertificateDialog by remember { mutableStateOf(false) }
-    var mitmMatchedMarker by remember { mutableStateOf("") }
-    var mitmBypassRetryNonce by remember { mutableStateOf(0) }
-    var tlsBypassRetryNonce by remember { mutableStateOf(0) }
+    var incognitoTlsBypassRetryNonce by remember { mutableStateOf(0) }
+    var publicHttpBypassRetryNonce by remember { mutableStateOf(0) }
     val navController = LocalNavController.current
+
+    DisposableEffect(Unit) {
+        IncognitoTlsDialogController.onBypassConfirmed = {
+            incognitoTlsBypassRetryNonce++
+        }
+        IncognitoTlsDialogController.onPublicHttpBypassConfirmed = {
+            publicHttpBypassRetryNonce++
+        }
+        onDispose {
+            IncognitoTlsDialogController.onBypassConfirmed = null
+            IncognitoTlsDialogController.onPublicHttpBypassConfirmed = null
+        }
+    }
 
     fun persistDraft() {
         AuthRegisterDraft.username = username
@@ -362,61 +399,6 @@ fun AuthScreen(
         AuthRegisterDraft.clear()
         IncognitoMode.destroy()
         onBackToWelcome()
-    }
-
-    if (showTlsCertificateDialog) {
-        AlertDialog(
-            onDismissRequest = { showTlsCertificateDialog = false },
-            title = { Text(stringResource(Res.string.incognito_tls_certificate_error_title)) },
-            text = { Text(stringResource(Res.string.incognito_tls_certificate_error_body)) },
-            dismissButton = {
-                TextButton(onClick = { showTlsCertificateDialog = false }) {
-                    Text(stringResource(Res.string.cancel))
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        IncognitoTlsHostBypass.allowHost(Settings.serverConfig.serverIp)
-                        showTlsCertificateDialog = false
-                        tlsBypassRetryNonce++
-                    },
-                ) {
-                    Text(stringResource(Res.string.incognito_connect_anyway))
-                }
-            },
-        )
-    }
-
-    if (showMitmCertificateDialog) {
-        AlertDialog(
-            onDismissRequest = { showMitmCertificateDialog = false },
-            title = { Text(stringResource(Res.string.incognito_mitm_certificate_warning_title)) },
-            text = {
-                Text(
-                    stringResource(
-                        Res.string.incognito_mitm_certificate_warning_body,
-                        mitmMatchedMarker,
-                    ),
-                )
-            },
-            dismissButton = {
-                TextButton(onClick = { showMitmCertificateDialog = false }) {
-                    Text(stringResource(Res.string.cancel))
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        IncognitoTlsHostBypass.allowHost(Settings.serverConfig.serverIp)
-                        showMitmCertificateDialog = false
-                        mitmBypassRetryNonce++
-                    },
-                ) {
-                    Text(stringResource(Res.string.incognito_connect_anyway))
-                }
-            },
-        )
     }
 
     val resetToUsername: () -> Unit = {
@@ -574,16 +556,27 @@ fun AuthScreen(
                     onUsernameChange = { username = it },
                     incognitoEnabled = incognitoEnabled,
                     onIncognitoChange = { incognitoEnabled = it },
-                    mitmBypassRetryNonce = mitmBypassRetryNonce,
-                    tlsBypassRetryNonce = tlsBypassRetryNonce,
+                    mitmBypassRetryNonce = incognitoTlsBypassRetryNonce,
+                    publicHttpBypassRetryNonce = publicHttpBypassRetryNonce,
                     onContinue = {
                         flowState.pagerState.animateScrollToPage(AuthFlowStep.Password.ordinal)
                     },
                     onSnackbar = ::snackbar,
-                    onTlsCertificateRejected = { showTlsCertificateDialog = true },
+                    onTlsCertificateRejected = {
+                        IncognitoTlsDialogController.presentTlsCertificateRejected(
+                            Settings.serverConfig.serverIp,
+                        )
+                    },
                     onMitmCertificateDetected = { marker ->
-                        mitmMatchedMarker = marker
-                        showMitmCertificateDialog = true
+                        IncognitoTlsDialogController.presentMitm(
+                            marker,
+                            Settings.serverConfig.serverIp,
+                        )
+                    },
+                    onPublicHttpWarning = {
+                        IncognitoTlsDialogController.presentPublicHttpWarning(
+                            Settings.serverConfig.serverIp,
+                        )
                     },
                 ),
                 passwordStepPage(

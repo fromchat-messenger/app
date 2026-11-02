@@ -71,8 +71,8 @@ private class IncognitoCompositeTrustManager(
     override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {
         val certs = chain?.filterIsInstance<X509Certificate>()?.toTypedArray()
             ?: throw CertificateException("Empty certificate chain")
-        system.checkServerTrusted(certs, authType)
-        verifyMitmPolicy(host = null, certs)
+        enforceIncognitoMitmPolicy(host = null, certs)
+        delegateForTrust(null).checkServerTrusted(certs, authType)
     }
 
     override fun checkServerTrusted(
@@ -82,11 +82,9 @@ private class IncognitoCompositeTrustManager(
     ) {
         val certs = chain?.filterIsInstance<X509Certificate>()?.toTypedArray()
             ?: throw CertificateException("Empty certificate chain")
-        val host = (socket as? SSLSocket)?.session?.peerHost?.takeIf { it.isNotBlank() }
-            ?: socket?.inetAddress?.hostName?.takeIf { it.isNotBlank() }
-            ?: throw CertificateException("Missing TLS host")
-        delegateForHost(host).checkServerTrusted(certs, authType)
-        verifyMitmPolicy(host, certs)
+        val host = tlsPeerHostFromSocket(socket)
+        enforceIncognitoMitmPolicy(host, certs)
+        delegateForTrust(host).checkServerTrusted(certs, authType)
     }
 
     override fun checkServerTrusted(
@@ -96,26 +94,41 @@ private class IncognitoCompositeTrustManager(
     ) {
         val certs = chain?.filterIsInstance<X509Certificate>()?.toTypedArray()
             ?: throw CertificateException("Empty certificate chain")
-        val host = engine?.peerHost ?: throw CertificateException("Missing TLS host")
-        delegateForHost(host).checkServerTrusted(certs, authType)
-        verifyMitmPolicy(host, certs)
+        val host = engine?.peerHost?.takeIf { it.isNotBlank() }
+            ?: resolveIncognitoTlsPeerHost(null).takeIf { it != "unknown" }
+            ?: throw CertificateException("Missing TLS host")
+        enforceIncognitoMitmPolicy(host, certs)
+        delegateForTrust(host).checkServerTrusted(certs, authType)
     }
 
     override fun getAcceptedIssuers(): Array<X509Certificate> = system.acceptedIssuers
 
-    private fun delegateForHost(host: String): X509TrustManager {
-        val resolved = normalizeTlsHost(host)
-        if (IncognitoTlsHostBypass.isAllowed(resolved)) return system
-        if (useLetsEncryptOnlyForHost(host)) return letsEncrypt
+    private fun delegateForTrust(peerHost: String?): X509TrustManager {
+        if (incognitoTlsBypassActive(peerHost)) return createIncognitoBypassTrustManager()
+        val resolved = resolveIncognitoTlsPeerHost(peerHost)
+        if (resolved == "unknown") return system
+        return delegateForHost(resolved)
+    }
+
+    private fun delegateForHost(resolvedHost: String): X509TrustManager {
+        if (IncognitoTlsHostBypass.isAllowed(resolvedHost)) return createIncognitoBypassTrustManager()
+        if (useLetsEncryptOnlyForHost(resolvedHost)) return letsEncrypt
         return system
     }
 
-    private fun verifyMitmPolicy(host: String?, chain: Array<X509Certificate>) {
-        if (!IncognitoMode.active) return
-        val resolvedHost = host ?: return
-        if (IncognitoTlsHostBypass.isAllowed(resolvedHost)) return
+    private fun enforceIncognitoMitmPolicy(host: String?, chain: Array<X509Certificate>) {
+        if (incognitoTlsBypassActive(host)) return
+        val resolvedHost = resolveIncognitoTlsPeerHost(host)
         val marker = detectMitmCertificateMarker(chain) ?: return
-        throw IncognitoMitmCertificateException(normalizeTlsHost(resolvedHost), marker)
+        throw IncognitoMitmCertificateException(resolvedHost, marker)
+    }
+
+    private fun tlsPeerHostFromSocket(socket: java.net.Socket?): String {
+        val fromSocket = (socket as? SSLSocket)?.session?.peerHost?.takeIf { it.isNotBlank() }
+            ?: socket?.inetAddress?.hostName?.takeIf { it.isNotBlank() }
+        if (fromSocket != null) return fromSocket
+        return resolveIncognitoTlsPeerHost(null).takeIf { it != "unknown" }
+            ?: throw CertificateException("Missing TLS host")
     }
 }
 
