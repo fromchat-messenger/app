@@ -21,7 +21,6 @@ internal actual object IncognitoContainer {
         val fileName = IncognitoContainerOnDisk.newRandomFileName()
         containerPath = File(dir, fileName).absolutePath
         workRoot = File(dir, ".live-${UUID.randomUUID()}").apply { mkdirs() }.absolutePath
-        File(workRoot, "cache").mkdirs()
         hardenIncognitoVolumeDirectory(workRoot!!)
         val container = File(containerPath!!)
         if (container.isFile && container.length() > 0L) {
@@ -35,7 +34,7 @@ internal actual object IncognitoContainer {
     actual fun syncToContainer(key: ByteArray) {
         val work = workRoot ?: return
         val target = containerPath ?: return
-        val packed = packWorkDir(work, buildIncognitoContainerExtras())
+        val packed = packWorkDir(work)
         File(target).writeBytes(IncognitoVault.seal(key, packed))
     }
 

@@ -164,7 +164,6 @@ object IdentityKeyManager {
     }
 
     private suspend fun persistKeys(keys: IdentityKeys) {
-        if (IncognitoMode.active) return
         secureSettings.putString("identity_public_key", Base64.encode(keys.publicKey))
         secureSettings.putString("identity_private_key", Base64.encode(keys.privateKey))
     }

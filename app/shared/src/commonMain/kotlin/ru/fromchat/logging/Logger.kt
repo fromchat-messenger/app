@@ -1,7 +1,5 @@
 package ru.fromchat.logging
 
-import ru.fromchat.incognito.IncognitoMode
-
 expect object Logger {
     fun d(tag: String, message: String, throwable: Throwable? = null)
     fun i(tag: String, message: String, throwable: Throwable? = null)
@@ -10,5 +8,5 @@ expect object Logger {
     fun f(tag: String, message: String, throwable: Throwable? = null)
 }
 
-/** Platform logcat / NSLog / stdout must not receive incognito session content. */
-internal fun mirrorLogsToPlatformConsole(): Boolean = !IncognitoMode.active
+/** Incognito uses the same platform logging path as normal mode; only on-disk layout is redirected. */
+internal fun mirrorLogsToPlatformConsole(): Boolean = true

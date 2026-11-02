@@ -76,21 +76,4 @@ object MessageDatabaseProvider {
             driver = it
         }
     }
-
-    internal fun exportIncognitoMessageDatabaseSnapshot(): ByteArray? {
-        if (!ru.fromchat.incognito.IncognitoMode.active) return null
-        val exportPath = ru.fromchat.incognito.createIncognitoDbExportFile()
-        return try {
-            withMessageDatabaseLock {
-                val driver = openDriverLocked()
-                val escaped = exportPath.replace("'", "''")
-                driver.execute(null, "VACUUM INTO '$escaped'", 0)
-            }
-            ru.fromchat.incognito.readIncognitoDbExportFile(exportPath)
-        } catch (_: Exception) {
-            null
-        } finally {
-            ru.fromchat.incognito.deleteIncognitoDbExportFile(exportPath)
-        }
-    }
 }

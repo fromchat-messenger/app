@@ -20,13 +20,13 @@ fun runIncognitoContainerVerify(): Int = runBlocking {
 private suspend fun verifyGracefulWipe() {
     IncognitoMode.activate()
     val cacheDir = File(PlatformFileSystem.getAppCacheDirectory(), "fromchat").apply { mkdirs() }
-    File(cacheDir, "message_database.db").let { db ->
-        PlatformFileSystem.writeBytes(db.absolutePath, "SQLite format 3 incognito test payload".encodeToByteArray())
-        check(IncognitoVault.isSealedPayload(db.readBytes())) { "cache file must be sealed on disk" }
-    }
+    val dbPath = File(cacheDir, "message_database.db").absolutePath
+    PlatformFileSystem.writeBytes(dbPath, "SQLite format 3 incognito test payload".encodeToByteArray())
+    check(File(dbPath).exists()) { "incognito work tree must accept normal file writes" }
     Logger.i("IncognitoVerify", "log probe line for sealed container")
     val logPath = FromChatLogDirs.currentLogPath()
-    check(!File(logPath).exists()) { "incognito must not write plaintext logs to disk" }
+    check(File(logPath).exists()) { "logs must use the same path layout inside the volume work tree" }
+    check(File(logPath).readText().contains("log probe line")) { "log content missing from work tree" }
     IncognitoMode.syncContainerToDisk()
     val containerPath = IncognitoMode.containerFilePathOrNull()
         ?: error("missing container path")

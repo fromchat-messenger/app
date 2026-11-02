@@ -1,6 +1,5 @@
 package ru.fromchat.logging
 
-import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.utils.files.PlatformFileSystem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -84,18 +83,8 @@ object AppLogStore {
             if (list.size <= MAX_MEMORY_ENTRIES) list else list.takeLast(MAX_MEMORY_ENTRIES)
         }
         _entries.value = updated
-        if (!IncognitoMode.active) {
-            val lineBytes = (entry.formattedLine() + "\n").encodeToByteArray()
-            PlatformFileSystem.appendBytes(FromChatLogDirs.currentLogPath(), lineBytes)
-        }
-    }
-
-    /** Session log lines packed into the sealed container on sync (never plaintext on disk). */
-    internal fun incognitoSnapshotFileEntries(): List<Pair<String, ByteArray>> {
-        if (!IncognitoMode.active) return emptyList()
-        val text = _entries.value.joinToString("\n") { it.formattedLine() }
-        if (text.isBlank()) return emptyList()
-        return listOf("fromchat/logs/${FromChatLogDirs.CURRENT_LOG_FILE}" to text.encodeToByteArray())
+        val lineBytes = (entry.formattedLine() + "\n").encodeToByteArray()
+        PlatformFileSystem.appendBytes(FromChatLogDirs.currentLogPath(), lineBytes)
     }
 
     /** Drops in-memory log cache when entering or leaving an incognito session. */
@@ -119,7 +108,7 @@ object AppLogStore {
 
     suspend fun ensureLoaded() = withContext(Dispatchers.IO) {
         mutex.withLock {
-            if (loadedFromDisk || IncognitoMode.active) return@withContext
+            if (loadedFromDisk) return@withContext
             val text = runCatching { LogFileOps.readText(FromChatLogDirs.currentLogPath()) }
                 .getOrDefault("")
             setEntriesFromParsed(parseLogText(text))
