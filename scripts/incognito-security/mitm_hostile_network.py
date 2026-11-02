@@ -89,11 +89,18 @@ def relay(a: ssl.SSLSocket, b: ssl.SSLSocket) -> None:
 
 
 def handle_client(raw: socket.socket, cert: Path, key: Path) -> None:
-    client_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    client_ctx.load_cert_chain(certfile=str(cert), keyfile=str(key))
-    client = client_ctx.wrap_socket(raw, server_side=True)
+    try:
+        client_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        client_ctx.load_cert_chain(certfile=str(cert), keyfile=str(key))
+        client = client_ctx.wrap_socket(raw, server_side=True)
+    except ssl.SSLError as error:
+        raw.close()
+        sys.stderr.write(f"client TLS handshake skipped: {error}\n")
+        return
     upstream_raw = socket.create_connection((UPSTREAM_HOST, UPSTREAM_PORT), timeout=30)
     upstream_ctx = ssl.create_default_context()
+    upstream_ctx.check_hostname = False
+    upstream_ctx.verify_mode = ssl.CERT_NONE
     upstream = upstream_ctx.wrap_socket(
         upstream_raw,
         server_hostname=UPSTREAM_HOST,
