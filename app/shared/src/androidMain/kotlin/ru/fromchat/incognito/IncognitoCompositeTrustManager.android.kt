@@ -104,6 +104,7 @@ private class IncognitoCompositeTrustManager(
     override fun getAcceptedIssuers(): Array<X509Certificate> = system.acceptedIssuers
 
     private fun delegateForTrust(peerHost: String?): X509TrustManager {
+        if (incognitoTlsBypassActive(peerHost)) return createIncognitoBypassTrustManager()
         val resolved = resolveIncognitoTlsPeerHost(peerHost)
         if (resolved == "unknown") return system
         return delegateForHost(resolved)
