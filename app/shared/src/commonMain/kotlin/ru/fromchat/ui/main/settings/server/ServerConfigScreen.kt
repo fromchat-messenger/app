@@ -123,6 +123,14 @@ import ru.fromchat.ui.components.trackLazyListFocus
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 import ru.fromchat.ui.main.settings.settingsDetailShowBackButton
 import ru.fromchat.ui.main.settings.settingsDetailWindowInsets
+import ru.fromchat.incognito.IncognitoTlsHostBypass
+import ru.fromchat.incognito.findIncognitoMitmCertificateException
+import ru.fromchat.incognito.isIncognitoTlsCertificateError
+import ru.fromchat.incognito_tls_certificate_error_body
+import ru.fromchat.incognito_tls_certificate_error_title
+import ru.fromchat.incognito_connect_anyway
+import ru.fromchat.incognito_mitm_certificate_warning_body
+import ru.fromchat.incognito_mitm_certificate_warning_title
 import ru.fromchat.ui.theme.extraStatusBars
 
 private object ServerConfigLazyListIndices {
@@ -157,6 +165,9 @@ fun ServerConfigScreen(
     var lastProbe by remember { mutableStateOf<ServerProbeResult?>(null) }
     var lastProbedConfig by remember { mutableStateOf<ServerConfigData?>(null) }
     var showResetDialog by remember { mutableStateOf(false) }
+    var showMitmCertificateDialog by remember { mutableStateOf(false) }
+    var showTlsCertificateDialog by remember { mutableStateOf(false) }
+    var mitmMatchedMarker by remember { mutableStateOf("") }
     val actionHazeState = rememberHazeState()
     val focusScrollState = rememberLazyListFocusScrollState()
 
@@ -185,6 +196,41 @@ fun ServerConfigScreen(
 
     fun buildTentativeFromParsed(): ParsedServerEndpoint? = parsedEndpoint
 
+    fun handleIncognitoProbeFailure(e: Throwable): Boolean {
+        findIncognitoMitmCertificateException(e)?.let { mitm ->
+            mitmMatchedMarker = mitm.matchedMarker
+            showMitmCertificateDialog = true
+            return true
+        }
+        if (isIncognitoTlsCertificateError(e)) {
+            showTlsCertificateDialog = true
+            return true
+        }
+        return false
+    }
+
+    suspend fun runServerEndpointProbe(parsed: ParsedServerEndpoint): Pair<ServerConfigData, ServerProbeResult> =
+        runCatching {
+            probeServerEndpoint(
+                host = parsed.host,
+                port = parsed.port,
+                httpsPreferred = parsed.httpsPreferred,
+                schemeExplicit = parsed.schemeExplicit,
+            )
+        }.getOrElse { e ->
+            if (handleIncognitoProbeFailure(e)) {
+                val fallback = ServerConfigData(
+                    serverIp = parsed.host,
+                    apiPort = parsed.port,
+                    callsPort = parsed.port,
+                    httpsEnabled = parsed.httpsPreferred,
+                    callsEnabled = false,
+                )
+                return fallback to ServerProbeResult.Unreachable
+            }
+            throw e
+        }
+
     fun verifyServer() {
         scope.launch {
             launch { snackbarHostState.showSnackbar(strChecking) }
@@ -193,14 +239,15 @@ fun ServerConfigScreen(
                 snackbarHostState.showSnackbar(strHostError)
                 return@launch
             }
-            val (tentative, probe) = probeServerEndpoint(
-                host = parsed.host,
-                port = parsed.port,
-                httpsPreferred = parsed.httpsPreferred,
-                schemeExplicit = parsed.schemeExplicit,
-            )
+            val (tentative, probe) = try {
+                runServerEndpointProbe(parsed)
+            } catch (e: Exception) {
+                snackbarHostState.showSnackbar(strSnackbarApiFail)
+                return@launch
+            }
             lastProbe = probe
             lastProbedConfig = tentative
+            if (showMitmCertificateDialog || showTlsCertificateDialog) return@launch
             val msg = when (probe) {
                 is ServerProbeResult.Supported -> {
                     if (probe.callsOk) {
@@ -274,14 +321,16 @@ fun ServerConfigScreen(
                                 if (preAuth) {
                                     persistPreAuthServerEndpoint(endpointOnly)
                                 }
-                                val (tentative, probe) = probeServerEndpoint(
-                                    host = parsed.host,
-                                    port = parsed.port,
-                                    httpsPreferred = parsed.httpsPreferred,
-                                    schemeExplicit = parsed.schemeExplicit,
-                                )
+                                val (tentative, probe) = try {
+                                    runServerEndpointProbe(parsed)
+                                } catch (e: Exception) {
+                                    snackbarHostState.showSnackbar(strSnackbarApiFail)
+                                    return@launch
+                                }
                                 lastProbe = probe
                                 lastProbedConfig = tentative
+
+                                if (showMitmCertificateDialog || showTlsCertificateDialog) return@launch
 
                                 when (probe) {
                                     ServerProbeResult.Unsupported -> {
@@ -549,6 +598,63 @@ fun ServerConfigScreen(
                             }
                         }
                     }
+                }
+
+                if (showTlsCertificateDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showTlsCertificateDialog = false },
+                        title = { Text(stringResource(Res.string.incognito_tls_certificate_error_title)) },
+                        text = { Text(stringResource(Res.string.incognito_tls_certificate_error_body)) },
+                        dismissButton = {
+                            TextButton(onClick = { showTlsCertificateDialog = false }) {
+                                Text(stringResource(Res.string.cancel))
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    IncognitoTlsHostBypass.allowHost(
+                                        parsedEndpoint?.host ?: Settings.serverConfig.serverIp,
+                                    )
+                                    showTlsCertificateDialog = false
+                                },
+                            ) {
+                                Text(stringResource(Res.string.incognito_connect_anyway))
+                            }
+                        },
+                    )
+                }
+
+                if (showMitmCertificateDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showMitmCertificateDialog = false },
+                        title = { Text(stringResource(Res.string.incognito_mitm_certificate_warning_title)) },
+                        text = {
+                            Text(
+                                stringResource(
+                                    Res.string.incognito_mitm_certificate_warning_body,
+                                    mitmMatchedMarker,
+                                ),
+                            )
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showMitmCertificateDialog = false }) {
+                                Text(stringResource(Res.string.cancel))
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    IncognitoTlsHostBypass.allowHost(
+                                        parsedEndpoint?.host ?: Settings.serverConfig.serverIp,
+                                    )
+                                    showMitmCertificateDialog = false
+                                },
+                            ) {
+                                Text(stringResource(Res.string.incognito_connect_anyway))
+                            }
+                        },
+                    )
                 }
 
                 if (showResetDialog) {

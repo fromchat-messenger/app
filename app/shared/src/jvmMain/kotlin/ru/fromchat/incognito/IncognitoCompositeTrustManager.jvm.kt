@@ -1,5 +1,6 @@
 package ru.fromchat.incognito
 
+import ru.fromchat.api.instance.InstanceIdGuard
 import java.security.KeyStore
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
@@ -112,13 +113,18 @@ private class IncognitoCompositeTrustManager(
 
     private fun enforceIncognitoMitmPolicy(host: String?, chain: Array<X509Certificate>) {
         if (!IncognitoMode.active) return
-        val resolvedHost = host?.let { normalizeTlsHost(it) }
-        if (resolvedHost != null && IncognitoTlsHostBypass.isAllowed(resolvedHost)) return
+        val resolvedHost = resolveTlsHostForMitm(host)
+        if (resolvedHost != "unknown" && IncognitoTlsHostBypass.isAllowed(resolvedHost)) return
         val marker = detectMitmCertificateMarker(chain) ?: return
-        throw IncognitoMitmCertificateException(
-            host = resolvedHost ?: normalizeTlsHost(host.orEmpty()).ifBlank { "unknown" },
-            matchedMarker = marker,
-        )
+        throw IncognitoMitmCertificateException(resolvedHost, marker)
+    }
+
+    private fun resolveTlsHostForMitm(host: String?): String {
+        host?.takeIf { it.isNotBlank() }?.let { return normalizeTlsHost(it) }
+        InstanceIdGuard.probeConfig?.serverIp?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            return normalizeTlsHost(it)
+        }
+        return "unknown"
     }
 }
 
