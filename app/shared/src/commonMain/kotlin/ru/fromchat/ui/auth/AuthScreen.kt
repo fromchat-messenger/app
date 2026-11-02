@@ -4,10 +4,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Storage
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -41,13 +39,8 @@ import ru.fromchat.api.schema.user.auth.YandexOAuthParams
 import ru.fromchat.change_server
 import ru.fromchat.cancel
 import ru.fromchat.config.Settings
-import ru.fromchat.incognito_tls_certificate_error_body
-import ru.fromchat.incognito_tls_certificate_error_title
-import ru.fromchat.incognito_connect_anyway
-import ru.fromchat.incognito_mitm_certificate_warning_body
-import ru.fromchat.incognito_mitm_certificate_warning_title
-import ru.fromchat.incognito.IncognitoTlsHostBypass
 import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.ui.incognito.IncognitoTlsDialogController
 import ru.fromchat.incognito.findIncognitoMitmCertificateException
 import ru.fromchat.incognito.isIncognitoTlsCertificateError
 import ru.fromchat.api.instance.isSslProtocolError
@@ -320,12 +313,19 @@ fun AuthScreen(
     var registrationProof by remember { mutableStateOf(AuthRegisterDraft.registrationProof) }
     var captchaToken by remember { mutableStateOf(AuthRegisterDraft.captchaToken) }
     var incognitoEnabled by remember { mutableStateOf(false) }
-    var showTlsCertificateDialog by remember { mutableStateOf(false) }
-    var showMitmCertificateDialog by remember { mutableStateOf(false) }
-    var mitmMatchedMarker by remember { mutableStateOf("") }
     var mitmBypassRetryNonce by remember { mutableStateOf(0) }
     var tlsBypassRetryNonce by remember { mutableStateOf(0) }
     val navController = LocalNavController.current
+
+    DisposableEffect(Unit) {
+        IncognitoTlsDialogController.onBypassConfirmed = {
+            mitmBypassRetryNonce++
+            tlsBypassRetryNonce++
+        }
+        onDispose {
+            IncognitoTlsDialogController.onBypassConfirmed = null
+        }
+    }
 
     fun persistDraft() {
         AuthRegisterDraft.username = username
@@ -360,61 +360,6 @@ fun AuthScreen(
         AuthRegisterDraft.clear()
         IncognitoMode.destroy()
         onBackToWelcome()
-    }
-
-    if (showTlsCertificateDialog) {
-        AlertDialog(
-            onDismissRequest = { showTlsCertificateDialog = false },
-            title = { Text(stringResource(Res.string.incognito_tls_certificate_error_title)) },
-            text = { Text(stringResource(Res.string.incognito_tls_certificate_error_body)) },
-            dismissButton = {
-                TextButton(onClick = { showTlsCertificateDialog = false }) {
-                    Text(stringResource(Res.string.cancel))
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        IncognitoTlsHostBypass.allowHost(Settings.serverConfig.serverIp)
-                        showTlsCertificateDialog = false
-                        tlsBypassRetryNonce++
-                    },
-                ) {
-                    Text(stringResource(Res.string.incognito_connect_anyway))
-                }
-            },
-        )
-    }
-
-    if (showMitmCertificateDialog) {
-        AlertDialog(
-            onDismissRequest = { showMitmCertificateDialog = false },
-            title = { Text(stringResource(Res.string.incognito_mitm_certificate_warning_title)) },
-            text = {
-                Text(
-                    stringResource(
-                        Res.string.incognito_mitm_certificate_warning_body,
-                        mitmMatchedMarker,
-                    ),
-                )
-            },
-            dismissButton = {
-                TextButton(onClick = { showMitmCertificateDialog = false }) {
-                    Text(stringResource(Res.string.cancel))
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        IncognitoTlsHostBypass.allowHost(Settings.serverConfig.serverIp)
-                        showMitmCertificateDialog = false
-                        mitmBypassRetryNonce++
-                    },
-                ) {
-                    Text(stringResource(Res.string.incognito_connect_anyway))
-                }
-            },
-        )
     }
 
     val resetToUsername: () -> Unit = {
@@ -578,10 +523,16 @@ fun AuthScreen(
                         flowState.pagerState.animateScrollToPage(AuthFlowStep.Password.ordinal)
                     },
                     onSnackbar = ::snackbar,
-                    onTlsCertificateRejected = { showTlsCertificateDialog = true },
+                    onTlsCertificateRejected = {
+                        IncognitoTlsDialogController.presentTlsCertificateRejected(
+                            Settings.serverConfig.serverIp,
+                        )
+                    },
                     onMitmCertificateDetected = { marker ->
-                        mitmMatchedMarker = marker
-                        showMitmCertificateDialog = true
+                        IncognitoTlsDialogController.presentMitm(
+                            marker,
+                            Settings.serverConfig.serverIp,
+                        )
                     },
                 ),
                 passwordStepPage(

@@ -106,7 +106,7 @@ private class IncognitoCompositeTrustManager(
 
     private fun delegateForHost(host: String): X509TrustManager {
         val resolved = normalizeTlsHost(host)
-        if (IncognitoTlsHostBypass.isAllowed(resolved)) return system
+        if (IncognitoTlsHostBypass.isAllowed(resolved)) return createIncognitoBypassTrustManager()
         if (useLetsEncryptOnlyForHost(host)) return letsEncrypt
         return system
     }

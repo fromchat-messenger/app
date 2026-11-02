@@ -38,12 +38,3 @@ fun isIncognitoTlsCertificateError(error: Throwable): Boolean {
     }
     return false
 }
-
-/** Rethrow MITM or incognito HTTPS trust failures so auth/server probes can show the TLS dialog. */
-fun rethrowIncognitoHttpsTlsFailure(error: Throwable?, httpsEnabled: Boolean) {
-    if (error == null) return
-    findIncognitoMitmCertificateException(error)?.let { throw it }
-    if (IncognitoMode.active && httpsEnabled && isIncognitoTlsCertificateError(error)) {
-        throw error
-    }
-}
