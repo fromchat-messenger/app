@@ -334,14 +334,12 @@ fun AuthScreen(
     var registrationProof by remember { mutableStateOf(AuthRegisterDraft.registrationProof) }
     var captchaToken by remember { mutableStateOf(AuthRegisterDraft.captchaToken) }
     var incognitoEnabled by remember { mutableStateOf(false) }
-    var mitmBypassRetryNonce by remember { mutableStateOf(0) }
-    var tlsBypassRetryNonce by remember { mutableStateOf(0) }
+    var incognitoTlsBypassRetryNonce by remember { mutableStateOf(0) }
     val navController = LocalNavController.current
 
     DisposableEffect(Unit) {
         IncognitoTlsDialogController.onBypassConfirmed = {
-            mitmBypassRetryNonce++
-            tlsBypassRetryNonce++
+            incognitoTlsBypassRetryNonce++
         }
         onDispose {
             IncognitoTlsDialogController.onBypassConfirmed = null
@@ -538,8 +536,7 @@ fun AuthScreen(
                     onUsernameChange = { username = it },
                     incognitoEnabled = incognitoEnabled,
                     onIncognitoChange = { incognitoEnabled = it },
-                    mitmBypassRetryNonce = mitmBypassRetryNonce,
-                    tlsBypassRetryNonce = tlsBypassRetryNonce,
+                    mitmBypassRetryNonce = incognitoTlsBypassRetryNonce,
                     onContinue = {
                         flowState.pagerState.animateScrollToPage(AuthFlowStep.Password.ordinal)
                     },
