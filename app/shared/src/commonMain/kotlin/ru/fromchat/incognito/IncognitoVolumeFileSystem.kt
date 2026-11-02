@@ -3,6 +3,7 @@ package ru.fromchat.incognito
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import ru.fromchat.logging.FromChatLogDirs
 
 /**
  * Path-indexed files stored in an [IncognitoBlockVolume] (encrypted block container).
@@ -68,11 +69,15 @@ internal object IncognitoVolumeFileSystem {
         val vol = volume ?: return
         val existing = catalog.files[relativeKey]
         val offset = when {
-            existing == null -> allocate(bytes.size.toLong())
+            existing == null -> {
+                ensureCapacityForAllocation(bytes.size.toLong(), vol)
+                allocate(bytes.size.toLong())
+            }
             bytes.size <= existing.size -> existing.offset
             fitsInPlace(existing, bytes.size.toLong()) -> existing.offset
             else -> {
                 catalog = catalog.copy(files = catalog.files - relativeKey)
+                ensureCapacityForAllocation(bytes.size.toLong(), vol)
                 allocate(bytes.size.toLong())
             }
         }
@@ -149,6 +154,80 @@ internal object IncognitoVolumeFileSystem {
         val offset = catalog.nextDataOffset
         catalog = catalog.copy(nextDataOffset = end)
         return offset
+    }
+
+    private fun ensureCapacityForAllocation(additionalBytes: Long, vol: IncognitoBlockVolume) {
+        compactAndShrink(vol)
+        if (allocationFits(additionalBytes) && !isNearHardCap(additionalBytes)) return
+
+        val targetUsedEnd = if (allocationFits(additionalBytes)) {
+            IncognitoContainerLimits.MAX_LOGICAL_BYTES - IncognitoContainerLimits.EVICTION_HEADROOM_BYTES
+        } else {
+            catalog.nextDataOffset + additionalBytes - IncognitoContainerLimits.EVICTION_HEADROOM_BYTES
+        }.coerceAtMost(IncognitoContainerLimits.MAX_LOGICAL_BYTES - additionalBytes)
+
+        evictDisposableFilesUntilUsedAtMost(vol, targetUsedEnd.coerceAtLeast(DATA_REGION_START))
+        compactAndShrink(vol)
+
+        if (!allocationFits(additionalBytes)) {
+            evictDisposableFilesUntilUsedAtMost(
+                vol,
+                (catalog.nextDataOffset + additionalBytes - IncognitoContainerLimits.EVICTION_HEADROOM_BYTES)
+                    .coerceAtLeast(DATA_REGION_START),
+            )
+            compactAndShrink(vol)
+        }
+
+        if (!allocationFits(additionalBytes)) {
+            throw IncognitoContainerCapacityException(
+                "Incognito container exceeds ${IncognitoContainerLimits.MAX_LOGICAL_BYTES} byte limit",
+            )
+        }
+    }
+
+    private fun allocationFits(additionalBytes: Long): Boolean =
+        catalog.nextDataOffset + additionalBytes <= IncognitoContainerLimits.MAX_LOGICAL_BYTES
+
+    private fun isNearHardCap(additionalBytes: Long): Boolean {
+        val endAfter = catalog.nextDataOffset + additionalBytes
+        return endAfter > IncognitoContainerLimits.MAX_LOGICAL_BYTES -
+            IncognitoContainerLimits.EVICTION_HEADROOM_BYTES
+    }
+
+    private fun evictDisposableFilesUntilUsedAtMost(vol: IncognitoBlockVolume, targetUsedEnd: Long) {
+        val currentLogKey = "fromchat/logs/${FromChatLogDirs.CURRENT_LOG_FILE}"
+        while (catalog.nextDataOffset > targetUsedEnd) {
+            val nextKey = selectNextEvictionKey(excludingCurrentLog = true) ?: break
+            catalog = catalog.copy(files = catalog.files - nextKey)
+            saveCatalog(vol, catalog)
+            compactAndShrink(vol)
+        }
+        if (catalog.nextDataOffset > targetUsedEnd) {
+            if (catalog.files.containsKey(currentLogKey) && !IncognitoVolumeCacheEviction.isProtectedKey(currentLogKey)) {
+                catalog = catalog.copy(files = catalog.files - currentLogKey)
+                saveCatalog(vol, catalog)
+                compactAndShrink(vol)
+            }
+        }
+    }
+
+    private fun selectNextEvictionKey(excludingCurrentLog: Boolean): String? {
+        val currentLogKey = "fromchat/logs/${FromChatLogDirs.CURRENT_LOG_FILE}"
+        return catalog.files.entries
+            .asSequence()
+            .filter { (key, _) ->
+                !IncognitoVolumeCacheEviction.isProtectedKey(key) &&
+                    !(excludingCurrentLog && key == currentLogKey)
+            }
+            .minWithOrNull { a, b ->
+                IncognitoVolumeCacheEviction.compareEvictionOrder(
+                    a.key,
+                    b.key,
+                    a.value.offset,
+                    b.value.offset,
+                )
+            }
+            ?.key
     }
 
     private fun fitsInPlace(existing: FileEntry, newSize: Long): Boolean {

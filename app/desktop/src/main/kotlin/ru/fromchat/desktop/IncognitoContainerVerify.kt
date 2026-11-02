@@ -3,6 +3,7 @@ package ru.fromchat.desktop
 import java.io.File
 import kotlinx.coroutines.runBlocking
 import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.incognito.setIncognitoContainerMaxLogicalBytesForVerify
 import ru.fromchat.logging.FromChatLogDirs
 import ru.fromchat.logging.Logger
 import ru.fromchat.utils.files.PlatformFileSystem
@@ -14,6 +15,7 @@ fun runIncognitoContainerVerify(): Int = runBlocking {
     verifyNoPlaintextOnDisk()
     verifyKill9OnlyEncryptedContainer()
     verifyVolumeGrowAndShrink()
+    verifyCacheEvictionNearLimit()
     0
 }
 
@@ -71,4 +73,28 @@ private suspend fun verifyVolumeGrowAndShrink() {
     }
     println("VOLUME_SHRINK_OK before=$sizeAfterWrite after=$sizeAfterDelete")
     IncognitoMode.destroy()
+}
+
+private suspend fun verifyCacheEvictionNearLimit() {
+    setIncognitoContainerMaxLogicalBytesForVerify(100_000L)
+    try {
+        IncognitoMode.activate()
+        val root = PlatformFileSystem.getAppCacheDirectory()
+        val protectedPath = "$root/.fromchat-kv/test-ns/protected.bin"
+        PlatformFileSystem.writeBytes(protectedPath, byteArrayOf(0x01, 0x02, 0x03))
+        val evictableA = "$root/decrypted_files/evict-a.bin"
+        val evictableB = "$root/decrypted_files/evict-b.bin"
+        PlatformFileSystem.writeBytes(evictableA, ByteArray(40_000) { 0xAA.toByte() })
+        PlatformFileSystem.writeBytes(evictableB, ByteArray(40_000) { 0xBB.toByte() })
+        val keepPath = "$root/fromchat/keep-after-evict.bin"
+        PlatformFileSystem.writeBytes(keepPath, ByteArray(35_000) { 0xCC.toByte() })
+        check(PlatformFileSystem.exists(protectedPath)) { "protected settings kv was evicted" }
+        check(PlatformFileSystem.exists(keepPath)) { "post-eviction write missing" }
+        val evictedCount = listOf(evictableA, evictableB).count { !PlatformFileSystem.exists(it) }
+        check(evictedCount >= 1) { "expected attachment cache eviction, both files still present" }
+        IncognitoMode.destroy()
+        println("CACHE_EVICTION_OK evicted=$evictedCount/2")
+    } finally {
+        setIncognitoContainerMaxLogicalBytesForVerify(null)
+    }
 }
