@@ -1,67 +1,89 @@
 package ru.fromchat.utils.files
 
-/**
- * Multiplatform file system API for basic file operations.
- * Use [getAppCacheDirectory] to obtain the platform cache directory.
- */
+import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.incognito.IncognitoVolumeFileSystem
+
 object PlatformFileSystem {
 
-    /**
-     * Returns true if a file exists at the given path.
-     */
-    fun exists(path: String): Boolean = expectExists(path)
+    fun exists(path: String): Boolean {
+        IncognitoVolumeFileSystem.relativeKeyForAppPath(path)?.let { key ->
+            return IncognitoVolumeFileSystem.exists(key)
+        }
+        return expectExists(path)
+    }
 
-    /**
-     * Writes [bytes] to the file at [path], overwriting if it exists.
-     */
     fun writeBytes(path: String, bytes: ByteArray) {
+        IncognitoVolumeFileSystem.relativeKeyForAppPath(path)?.let { key ->
+            IncognitoVolumeFileSystem.write(key, bytes)
+            return
+        }
         expectWriteBytes(path, bytes)
     }
 
-    /** Appends [bytes] to the file at [path], creating it when missing. */
     fun appendBytes(path: String, bytes: ByteArray) {
         if (bytes.isEmpty()) return
+        IncognitoVolumeFileSystem.relativeKeyForAppPath(path)?.let { key ->
+            IncognitoVolumeFileSystem.append(key, bytes)
+            return
+        }
         expectAppendBytes(path, bytes)
     }
 
-    /** Size in bytes, or 0 when the file does not exist. */
-    fun fileSize(path: String): Long = expectFileSize(path)
+    fun fileSize(path: String): Long {
+        IncognitoVolumeFileSystem.relativeKeyForAppPath(path)?.let { key ->
+            return IncognitoVolumeFileSystem.fileSize(key)
+        }
+        return expectFileSize(path)
+    }
 
-    /**
-     * Deletes the file at [path]. No-op if the file does not exist.
-     */
     fun delete(path: String) {
+        IncognitoVolumeFileSystem.relativeKeyForAppPath(path)?.let { key ->
+            IncognitoVolumeFileSystem.delete(key)
+            return
+        }
         expectDelete(path)
     }
 
-    /**
-     * Deletes all files in the directory [dirPath] whose filename starts with [namePrefix].
-     */
     fun deleteFilesWithPrefix(dirPath: String, namePrefix: String) {
+        IncognitoVolumeFileSystem.relativeKeyForAppPath(dirPath)?.let { key ->
+            IncognitoVolumeFileSystem.deleteFilesWithPrefix(key, namePrefix)
+            return
+        }
         expectDeleteFilesWithPrefix(dirPath, namePrefix)
     }
 
-    /** Returns filenames (not paths) in [dirPath], or empty if the directory is missing. */
-    fun listFileNamesInDirectory(dirPath: String): List<String> =
-        expectListFileNamesInDirectory(dirPath)
+    fun listFileNamesInDirectory(dirPath: String): List<String> {
+        IncognitoVolumeFileSystem.relativeKeyForAppPath(dirPath)?.let { key ->
+            return IncognitoVolumeFileSystem.listFileNamesInDirectory(key)
+        }
+        return expectListFileNamesInDirectory(dirPath)
+    }
 
-    /**
-     * Returns the platform-specific application cache directory path.
-     * On Android: context.cacheDir (requires UtilsLibrary.init to be called).
-     * On iOS: NSCachesDirectory.
-     */
-    fun getAppCacheDirectory(): String = expectGetAppCacheDirectory()
+    fun getAppCacheDirectory(): String =
+        if (IncognitoMode.active) {
+            defaultAppDataRootForPlatform()
+        } else {
+            expectGetAppCacheDirectory()
+        }
 
-    /**
-     * Creates the directory at [path] if it does not exist.
-     * Returns the absolute path.
-     */
     fun ensureDirectory(path: String): String {
+        IncognitoVolumeFileSystem.relativeKeyForAppPath(path)?.let { key ->
+            IncognitoVolumeFileSystem.ensureDirectory(key)
+            return path
+        }
         expectEnsureDirectory(path)
         return path
     }
+
+    internal fun readBytes(path: String): ByteArray {
+        IncognitoVolumeFileSystem.relativeKeyForAppPath(path)?.let { key ->
+            return IncognitoVolumeFileSystem.read(key)
+        }
+        return expectReadBytes(path)
+    }
 }
 
+internal expect fun defaultAppDataRootForPlatform(): String
 internal expect fun expectExists(path: String): Boolean
 internal expect fun expectWriteBytes(path: String, bytes: ByteArray)
 internal expect fun expectAppendBytes(path: String, bytes: ByteArray)
@@ -71,3 +93,4 @@ internal expect fun expectDeleteFilesWithPrefix(dirPath: String, namePrefix: Str
 internal expect fun expectListFileNamesInDirectory(dirPath: String): List<String>
 internal expect fun expectGetAppCacheDirectory(): String
 internal expect fun expectEnsureDirectory(path: String)
+internal expect fun expectReadBytes(path: String): ByteArray

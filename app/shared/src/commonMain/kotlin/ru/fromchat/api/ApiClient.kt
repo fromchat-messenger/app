@@ -63,6 +63,7 @@ import ru.fromchat.api.sync.UpdateSyncManager
 import ru.fromchat.api.local.WebSocketManager
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.cache.readOutboundFileBytes
+import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.api.local.db.clearAccountCacheOnLogout
 import ru.fromchat.api.local.db.store.ProfileCache
 import ru.fromchat.api.local.download.streamEncryptedFileToDisk
@@ -1710,6 +1711,7 @@ object ApiClient {
         UpdateSyncManager.resetInMemoryOnLogout()
         runCatching { IdentityKeyManager.clearLocalKeys() }
         runCatching { CacheContext.clearActive() }
+        IncognitoMode.destroy()
     }
 
     suspend fun logout() {

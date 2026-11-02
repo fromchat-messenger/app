@@ -4,8 +4,10 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -37,7 +39,19 @@ import ru.fromchat.api.schema.user.auth.RegisterConfirmRequest
 import ru.fromchat.api.schema.user.auth.SmartCaptchaParams
 import ru.fromchat.api.schema.user.auth.YandexOAuthParams
 import ru.fromchat.change_server
+import ru.fromchat.cancel
 import ru.fromchat.config.Settings
+import ru.fromchat.incognito_tls_certificate_error_body
+import ru.fromchat.incognito_tls_certificate_error_title
+import ru.fromchat.incognito_connect_anyway
+import ru.fromchat.incognito_mitm_certificate_warning_body
+import ru.fromchat.incognito_mitm_certificate_warning_title
+import ru.fromchat.incognito.IncognitoTlsHostBypass
+import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.incognito.findIncognitoMitmCertificateException
+import ru.fromchat.incognito.isIncognitoTlsCertificateError
+import ru.fromchat.incognito.useLetsEncryptOnlyForHost
+import ru.fromchat.api.instance.isSslProtocolError
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.auth.captcha.SmartCaptchaLog
 import ru.fromchat.ui.auth.captcha.SmartCaptchaNav
@@ -84,13 +98,23 @@ private const val AUTH_SERVER_PROBE_TAG = "AuthServerProbe"
 /** Must cover HTTPS→HTTP fallback plus `/instance_id` (up to 10s per attempt). */
 private const val AUTH_SERVER_PROBE_TIMEOUT_MS = 25_000L
 
-internal suspend fun probeCurrentServer(): Boolean {
+internal sealed interface AuthServerProbeOutcome {
+    data object Ok : AuthServerProbeOutcome
+    data object Failed : AuthServerProbeOutcome
+    data object TlsCertificateRejected : AuthServerProbeOutcome
+    data class MitmCertificateDetected(val marker: String) : AuthServerProbeOutcome
+}
+
+internal suspend fun probeCurrentServer(): Boolean =
+    probeCurrentServerForAuth() is AuthServerProbeOutcome.Ok
+
+internal suspend fun probeCurrentServerForAuth(): AuthServerProbeOutcome {
     val config = Settings.readServerConfig()
     val apiBase = apiBaseUrlFor(config)
     Logger.i(
         AUTH_SERVER_PROBE_TAG,
         "probe start storedHost=${config.serverIp} apiPort=${config.apiPort} " +
-            "https=${config.httpsEnabled} url=$apiBase",
+            "https=${config.httpsEnabled} incognito=${IncognitoMode.active} url=$apiBase",
     )
     return runCatching {
         withTimeout(AUTH_SERVER_PROBE_TIMEOUT_MS.milliseconds) {
@@ -105,7 +129,10 @@ internal suspend fun probeCurrentServer(): Boolean {
                 else ->
                     Logger.w(AUTH_SERVER_PROBE_TAG, "probe not supported: $result url=$apiBase")
             }
-            result is ServerProbeResult.Supported
+            when {
+                result is ServerProbeResult.Supported -> AuthServerProbeOutcome.Ok
+                else -> AuthServerProbeOutcome.Failed
+            }
         }
     }.getOrElse { e ->
         Logger.w(
@@ -113,7 +140,17 @@ internal suspend fun probeCurrentServer(): Boolean {
             "probe failed within ${AUTH_SERVER_PROBE_TIMEOUT_MS}ms url=$apiBase",
             e,
         )
-        false
+        findIncognitoMitmCertificateException(e)?.let { mitm ->
+            return AuthServerProbeOutcome.MitmCertificateDetected(mitm.matchedMarker)
+        }
+        when {
+            IncognitoMode.active &&
+                config.httpsEnabled &&
+                useLetsEncryptOnlyForHost(config.serverIp) &&
+                (isIncognitoTlsCertificateError(e) || e.isSslProtocolError()) ->
+                AuthServerProbeOutcome.TlsCertificateRejected
+            else -> AuthServerProbeOutcome.Failed
+        }
     }
 }
 
@@ -284,6 +321,12 @@ fun AuthScreen(
     var captchaParams by remember { mutableStateOf(AuthRegisterDraft.captchaParams) }
     var registrationProof by remember { mutableStateOf(AuthRegisterDraft.registrationProof) }
     var captchaToken by remember { mutableStateOf(AuthRegisterDraft.captchaToken) }
+    var incognitoEnabled by remember { mutableStateOf(false) }
+    var showTlsCertificateDialog by remember { mutableStateOf(false) }
+    var showMitmCertificateDialog by remember { mutableStateOf(false) }
+    var mitmMatchedMarker by remember { mutableStateOf("") }
+    var mitmBypassRetryNonce by remember { mutableStateOf(0) }
+    var tlsBypassRetryNonce by remember { mutableStateOf(0) }
     val navController = LocalNavController.current
 
     fun persistDraft() {
@@ -317,7 +360,63 @@ fun AuthScreen(
 
     val wrappedBackToWelcome: () -> Unit = {
         AuthRegisterDraft.clear()
+        IncognitoMode.destroy()
         onBackToWelcome()
+    }
+
+    if (showTlsCertificateDialog) {
+        AlertDialog(
+            onDismissRequest = { showTlsCertificateDialog = false },
+            title = { Text(stringResource(Res.string.incognito_tls_certificate_error_title)) },
+            text = { Text(stringResource(Res.string.incognito_tls_certificate_error_body)) },
+            dismissButton = {
+                TextButton(onClick = { showTlsCertificateDialog = false }) {
+                    Text(stringResource(Res.string.cancel))
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        IncognitoTlsHostBypass.allowHost(Settings.serverConfig.serverIp)
+                        showTlsCertificateDialog = false
+                        tlsBypassRetryNonce++
+                    },
+                ) {
+                    Text(stringResource(Res.string.incognito_connect_anyway))
+                }
+            },
+        )
+    }
+
+    if (showMitmCertificateDialog) {
+        AlertDialog(
+            onDismissRequest = { showMitmCertificateDialog = false },
+            title = { Text(stringResource(Res.string.incognito_mitm_certificate_warning_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        Res.string.incognito_mitm_certificate_warning_body,
+                        mitmMatchedMarker,
+                    ),
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { showMitmCertificateDialog = false }) {
+                    Text(stringResource(Res.string.cancel))
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        IncognitoTlsHostBypass.allowHost(Settings.serverConfig.serverIp)
+                        showMitmCertificateDialog = false
+                        mitmBypassRetryNonce++
+                    },
+                ) {
+                    Text(stringResource(Res.string.incognito_connect_anyway))
+                }
+            },
+        )
     }
 
     val resetToUsername: () -> Unit = {
@@ -473,10 +572,19 @@ fun AuthScreen(
                 usernameStepPage(
                     username = username,
                     onUsernameChange = { username = it },
+                    incognitoEnabled = incognitoEnabled,
+                    onIncognitoChange = { incognitoEnabled = it },
+                    mitmBypassRetryNonce = mitmBypassRetryNonce,
+                    tlsBypassRetryNonce = tlsBypassRetryNonce,
                     onContinue = {
                         flowState.pagerState.animateScrollToPage(AuthFlowStep.Password.ordinal)
                     },
                     onSnackbar = ::snackbar,
+                    onTlsCertificateRejected = { showTlsCertificateDialog = true },
+                    onMitmCertificateDetected = { marker ->
+                        mitmMatchedMarker = marker
+                        showMitmCertificateDialog = true
+                    },
                 ),
                 passwordStepPage(
                     username = username,
