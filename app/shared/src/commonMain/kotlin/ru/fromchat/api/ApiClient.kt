@@ -321,6 +321,10 @@ object ApiClient {
             )
             defaultRequest {
                 header("User-Agent", userAgent)
+                header(HttpHeaders.Connection, "close")
+            }
+            engine {
+                pipelining = false
             }
             HttpResponseValidator {
                 validateResponse { response ->
