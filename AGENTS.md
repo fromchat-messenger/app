@@ -112,3 +112,5 @@ When using Mobile MCP, run **all** `mobile_install_app` and `mobile_launch_app` 
 ## 7. Cursor Cloud — GUI demos and manual tests
 
 On Cloud Agent VMs, drive the desktop UI only through the **computerUse** subagent (mouse/keyboard in the session) and **RecordScreen** for walkthrough video. Do **not** automate the GUI from the shell with **xdotool**, **wmctrl**, **ydotool**, **xte**, or similar. Terminal commands for build, logs, and read-only inspection (e.g. `file`, `hexdump` on paths the demo already opened) are fine when the computerUse agent runs them on screen or when no UI driving is involved.
+
+**Incognito disk / MITM QA** is **external** only: [`scripts/incognito-security/README.md`](./scripts/incognito-security/README.md) (`inotifywait` / PowerShell watchers + `mitm_probe_server.py`). Do not add `--verify-*` incognito flags to the app.
