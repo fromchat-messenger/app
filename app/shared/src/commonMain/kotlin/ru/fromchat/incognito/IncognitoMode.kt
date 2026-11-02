@@ -52,7 +52,6 @@ object IncognitoMode {
         volumeKey = null
         volumeRootPath = null
         active = false
-        IncognitoTlsPin.clearSessionOverride()
         Logger.i(TAG, "destroyed incognito volume")
     }
 }

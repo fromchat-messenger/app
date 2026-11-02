@@ -32,7 +32,6 @@ object Settings {
     private const val RELEASE_NOTES_PERMANENTLY_HIDDEN_KEY = "release_notes_permanently_hidden"
     private const val NAV_BAR_STYLE_KEY = "nav_bar_style"
     private const val NAV_BAR_SHOW_TITLE_KEY = "nav_bar_show_title"
-    private const val SERVER_TLS_SPKI_SHA256_B64_KEY = "server_tls_spki_sha256_b64"
 
     private val settings = PlatformSettings()
     private val deviceSessionsJson = Json { ignoreUnknownKeys = true }
@@ -205,17 +204,6 @@ object Settings {
     fun clearDeviceSessionsCache() {
         runIO { settings.remove(DEVICE_SESSIONS_CACHE_KEY) }
     }
-
-    suspend fun readServerTlsSpkiSha256Base64(): String =
-        settings.getString(SERVER_TLS_SPKI_SHA256_B64_KEY, "")
-
-    suspend fun writeServerTlsSpkiSha256Base64(value: String) {
-        settings.putString(SERVER_TLS_SPKI_SHA256_B64_KEY, value.trim())
-    }
-
-    var serverTlsSpkiSha256Base64: String
-        get() = runBlocking { readServerTlsSpkiSha256Base64() }
-        set(value) = runIO { settings.putString(SERVER_TLS_SPKI_SHA256_B64_KEY, value.trim()) }
 
     /** Suspend read for coroutine / single [runBlocking] callers (e.g. schema migration on the DB thread). */
     internal suspend fun readLastKnownServerInstanceIdRaw(): String =

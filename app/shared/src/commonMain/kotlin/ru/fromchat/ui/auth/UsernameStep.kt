@@ -71,7 +71,6 @@ internal fun usernameStepPage(
     onIncognitoChange: (Boolean) -> Unit,
     onContinue: suspend () -> Unit,
     onSnackbar: (String, Throwable?) -> Unit,
-    onTlsPinMissing: () -> Unit,
     onTlsCertificateRejected: () -> Unit,
 ): ExpressiveStepPage {
     val scope = rememberCoroutineScope()
@@ -116,10 +115,6 @@ internal fun usernameStepPage(
                     IncognitoMode.destroy()
                 }
                 when (val probe = probeCurrentServerForAuth()) {
-                    AuthServerProbeOutcome.TlsPinMissing -> {
-                        IncognitoMode.destroy()
-                        onTlsPinMissing()
-                    }
                     AuthServerProbeOutcome.TlsCertificateRejected -> {
                         IncognitoMode.destroy()
                         onTlsCertificateRejected()

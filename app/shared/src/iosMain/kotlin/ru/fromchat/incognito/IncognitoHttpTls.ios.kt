@@ -4,7 +4,5 @@ import io.ktor.client.HttpClientConfig
 
 fun HttpClientConfig<*>.installFromChatTlsPinning() {
     if (!IncognitoMode.active) return
-    val pin = IncognitoTlsPin.expectedPinBytes()
-        ?: throw IncognitoTlsException("Missing TLS pin for incognito mode")
-    // Darwin engine TLS pinning is applied in ApiClient.ios.kt via platform SSL settings.
+    // Darwin TLS anchor customization is not wired yet; incognito LE-only trust applies on JVM/Android.
 }

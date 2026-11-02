@@ -10,8 +10,6 @@ import ru.fromchat.config.ServerConfig
 import ru.fromchat.config.ServerConfigData
 import ru.fromchat.config.Settings
 import ru.fromchat.api.sync.ChatListSync
-import ru.fromchat.incognito.ensureServerTlsPinStored
-import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.logging.Logger
 import ru.fromchat.ui.main.settings.about.legal.DocumentRepository
 import kotlin.time.Duration.Companion.milliseconds
@@ -195,30 +193,24 @@ private suspend fun probeServerOnce(
         val pingMs = time.elapsedNow().inWholeMilliseconds.toInt().coerceAtLeast(0)
 
         return when (resolve) {
-            is InstanceIdResolveResult.Cached -> {
-                if (!IncognitoMode.active) ensureServerTlsPinStored(config)
+            is InstanceIdResolveResult.Cached ->
                 ServerProbeResult.Supported(
                     resolve.instanceId,
                     probeCallsReachable(config),
                     pingMs,
                 ) to null
-            }
-            is InstanceIdResolveResult.Fetched -> {
-                if (!IncognitoMode.active) ensureServerTlsPinStored(config)
+            is InstanceIdResolveResult.Fetched ->
                 ServerProbeResult.Supported(
                     resolve.instanceId,
                     probeCallsReachable(config),
                     pingMs,
                 ) to null
-            }
-            is InstanceIdResolveResult.InstanceIdChanged -> {
-                if (!IncognitoMode.active) ensureServerTlsPinStored(config)
+            is InstanceIdResolveResult.InstanceIdChanged ->
                 ServerProbeResult.Supported(
                     resolve.newId,
                     probeCallsReachable(config),
                     pingMs,
                 ) to null
-            }
             InstanceIdResolveResult.Unsupported -> ServerProbeResult.Unsupported to null
             InstanceIdResolveResult.Timeout -> ServerProbeResult.Timeout to null
             InstanceIdResolveResult.Unreachable -> {

@@ -74,12 +74,10 @@
     <string name="auth_char_count">%1$d/%2$d</string>
     <string name="auth_step_username_title">Введите имя пользователя</string>
     <string name="auth_incognito_mode_title">Режим инкогнито</string>
-    <string name="auth_incognito_mode_summary">Данные сессии хранятся в зашифрованной папке и удаляются при выходе. HTTPS использует закреплённый сертификат, а не системные хранилища доверия.</string>
+    <string name="auth_incognito_mode_summary">Данные сессии хранятся в зашифрованной папке и удаляются при выходе. HTTPS доверяет только CA Let\u2019s Encrypt, а не системным хранилищам.</string>
     <string name="auth_incognito_enabled_snackbar">Режим инкогнито включён для этой сессии.</string>
     <string name="incognito_tls_certificate_error_title">Безопасное подключение невозможно</string>
-    <string name="incognito_tls_certificate_error_body">Сертификат сервера не совпадает с ожидаемым отпечатком. Возможна перехват трафика в сети.</string>
-    <string name="incognito_tls_pin_missing_title">Сервер не идентифицирован</string>
-    <string name="incognito_tls_pin_missing_body">Сначала подключитесь к этому серверу без режима инкогнито (по HTTPS), чтобы приложение запомнило отпечаток сертификата.</string>
+    <string name="incognito_tls_certificate_error_body">Сертификат сервера не выпущен Let\u2019s Encrypt. Возможен перехват трафика или подмена через недоверенный системный сертификат.</string>
     <string name="auth_step_username_body">Это ваш логин. С помощью него мы сможем отличить вас от других людей.</string>
     <string name="auth_step_profile_title">Создайте ваш профиль</string>
     <string name="auth_step_profile_body">Введите ваше отображаемое имя и, если хотите, несколько слов о себе.</string>

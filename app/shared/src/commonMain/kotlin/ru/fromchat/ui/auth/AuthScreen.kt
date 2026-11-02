@@ -39,16 +39,14 @@ import ru.fromchat.api.schema.user.auth.RegisterConfirmRequest
 import ru.fromchat.api.schema.user.auth.SmartCaptchaParams
 import ru.fromchat.api.schema.user.auth.YandexOAuthParams
 import ru.fromchat.change_server
+import ru.fromchat.cancel
 import ru.fromchat.config.Settings
 import ru.fromchat.incognito_tls_certificate_error_body
 import ru.fromchat.incognito_tls_certificate_error_title
-import ru.fromchat.incognito_tls_pin_missing_body
-import ru.fromchat.incognito_tls_pin_missing_title
-import ru.fromchat.cancel
 import ru.fromchat.settings_next
 import ru.fromchat.incognito.IncognitoMode
-import ru.fromchat.incognito.IncognitoTlsPin
 import ru.fromchat.incognito.isIncognitoTlsCertificateError
+import ru.fromchat.api.instance.isSslProtocolError
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.auth.captcha.SmartCaptchaLog
 import ru.fromchat.ui.auth.captcha.SmartCaptchaNav
@@ -99,7 +97,6 @@ internal sealed interface AuthServerProbeOutcome {
     data object Ok : AuthServerProbeOutcome
     data object Failed : AuthServerProbeOutcome
     data object TlsCertificateRejected : AuthServerProbeOutcome
-    data object TlsPinMissing : AuthServerProbeOutcome
 }
 
 internal suspend fun probeCurrentServer(): Boolean =
@@ -107,10 +104,6 @@ internal suspend fun probeCurrentServer(): Boolean =
 
 internal suspend fun probeCurrentServerForAuth(): AuthServerProbeOutcome {
     val config = Settings.readServerConfig()
-    if (IncognitoMode.active && config.httpsEnabled && IncognitoTlsPin.expectedPinBytes() == null) {
-        Logger.w(AUTH_SERVER_PROBE_TAG, "incognito probe blocked: TLS pin missing")
-        return AuthServerProbeOutcome.TlsPinMissing
-    }
     val apiBase = apiBaseUrlFor(config)
     Logger.i(
         AUTH_SERVER_PROBE_TAG,
@@ -142,7 +135,8 @@ internal suspend fun probeCurrentServerForAuth(): AuthServerProbeOutcome {
             e,
         )
         when {
-            IncognitoMode.active && isIncognitoTlsCertificateError(e) ->
+            IncognitoMode.active && config.httpsEnabled &&
+                (isIncognitoTlsCertificateError(e) || e.isSslProtocolError()) ->
                 AuthServerProbeOutcome.TlsCertificateRejected
             else -> AuthServerProbeOutcome.Failed
         }
@@ -318,7 +312,6 @@ fun AuthScreen(
     var captchaToken by remember { mutableStateOf(AuthRegisterDraft.captchaToken) }
     var incognitoEnabled by remember { mutableStateOf(false) }
     var showTlsCertificateDialog by remember { mutableStateOf(false) }
-    var showTlsPinMissingDialog by remember { mutableStateOf(false) }
     val navController = LocalNavController.current
 
     fun persistDraft() {
@@ -363,19 +356,6 @@ fun AuthScreen(
             text = { Text(stringResource(Res.string.incognito_tls_certificate_error_body)) },
             confirmButton = {
                 TextButton(onClick = { showTlsCertificateDialog = false }) {
-                    Text(stringResource(Res.string.cancel))
-                }
-            },
-        )
-    }
-
-    if (showTlsPinMissingDialog) {
-        AlertDialog(
-            onDismissRequest = { showTlsPinMissingDialog = false },
-            title = { Text(stringResource(Res.string.incognito_tls_pin_missing_title)) },
-            text = { Text(stringResource(Res.string.incognito_tls_pin_missing_body)) },
-            confirmButton = {
-                TextButton(onClick = { showTlsPinMissingDialog = false }) {
                     Text(stringResource(Res.string.cancel))
                 }
             },
@@ -541,7 +521,6 @@ fun AuthScreen(
                         flowState.pagerState.animateScrollToPage(AuthFlowStep.Password.ordinal)
                     },
                     onSnackbar = ::snackbar,
-                    onTlsPinMissing = { showTlsPinMissingDialog = true },
                     onTlsCertificateRejected = { showTlsCertificateDialog = true },
                 ),
                 passwordStepPage(
