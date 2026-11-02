@@ -16,6 +16,7 @@ import ru.fromchat.api.schema.user.keys.PublicKeyResponse
 import ru.fromchat.logging.Logger
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.api.crypto.backup.BackupCrypto
+import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.api.crypto.backup.PrivateKeyBundle
 import ru.fromchat.api.crypto.backup.decodeBlob
 import ru.fromchat.api.crypto.backup.encodeBlob

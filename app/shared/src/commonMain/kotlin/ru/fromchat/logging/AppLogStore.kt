@@ -79,12 +79,31 @@ object AppLogStore {
     }
 
     private fun appendEntry(entry: AppLogEntry) {
-        val lineBytes = (entry.formattedLine() + "\n").encodeToByteArray()
-        PlatformFileSystem.appendBytes(FromChatLogDirs.currentLogPath(), lineBytes)
         val updated = (_entries.value + entry).let { list ->
             if (list.size <= MAX_MEMORY_ENTRIES) list else list.takeLast(MAX_MEMORY_ENTRIES)
         }
         _entries.value = updated
+        val lineBytes = (entry.formattedLine() + "\n").encodeToByteArray()
+        PlatformFileSystem.appendBytes(FromChatLogDirs.currentLogPath(), lineBytes)
+    }
+
+    /** Drops in-memory log cache when entering or leaving an incognito session. */
+    fun onIncognitoSessionBoundary() {
+        if (mutex.tryLock()) {
+            try {
+                resetIncognitoLogMemoryLocked()
+            } finally {
+                mutex.unlock()
+            }
+        } else {
+            runBlocking { mutex.withLock { resetIncognitoLogMemoryLocked() } }
+        }
+    }
+
+    private fun resetIncognitoLogMemoryLocked() {
+        _entries.value = emptyList()
+        nextEntryId = 0L
+        loadedFromDisk = true
     }
 
     suspend fun ensureLoaded() = withContext(Dispatchers.IO) {

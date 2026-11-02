@@ -16,11 +16,15 @@ expect fun provideMessageDatabaseDriver(): SqlDriver
 object MessageDatabaseProvider {
     private var driver: SqlDriver? = null
     private var databaseHolder: MessageDatabase? = null
+    private var incognitoHydratedFromVolume = false
 
     val database: MessageDatabase
         get() = withMessageDatabaseLock {
             databaseHolder ?: MessageDatabase(openDriverLocked()).also { databaseHolder = it }
         }
+
+    internal fun <T> withOpenDriver(block: (SqlDriver) -> T): T =
+        withMessageDatabaseLock { block(openDriverLocked()) }
 
     /**
      * Closes the open SQLite connection. Required before deleting `cacheDir/fromchat/`
@@ -31,6 +35,7 @@ object MessageDatabaseProvider {
             databaseHolder = null
             runCatching { driver?.close() }
             driver = null
+            incognitoHydratedFromVolume = false
         }
     }
 
@@ -71,9 +76,13 @@ object MessageDatabaseProvider {
     /** Caller must hold the message-database lock via [withMessageDatabaseLock]. */
     private fun openDriverLocked(): SqlDriver {
         driver?.let { return it }
-        return provideMessageDatabaseDriver().also {
-            ensureMessageDatabaseSchema(it)
-            driver = it
+        return provideMessageDatabaseDriver().also { opened ->
+            ensureMessageDatabaseSchema(opened)
+            if (ru.fromchat.incognito.IncognitoMode.active && !incognitoHydratedFromVolume) {
+                incognitoHydratedFromVolume = true
+                ru.fromchat.incognito.MessageDatabaseIncognito.hydrateDriverFromVolume(opened)
+            }
+            driver = opened
         }
     }
 }

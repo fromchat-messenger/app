@@ -7,6 +7,7 @@ import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import ru.fromchat.incognito.installFromChatTlsPinning
 
 actual fun createPlatformHttpClient(
     block: HttpClientConfig<*>.() -> Unit
@@ -28,5 +29,6 @@ actual fun createPlatformHttpClient(
         }
 
         block(this)
+        installFromChatTlsPinning()
     }
 }

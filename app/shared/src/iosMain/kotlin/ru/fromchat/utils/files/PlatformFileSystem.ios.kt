@@ -14,10 +14,12 @@ import platform.Foundation.NSNumber
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSUserDomainMask
 import platform.Foundation.create
+import platform.Foundation.dataWithContentsOfFile
 import platform.Foundation.writeToFile
 import platform.posix.fclose
 import platform.posix.fopen
 import platform.posix.fwrite
+import ru.fromchat.incognito.IncognitoMode
 
 internal actual fun expectExists(path: String): Boolean =
     NSFileManager.defaultManager.fileExistsAtPath(path)
@@ -32,6 +34,13 @@ internal actual fun expectWriteBytes(path: String, bytes: ByteArray) {
         NSData.create(bytes = pinned.addressOf(0), length = bytes.size.toULong())
     }
     nsData.writeToFile(path, true)
+}
+
+@OptIn(ExperimentalForeignApi::class)
+internal actual fun expectReadBytes(path: String): ByteArray {
+    if (!NSFileManager.defaultManager.fileExistsAtPath(path)) return ByteArray(0)
+    val raw = NSData.dataWithContentsOfFile(path) ?: return ByteArray(0)
+    return raw.toByteArray()
 }
 
 @OptIn(ExperimentalForeignApi::class)
@@ -85,6 +94,18 @@ internal actual fun expectGetAppCacheDirectory(): String {
     return (paths.firstOrNull() as? String) ?: ""
 }
 
+internal actual fun defaultAppDataRootForPlatform(): String = expectGetAppCacheDirectory()
+
 internal actual fun expectEnsureDirectory(path: String) {
     NSFileManager.defaultManager.createDirectoryAtPath(path, true, null, null)
+}
+
+private fun NSData.toByteArray(): ByteArray {
+    val length = this.length.toInt()
+    if (length == 0) return ByteArray(0)
+    return ByteArray(length).also { bytes ->
+        bytes.usePinned { pinned ->
+            platform.posix.memcpy(pinned.addressOf(0), this.bytes, length.convert())
+        }
+    }
 }

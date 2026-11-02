@@ -1,5 +1,6 @@
 package ru.fromchat.utils.files
 
+import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.utils.UtilsLibrary
 import java.io.File
 
@@ -10,6 +11,12 @@ internal actual fun expectWriteBytes(path: String, bytes: ByteArray) {
     val file = File(path)
     file.parentFile?.mkdirs()
     file.writeBytes(bytes)
+}
+
+internal actual fun expectReadBytes(path: String): ByteArray {
+    val file = File(path)
+    if (!file.isFile) return ByteArray(0)
+    return file.readBytes()
 }
 
 internal actual fun expectAppendBytes(path: String, bytes: ByteArray) {
@@ -44,7 +51,10 @@ internal actual fun expectListFileNamesInDirectory(dirPath: String): List<String
 }
 
 internal actual fun expectGetAppCacheDirectory(): String =
-    UtilsLibrary.context.cacheDir.absolutePath
+    UtilsLibrary.context.noBackupFilesDir.absolutePath
+
+internal actual fun defaultAppDataRootForPlatform(): String =
+    UtilsLibrary.context.noBackupFilesDir.absolutePath
 
 internal actual fun expectEnsureDirectory(path: String) {
     File(path).mkdirs()

@@ -3,20 +3,20 @@ package ru.fromchat.api.local.db.store
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import kotlinx.cinterop.ExperimentalForeignApi
-import platform.Foundation.NSCachesDirectory
+import ru.fromchat.incognito.IncognitoMode
 import platform.Foundation.NSFileManager
-import platform.Foundation.NSUserDomainMask
 import ru.fromchat.db.MessageDatabase
+import ru.fromchat.utils.files.PlatformFileSystem
 
 @OptIn(ExperimentalForeignApi::class)
 actual fun provideMessageDatabaseDriver(): SqlDriver {
-    val base = NSFileManager.defaultManager.URLForDirectory(
-        directory = NSCachesDirectory,
-        inDomain = NSUserDomainMask,
-        appropriateForURL = null,
-        create = true,
-        error = null,
-    )?.path ?: "."
+    if (IncognitoMode.active) {
+        return NativeSqliteDriver(
+            schema = MessageDatabase.Schema,
+            name = ":memory:",
+        )
+    }
+    val base = PlatformFileSystem.getAppCacheDirectory()
     val dir = "$base/fromchat"
     NSFileManager.defaultManager.createDirectoryAtPath(dir, true, null, null)
     return NativeSqliteDriver(
@@ -31,4 +31,3 @@ actual fun provideMessageDatabaseDriver(): SqlDriver {
         },
     )
 }
-

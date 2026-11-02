@@ -3,6 +3,7 @@ package ru.fromchat.utils.files
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardOpenOption
+import ru.fromchat.incognito.IncognitoMode
 
 internal actual fun expectExists(path: String): Boolean = File(path).exists()
 
@@ -10,6 +11,12 @@ internal actual fun expectWriteBytes(path: String, bytes: ByteArray) {
     val file = File(path)
     file.parentFile?.mkdirs()
     file.writeBytes(bytes)
+}
+
+internal actual fun expectReadBytes(path: String): ByteArray {
+    val file = File(path)
+    if (!file.isFile) return ByteArray(0)
+    return file.readBytes()
 }
 
 internal actual fun expectAppendBytes(path: String, bytes: ByteArray) {
@@ -50,6 +57,9 @@ internal actual fun expectListFileNamesInDirectory(dirPath: String): List<String
 }
 
 internal actual fun expectGetAppCacheDirectory(): String =
+    AppDataRoot.resolve().absolutePath
+
+internal actual fun defaultAppDataRootForPlatform(): String =
     AppDataRoot.resolve().absolutePath
 
 internal actual fun expectEnsureDirectory(path: String) {
