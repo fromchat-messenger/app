@@ -11,6 +11,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +37,7 @@ import ru.fromchat.auth_step_username_title
 import ru.fromchat.error_unexpected
 import ru.fromchat.fill_all_fields
 import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.incognito.findIncognitoMitmCertificateException
 import ru.fromchat.logging.Logger
 import ru.fromchat.settings_next
 import ru.fromchat.ui.components.ActionButton
@@ -69,9 +71,11 @@ internal fun usernameStepPage(
     onUsernameChange: (String) -> Unit,
     incognitoEnabled: Boolean,
     onIncognitoChange: (Boolean) -> Unit,
+    mitmBypassRetryNonce: Int,
     onContinue: suspend () -> Unit,
     onSnackbar: (String, Throwable?) -> Unit,
     onTlsCertificateRejected: () -> Unit,
+    onMitmCertificateDetected: (String) -> Unit,
 ): ExpressiveStepPage {
     val scope = rememberCoroutineScope()
     val colorScheme = MaterialTheme.colorScheme
@@ -115,6 +119,9 @@ internal fun usernameStepPage(
                     IncognitoMode.destroy()
                 }
                 when (val probe = probeCurrentServerForAuth()) {
+                    is AuthServerProbeOutcome.MitmCertificateDetected -> {
+                        onMitmCertificateDetected(probe.marker)
+                    }
                     AuthServerProbeOutcome.TlsCertificateRejected -> {
                         IncognitoMode.destroy()
                         onTlsCertificateRejected()
@@ -145,6 +152,10 @@ internal fun usernameStepPage(
                             }
                             onSnackbar(detail ?: unexpected, e)
                         } catch (e: Exception) {
+                            findIncognitoMitmCertificateException(e)?.let { mitm ->
+                                onMitmCertificateDetected(mitm.matchedMarker)
+                                return@launch
+                            }
                             Logger.e(USERNAME_STEP_TAG, "auth username step error username=$trimmed", e)
                             onSnackbar(unexpected, e)
                         }
@@ -153,6 +164,12 @@ internal fun usernameStepPage(
             } finally {
                 busy = false
             }
+        }
+    }
+
+    LaunchedEffect(mitmBypassRetryNonce) {
+        if (mitmBypassRetryNonce > 0) {
+            attemptSubmit()
         }
     }
 

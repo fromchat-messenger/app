@@ -74,10 +74,13 @@
     <string name="auth_char_count">%1$d/%2$d</string>
     <string name="auth_step_username_title">Введите имя пользователя</string>
     <string name="auth_incognito_mode_title">Режим инкогнито</string>
-    <string name="auth_incognito_mode_summary">Данные сессии хранятся в зашифрованной папке и удаляются при выходе. HTTPS доверяет только CA Let\u2019s Encrypt, а не системным хранилищам.</string>
+    <string name="auth_incognito_mode_summary">Данные сессии хранятся в зашифрованной папке и удаляются при выходе. Для api.fromchat.ru HTTPS доверяет только Let\u2019s Encrypt; для других серверов — обычные сертификаты, но известные прокси-перехватчики блокируются, пока вы не подтвердите обход.</string>
     <string name="auth_incognito_enabled_snackbar">Режим инкогнито включён для этой сессии.</string>
     <string name="incognito_tls_certificate_error_title">Безопасное подключение невозможно</string>
-    <string name="incognito_tls_certificate_error_body">Сертификат сервера не выпущен Let\u2019s Encrypt. Возможен перехват трафика или подмена через недоверенный системный сертификат.</string>
+    <string name="incognito_tls_certificate_error_body">Для api.fromchat.ru требуется сертификат с цепочкой Let\u2019s Encrypt. Подключение заблокировано.</string>
+    <string name="incognito_mitm_certificate_warning_title">Подозрительный сертификат</string>
+    <string name="incognito_mitm_certificate_warning_body">Сертификат сервера похож на перехват трафика (%1$s). Подключение может раскрыть ваш трафик. Всё равно продолжить?</string>
+    <string name="incognito_connect_anyway">Всё равно подключиться</string>
     <string name="auth_step_username_body">Это ваш логин. С помощью него мы сможем отличить вас от других людей.</string>
     <string name="auth_step_profile_title">Создайте ваш профиль</string>
     <string name="auth_step_profile_body">Введите ваше отображаемое имя и, если хотите, несколько слов о себе.</string>

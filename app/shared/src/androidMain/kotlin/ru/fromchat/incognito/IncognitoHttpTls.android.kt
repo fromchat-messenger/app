@@ -6,7 +6,7 @@ import javax.net.ssl.SSLContext
 
 fun HttpClientConfig<*>.installFromChatTlsPinning() {
     if (!IncognitoMode.active) return
-    val trustManager = createLetsEncryptOnlyTrustManager()
+    val trustManager = createIncognitoTrustManager()
     val ssl = SSLContext.getInstance("TLS").apply {
         init(null, arrayOf(trustManager), SecureRandom())
     }

@@ -1,9 +1,19 @@
 package ru.fromchat.incognito
 
-class IncognitoTlsException(message: String) : Exception(message)
+open class IncognitoTlsException(message: String) : Exception(message)
+
+fun findIncognitoMitmCertificateException(error: Throwable): IncognitoMitmCertificateException? {
+    var current: Throwable? = error
+    while (current != null) {
+        if (current is IncognitoMitmCertificateException) return current
+        current = current.cause
+    }
+    return null
+}
 
 fun isIncognitoTlsCertificateError(error: Throwable): Boolean {
     if (!IncognitoMode.active) return false
+    if (findIncognitoMitmCertificateException(error) != null) return false
     var current: Throwable? = error
     while (current != null) {
         if (current is IncognitoTlsException) return true

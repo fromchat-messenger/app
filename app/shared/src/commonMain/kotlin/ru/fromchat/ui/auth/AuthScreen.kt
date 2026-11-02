@@ -43,9 +43,14 @@ import ru.fromchat.cancel
 import ru.fromchat.config.Settings
 import ru.fromchat.incognito_tls_certificate_error_body
 import ru.fromchat.incognito_tls_certificate_error_title
-import ru.fromchat.settings_next
+import ru.fromchat.incognito_connect_anyway
+import ru.fromchat.incognito_mitm_certificate_warning_body
+import ru.fromchat.incognito_mitm_certificate_warning_title
+import ru.fromchat.incognito.IncognitoMitmBypass
 import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.incognito.findIncognitoMitmCertificateException
 import ru.fromchat.incognito.isIncognitoTlsCertificateError
+import ru.fromchat.incognito.useLetsEncryptOnlyForHost
 import ru.fromchat.api.instance.isSslProtocolError
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.auth.captcha.SmartCaptchaLog
@@ -97,6 +102,7 @@ internal sealed interface AuthServerProbeOutcome {
     data object Ok : AuthServerProbeOutcome
     data object Failed : AuthServerProbeOutcome
     data object TlsCertificateRejected : AuthServerProbeOutcome
+    data class MitmCertificateDetected(val marker: String) : AuthServerProbeOutcome
 }
 
 internal suspend fun probeCurrentServer(): Boolean =
@@ -134,8 +140,13 @@ internal suspend fun probeCurrentServerForAuth(): AuthServerProbeOutcome {
             "probe failed within ${AUTH_SERVER_PROBE_TIMEOUT_MS}ms url=$apiBase",
             e,
         )
+        findIncognitoMitmCertificateException(e)?.let { mitm ->
+            return AuthServerProbeOutcome.MitmCertificateDetected(mitm.matchedMarker)
+        }
         when {
-            IncognitoMode.active && config.httpsEnabled &&
+            IncognitoMode.active &&
+                config.httpsEnabled &&
+                useLetsEncryptOnlyForHost(config.serverIp) &&
                 (isIncognitoTlsCertificateError(e) || e.isSslProtocolError()) ->
                 AuthServerProbeOutcome.TlsCertificateRejected
             else -> AuthServerProbeOutcome.Failed
@@ -312,6 +323,9 @@ fun AuthScreen(
     var captchaToken by remember { mutableStateOf(AuthRegisterDraft.captchaToken) }
     var incognitoEnabled by remember { mutableStateOf(false) }
     var showTlsCertificateDialog by remember { mutableStateOf(false) }
+    var showMitmCertificateDialog by remember { mutableStateOf(false) }
+    var mitmMatchedMarker by remember { mutableStateOf("") }
+    var mitmBypassRetryNonce by remember { mutableStateOf(0) }
     val navController = LocalNavController.current
 
     fun persistDraft() {
@@ -357,6 +371,37 @@ fun AuthScreen(
             confirmButton = {
                 TextButton(onClick = { showTlsCertificateDialog = false }) {
                     Text(stringResource(Res.string.cancel))
+                }
+            },
+        )
+    }
+
+    if (showMitmCertificateDialog) {
+        AlertDialog(
+            onDismissRequest = { showMitmCertificateDialog = false },
+            title = { Text(stringResource(Res.string.incognito_mitm_certificate_warning_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        Res.string.incognito_mitm_certificate_warning_body,
+                        mitmMatchedMarker,
+                    ),
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { showMitmCertificateDialog = false }) {
+                    Text(stringResource(Res.string.cancel))
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        IncognitoMitmBypass.allowHost(Settings.serverConfig.serverIp)
+                        showMitmCertificateDialog = false
+                        mitmBypassRetryNonce++
+                    },
+                ) {
+                    Text(stringResource(Res.string.incognito_connect_anyway))
                 }
             },
         )
@@ -517,11 +562,16 @@ fun AuthScreen(
                     onUsernameChange = { username = it },
                     incognitoEnabled = incognitoEnabled,
                     onIncognitoChange = { incognitoEnabled = it },
+                    mitmBypassRetryNonce = mitmBypassRetryNonce,
                     onContinue = {
                         flowState.pagerState.animateScrollToPage(AuthFlowStep.Password.ordinal)
                     },
                     onSnackbar = ::snackbar,
                     onTlsCertificateRejected = { showTlsCertificateDialog = true },
+                    onMitmCertificateDetected = { marker ->
+                        mitmMatchedMarker = marker
+                        showMitmCertificateDialog = true
+                    },
                 ),
                 passwordStepPage(
                     username = username,

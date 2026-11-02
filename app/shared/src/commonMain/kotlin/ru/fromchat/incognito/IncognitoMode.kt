@@ -52,6 +52,7 @@ object IncognitoMode {
         volumeKey = null
         volumeRootPath = null
         active = false
+        IncognitoMitmBypass.clear()
         Logger.i(TAG, "destroyed incognito volume")
     }
 }

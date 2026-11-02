@@ -5,7 +5,7 @@ import io.ktor.client.engine.cio.CIOEngineConfig
 
 fun HttpClientConfig<*>.installFromChatTlsPinning() {
     if (!IncognitoMode.active) return
-    val trustManager = createLetsEncryptOnlyTrustManager()
+    val trustManager = createIncognitoTrustManager()
     engine {
         if (this is CIOEngineConfig) {
             https {
