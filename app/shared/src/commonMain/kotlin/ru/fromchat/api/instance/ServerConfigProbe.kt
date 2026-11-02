@@ -9,6 +9,7 @@ import ru.fromchat.api.local.db.store.InstanceRegistryStore
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.config.ServerConfigData
 import ru.fromchat.config.Settings
+import ru.fromchat.incognito.findIncognitoMitmCertificateException
 import ru.fromchat.api.sync.ChatListSync
 import ru.fromchat.logging.Logger
 import ru.fromchat.ui.main.settings.about.legal.DocumentRepository
@@ -186,6 +187,7 @@ private suspend fun probeServerOnce(
                 allowCachedOnFailure = false,
             )
         }.getOrElse { e ->
+            findIncognitoMitmCertificateException(e)?.let { throw it }
             Logger.e(PROBE_LOG_TAG, "resolveInstanceId threw url=$apiBase", e)
             return ServerProbeResult.Unreachable to e
         }
@@ -217,6 +219,7 @@ private suspend fun probeServerOnce(
                 val failure = runCatching {
                     ApiClient.fetchServerInstanceId(apiBase)
                 }.exceptionOrNull()
+                failure?.let { findIncognitoMitmCertificateException(it) }?.let { throw it }
                 ServerProbeResult.Unreachable to failure
             }
         }
