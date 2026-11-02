@@ -108,3 +108,7 @@ When using Mobile MCP, run **all** `mobile_install_app` and `mobile_launch_app` 
 - **Canonical release:** [`.github/workflows/release.yml`](./.github/workflows/release.yml) (`workflow_dispatch`, `version` input). Use the **`release`** skill — fork-safe `gh workflow run` on `origin`.
 - **Preflight (mandatory):** do **not** dispatch CI until the **`release`** skill checks pass: local compile gate (section 4), version bump in root [`build.gradle.kts`](./build.gradle.kts) vs latest tag, and release tag on the correct commit. If a check fails, fix what you can without behavior changes; otherwise stop and ask the user.
 - **Kept VM/CI scripts:** see `scripts/` (Windows VM chain, `ensure-windows-arm64-jdk.cmd`, etc.) — used by `run-*-prl` skills and CI.
+
+## 7. Cursor Cloud — GUI demos and manual tests
+
+On Cloud Agent VMs, drive the desktop UI only through the **computerUse** subagent (mouse/keyboard in the session) and **RecordScreen** for walkthrough video. Do **not** automate the GUI from the shell with **xdotool**, **wmctrl**, **ydotool**, **xte**, or similar. Terminal commands for build, logs, and read-only inspection (e.g. `file`, `hexdump` on paths the demo already opened) are fine when the computerUse agent runs them on screen or when no UI driving is involved.
