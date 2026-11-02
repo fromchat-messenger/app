@@ -7,7 +7,7 @@ import ru.fromchat.logging.Logger
 
 private const val TAG = "IncognitoMode"
 
-/** Ephemeral incognito session: encrypted on-disk volume + RAM-only key. */
+/** Ephemeral incognito session: userspace encrypted block container + RAM-only key. */
 object IncognitoMode {
     @Volatile
     var active: Boolean = false
@@ -22,15 +22,8 @@ object IncognitoMode {
 
     fun containerFilePathOrNull(): String? = IncognitoContainer.containerFilePath
 
-    fun isPathInsideVolume(path: String): Boolean {
-        val work = IncognitoContainer.workRootPath ?: return false
-        val normalized = path.replace('\\', '/').trimEnd('/')
-        val workNorm = work.replace('\\', '/').trimEnd('/')
-        return normalized == workNorm || normalized.startsWith("$workNorm/")
-    }
-
-    fun resolveAppDataPath(normalAppDataPath: String): String =
-        IncognitoStorageRouter.resolveAppDataPath(normalAppDataPath)
+    fun isPathInsideVolume(path: String): Boolean =
+        IncognitoVolumeFileSystem.relativeKeyForAppPath(path) != null
 
     suspend fun activate() {
         if (active) return
@@ -55,6 +48,7 @@ object IncognitoMode {
 
     fun destroy() {
         if (!active && volumeRootPath == null) return
+        syncContainerToDisk()
         MessageDatabaseProvider.closeAndReset()
         val key = volumeKey
         IncognitoContainer.closeAndWipe(key)

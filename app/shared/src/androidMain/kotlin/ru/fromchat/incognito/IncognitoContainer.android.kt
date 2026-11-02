@@ -1,49 +1,44 @@
 package ru.fromchat.incognito
 
 import java.io.File
-import java.util.UUID
 
 internal actual object IncognitoContainer {
     private var containerPath: String? = null
-    private var workRoot: String? = null
     private var volumeDir: String? = null
+    private var logicalRoot: String? = null
+    private var blockVolume: IncognitoBlockVolume? = null
 
     actual val containerFilePath: String?
         get() = containerPath
 
     actual val workRootPath: String?
-        get() = workRoot
+        get() = logicalRoot
 
     actual fun open(key: ByteArray, volumeDirectory: String) {
         volumeDir = volumeDirectory
         val dir = File(volumeDirectory).apply { mkdirs() }
         hardenIncognitoVolumeDirectory(dir.absolutePath)
-        val fileName = IncognitoContainerOnDisk.newRandomFileName()
-        containerPath = File(dir, fileName).absolutePath
-        workRoot = File(dir, ".live-${UUID.randomUUID()}").apply { mkdirs() }.absolutePath
-        hardenIncognitoVolumeDirectory(workRoot!!)
-        val container = File(containerPath!!)
-        if (container.isFile && container.length() > 0L) {
-            runCatching {
-                val plain = IncognitoVault.open(key, container.readBytes())
-                unpackWorkDir(workRoot!!, plain)
-            }
-        }
+        containerPath = File(dir, IncognitoContainerOnDisk.newRandomFileName()).absolutePath
+        File(containerPath!!).delete()
+        val io = openIncognitoBlockVolumeIo(containerPath!!)
+        blockVolume = IncognitoBlockVolume(key, io)
+        IncognitoVolumeFileSystem.attach(blockVolume!!)
+        logicalRoot = defaultAppDataRootPath()
     }
 
     actual fun syncToContainer(key: ByteArray) {
-        val work = workRoot ?: return
-        val target = containerPath ?: return
-        val packed = packWorkDir(work)
-        File(target).writeBytes(IncognitoVault.seal(key, packed))
+        if (key.size != 32) return
+        MessageDatabaseIncognito.snapshotActiveDatabaseIntoVolume()
+        IncognitoVolumeFileSystem.flush()
     }
 
     actual fun closeAndWipe(key: ByteArray?) {
-        workRoot?.let { File(it).deleteRecursively() }
+        IncognitoVolumeFileSystem.detach()
+        blockVolume = null
+        logicalRoot = null
         volumeDir?.let { File(it).deleteRecursively() }
-        workRoot = null
-        containerPath = null
         volumeDir = null
+        containerPath = null
     }
 
     actual fun scheduleSyncAfterWrite(key: ByteArray) = Unit

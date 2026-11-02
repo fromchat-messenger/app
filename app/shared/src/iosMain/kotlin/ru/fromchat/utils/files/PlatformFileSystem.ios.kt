@@ -91,9 +91,10 @@ internal actual fun expectListFileNamesInDirectory(dirPath: String): List<String
 
 internal actual fun expectGetAppCacheDirectory(): String {
     val paths = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true)
-    val defaultPath = (paths.firstOrNull() as? String) ?: ""
-    return IncognitoMode.resolveAppDataPath(defaultPath)
+    return (paths.firstOrNull() as? String) ?: ""
 }
+
+internal actual fun defaultAppDataRootForPlatform(): String = expectGetAppCacheDirectory()
 
 internal actual fun expectEnsureDirectory(path: String) {
     NSFileManager.defaultManager.createDirectoryAtPath(path, true, null, null)

@@ -2,7 +2,7 @@ package ru.fromchat.incognito
 
 import kotlin.random.Random
 
-/** On-disk name only; payload stays [IncognitoVault] `FCIN` + [packWorkDir] `FCFS`. */
+/** Random on-disk basename; payload is encrypted fixed-size blocks ([IncognitoBlockVolume]). */
 internal object IncognitoContainerOnDisk {
     private val popularExtensions = listOf(
         "dat",

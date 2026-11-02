@@ -51,7 +51,10 @@ internal actual fun expectListFileNamesInDirectory(dirPath: String): List<String
 }
 
 internal actual fun expectGetAppCacheDirectory(): String =
-    IncognitoMode.resolveAppDataPath(UtilsLibrary.context.noBackupFilesDir.absolutePath)
+    UtilsLibrary.context.noBackupFilesDir.absolutePath
+
+internal actual fun defaultAppDataRootForPlatform(): String =
+    UtilsLibrary.context.noBackupFilesDir.absolutePath
 
 internal actual fun expectEnsureDirectory(path: String) {
     File(path).mkdirs()
