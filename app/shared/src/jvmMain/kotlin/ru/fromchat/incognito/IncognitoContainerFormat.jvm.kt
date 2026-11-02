@@ -7,22 +7,31 @@ import java.io.File
 
 private const val PACK_MAGIC = "FCFS"
 
-internal actual fun packWorkDir(workRoot: String): ByteArray {
+internal actual fun packWorkDir(
+    workRoot: String,
+    extraRelativeFiles: List<Pair<String, ByteArray>>,
+): ByteArray {
     val root = File(workRoot)
     val files = root.walkTopDown().filter { it.isFile }.toList()
     val buffer = ByteArrayOutputStream()
     DataOutputStream(buffer).use { out ->
         out.writeUTF(PACK_MAGIC)
-        out.writeInt(files.size)
+        out.writeInt(files.size + extraRelativeFiles.size)
         for (file in files) {
             val relative = file.relativeTo(root).path.replace('\\', '/')
-            val bytes = file.readBytes()
-            out.writeUTF(relative)
-            out.writeInt(bytes.size)
-            out.write(bytes)
+            writePackedFile(out, relative, file.readBytes())
+        }
+        for ((relative, bytes) in extraRelativeFiles) {
+            writePackedFile(out, relative, bytes)
         }
     }
     return buffer.toByteArray()
+}
+
+private fun writePackedFile(out: DataOutputStream, relative: String, bytes: ByteArray) {
+    out.writeUTF(relative)
+    out.writeInt(bytes.size)
+    out.write(bytes)
 }
 
 internal actual fun unpackWorkDir(workRoot: String, packed: ByteArray) {

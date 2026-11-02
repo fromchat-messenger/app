@@ -2,16 +2,11 @@ package ru.fromchat.incognito
 
 import java.io.File
 import java.util.UUID
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import java.util.concurrent.atomic.AtomicBoolean
 
 internal actual object IncognitoContainer {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val syncScheduled = AtomicBoolean(false)
+    private var containerPath: String? = null
+    private var workRoot: String? = null
+    private var volumeDir: String? = null
 
     actual val containerFilePath: String?
         get() = containerPath
@@ -19,20 +14,15 @@ internal actual object IncognitoContainer {
     actual val workRootPath: String?
         get() = workRoot
 
-    private var containerPath: String? = null
-    private var workRoot: String? = null
-    private var volumeDir: String? = null
-
     actual fun open(key: ByteArray, volumeDirectory: String) {
         volumeDir = volumeDirectory
-        File(volumeDirectory).mkdirs()
+        val dir = File(volumeDirectory).apply { mkdirs() }
+        hardenIncognitoVolumeDirectory(dir.absolutePath)
         val fileName = IncognitoContainerOnDisk.newRandomFileName()
-        containerPath = File(volumeDirectory, fileName).absolutePath
-        workRoot = File(
-            volumeDirectory,
-            ".live-${UUID.randomUUID()}",
-        ).apply { mkdirs() }.absolutePath
+        containerPath = File(dir, fileName).absolutePath
+        workRoot = File(dir, ".live-${UUID.randomUUID()}").apply { mkdirs() }.absolutePath
         File(workRoot, "cache").mkdirs()
+        hardenIncognitoVolumeDirectory(workRoot!!)
         val container = File(containerPath!!)
         if (container.isFile && container.length() > 0L) {
             runCatching {
@@ -45,7 +35,7 @@ internal actual object IncognitoContainer {
     actual fun syncToContainer(key: ByteArray) {
         val work = workRoot ?: return
         val target = containerPath ?: return
-        val packed = packWorkDir(work)
+        val packed = packWorkDir(work, buildIncognitoContainerExtras())
         File(target).writeBytes(IncognitoVault.seal(key, packed))
     }
 
@@ -57,14 +47,5 @@ internal actual object IncognitoContainer {
         volumeDir = null
     }
 
-    actual fun scheduleSyncAfterWrite(key: ByteArray) {
-        if (!syncScheduled.compareAndSet(false, true)) return
-        scope.launch {
-            delay(750)
-            syncScheduled.set(false)
-            if (IncognitoMode.active) {
-                runCatching { syncToContainer(key) }
-            }
-        }
-    }
+    actual fun scheduleSyncAfterWrite(key: ByteArray) = Unit
 }

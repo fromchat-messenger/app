@@ -17,7 +17,7 @@ internal actual suspend fun provisionIncognitoVolumeRoot(): String {
     )?.path ?: "."
     val volume = "$base/${randomHiddenDirectoryName()}"
     NSFileManager.defaultManager.createDirectoryAtPath(volume, true, null, null)
-    NSFileManager.defaultManager.createDirectoryAtPath("$volume/cache", true, null, null)
+    hardenIncognitoVolumeDirectory(volume)
     return volume
 }
 

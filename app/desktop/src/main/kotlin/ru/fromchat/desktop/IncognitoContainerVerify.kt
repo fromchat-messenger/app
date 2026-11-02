@@ -20,13 +20,13 @@ fun runIncognitoContainerVerify(): Int = runBlocking {
 private suspend fun verifyGracefulWipe() {
     IncognitoMode.activate()
     val cacheDir = File(PlatformFileSystem.getAppCacheDirectory(), "fromchat").apply { mkdirs() }
-    File(cacheDir, "message_database.db").writeBytes(
-        "SQLite format 3 incognito test payload".encodeToByteArray(),
-    )
+    File(cacheDir, "message_database.db").let { db ->
+        PlatformFileSystem.writeBytes(db.absolutePath, "SQLite format 3 incognito test payload".encodeToByteArray())
+        check(IncognitoVault.isSealedPayload(db.readBytes())) { "cache file must be sealed on disk" }
+    }
     Logger.i("IncognitoVerify", "log probe line for sealed container")
     val logPath = FromChatLogDirs.currentLogPath()
-    check(File(logPath).isFile) { "incognito log file missing at $logPath" }
-    check(IncognitoMode.isPathInsideVolume(logPath)) { "log path outside incognito work tree" }
+    check(!File(logPath).exists()) { "incognito must not write plaintext logs to disk" }
     IncognitoMode.syncContainerToDisk()
     val containerPath = IncognitoMode.containerFilePathOrNull()
         ?: error("missing container path")
@@ -43,17 +43,14 @@ private suspend fun verifyGracefulWipe() {
 /** After sync, on-disk state matches what SIGKILL would leave (encrypted single container file). */
 private suspend fun verifySyncedContainerIsEncryptedAtRest() {
     IncognitoMode.activate()
-    val cacheDir = File(PlatformFileSystem.getAppCacheDirectory(), "fromchat").apply { mkdirs() }
-    File(cacheDir, "message_database.db").writeBytes(
-        "SQLite format 3 kill9 simulation".encodeToByteArray(),
-    )
+    Logger.i("IncognitoVerify", "kill9 log probe")
     IncognitoMode.syncContainerToDisk()
     val containerPath = IncognitoMode.containerFilePathOrNull()
         ?: error("missing container path")
     val volumeRoot = IncognitoMode.volumeRootOrNull() ?: error("missing volume root")
     val sealed = File(containerPath).readBytes()
     check(IncognitoVault.isSealedPayload(sealed)) { "kill9 container not sealed" }
-    check(!sealed.decodeToString().contains("SQLite format 3")) { "kill9 container leaked plaintext" }
+    check(!sealed.decodeToString().contains("log probe")) { "kill9 container leaked plaintext" }
     println("KILL9_ENCRYPTED_OK container=$containerPath volume=$volumeRoot")
     IncognitoMode.destroy()
 }

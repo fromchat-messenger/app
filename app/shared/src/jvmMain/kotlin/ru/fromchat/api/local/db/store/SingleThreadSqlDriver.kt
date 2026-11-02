@@ -9,7 +9,6 @@ import app.cash.sqldelight.db.SqlPreparedStatement
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.asCoroutineDispatcher
 import ru.fromchat.api.local.db.withSqliteBusyGuard
-import ru.fromchat.incognito.IncognitoMode
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
@@ -19,7 +18,6 @@ import java.util.concurrent.atomic.AtomicReference
  */
 internal class SingleThreadSqlDriver(
     private val delegate: SqlDriver,
-    private val incognitoSyncPath: String? = null,
 ) : SqlDriver {
     private fun <T> onDbThread(block: () -> T): T {
         if (Thread.currentThread() == dbThread.get()) {
@@ -37,11 +35,7 @@ internal class SingleThreadSqlDriver(
         sql: String,
         parameters: Int,
         binders: (SqlPreparedStatement.() -> Unit)?,
-    ): QueryResult<Long> = onDbThread {
-        val result = delegate.execute(identifier, sql, parameters, binders)
-        incognitoSyncPath?.let { IncognitoMode.afterWorkTreeWrite(it) }
-        result
-    }
+    ): QueryResult<Long> = onDbThread { delegate.execute(identifier, sql, parameters, binders) }
 
     override fun <R> executeQuery(
         identifier: Int?,

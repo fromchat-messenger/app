@@ -60,6 +60,8 @@ object PlatformFileSystem {
         expectEnsureDirectory(path)
         return path
     }
+
+    internal fun readBytes(path: String): ByteArray = expectReadBytes(path)
 }
 
 internal expect fun expectExists(path: String): Boolean
@@ -71,3 +73,4 @@ internal expect fun expectDeleteFilesWithPrefix(dirPath: String, namePrefix: Str
 internal expect fun expectListFileNamesInDirectory(dirPath: String): List<String>
 internal expect fun expectGetAppCacheDirectory(): String
 internal expect fun expectEnsureDirectory(path: String)
+internal expect fun expectReadBytes(path: String): ByteArray

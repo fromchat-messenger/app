@@ -14,20 +14,20 @@ import platform.Foundation.NSNumber
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSUserDomainMask
 import platform.Foundation.create
+import platform.Foundation.dataWithContentsOfFile
 import platform.Foundation.writeToFile
 import platform.posix.fclose
 import platform.posix.fopen
 import platform.posix.fwrite
 import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.incognito.IncognitoPlatformIo
-import ru.fromchat.incognito.notifyIncognitoWorkTreeMutated
 
 internal actual fun expectExists(path: String): Boolean =
     NSFileManager.defaultManager.fileExistsAtPath(path)
 
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 internal actual fun expectWriteBytes(path: String, bytes: ByteArray) {
-    val payload = IncognitoPlatformIo.sealIfNeeded(path, bytes)
+    val payload = IncognitoPlatformIo.writeToDisk(path, bytes)
     val parent = path.substringBeforeLast('/', missingDelimiterValue = "")
     if (parent.isNotEmpty()) {
         NSFileManager.defaultManager.createDirectoryAtPath(parent, true, null, null)
@@ -39,17 +39,28 @@ internal actual fun expectWriteBytes(path: String, bytes: ByteArray) {
 }
 
 @OptIn(ExperimentalForeignApi::class)
+internal actual fun expectReadBytes(path: String): ByteArray {
+    if (!NSFileManager.defaultManager.fileExistsAtPath(path)) return ByteArray(0)
+    val raw = NSData.dataWithContentsOfFile(path) ?: return ByteArray(0)
+    return IncognitoPlatformIo.readFromDisk(path, raw.toByteArray())
+}
+
+@OptIn(ExperimentalForeignApi::class)
 internal actual fun expectAppendBytes(path: String, bytes: ByteArray) {
-    val payload = IncognitoPlatformIo.sealIfNeeded(path, bytes)
+    if (IncognitoMode.active) {
+        val existing = expectReadBytes(path)
+        expectWriteBytes(path, if (existing.isEmpty()) bytes else existing + bytes)
+        return
+    }
     val parent = path.substringBeforeLast('/', missingDelimiterValue = "")
     if (parent.isNotEmpty()) {
         NSFileManager.defaultManager.createDirectoryAtPath(parent, true, null, null)
     }
     val file = fopen(path, "ab") ?: error("Failed to open file for append")
     try {
-        payload.usePinned { pinned ->
-            val written = fwrite(pinned.addressOf(0), 1.convert(), payload.size.convert(), file).toInt()
-            if (written != payload.size) {
+        bytes.usePinned { pinned ->
+            val written = fwrite(pinned.addressOf(0), 1.convert(), bytes.size.convert(), file).toInt()
+            if (written != bytes.size) {
                 error("Short write")
             }
         }
@@ -67,7 +78,6 @@ internal actual fun expectFileSize(path: String): Long {
 
 internal actual fun expectDelete(path: String) {
     NSFileManager.defaultManager.removeItemAtPath(path, null)
-    notifyIncognitoWorkTreeMutated(path)
 }
 
 internal actual fun expectDeleteFilesWithPrefix(dirPath: String, namePrefix: String) {
@@ -75,9 +85,7 @@ internal actual fun expectDeleteFilesWithPrefix(dirPath: String, namePrefix: Str
         ?: return
     contents.filterIsInstance<String>().forEach { name ->
         if (name.startsWith(namePrefix)) {
-            val fullPath = "$dirPath/$name"
-            NSFileManager.defaultManager.removeItemAtPath(fullPath, null)
-            notifyIncognitoWorkTreeMutated(fullPath)
+            NSFileManager.defaultManager.removeItemAtPath("$dirPath/$name", null)
         }
     }
 }
@@ -96,4 +104,14 @@ internal actual fun expectGetAppCacheDirectory(): String {
 
 internal actual fun expectEnsureDirectory(path: String) {
     NSFileManager.defaultManager.createDirectoryAtPath(path, true, null, null)
+}
+
+private fun NSData.toByteArray(): ByteArray {
+    val length = this.length.toInt()
+    if (length == 0) return ByteArray(0)
+    return ByteArray(length).also { bytes ->
+        bytes.usePinned { pinned ->
+            platform.posix.memcpy(pinned.addressOf(0), this.bytes, length.convert())
+        }
+    }
 }

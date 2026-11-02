@@ -1,10 +1,9 @@
 package ru.fromchat.incognito
 
-import kotlinx.cinterop.ExperimentalForeignApi
-import platform.Foundation.NSFileManager
-import platform.Foundation.NSTemporaryDirectory
 import java.io.File
 import java.util.UUID
+import kotlinx.cinterop.ExperimentalForeignApi
+import platform.Foundation.NSFileManager
 
 @OptIn(ExperimentalForeignApi::class)
 internal actual object IncognitoContainer {
@@ -20,21 +19,31 @@ internal actual object IncognitoContainer {
 
     actual fun open(key: ByteArray, volumeDirectory: String) {
         volumeDir = volumeDirectory
-        NSFileManager.defaultManager.createDirectoryAtPath(volumeDirectory, true, null, null)
-        containerPath = "$volumeDirectory/${IncognitoContainerOnDisk.newRandomFileName()}"
-        val live = "$volumeDirectory/.live-${UUID.randomUUID()}"
-        NSFileManager.defaultManager.createDirectoryAtPath(live, true, null, null)
-        NSFileManager.defaultManager.createDirectoryAtPath("$live/cache", true, null, null)
-        workRoot = live
+        File(volumeDirectory).mkdirs()
+        hardenIncognitoVolumeDirectory(volumeDirectory)
+        containerPath = File(volumeDirectory, IncognitoContainerOnDisk.newRandomFileName()).absolutePath
+        workRoot = File(volumeDirectory, ".live-${UUID.randomUUID()}").apply { mkdirs() }.absolutePath
+        File(workRoot, "cache").mkdirs()
+        hardenIncognitoVolumeDirectory(workRoot!!)
+        val container = File(containerPath!!)
+        if (container.isFile && container.length() > 0L) {
+            runCatching {
+                val plain = IncognitoVault.open(key, container.readBytes())
+                unpackWorkDir(workRoot!!, plain)
+            }
+        }
     }
 
     actual fun syncToContainer(key: ByteArray) {
-        // iOS: pack/seal parity can be added; session data stays in the live work tree for now.
+        val work = workRoot ?: return
+        val target = containerPath ?: return
+        val packed = packWorkDir(work, buildIncognitoContainerExtras())
+        File(target).writeBytes(IncognitoVault.seal(key, packed))
     }
 
     actual fun closeAndWipe(key: ByteArray?) {
-        workRoot?.let { NSFileManager.defaultManager.removeItemAtPath(it, null) }
-        volumeDir?.let { NSFileManager.defaultManager.removeItemAtPath(it, null) }
+        workRoot?.let { File(it).deleteRecursively() }
+        volumeDir?.let { File(it).deleteRecursively() }
         workRoot = null
         containerPath = null
         volumeDir = null

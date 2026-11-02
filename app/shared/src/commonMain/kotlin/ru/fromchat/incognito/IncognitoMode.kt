@@ -85,12 +85,6 @@ object IncognitoMode {
         Logger.i(TAG, "destroyed incognito volume")
     }
 
-    internal fun afterWorkTreeWrite(path: String) {
-        if (!active) return
-        if (!isPathInsideVolume(path)) return
-        val key = volumeKey ?: return
-        IncognitoContainer.scheduleSyncAfterWrite(key)
-    }
 }
 
 internal expect suspend fun provisionIncognitoVolumeRoot(): String

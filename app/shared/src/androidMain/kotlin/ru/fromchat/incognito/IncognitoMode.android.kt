@@ -5,9 +5,9 @@ import java.security.SecureRandom
 
 internal actual suspend fun provisionIncognitoVolumeRoot(): String {
     val context = ru.fromchat.utils.UtilsLibrary.context
-    val base = File(context.cacheDir, randomHiddenDirectoryName()).also { it.mkdirs() }
-    File(base, "cache").mkdirs()
-    return base.absolutePath
+    val volume = File(context.noBackupFilesDir, randomHiddenDirectoryName()).apply { mkdirs() }
+    hardenIncognitoVolumeDirectory(volume.absolutePath)
+    return volume.absolutePath
 }
 
 internal actual fun destroyIncognitoVolumeRoot(rootPath: String) {

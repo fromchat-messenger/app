@@ -2,7 +2,6 @@ package ru.fromchat.utils.files
 
 import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.incognito.IncognitoPlatformIo
-import ru.fromchat.incognito.notifyIncognitoWorkTreeMutated
 import ru.fromchat.utils.UtilsLibrary
 import java.io.File
 
@@ -12,13 +11,24 @@ internal actual fun expectExists(path: String): Boolean =
 internal actual fun expectWriteBytes(path: String, bytes: ByteArray) {
     val file = File(path)
     file.parentFile?.mkdirs()
-    file.writeBytes(IncognitoPlatformIo.sealIfNeeded(path, bytes))
+    file.writeBytes(IncognitoPlatformIo.writeToDisk(path, bytes))
+}
+
+internal actual fun expectReadBytes(path: String): ByteArray {
+    val file = File(path)
+    if (!file.isFile) return ByteArray(0)
+    return IncognitoPlatformIo.readFromDisk(path, file.readBytes())
 }
 
 internal actual fun expectAppendBytes(path: String, bytes: ByteArray) {
+    if (IncognitoMode.active) {
+        val existing = expectReadBytes(path)
+        expectWriteBytes(path, if (existing.isEmpty()) bytes else existing + bytes)
+        return
+    }
     val file = File(path)
     file.parentFile?.mkdirs()
-    file.appendBytes(IncognitoPlatformIo.sealIfNeeded(path, bytes))
+    file.appendBytes(bytes)
 }
 
 internal actual fun expectFileSize(path: String): Long {
@@ -28,7 +38,6 @@ internal actual fun expectFileSize(path: String): Long {
 
 internal actual fun expectDelete(path: String) {
     File(path).delete()
-    notifyIncognitoWorkTreeMutated(path)
 }
 
 internal actual fun expectDeleteFilesWithPrefix(dirPath: String, namePrefix: String) {
@@ -37,7 +46,6 @@ internal actual fun expectDeleteFilesWithPrefix(dirPath: String, namePrefix: Str
     dir.listFiles()?.forEach { file ->
         if (file.name.startsWith(namePrefix)) {
             file.delete()
-            notifyIncognitoWorkTreeMutated(file.absolutePath)
         }
     }
 }
@@ -49,7 +57,7 @@ internal actual fun expectListFileNamesInDirectory(dirPath: String): List<String
 }
 
 internal actual fun expectGetAppCacheDirectory(): String =
-    IncognitoMode.resolveAppCacheDirectory(UtilsLibrary.context.cacheDir.absolutePath)
+    IncognitoMode.resolveAppCacheDirectory(UtilsLibrary.context.noBackupFilesDir.absolutePath)
 
 internal actual fun expectEnsureDirectory(path: String) {
     File(path).mkdirs()

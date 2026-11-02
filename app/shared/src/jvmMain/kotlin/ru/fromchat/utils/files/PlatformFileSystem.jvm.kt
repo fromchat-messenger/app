@@ -2,7 +2,6 @@ package ru.fromchat.utils.files
 
 import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.incognito.IncognitoPlatformIo
-import ru.fromchat.incognito.notifyIncognitoWorkTreeMutated
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardOpenOption
@@ -12,15 +11,26 @@ internal actual fun expectExists(path: String): Boolean = File(path).exists()
 internal actual fun expectWriteBytes(path: String, bytes: ByteArray) {
     val file = File(path)
     file.parentFile?.mkdirs()
-    file.writeBytes(IncognitoPlatformIo.sealIfNeeded(path, bytes))
+    file.writeBytes(IncognitoPlatformIo.writeToDisk(path, bytes))
+}
+
+internal actual fun expectReadBytes(path: String): ByteArray {
+    val file = File(path)
+    if (!file.isFile) return ByteArray(0)
+    return IncognitoPlatformIo.readFromDisk(path, file.readBytes())
 }
 
 internal actual fun expectAppendBytes(path: String, bytes: ByteArray) {
+    if (IncognitoMode.active) {
+        val existing = expectReadBytes(path)
+        expectWriteBytes(path, if (existing.isEmpty()) bytes else existing + bytes)
+        return
+    }
     val file = File(path)
     file.parentFile?.mkdirs()
     Files.write(
         file.toPath(),
-        IncognitoPlatformIo.sealIfNeeded(path, bytes),
+        bytes,
         StandardOpenOption.CREATE,
         StandardOpenOption.APPEND,
         StandardOpenOption.WRITE,
@@ -34,7 +44,6 @@ internal actual fun expectFileSize(path: String): Long {
 
 internal actual fun expectDelete(path: String) {
     File(path).delete()
-    notifyIncognitoWorkTreeMutated(path)
 }
 
 internal actual fun expectDeleteFilesWithPrefix(dirPath: String, namePrefix: String) {
@@ -43,7 +52,6 @@ internal actual fun expectDeleteFilesWithPrefix(dirPath: String, namePrefix: Str
     dir.listFiles()?.forEach { file ->
         if (file.name.startsWith(namePrefix)) {
             file.delete()
-            notifyIncognitoWorkTreeMutated(file.absolutePath)
         }
     }
 }
