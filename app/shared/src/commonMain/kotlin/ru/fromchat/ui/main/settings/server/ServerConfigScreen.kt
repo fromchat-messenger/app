@@ -89,6 +89,7 @@ import ru.fromchat.config.Settings
 import ru.fromchat.api.instance.ServerProbeResult
 import ru.fromchat.api.instance.ApplyServerResult
 import ru.fromchat.api.instance.applyServerAndNavigate
+import ru.fromchat.api.instance.persistPreAuthServerEndpoint
 import ru.fromchat.api.instance.probeServerEndpoint
 import ru.fromchat.save_continue
 import ru.fromchat.server_config_action_check
@@ -122,6 +123,8 @@ import ru.fromchat.ui.components.trackLazyListFocus
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 import ru.fromchat.ui.main.settings.settingsDetailShowBackButton
 import ru.fromchat.ui.main.settings.settingsDetailWindowInsets
+import ru.fromchat.incognito.IncognitoTlsHostBypass
+import ru.fromchat.ui.incognito.IncognitoTlsDialogController
 import ru.fromchat.ui.theme.extraStatusBars
 
 private object ServerConfigLazyListIndices {
@@ -184,6 +187,31 @@ fun ServerConfigScreen(
 
     fun buildTentativeFromParsed(): ParsedServerEndpoint? = parsedEndpoint
 
+    fun handleIncognitoProbeFailure(e: Throwable, host: String, https: Boolean): Boolean =
+        IncognitoTlsDialogController.presentFromThrowable(e, host, https)
+
+    suspend fun runServerEndpointProbe(parsed: ParsedServerEndpoint): Pair<ServerConfigData, ServerProbeResult> =
+        runCatching {
+            probeServerEndpoint(
+                host = parsed.host,
+                port = parsed.port,
+                httpsPreferred = parsed.httpsPreferred,
+                schemeExplicit = parsed.schemeExplicit,
+            )
+        }.getOrElse { e ->
+            if (handleIncognitoProbeFailure(e, parsed.host, parsed.httpsPreferred)) {
+                val fallback = ServerConfigData(
+                    serverIp = parsed.host,
+                    apiPort = parsed.port,
+                    callsPort = parsed.port,
+                    httpsEnabled = parsed.httpsPreferred,
+                    callsEnabled = false,
+                )
+                return fallback to ServerProbeResult.Unreachable
+            }
+            throw e
+        }
+
     fun verifyServer() {
         scope.launch {
             launch { snackbarHostState.showSnackbar(strChecking) }
@@ -192,14 +220,17 @@ fun ServerConfigScreen(
                 snackbarHostState.showSnackbar(strHostError)
                 return@launch
             }
-            val (tentative, probe) = probeServerEndpoint(
-                host = parsed.host,
-                port = parsed.port,
-                httpsPreferred = parsed.httpsPreferred,
-                schemeExplicit = parsed.schemeExplicit,
-            )
+            val (tentative, probe) = try {
+                runServerEndpointProbe(parsed)
+            } catch (e: Exception) {
+                snackbarHostState.showSnackbar(strSnackbarApiFail)
+                return@launch
+            }
             lastProbe = probe
             lastProbedConfig = tentative
+            if (IncognitoTlsDialogController.showMitmDialog || IncognitoTlsDialogController.showTlsDialog) {
+                return@launch
+            }
             val msg = when (probe) {
                 is ServerProbeResult.Supported -> {
                     if (probe.callsOk) {
@@ -263,14 +294,28 @@ fun ServerConfigScreen(
                                     snackbarHostState.showSnackbar(strHostError)
                                     return@launch
                                 }
-                                val (tentative, probe) = probeServerEndpoint(
-                                    host = parsed.host,
-                                    port = parsed.port,
-                                    httpsPreferred = parsed.httpsPreferred,
-                                    schemeExplicit = parsed.schemeExplicit,
+                                val endpointOnly = ServerConfigData(
+                                    serverIp = parsed.host,
+                                    apiPort = parsed.port,
+                                    callsPort = parsed.port,
+                                    httpsEnabled = parsed.httpsPreferred,
+                                    callsEnabled = false,
                                 )
+                                if (preAuth) {
+                                    persistPreAuthServerEndpoint(endpointOnly)
+                                }
+                                val (tentative, probe) = try {
+                                    runServerEndpointProbe(parsed)
+                                } catch (e: Exception) {
+                                    snackbarHostState.showSnackbar(strSnackbarApiFail)
+                                    return@launch
+                                }
                                 lastProbe = probe
                                 lastProbedConfig = tentative
+
+                                if (IncognitoTlsDialogController.showMitmDialog || IncognitoTlsDialogController.showTlsDialog) {
+                return@launch
+            }
 
                                 when (probe) {
                                     ServerProbeResult.Unsupported -> {

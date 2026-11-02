@@ -87,6 +87,7 @@ import ru.fromchat.desktop.DesktopMenuCommand
 import ru.fromchat.desktop.DesktopMenuCommands
 import ru.fromchat.notifications.NotificationLaunchCoordinator
 import ru.fromchat.ui.auth.AuthScreen
+import ru.fromchat.ui.incognito.IncognitoTlsDialogHost
 import ru.fromchat.ui.auth.captcha.SmartCaptchaNav
 import ru.fromchat.ui.auth.captcha.SmartCaptchaScreen
 import ru.fromchat.ui.auth.yandex.YandexOAuthNav
@@ -959,6 +960,7 @@ fun App(
                             if (showReleaseNotesPrompt) {
                                 ReleaseNotesDialog(onDismiss = { showReleaseNotesPrompt = false })
                             }
+                            IncognitoTlsDialogHost()
                         }
                     }
                 }

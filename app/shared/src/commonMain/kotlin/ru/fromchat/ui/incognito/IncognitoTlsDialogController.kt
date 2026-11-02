@@ -1,0 +1,64 @@
+package ru.fromchat.ui.incognito
+
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import ru.fromchat.incognito.FROMCHAT_OFFICIAL_API_HOST
+import ru.fromchat.incognito.IncognitoTlsHostBypass
+import ru.fromchat.incognito.findIncognitoMitmCertificateException
+import ru.fromchat.incognito.isIncognitoTlsCertificateError
+
+/** Global incognito TLS / MITM dialogs (Material), replacing platform error popups. */
+object IncognitoTlsDialogController {
+    var showMitmDialog by mutableStateOf(false)
+        private set
+    var mitmMarker by mutableStateOf("")
+        private set
+    var showTlsDialog by mutableStateOf(false)
+        private set
+    var bypassHost by mutableStateOf("")
+        private set
+
+    var onBypassConfirmed: (() -> Unit)? = null
+
+    fun presentMitm(marker: String, host: String) {
+        mitmMarker = marker
+        bypassHost = host
+        showMitmDialog = true
+    }
+
+    fun presentTlsCertificateRejected(host: String) {
+        bypassHost = host
+        showTlsDialog = true
+    }
+
+    fun dismissMitm() {
+        showMitmDialog = false
+    }
+
+    fun dismissTls() {
+        showTlsDialog = false
+    }
+
+    fun confirmBypass() {
+        showMitmDialog = false
+        showTlsDialog = false
+        val host = bypassHost.trim().ifEmpty { FROMCHAT_OFFICIAL_API_HOST }
+        IncognitoTlsHostBypass.allowHost(host)
+        onBypassConfirmed?.invoke()
+        onBypassConfirmed = null
+    }
+
+    /** Map probe/TLS failures to in-app dialogs instead of throwing to the OS. */
+    fun presentFromThrowable(error: Throwable, host: String, httpsEnabled: Boolean): Boolean {
+        findIncognitoMitmCertificateException(error)?.let { mitm ->
+            presentMitm(mitm.matchedMarker, mitm.host.ifBlank { host })
+            return true
+        }
+        if (httpsEnabled && isIncognitoTlsCertificateError(error)) {
+            presentTlsCertificateRejected(host)
+            return true
+        }
+        return false
+    }
+}

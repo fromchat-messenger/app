@@ -9,6 +9,8 @@ import ru.fromchat.api.local.db.store.InstanceRegistryStore
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.config.ServerConfigData
 import ru.fromchat.config.Settings
+import ru.fromchat.incognito.findIncognitoMitmCertificateException
+import ru.fromchat.ui.incognito.handleIncognitoHttpsTlsFailure
 import ru.fromchat.api.sync.ChatListSync
 import ru.fromchat.logging.Logger
 import ru.fromchat.ui.main.settings.about.legal.DocumentRepository
@@ -170,6 +172,17 @@ suspend fun probeServerEndpoint(
     return lastConfig to lastResult
 }
 
+/** Persists host/port/https for logged-out users before probe completes (MITM QA, unreachable servers). */
+suspend fun persistPreAuthServerEndpoint(config: ServerConfigData) {
+    if (ApiClient.token?.trim().orEmpty().isNotEmpty()) return
+    ServerConfig.updateServerConfig(
+        config.copy(
+            callsPort = config.apiPort,
+            callsEnabled = false,
+        ),
+    )
+}
+
 private suspend fun probeServerOnce(
     config: ServerConfigData,
 ): Pair<ServerProbeResult, Throwable?> {
@@ -186,6 +199,9 @@ private suspend fun probeServerOnce(
                 allowCachedOnFailure = false,
             )
         }.getOrElse { e ->
+            if (handleIncognitoHttpsTlsFailure(e, config.httpsEnabled, config.serverIp)) {
+                return ServerProbeResult.Unreachable to e
+            }
             Logger.e(PROBE_LOG_TAG, "resolveInstanceId threw url=$apiBase", e)
             return ServerProbeResult.Unreachable to e
         }
@@ -217,6 +233,9 @@ private suspend fun probeServerOnce(
                 val failure = runCatching {
                     ApiClient.fetchServerInstanceId(apiBase)
                 }.exceptionOrNull()
+                if (handleIncognitoHttpsTlsFailure(failure, config.httpsEnabled, config.serverIp)) {
+                    return ServerProbeResult.Unreachable to failure
+                }
                 ServerProbeResult.Unreachable to failure
             }
         }
