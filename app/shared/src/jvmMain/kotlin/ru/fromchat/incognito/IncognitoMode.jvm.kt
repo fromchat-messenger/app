@@ -2,10 +2,12 @@ package ru.fromchat.incognito
 
 import java.io.File
 import java.security.SecureRandom
-import ru.fromchat.utils.files.AppDataRoot
 
 internal actual suspend fun provisionIncognitoVolumeRoot(): String {
-    val volume = File(AppDataRoot.resolve(), ".incognito/${randomHiddenDirectoryName()}").apply { mkdirs() }
+    val volume = File(
+        IncognitoDesktopContainerRoot.resolveSessionParentDirectory(),
+        randomHiddenDirectoryName(),
+    ).apply { mkdirs() }
     hardenIncognitoVolumeDirectory(volume.absolutePath)
     return volume.absolutePath
 }
