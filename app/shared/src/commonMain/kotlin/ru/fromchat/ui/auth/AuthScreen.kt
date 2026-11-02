@@ -27,6 +27,7 @@ import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.crypto.IdentityKeyManager
 import ru.fromchat.api.instance.ServerProbeResult
+import ru.fromchat.api.instance.takeLastIncognitoTlsProbeFailure
 import ru.fromchat.api.instance.apiBaseUrlFor
 import ru.fromchat.api.instance.probeServer
 import ru.fromchat.api.local.cache.CacheContext
@@ -103,6 +104,7 @@ internal suspend fun probeCurrentServer(): Boolean =
 internal suspend fun probeCurrentServerForAuth(): AuthServerProbeOutcome {
     val config = Settings.readServerConfig()
     val apiBase = apiBaseUrlFor(config)
+    takeLastIncognitoTlsProbeFailure()
     Logger.i(
         AUTH_SERVER_PROBE_TAG,
         "probe start storedHost=${config.serverIp} apiPort=${config.apiPort} " +
@@ -121,10 +123,29 @@ internal suspend fun probeCurrentServerForAuth(): AuthServerProbeOutcome {
                 else ->
                     Logger.w(AUTH_SERVER_PROBE_TAG, "probe not supported: $result url=$apiBase")
             }
-            when {
+            val probeOutcome = when {
                 result is ServerProbeResult.Supported -> AuthServerProbeOutcome.Ok
-                else -> AuthServerProbeOutcome.Failed
+                else -> {
+                    val tlsFailure = takeLastIncognitoTlsProbeFailure()
+                    when {
+                        tlsFailure != null -> {
+                            findIncognitoMitmCertificateException(tlsFailure)?.let { mitm ->
+                                AuthServerProbeOutcome.MitmCertificateDetected(mitm.matchedMarker)
+                            } ?: if (
+                                IncognitoMode.active &&
+                                config.httpsEnabled &&
+                                isIncognitoTlsCertificateError(tlsFailure)
+                            ) {
+                                AuthServerProbeOutcome.TlsCertificateRejected
+                            } else {
+                                AuthServerProbeOutcome.Failed
+                            }
+                        }
+                        else -> AuthServerProbeOutcome.Failed
+                    }
+                }
             }
+            probeOutcome
         }
     }.getOrElse { e ->
         Logger.w(

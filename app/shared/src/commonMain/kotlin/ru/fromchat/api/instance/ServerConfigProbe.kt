@@ -10,7 +10,9 @@ import ru.fromchat.config.ServerConfig
 import ru.fromchat.config.ServerConfigData
 import ru.fromchat.config.Settings
 import ru.fromchat.incognito.findIncognitoMitmCertificateException
+import ru.fromchat.ui.incognito.IncognitoTlsDialogController
 import ru.fromchat.ui.incognito.handleIncognitoHttpsTlsFailure
+import ru.fromchat.ui.incognito.isIncognitoHttpsTlsFailure
 import ru.fromchat.api.sync.ChatListSync
 import ru.fromchat.logging.Logger
 import ru.fromchat.ui.main.settings.about.legal.DocumentRepository
@@ -36,6 +38,22 @@ sealed interface ApplyServerResult {
 
 private const val CALLS_PROBE_MS = 1_500L
 private const val PROBE_LOG_TAG = "AuthServerProbe"
+
+private var lastIncognitoTlsProbeFailure: Throwable? = null
+
+fun takeLastIncognitoTlsProbeFailure(): Throwable? =
+    lastIncognitoTlsProbeFailure.also { lastIncognitoTlsProbeFailure = null }
+
+internal fun noteIncognitoTlsProbeFailure(error: Throwable?, httpsEnabled: Boolean) {
+    if (isIncognitoHttpsTlsFailure(error, httpsEnabled)) {
+        lastIncognitoTlsProbeFailure = error
+    }
+}
+
+fun surfaceLastIncognitoTlsProbeFailure(host: String, httpsEnabled: Boolean): Boolean {
+    val error = takeLastIncognitoTlsProbeFailure() ?: return false
+    return IncognitoTlsDialogController.presentFromThrowable(error, host, httpsEnabled)
+}
 
 /** True when [error] looks like a TLS/SSL handshake failure (safe to fall back to HTTP). */
 fun Throwable.isSslProtocolError(): Boolean {
@@ -200,6 +218,7 @@ private suspend fun probeServerOnce(
             )
         }.getOrElse { e ->
             if (handleIncognitoHttpsTlsFailure(e, config.httpsEnabled, config.serverIp)) {
+                noteIncognitoTlsProbeFailure(e, config.httpsEnabled)
                 return ServerProbeResult.Unreachable to e
             }
             Logger.e(PROBE_LOG_TAG, "resolveInstanceId threw url=$apiBase", e)
@@ -234,6 +253,7 @@ private suspend fun probeServerOnce(
                     ApiClient.fetchServerInstanceId(apiBase)
                 }.exceptionOrNull()
                 if (handleIncognitoHttpsTlsFailure(failure, config.httpsEnabled, config.serverIp)) {
+                    noteIncognitoTlsProbeFailure(failure, config.httpsEnabled)
                     return ServerProbeResult.Unreachable to failure
                 }
                 ServerProbeResult.Unreachable to failure
