@@ -9,6 +9,7 @@ import ru.fromchat.api.local.db.store.InstanceRegistryStore
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.config.ServerConfigData
 import ru.fromchat.config.Settings
+import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.incognito.findIncognitoMitmCertificateException
 import ru.fromchat.ui.incognito.IncognitoTlsDialogController
 import ru.fromchat.ui.incognito.handleIncognitoHttpsTlsFailure
@@ -136,10 +137,12 @@ suspend fun probeServerEndpoint(
 
     var lastResult: ServerProbeResult = ServerProbeResult.Unreachable
 
-    when {
+    val schemeAttempts = when {
         schemeExplicit -> listOf(httpsPreferred)
+        IncognitoMode.active -> listOf(true)
         else -> listOf(true, false)
-    }.apply {
+    }
+    schemeAttempts.apply {
         forEachIndexed { index, https ->
             val config = ServerConfigData(
                 serverIp = host,
@@ -172,6 +175,9 @@ suspend fun probeServerEndpoint(
                 ServerProbeResult.Unsupported -> return config to result
                 ServerProbeResult.Timeout,
                 ServerProbeResult.Unreachable -> {
+                    if (IncognitoMode.active && https && isIncognitoHttpsTlsFailure(failure, https)) {
+                        return config to result
+                    }
                     if (!(!schemeExplicit && https && index < lastIndex)) return config to result
 
                     // Browser-like: only fall back to HTTP after a TLS/protocol failure.

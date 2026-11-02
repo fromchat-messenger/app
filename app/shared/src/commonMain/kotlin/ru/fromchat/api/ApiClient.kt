@@ -139,6 +139,7 @@ import ru.fromchat.api.schema.websocket.requests.WebSocketSendMessageRequest
 import ru.fromchat.api.schema.websocket.types.DmTypingData
 import ru.fromchat.api.schema.websocket.types.SubscribeStatusData
 import ru.fromchat.config.ServerConfig
+import ru.fromchat.api.instance.apiBaseUrlFor
 import ru.fromchat.config.Settings
 import kotlin.concurrent.Volatile
 import kotlin.time.Duration.Companion.milliseconds
@@ -485,9 +486,16 @@ object ApiClient {
     }
 
 
+    /** Auth steps always use HTTPS while incognito is active (no probe HTTP fallback). */
+    private fun authHttpBaseUrl(): String {
+        val stored = Settings.serverConfig
+        val config = if (IncognitoMode.active) stored.copy(httpsEnabled = true) else stored
+        return apiBaseUrlFor(config).trimEnd('/')
+    }
+
     suspend fun authUsernameStep(username: String): AuthUsernameStepResponse =
         httpProbe
-            .post("${ServerConfig.apiBaseUrl}/auth/steps/username") {
+            .post("${authHttpBaseUrl()}/auth/steps/username") {
                 contentType(ContentType.Application.Json)
                 setBody(AuthUsernameStepRequest(username = username.trim()))
             }
@@ -505,7 +513,7 @@ object ApiClient {
 
     suspend fun authPasswordStep(username: String, passwordDerived: String): AuthPasswordStepOutcome {
         val raw = httpProbe
-            .post("${ServerConfig.apiBaseUrl}/auth/steps/password") {
+            .post("${authHttpBaseUrl()}/auth/steps/password") {
                 contentType(ContentType.Application.Json)
                 setBody(
                     AuthPasswordStepRequest(
