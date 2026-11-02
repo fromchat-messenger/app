@@ -18,33 +18,37 @@ import platform.Foundation.writeToFile
 import platform.posix.fclose
 import platform.posix.fopen
 import platform.posix.fwrite
+import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.incognito.IncognitoPlatformIo
 
 internal actual fun expectExists(path: String): Boolean =
     NSFileManager.defaultManager.fileExistsAtPath(path)
 
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 internal actual fun expectWriteBytes(path: String, bytes: ByteArray) {
+    val payload = IncognitoPlatformIo.sealIfNeeded(path, bytes)
     val parent = path.substringBeforeLast('/', missingDelimiterValue = "")
     if (parent.isNotEmpty()) {
         NSFileManager.defaultManager.createDirectoryAtPath(parent, true, null, null)
     }
-    val nsData = bytes.usePinned { pinned ->
-        NSData.create(bytes = pinned.addressOf(0), length = bytes.size.toULong())
+    val nsData = payload.usePinned { pinned ->
+        NSData.create(bytes = pinned.addressOf(0), length = payload.size.toULong())
     }
     nsData.writeToFile(path, true)
 }
 
 @OptIn(ExperimentalForeignApi::class)
 internal actual fun expectAppendBytes(path: String, bytes: ByteArray) {
+    val payload = IncognitoPlatformIo.sealIfNeeded(path, bytes)
     val parent = path.substringBeforeLast('/', missingDelimiterValue = "")
     if (parent.isNotEmpty()) {
         NSFileManager.defaultManager.createDirectoryAtPath(parent, true, null, null)
     }
     val file = fopen(path, "ab") ?: error("Failed to open file for append")
     try {
-        bytes.usePinned { pinned ->
-            val written = fwrite(pinned.addressOf(0), 1.convert(), bytes.size.convert(), file).toInt()
-            if (written != bytes.size) {
+        payload.usePinned { pinned ->
+            val written = fwrite(pinned.addressOf(0), 1.convert(), payload.size.convert(), file).toInt()
+            if (written != payload.size) {
                 error("Short write")
             }
         }
@@ -82,7 +86,8 @@ internal actual fun expectListFileNamesInDirectory(dirPath: String): List<String
 
 internal actual fun expectGetAppCacheDirectory(): String {
     val paths = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true)
-    return (paths.firstOrNull() as? String) ?: ""
+    val defaultPath = (paths.firstOrNull() as? String) ?: ""
+    return IncognitoMode.resolveAppCacheDirectory(defaultPath)
 }
 
 internal actual fun expectEnsureDirectory(path: String) {

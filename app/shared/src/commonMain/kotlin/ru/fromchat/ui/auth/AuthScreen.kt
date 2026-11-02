@@ -4,8 +4,10 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -38,6 +40,15 @@ import ru.fromchat.api.schema.user.auth.SmartCaptchaParams
 import ru.fromchat.api.schema.user.auth.YandexOAuthParams
 import ru.fromchat.change_server
 import ru.fromchat.config.Settings
+import ru.fromchat.incognito_tls_certificate_error_body
+import ru.fromchat.incognito_tls_certificate_error_title
+import ru.fromchat.incognito_tls_pin_missing_body
+import ru.fromchat.incognito_tls_pin_missing_title
+import ru.fromchat.cancel
+import ru.fromchat.settings_next
+import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.incognito.IncognitoTlsPin
+import ru.fromchat.incognito.isIncognitoTlsCertificateError
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.auth.captcha.SmartCaptchaLog
 import ru.fromchat.ui.auth.captcha.SmartCaptchaNav
@@ -84,13 +95,27 @@ private const val AUTH_SERVER_PROBE_TAG = "AuthServerProbe"
 /** Must cover HTTPS→HTTP fallback plus `/instance_id` (up to 10s per attempt). */
 private const val AUTH_SERVER_PROBE_TIMEOUT_MS = 25_000L
 
-internal suspend fun probeCurrentServer(): Boolean {
+internal sealed interface AuthServerProbeOutcome {
+    data object Ok : AuthServerProbeOutcome
+    data object Failed : AuthServerProbeOutcome
+    data object TlsCertificateRejected : AuthServerProbeOutcome
+    data object TlsPinMissing : AuthServerProbeOutcome
+}
+
+internal suspend fun probeCurrentServer(): Boolean =
+    probeCurrentServerForAuth() is AuthServerProbeOutcome.Ok
+
+internal suspend fun probeCurrentServerForAuth(): AuthServerProbeOutcome {
     val config = Settings.readServerConfig()
+    if (IncognitoMode.active && config.httpsEnabled && IncognitoTlsPin.expectedPinBytes() == null) {
+        Logger.w(AUTH_SERVER_PROBE_TAG, "incognito probe blocked: TLS pin missing")
+        return AuthServerProbeOutcome.TlsPinMissing
+    }
     val apiBase = apiBaseUrlFor(config)
     Logger.i(
         AUTH_SERVER_PROBE_TAG,
         "probe start storedHost=${config.serverIp} apiPort=${config.apiPort} " +
-            "https=${config.httpsEnabled} url=$apiBase",
+            "https=${config.httpsEnabled} incognito=${IncognitoMode.active} url=$apiBase",
     )
     return runCatching {
         withTimeout(AUTH_SERVER_PROBE_TIMEOUT_MS.milliseconds) {
@@ -105,7 +130,10 @@ internal suspend fun probeCurrentServer(): Boolean {
                 else ->
                     Logger.w(AUTH_SERVER_PROBE_TAG, "probe not supported: $result url=$apiBase")
             }
-            result is ServerProbeResult.Supported
+            when {
+                result is ServerProbeResult.Supported -> AuthServerProbeOutcome.Ok
+                else -> AuthServerProbeOutcome.Failed
+            }
         }
     }.getOrElse { e ->
         Logger.w(
@@ -113,7 +141,11 @@ internal suspend fun probeCurrentServer(): Boolean {
             "probe failed within ${AUTH_SERVER_PROBE_TIMEOUT_MS}ms url=$apiBase",
             e,
         )
-        false
+        when {
+            IncognitoMode.active && isIncognitoTlsCertificateError(e) ->
+                AuthServerProbeOutcome.TlsCertificateRejected
+            else -> AuthServerProbeOutcome.Failed
+        }
     }
 }
 
@@ -284,6 +316,9 @@ fun AuthScreen(
     var captchaParams by remember { mutableStateOf(AuthRegisterDraft.captchaParams) }
     var registrationProof by remember { mutableStateOf(AuthRegisterDraft.registrationProof) }
     var captchaToken by remember { mutableStateOf(AuthRegisterDraft.captchaToken) }
+    var incognitoEnabled by remember { mutableStateOf(false) }
+    var showTlsCertificateDialog by remember { mutableStateOf(false) }
+    var showTlsPinMissingDialog by remember { mutableStateOf(false) }
     val navController = LocalNavController.current
 
     fun persistDraft() {
@@ -317,7 +352,34 @@ fun AuthScreen(
 
     val wrappedBackToWelcome: () -> Unit = {
         AuthRegisterDraft.clear()
+        IncognitoMode.destroy()
         onBackToWelcome()
+    }
+
+    if (showTlsCertificateDialog) {
+        AlertDialog(
+            onDismissRequest = { showTlsCertificateDialog = false },
+            title = { Text(stringResource(Res.string.incognito_tls_certificate_error_title)) },
+            text = { Text(stringResource(Res.string.incognito_tls_certificate_error_body)) },
+            confirmButton = {
+                TextButton(onClick = { showTlsCertificateDialog = false }) {
+                    Text(stringResource(Res.string.cancel))
+                }
+            },
+        )
+    }
+
+    if (showTlsPinMissingDialog) {
+        AlertDialog(
+            onDismissRequest = { showTlsPinMissingDialog = false },
+            title = { Text(stringResource(Res.string.incognito_tls_pin_missing_title)) },
+            text = { Text(stringResource(Res.string.incognito_tls_pin_missing_body)) },
+            confirmButton = {
+                TextButton(onClick = { showTlsPinMissingDialog = false }) {
+                    Text(stringResource(Res.string.cancel))
+                }
+            },
+        )
     }
 
     val resetToUsername: () -> Unit = {
@@ -473,10 +535,14 @@ fun AuthScreen(
                 usernameStepPage(
                     username = username,
                     onUsernameChange = { username = it },
+                    incognitoEnabled = incognitoEnabled,
+                    onIncognitoChange = { incognitoEnabled = it },
                     onContinue = {
                         flowState.pagerState.animateScrollToPage(AuthFlowStep.Password.ordinal)
                     },
                     onSnackbar = ::snackbar,
+                    onTlsPinMissing = { showTlsPinMissingDialog = true },
+                    onTlsCertificateRejected = { showTlsCertificateDialog = true },
                 ),
                 passwordStepPage(
                     username = username,

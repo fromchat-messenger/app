@@ -82,6 +82,13 @@
     <string name="hide_password">Hide password</string>
     <string name="auth_char_count">%1$d/%2$d</string>
     <string name="auth_step_username_title">Enter your username</string>
+    <string name="auth_incognito_mode_title">Incognito mode</string>
+    <string name="auth_incognito_mode_summary">Session data stays in an encrypted folder and is erased when you quit. HTTPS uses a pinned certificate, not system trust stores.</string>
+    <string name="auth_incognito_enabled_snackbar">Incognito mode is on for this session.</string>
+    <string name="incognito_tls_certificate_error_title">Cannot connect safely</string>
+    <string name="incognito_tls_certificate_error_body">The server certificate does not match the expected pin. A network attacker may be intercepting traffic.</string>
+    <string name="incognito_tls_pin_missing_title">Server identity unknown</string>
+    <string name="incognito_tls_pin_missing_body">Connect to this server once without incognito mode (over HTTPS) so the app can remember its certificate pin.</string>
     <string name="auth_step_username_body">This is your login. It helps us tell you apart from everyone else.</string>
     <string name="auth_step_profile_title">Create your profile</string>
     <string name="auth_step_profile_body">Enter your display name and, if you like, a few words about yourself.</string>

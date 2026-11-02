@@ -1,5 +1,6 @@
 package ru.fromchat.ui.auth
 
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -8,12 +9,14 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -24,12 +27,16 @@ import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.schema.core.ErrorResponse
-import ru.fromchat.logging.Logger
+import ru.fromchat.auth_incognito_enabled_snackbar
+import ru.fromchat.auth_incognito_mode_summary
+import ru.fromchat.auth_incognito_mode_title
 import ru.fromchat.auth_server_connect_failed
 import ru.fromchat.auth_step_username_body
 import ru.fromchat.auth_step_username_title
 import ru.fromchat.error_unexpected
 import ru.fromchat.fill_all_fields
+import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.logging.Logger
 import ru.fromchat.settings_next
 import ru.fromchat.ui.components.ActionButton
 import ru.fromchat.ui.components.ExpressiveHeroSpec
@@ -60,8 +67,12 @@ private fun isAllowedUsernameChar(ch: Char) =
 internal fun usernameStepPage(
     username: String,
     onUsernameChange: (String) -> Unit,
+    incognitoEnabled: Boolean,
+    onIncognitoChange: (Boolean) -> Unit,
     onContinue: suspend () -> Unit,
     onSnackbar: (String, Throwable?) -> Unit,
+    onTlsPinMissing: () -> Unit,
+    onTlsCertificateRejected: () -> Unit,
 ): ExpressiveStepPage {
     val scope = rememberCoroutineScope()
     val colorScheme = MaterialTheme.colorScheme
@@ -74,6 +85,9 @@ internal fun usernameStepPage(
     val serverFail = stringResource(Res.string.auth_server_connect_failed)
     val unexpected = stringResource(Res.string.error_unexpected)
     val nextLabel = stringResource(Res.string.settings_next)
+    val incognitoTitle = stringResource(Res.string.auth_incognito_mode_title)
+    val incognitoSummary = stringResource(Res.string.auth_incognito_mode_summary)
+    val incognitoEnabledMessage = stringResource(Res.string.auth_incognito_enabled_snackbar)
     val hasProhibitedChars = username.trim().any { !isAllowedUsernameChar(it) }
 
     fun attemptSubmit() {
@@ -90,34 +104,55 @@ internal fun usernameStepPage(
         onUsernameChange(trimmed)
         scope.launch {
             busy = true
-            Logger.i(USERNAME_STEP_TAG, "submit start username=$trimmed")
+            Logger.i(
+                USERNAME_STEP_TAG,
+                "submit start username=$trimmed incognito=$incognitoEnabled",
+            )
             try {
-                if (!probeCurrentServer()) {
-                    Logger.w(USERNAME_STEP_TAG, "submit aborted: server probe failed username=$trimmed")
-                    onSnackbar(serverFail, null)
-                } else {
-                    try {
-                        Logger.i(USERNAME_STEP_TAG, "auth username step request username=$trimmed")
-                        ApiClient.authUsernameStep(trimmed)
-                        Logger.i(USERNAME_STEP_TAG, "auth username step ok → password username=$trimmed")
-                        onContinue()
-                    } catch (e: ClientRequestException) {
-                        Logger.w(
-                            USERNAME_STEP_TAG,
-                            "auth username step HTTP ${e.response.status.value} username=$trimmed",
-                            e,
-                        )
-                        val detail = if (e.response.status.value == 400) {
-                            runCatching { e.response.body<ErrorResponse>().detail }
-                                .getOrNull()
-                                ?.ifBlank { null }
-                        } else {
-                            null
+                if (incognitoEnabled) {
+                    IncognitoMode.activate()
+                    onSnackbar(incognitoEnabledMessage, null)
+                } else if (IncognitoMode.active) {
+                    IncognitoMode.destroy()
+                }
+                when (val probe = probeCurrentServerForAuth()) {
+                    AuthServerProbeOutcome.TlsPinMissing -> {
+                        IncognitoMode.destroy()
+                        onTlsPinMissing()
+                    }
+                    AuthServerProbeOutcome.TlsCertificateRejected -> {
+                        IncognitoMode.destroy()
+                        onTlsCertificateRejected()
+                    }
+                    AuthServerProbeOutcome.Failed -> {
+                        if (incognitoEnabled) IncognitoMode.destroy()
+                        Logger.w(USERNAME_STEP_TAG, "submit aborted: server probe failed username=$trimmed")
+                        onSnackbar(serverFail, null)
+                    }
+                    AuthServerProbeOutcome.Ok -> {
+                        try {
+                            Logger.i(USERNAME_STEP_TAG, "auth username step request username=$trimmed")
+                            ApiClient.authUsernameStep(trimmed)
+                            Logger.i(USERNAME_STEP_TAG, "auth username step ok → password username=$trimmed")
+                            onContinue()
+                        } catch (e: ClientRequestException) {
+                            Logger.w(
+                                USERNAME_STEP_TAG,
+                                "auth username step HTTP ${e.response.status.value} username=$trimmed",
+                                e,
+                            )
+                            val detail = if (e.response.status.value == 400) {
+                                runCatching { e.response.body<ErrorResponse>().detail }
+                                    .getOrNull()
+                                    ?.ifBlank { null }
+                            } else {
+                                null
+                            }
+                            onSnackbar(detail ?: unexpected, e)
+                        } catch (e: Exception) {
+                            Logger.e(USERNAME_STEP_TAG, "auth username step error username=$trimmed", e)
+                            onSnackbar(unexpected, e)
                         }
-                        onSnackbar(detail ?: unexpected, e)
-                    } catch (e: Exception) {
-                        Logger.e(USERNAME_STEP_TAG, "auth username step error username=$trimmed", e)
-                        onSnackbar(unexpected, e)
                     }
                 }
             } finally {
@@ -164,6 +199,32 @@ internal fun usernameStepPage(
                 },
                 colors = expressiveStepFieldColors(),
                 shape = SettingsPasswordOutlineFieldShape,
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = SettingsStepHorizontalPadding)
+                    .padding(top = SettingsStepHorizontalPadding),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = incognitoTitle,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(
+                    checked = incognitoEnabled,
+                    onCheckedChange = onIncognitoChange,
+                )
+            }
+            Text(
+                text = incognitoSummary,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = SettingsStepHorizontalPadding)
+                    .padding(top = SettingsStepHorizontalPadding / 2),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
         listFooter = { ChangeServerButton() },

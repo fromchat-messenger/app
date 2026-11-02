@@ -7,9 +7,16 @@ import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSUserDomainMask
 import ru.fromchat.db.MessageDatabase
+import ru.fromchat.incognito.IncognitoMode
 
 @OptIn(ExperimentalForeignApi::class)
 actual fun provideMessageDatabaseDriver(): SqlDriver {
+    if (IncognitoMode.active) {
+        return NativeSqliteDriver(
+            schema = MessageDatabase.Schema,
+            name = ":memory:",
+        )
+    }
     val base = NSFileManager.defaultManager.URLForDirectory(
         directory = NSCachesDirectory,
         inDomain = NSUserDomainMask,

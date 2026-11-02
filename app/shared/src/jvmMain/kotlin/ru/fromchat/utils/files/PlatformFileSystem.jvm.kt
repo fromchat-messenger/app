@@ -1,5 +1,7 @@
 package ru.fromchat.utils.files
 
+import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.incognito.IncognitoPlatformIo
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardOpenOption
@@ -9,7 +11,7 @@ internal actual fun expectExists(path: String): Boolean = File(path).exists()
 internal actual fun expectWriteBytes(path: String, bytes: ByteArray) {
     val file = File(path)
     file.parentFile?.mkdirs()
-    file.writeBytes(bytes)
+    file.writeBytes(IncognitoPlatformIo.sealIfNeeded(path, bytes))
 }
 
 internal actual fun expectAppendBytes(path: String, bytes: ByteArray) {
@@ -17,7 +19,7 @@ internal actual fun expectAppendBytes(path: String, bytes: ByteArray) {
     file.parentFile?.mkdirs()
     Files.write(
         file.toPath(),
-        bytes,
+        IncognitoPlatformIo.sealIfNeeded(path, bytes),
         StandardOpenOption.CREATE,
         StandardOpenOption.APPEND,
         StandardOpenOption.WRITE,
@@ -50,7 +52,7 @@ internal actual fun expectListFileNamesInDirectory(dirPath: String): List<String
 }
 
 internal actual fun expectGetAppCacheDirectory(): String =
-    AppDataRoot.resolve().absolutePath
+    IncognitoMode.resolveAppCacheDirectory(AppDataRoot.resolve().absolutePath)
 
 internal actual fun expectEnsureDirectory(path: String) {
     File(path).mkdirs()

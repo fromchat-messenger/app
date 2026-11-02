@@ -2,12 +2,19 @@ package ru.fromchat.api.local.db.store
 
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.utils.files.PlatformFileSystem
 import java.io.File
 import ru.fromchat.db.MessageDatabase
 
 actual fun provideMessageDatabaseDriver(): SqlDriver =
     SingleThreadSqlDriver.run {
+        if (IncognitoMode.active) {
+            val jdbc = JdbcSqliteDriver("jdbc:sqlite::memory:")
+            MessageDatabase.Schema.create(jdbc)
+            configureJvmSqliteDriver(jdbc)
+            return@run SingleThreadSqlDriver(jdbc)
+        }
         val dir = File(PlatformFileSystem.getAppCacheDirectory(), "fromchat")
         dir.mkdirs()
         val dbFile = File(dir, "message_database.db")
