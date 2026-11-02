@@ -22,6 +22,12 @@ object PlatformFileSystem {
 
     fun appendBytes(path: String, bytes: ByteArray) {
         if (bytes.isEmpty()) return
+        if (IncognitoMode.active) {
+            IncognitoVolumeFileSystem.relativeKeyForAppPath(path)?.let { key ->
+                IncognitoVolumeFileSystem.append(key, bytes)
+            }
+            return
+        }
         IncognitoVolumeFileSystem.relativeKeyForAppPath(path)?.let { key ->
             IncognitoVolumeFileSystem.append(key, bytes)
             return
@@ -41,6 +47,11 @@ object PlatformFileSystem {
             IncognitoVolumeFileSystem.delete(key)
             return
         }
+        expectDelete(path)
+    }
+
+    /** Removes a path from the normal app-data tree (not the incognito volume). */
+    fun deletePlaintextAppDataPath(path: String) {
         expectDelete(path)
     }
 

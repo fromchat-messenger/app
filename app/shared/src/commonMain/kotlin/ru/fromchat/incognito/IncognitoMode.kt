@@ -4,6 +4,8 @@ import ru.fromchat.api.local.db.store.MessageDatabaseProvider
 import ru.fromchat.logging.AppLogStore
 import ru.fromchat.logging.FromChatLogDirs
 import ru.fromchat.logging.Logger
+import ru.fromchat.utils.files.PlatformFileSystem
+import ru.fromchat.utils.files.defaultAppDataRootForPlatform
 
 private const val TAG = "IncognitoMode"
 
@@ -34,6 +36,7 @@ object IncognitoMode {
         active = true
         IncognitoContainer.open(key, root)
         registerIncognitoLifecycleHooks()
+        purgePlaintextLogsUnderAppData()
         AppLogStore.onIncognitoSessionBoundary()
         FromChatLogDirs.logsDirectoryPath()
         MessageDatabaseProvider.closeAndReset()
@@ -67,3 +70,9 @@ internal expect suspend fun provisionIncognitoVolumeRoot(): String
 internal expect fun destroyIncognitoVolumeRoot(rootPath: String)
 
 internal expect fun registerIncognitoLifecycleHooks()
+
+private fun purgePlaintextLogsUnderAppData() {
+    val root = defaultAppDataRootForPlatform().replace('\\', '/').trimEnd('/')
+    val logFile = "$root/fromchat/logs/${FromChatLogDirs.CURRENT_LOG_FILE}"
+    PlatformFileSystem.deletePlaintextAppDataPath(logFile)
+}
