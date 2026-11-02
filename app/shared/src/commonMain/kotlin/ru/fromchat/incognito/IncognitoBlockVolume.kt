@@ -60,13 +60,17 @@ internal class IncognitoBlockVolume(
 
     fun fsync() = synchronized(lock) { io.fsync() }
 
-    /** Shrinks or grows the on-disk container to fit [logicalByteCount] (rounded up to a block). */
+    /** Shrinks the on-disk container, or grows it with initialized encrypted blocks when needed. */
     fun truncateToLogicalByteCount(logicalByteCount: Long) = synchronized(lock) {
-        val logical = logicalByteCount.coerceAtLeast(0L)
+        val logical = logicalByteCount.coerceAtMost(IncognitoContainerLimits.MAX_LOGICAL_BYTES).coerceAtLeast(0L)
         val neededBlocks = (logical + IncognitoBlockCrypto.PLAIN_BLOCK_SIZE - 1) /
             IncognitoBlockCrypto.PLAIN_BLOCK_SIZE
-        val physical = neededBlocks * IncognitoBlockCrypto.ENCRYPTED_BLOCK_SIZE
-        io.setPhysicalLength(physical)
+        val targetPhysical = neededBlocks * IncognitoBlockCrypto.ENCRYPTED_BLOCK_SIZE
+        val currentPhysical = io.physicalLength()
+        when {
+            targetPhysical > currentPhysical -> ensureLogicalSize(logical)
+            targetPhysical < currentPhysical -> io.setPhysicalLength(targetPhysical)
+        }
     }
 
     fun logicalBytesInUse(): Long = synchronized(lock) {
@@ -78,6 +82,11 @@ internal class IncognitoBlockVolume(
     }
 
     private fun ensureLogicalSize(endExclusive: Long) {
+        if (endExclusive > IncognitoContainerLimits.MAX_LOGICAL_BYTES) {
+            throw IncognitoContainerCapacityException(
+                "Incognito container exceeds ${IncognitoContainerLimits.MAX_LOGICAL_BYTES} byte limit",
+            )
+        }
         val neededBlocks = (endExclusive + IncognitoBlockCrypto.PLAIN_BLOCK_SIZE - 1) /
             IncognitoBlockCrypto.PLAIN_BLOCK_SIZE
         val currentBlocks = io.physicalLength() / IncognitoBlockCrypto.ENCRYPTED_BLOCK_SIZE

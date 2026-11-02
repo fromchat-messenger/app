@@ -140,8 +140,14 @@ internal object IncognitoVolumeFileSystem {
     fun ensureDirectory(relativeDirKey: String) = Unit
 
     private fun allocate(size: Long): Long {
+        val end = catalog.nextDataOffset + size
+        if (end > IncognitoContainerLimits.MAX_LOGICAL_BYTES) {
+            throw IncognitoContainerCapacityException(
+                "Incognito container exceeds ${IncognitoContainerLimits.MAX_LOGICAL_BYTES} byte limit",
+            )
+        }
         val offset = catalog.nextDataOffset
-        catalog = catalog.copy(nextDataOffset = offset + size)
+        catalog = catalog.copy(nextDataOffset = end)
         return offset
     }
 
