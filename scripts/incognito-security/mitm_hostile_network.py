@@ -17,6 +17,30 @@ LISTEN_HOST = "0.0.0.0"
 LISTEN_PORT = 443
 
 
+def resolve_real_upstream_ip() -> str:
+    """Real API address bypassing /etc/hosts (which points the name at this proxy)."""
+    import os
+
+    from_env = os.environ.get("FROMCHAT_HOSTILE_UPSTREAM_IP", "").strip()
+    if from_env:
+        return from_env
+    try:
+        out = subprocess.check_output(
+            ["dig", "+short", UPSTREAM_HOST, "@1.1.1.1"],
+            text=True,
+            timeout=10,
+        )
+        for line in out.splitlines():
+            candidate = line.strip()
+            if candidate and ":" not in candidate:
+                return candidate
+    except (subprocess.SubprocessError, FileNotFoundError, OSError):
+        pass
+    raise RuntimeError(
+        f"Could not resolve real IP for {UPSTREAM_HOST}; set FROMCHAT_HOSTILE_UPSTREAM_IP",
+    )
+
+
 def _openssl(*args: str) -> None:
     subprocess.run(["openssl", *args], check=True)
 
@@ -67,28 +91,32 @@ DNS.2 = localhost
     return cert, key
 
 
-def relay(a: ssl.SSLSocket, b: ssl.SSLSocket) -> None:
-    sockets = [a, b]
+def _pipe(src: ssl.SSLSocket, dst: ssl.SSLSocket) -> None:
     try:
         while True:
-            readable, _, _ = socket.select(sockets, [], sockets, 60.0)
-            if not readable:
+            data = src.recv(65536)
+            if not data:
                 return
-            for src in readable:
-                dst = b if src is a else a
-                data = src.recv(65536)
-                if not data:
-                    return
-                dst.sendall(data)
-    finally:
-        for s in sockets:
-            try:
-                s.close()
-            except OSError:
-                pass
+            dst.sendall(data)
+    except (OSError, ssl.SSLError):
+        return
 
 
-def handle_client(raw: socket.socket, cert: Path, key: Path) -> None:
+def relay(a: ssl.SSLSocket, b: ssl.SSLSocket) -> None:
+    t1 = threading.Thread(target=_pipe, args=(a, b), daemon=True)
+    t2 = threading.Thread(target=_pipe, args=(b, a), daemon=True)
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+    for s in (a, b):
+        try:
+            s.close()
+        except OSError:
+            pass
+
+
+def handle_client(raw: socket.socket, cert: Path, key: Path, upstream_ip: str) -> None:
     try:
         client_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         client_ctx.load_cert_chain(certfile=str(cert), keyfile=str(key))
@@ -97,7 +125,7 @@ def handle_client(raw: socket.socket, cert: Path, key: Path) -> None:
         raw.close()
         sys.stderr.write(f"client TLS handshake skipped: {error}\n")
         return
-    upstream_raw = socket.create_connection((UPSTREAM_HOST, UPSTREAM_PORT), timeout=30)
+    upstream_raw = socket.create_connection((upstream_ip, UPSTREAM_PORT), timeout=30)
     upstream_ctx = ssl.create_default_context()
     upstream_ctx.check_hostname = False
     upstream_ctx.verify_mode = ssl.CERT_NONE
@@ -112,12 +140,14 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="fromchat-hostile-net-") as tmp:
         work = Path(tmp)
         cert, key = generate_mitm_material(work)
+        upstream_ip = resolve_real_upstream_ip()
         bind = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         bind.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         bind.bind((LISTEN_HOST, LISTEN_PORT))
         bind.listen(128)
         print(
-            f"Hostile TLS proxy on {LISTEN_HOST}:{LISTEN_PORT} -> {UPSTREAM_HOST}:{UPSTREAM_PORT}",
+            f"Hostile TLS proxy on {LISTEN_HOST}:{LISTEN_PORT} -> "
+            f"{UPSTREAM_HOST}:{UPSTREAM_PORT} (real {upstream_ip})",
             flush=True,
         )
         print("Requires /etc/hosts: 127.0.0.1 api.fromchat.ru", flush=True)
@@ -127,7 +157,7 @@ def main() -> int:
                 client, addr = bind.accept()
                 thread = threading.Thread(
                     target=handle_client,
-                    args=(client, cert, key),
+                    args=(client, cert, key, upstream_ip),
                     daemon=True,
                 )
                 thread.start()

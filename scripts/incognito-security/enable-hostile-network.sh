@@ -11,6 +11,14 @@ if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
   exit 1
 fi
 
+REAL_IP="$(dig +short api.fromchat.ru @1.1.1.1 2>/dev/null | grep -E '^[0-9.]+$' | head -1 || true)"
+if [[ -z "$REAL_IP" ]]; then
+  echo "Could not resolve real api.fromchat.ru via DNS; install dig or set FROMCHAT_HOSTILE_UPSTREAM_IP" >&2
+  exit 1
+fi
+export FROMCHAT_HOSTILE_UPSTREAM_IP="$REAL_IP"
+echo "Real upstream IP: $REAL_IP"
+
 if ! grep -qF "$HOSTS_LINE" /etc/hosts 2>/dev/null; then
   echo "$HOSTS_LINE $MARKER" >> /etc/hosts
   echo "Added hosts entry for api.fromchat.ru"
