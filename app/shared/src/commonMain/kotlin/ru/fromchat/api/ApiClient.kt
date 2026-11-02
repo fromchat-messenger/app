@@ -583,6 +583,7 @@ object ApiClient {
     }
 
     suspend fun persistSessionToStorage(loginResponse: LoginResponse) {
+        if (IncognitoMode.active) return
         secureSettings.putString("auth_token", loginResponse.token)
         settings.putString("user_info", json.encodeToString(loginResponse.user))
         settings.putInt("current_user_id", loginResponse.user.id)

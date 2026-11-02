@@ -87,6 +87,27 @@ object AppLogStore {
         _entries.value = updated
     }
 
+    /** Drops in-memory log cache when entering or leaving an incognito session. */
+    fun onIncognitoSessionBoundary() {
+        if (mutex.tryLock()) {
+            try {
+                _entries.value = emptyList()
+                nextEntryId = 0L
+                loadedFromDisk = true
+            } finally {
+                mutex.unlock()
+            }
+        } else {
+            runBlocking { mutex.withLock { resetIncognitoLogMemoryLocked() } }
+        }
+    }
+
+    private fun resetIncognitoLogMemoryLocked() {
+        _entries.value = emptyList()
+        nextEntryId = 0L
+        loadedFromDisk = true
+    }
+
     suspend fun ensureLoaded() = withContext(Dispatchers.IO) {
         mutex.withLock {
             if (loadedFromDisk) return@withContext

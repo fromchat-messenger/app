@@ -1,7 +1,13 @@
 package ru.fromchat.incognito
 
+import kotlinx.coroutines.runBlocking
+import ru.fromchat.api.crypto.IdentityKeyManager
 import ru.fromchat.api.local.db.store.MessageDatabaseProvider
+import ru.fromchat.logging.AppLogStore
+import ru.fromchat.logging.FromChatLogDirs
 import ru.fromchat.logging.Logger
+import ru.fromchat.utils.settings.secureSettings
+import ru.fromchat.utils.settings.settings as appSettings
 
 private const val TAG = "IncognitoMode"
 
@@ -42,11 +48,10 @@ object IncognitoMode {
         active = true
         IncognitoContainer.open(key, root)
         registerIncognitoLifecycleHooks()
+        AppLogStore.onIncognitoSessionBoundary()
+        FromChatLogDirs.logsDirectoryPath()
         MessageDatabaseProvider.closeAndReset()
-        Logger.i(
-            TAG,
-            "activated encrypted container=${IncognitoContainer.containerFilePath} work=${IncognitoContainer.workRootPath}",
-        )
+        Logger.i(TAG, "activated incognito encrypted session")
     }
 
     fun syncContainerToDisk() {
@@ -57,6 +62,7 @@ object IncognitoMode {
 
     fun destroy() {
         if (!active && volumeRootPath == null) return
+        val wasIncognito = active
         MessageDatabaseProvider.closeAndReset()
         val key = volumeKey
         IncognitoContainer.closeAndWipe(key)
@@ -65,6 +71,17 @@ object IncognitoMode {
         volumeRootPath = null
         active = false
         IncognitoTlsHostBypass.clear()
+        if (wasIncognito) {
+            AppLogStore.onIncognitoSessionBoundary()
+            runBlocking {
+                runCatching { IdentityKeyManager.clearLocalKeys() }
+                runCatching {
+                    secureSettings.remove("auth_token")
+                    appSettings.remove("user_info")
+                    appSettings.remove("current_user_id")
+                }
+            }
+        }
         Logger.i(TAG, "destroyed incognito volume")
     }
 

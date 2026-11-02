@@ -4,6 +4,8 @@ import java.io.File
 import kotlinx.coroutines.runBlocking
 import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.incognito.IncognitoVault
+import ru.fromchat.logging.FromChatLogDirs
+import ru.fromchat.logging.Logger
 import ru.fromchat.utils.files.PlatformFileSystem
 
 /**
@@ -21,12 +23,17 @@ private suspend fun verifyGracefulWipe() {
     File(cacheDir, "message_database.db").writeBytes(
         "SQLite format 3 incognito test payload".encodeToByteArray(),
     )
+    Logger.i("IncognitoVerify", "log probe line for sealed container")
+    val logPath = FromChatLogDirs.currentLogPath()
+    check(File(logPath).isFile) { "incognito log file missing at $logPath" }
+    check(IncognitoMode.isPathInsideVolume(logPath)) { "log path outside incognito work tree" }
     IncognitoMode.syncContainerToDisk()
     val containerPath = IncognitoMode.containerFilePathOrNull()
         ?: error("missing container path")
     val sealed = File(containerPath).readBytes()
     check(IncognitoVault.isSealedPayload(sealed)) { "container file is not sealed" }
     check(!sealed.decodeToString().contains("SQLite format 3")) { "plaintext in sealed container" }
+    check(!sealed.decodeToString().contains("log probe line")) { "log plaintext in sealed container" }
     val volumeRoot = IncognitoMode.volumeRootOrNull() ?: error("missing volume root")
     IncognitoMode.destroy()
     check(!File(volumeRoot).exists()) { "volume directory still present after destroy" }

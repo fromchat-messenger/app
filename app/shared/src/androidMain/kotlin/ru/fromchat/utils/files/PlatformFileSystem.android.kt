@@ -2,6 +2,7 @@ package ru.fromchat.utils.files
 
 import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.incognito.IncognitoPlatformIo
+import ru.fromchat.incognito.notifyIncognitoWorkTreeMutated
 import ru.fromchat.utils.UtilsLibrary
 import java.io.File
 
@@ -17,7 +18,7 @@ internal actual fun expectWriteBytes(path: String, bytes: ByteArray) {
 internal actual fun expectAppendBytes(path: String, bytes: ByteArray) {
     val file = File(path)
     file.parentFile?.mkdirs()
-    file.appendBytes(bytes)
+    file.appendBytes(IncognitoPlatformIo.sealIfNeeded(path, bytes))
 }
 
 internal actual fun expectFileSize(path: String): Long {
@@ -27,6 +28,7 @@ internal actual fun expectFileSize(path: String): Long {
 
 internal actual fun expectDelete(path: String) {
     File(path).delete()
+    notifyIncognitoWorkTreeMutated(path)
 }
 
 internal actual fun expectDeleteFilesWithPrefix(dirPath: String, namePrefix: String) {
@@ -35,6 +37,7 @@ internal actual fun expectDeleteFilesWithPrefix(dirPath: String, namePrefix: Str
     dir.listFiles()?.forEach { file ->
         if (file.name.startsWith(namePrefix)) {
             file.delete()
+            notifyIncognitoWorkTreeMutated(file.absolutePath)
         }
     }
 }

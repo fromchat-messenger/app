@@ -9,6 +9,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import ru.fromchat.incognito.notifyIncognitoWorkTreeMutated
 
 internal actual object LogFileOps {
     actual fun readText(path: String): String {
@@ -34,6 +35,7 @@ internal actual object LogFileOps {
             }
         }
         source.delete()
+        notifyIncognitoWorkTreeMutated(destinationPath)
     }
 
     actual suspend fun readGzipText(path: String, onProgress: (Float) -> Unit): String =
@@ -50,6 +52,7 @@ internal actual object LogFileOps {
         val dest = File(destinationPath)
         dest.parentFile?.mkdirs()
         dest.writeBytes(bytes)
+        notifyIncognitoWorkTreeMutated(destinationPath)
     }
 
     actual suspend fun zipFiles(
@@ -68,6 +71,7 @@ internal actual object LogFileOps {
                 zip.closeEntry()
             }
         }
+        notifyIncognitoWorkTreeMutated(destinationPath)
     }
 
     private fun gunzipToByteArray(path: String, onProgress: (Float) -> Unit): ByteArray {

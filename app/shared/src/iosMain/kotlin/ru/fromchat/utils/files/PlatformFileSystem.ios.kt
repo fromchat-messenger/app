@@ -20,6 +20,7 @@ import platform.posix.fopen
 import platform.posix.fwrite
 import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.incognito.IncognitoPlatformIo
+import ru.fromchat.incognito.notifyIncognitoWorkTreeMutated
 
 internal actual fun expectExists(path: String): Boolean =
     NSFileManager.defaultManager.fileExistsAtPath(path)
@@ -66,6 +67,7 @@ internal actual fun expectFileSize(path: String): Long {
 
 internal actual fun expectDelete(path: String) {
     NSFileManager.defaultManager.removeItemAtPath(path, null)
+    notifyIncognitoWorkTreeMutated(path)
 }
 
 internal actual fun expectDeleteFilesWithPrefix(dirPath: String, namePrefix: String) {
@@ -73,7 +75,9 @@ internal actual fun expectDeleteFilesWithPrefix(dirPath: String, namePrefix: Str
         ?: return
     contents.filterIsInstance<String>().forEach { name ->
         if (name.startsWith(namePrefix)) {
-            NSFileManager.defaultManager.removeItemAtPath("$dirPath/$name", null)
+            val fullPath = "$dirPath/$name"
+            NSFileManager.defaultManager.removeItemAtPath(fullPath, null)
+            notifyIncognitoWorkTreeMutated(fullPath)
         }
     }
 }
