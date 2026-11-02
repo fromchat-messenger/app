@@ -2,17 +2,14 @@ package ru.fromchat.incognito
 
 import java.io.File
 
-/** Parent directory for ephemeral incognito session folders on desktop JVM (not Android). */
+/** System temp directory for desktop JVM incognito block containers (no fixed subfolder name). */
 internal object IncognitoDesktopContainerRoot {
-    private const val INCOGNITO_DIR_NAME = ".incognito"
-
-    fun resolveSessionParentDirectory(): File {
-        val base = when {
-            isWindows() -> windowsTempDirectory()
-            else -> File("/tmp")
+    fun systemTempDirectory(): File =
+        if (isWindows()) {
+            windowsTempDirectory()
+        } else {
+            File("/tmp")
         }
-        return File(base, INCOGNITO_DIR_NAME).apply { mkdirs() }
-    }
 
     private fun isWindows(): Boolean =
         System.getProperty("os.name").orEmpty().lowercase().contains("win")
