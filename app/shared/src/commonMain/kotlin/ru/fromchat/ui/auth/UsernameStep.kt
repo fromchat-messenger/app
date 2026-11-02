@@ -35,6 +35,7 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
+import ru.fromchat.api.instance.isSslProtocolError
 import ru.fromchat.api.schema.core.ErrorResponse
 import ru.fromchat.auth_incognito_enabled_snackbar
 import ru.fromchat.auth_incognito_mode_summary
@@ -83,7 +84,6 @@ internal fun usernameStepPage(
     incognitoEnabled: Boolean,
     onIncognitoChange: (Boolean) -> Unit,
     mitmBypassRetryNonce: Int,
-    tlsBypassRetryNonce: Int,
     onContinue: suspend () -> Unit,
     onSnackbar: (String, Throwable?) -> Unit,
     onTlsCertificateRejected: () -> Unit,
@@ -138,7 +138,6 @@ internal fun usernameStepPage(
                         onTlsCertificateRejected()
                     }
                     AuthServerProbeOutcome.Failed -> {
-                        if (incognitoEnabled) IncognitoMode.destroy()
                         Logger.w(USERNAME_STEP_TAG, "submit aborted: server probe failed username=$trimmed")
                         onSnackbar(serverFail, null)
                     }
@@ -167,7 +166,7 @@ internal fun usernameStepPage(
                                 onMitmCertificateDetected(mitm.matchedMarker)
                                 return@launch
                             }
-                            if (isIncognitoTlsCertificateError(e)) {
+                            if (isIncognitoTlsCertificateError(e) || (incognitoEnabled && e.isSslProtocolError())) {
                                 onTlsCertificateRejected()
                                 return@launch
                             }
@@ -184,12 +183,6 @@ internal fun usernameStepPage(
 
     LaunchedEffect(mitmBypassRetryNonce) {
         if (mitmBypassRetryNonce > 0) {
-            attemptSubmit()
-        }
-    }
-
-    LaunchedEffect(tlsBypassRetryNonce) {
-        if (tlsBypassRetryNonce > 0) {
             attemptSubmit()
         }
     }

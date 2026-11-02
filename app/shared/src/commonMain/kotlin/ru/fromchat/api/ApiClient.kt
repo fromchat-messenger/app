@@ -6,6 +6,7 @@ import ru.fromchat.utils.files.PlatformFileSystem
 import ru.fromchat.utils.settings.secureSettings
 import ru.fromchat.utils.settings.settings
 import io.ktor.client.HttpClient
+import io.ktor.client.HttpClientConfig
 import io.ktor.client.call.body
 import io.ktor.client.network.sockets.ConnectTimeoutException
 import io.ktor.client.network.sockets.SocketTimeoutException
@@ -139,6 +140,7 @@ import ru.fromchat.api.schema.websocket.requests.WebSocketSendMessageRequest
 import ru.fromchat.api.schema.websocket.types.DmTypingData
 import ru.fromchat.api.schema.websocket.types.SubscribeStatusData
 import ru.fromchat.config.ServerConfig
+import ru.fromchat.api.instance.apiBaseUrlFor
 import ru.fromchat.config.Settings
 import kotlin.concurrent.Volatile
 import kotlin.time.Duration.Companion.milliseconds
@@ -302,39 +304,56 @@ object ApiClient {
     }
 
     /** GET-only client: no global 401 handler (used when probing a not-yet-saved server URL). */
-    private val httpProbe by lazy {
-        createPlatformHttpClient {
-            install(ContentNegotiation) {
-                json(json)
-            }
-            install(Logging) {
-                logger = Logger.SIMPLE
-                level = LogLevel.INFO
-            }
-            val currentDevice = currentDeviceInfo()
-            val userAgent = buildLoginUserAgent(
-                osName = currentDevice.osName?.takeIfNotBlank(),
-                osVersion = currentDevice.osVersion?.takeIfNotBlank(),
-                model = currentDevice.model?.takeIfNotBlank(),
-                brand = currentDevice.brand?.takeIfNotBlank(),
-            )
-            defaultRequest {
-                header("User-Agent", userAgent)
-            }
-            HttpResponseValidator {
-                validateResponse { response ->
-                    val instanceHeader = response.headers[InstanceIdGuard.INSTANCE_ID_HEADER]
-                    runCatching {
-                        InstanceIdGuard.onResponseHeader(instanceHeader)
-                    }
-                    if (response.status.value !in (200..299) + 101) {
-                        throw ClientRequestException(
-                            response,
-                            response.status.description,
-                        )
-                    }
+    private fun HttpClientConfig<*>.configureHttpProbeClient() {
+        install(ContentNegotiation) {
+            json(json)
+        }
+        install(Logging) {
+            logger = Logger.SIMPLE
+            level = LogLevel.INFO
+        }
+        val currentDevice = currentDeviceInfo()
+        val userAgent = buildLoginUserAgent(
+            osName = currentDevice.osName?.takeIfNotBlank(),
+            osVersion = currentDevice.osVersion?.takeIfNotBlank(),
+            model = currentDevice.model?.takeIfNotBlank(),
+            brand = currentDevice.brand?.takeIfNotBlank(),
+        )
+        defaultRequest {
+            header("User-Agent", userAgent)
+            header(HttpHeaders.Connection, "close")
+        }
+        engine {
+            pipelining = false
+        }
+        HttpResponseValidator {
+            validateResponse { response ->
+                val instanceHeader = response.headers[InstanceIdGuard.INSTANCE_ID_HEADER]
+                runCatching {
+                    InstanceIdGuard.onResponseHeader(instanceHeader)
+                }
+                if (response.status.value !in (200..299) + 101) {
+                    throw ClientRequestException(
+                        response,
+                        response.status.description,
+                    )
                 }
             }
+        }
+    }
+
+    private val httpProbe by lazy {
+        createPlatformHttpClient {
+            configureHttpProbeClient()
+        }
+    }
+
+    private suspend inline fun <T> withEphemeralHttpProbe(crossinline request: suspend HttpClient.() -> T): T {
+        val client = createPlatformHttpClient { configureHttpProbeClient() }
+        return try {
+            client.request()
+        } finally {
+            client.close()
         }
     }
 
@@ -485,13 +504,20 @@ object ApiClient {
     }
 
 
+    /** Auth steps always use HTTPS while incognito is active (no probe HTTP fallback). */
+    private fun authHttpBaseUrl(): String {
+        val stored = Settings.serverConfig
+        val config = if (IncognitoMode.active) stored.copy(httpsEnabled = true) else stored
+        return apiBaseUrlFor(config).trimEnd('/')
+    }
+
     suspend fun authUsernameStep(username: String): AuthUsernameStepResponse =
-        httpProbe
-            .post("${ServerConfig.apiBaseUrl}/auth/steps/username") {
+        withEphemeralHttpProbe {
+            post("${authHttpBaseUrl()}/auth/steps/username") {
                 contentType(ContentType.Application.Json)
                 setBody(AuthUsernameStepRequest(username = username.trim()))
-            }
-            .body()
+            }.body()
+        }
 
     sealed interface AuthPasswordStepOutcome {
         data class LoggedIn(val response: LoginResponse) : AuthPasswordStepOutcome
@@ -504,8 +530,8 @@ object ApiClient {
     }
 
     suspend fun authPasswordStep(username: String, passwordDerived: String): AuthPasswordStepOutcome {
-        val raw = httpProbe
-            .post("${ServerConfig.apiBaseUrl}/auth/steps/password") {
+        val raw = withEphemeralHttpProbe {
+            post("${authHttpBaseUrl()}/auth/steps/password") {
                 contentType(ContentType.Application.Json)
                 setBody(
                     AuthPasswordStepRequest(
@@ -513,8 +539,8 @@ object ApiClient {
                         password = passwordDerived,
                     ),
                 )
-            }
-            .body<JsonObject>()
+            }.body<JsonObject>()
+        }
         val status = raw["status"]?.jsonPrimitive?.contentOrNull
         return when (status) {
             "needs_register" -> {

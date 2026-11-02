@@ -4,8 +4,19 @@ package ru.fromchat.incognito
 object IncognitoTlsHostBypass {
     private val allowedHosts = mutableSetOf<String>()
 
+    @Volatile
+    internal var lastLogicalHost: String? = null
+        private set
+
     fun allowHost(host: String) {
-        allowedHosts.add(normalizeTlsHost(host))
+        val normalized = normalizeTlsHost(host)
+        allowedHosts.add(normalized)
+        lastLogicalHost = normalized
+        if (normalized == FROMCHAT_OFFICIAL_API_HOST) {
+            allowedHosts.add("127.0.0.1")
+            allowedHosts.add("::1")
+            allowedHosts.add("localhost")
+        }
     }
 
     fun isAllowed(host: String): Boolean =
@@ -13,6 +24,7 @@ object IncognitoTlsHostBypass {
 
     fun clear() {
         allowedHosts.clear()
+        lastLogicalHost = null
     }
 }
 

@@ -638,6 +638,7 @@ fun JavaExec.configureFromChatDesktopJvm() {
             addAll(
                 listOf(
                     "-Dfromchat.dev.data.dir=${project.fromChatGradleDevDataDir()}",
+                    "-Djava.net.preferIPv4Stack=true",
                     "-Dapple.awt.enableTemplateImages=true",
                     "--module-path",
                     javafxJars.joinToString(File.pathSeparator) { it.absolutePath },

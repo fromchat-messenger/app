@@ -1,6 +1,7 @@
 package ru.fromchat.incognito
 
 import ru.fromchat.api.local.db.store.MessageDatabaseProvider
+import ru.fromchat.config.ServerConfig
 import ru.fromchat.logging.AppLogStore
 import ru.fromchat.logging.FromChatLogDirs
 import ru.fromchat.logging.Logger
@@ -40,6 +41,7 @@ object IncognitoMode {
         AppLogStore.onIncognitoSessionBoundary()
         FromChatLogDirs.logsDirectoryPath()
         MessageDatabaseProvider.closeAndReset()
+        ServerConfig.reloadFromSettings()
         Logger.i(TAG, "activated incognito encrypted session")
     }
 
@@ -60,6 +62,7 @@ object IncognitoMode {
         volumeRootPath = null
         active = false
         IncognitoTlsHostBypass.clear()
+        ServerConfig.reloadFromSettings()
         AppLogStore.onIncognitoSessionBoundary()
         Logger.i(TAG, "destroyed incognito volume")
     }

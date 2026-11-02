@@ -52,6 +52,7 @@ suspend fun resolveInstanceId(
     if (fetchResult.isFailure) {
         val error = fetchResult.exceptionOrNull()
         if (handleIncognitoHttpsTlsFailure(error, config.httpsEnabled, config.serverIp)) {
+            noteIncognitoTlsProbeFailure(error, config.httpsEnabled)
             return InstanceIdResolveResult.Unreachable
         }
         return networkFailureToResolveResult(

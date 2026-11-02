@@ -91,6 +91,7 @@ import ru.fromchat.api.instance.ApplyServerResult
 import ru.fromchat.api.instance.applyServerAndNavigate
 import ru.fromchat.api.instance.persistPreAuthServerEndpoint
 import ru.fromchat.api.instance.probeServerEndpoint
+import ru.fromchat.api.instance.surfaceLastIncognitoTlsProbeFailure
 import ru.fromchat.save_continue
 import ru.fromchat.server_config_action_check
 import ru.fromchat.server_config_action_reset
@@ -228,6 +229,12 @@ fun ServerConfigScreen(
             }
             lastProbe = probe
             lastProbedConfig = tentative
+            if (
+                probe == ServerProbeResult.Unreachable &&
+                surfaceLastIncognitoTlsProbeFailure(parsed.host, parsed.httpsPreferred)
+            ) {
+                return@launch
+            }
             if (IncognitoTlsDialogController.showMitmDialog || IncognitoTlsDialogController.showTlsDialog) {
                 return@launch
             }
@@ -312,6 +319,13 @@ fun ServerConfigScreen(
                                 }
                                 lastProbe = probe
                                 lastProbedConfig = tentative
+
+                                if (
+                                    probe == ServerProbeResult.Unreachable &&
+                                    surfaceLastIncognitoTlsProbeFailure(parsed.host, parsed.httpsPreferred)
+                                ) {
+                                    return@launch
+                                }
 
                                 if (IncognitoTlsDialogController.showMitmDialog || IncognitoTlsDialogController.showTlsDialog) {
                 return@launch

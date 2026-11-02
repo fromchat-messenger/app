@@ -1,6 +1,5 @@
 package ru.fromchat.incognito
 
-import ru.fromchat.api.instance.InstanceIdGuard
 import java.security.KeyStore
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
@@ -73,7 +72,7 @@ private class IncognitoCompositeTrustManager(
         val certs = chain?.filterIsInstance<X509Certificate>()?.toTypedArray()
             ?: throw CertificateException("Empty certificate chain")
         enforceIncognitoMitmPolicy(host = null, certs)
-        system.checkServerTrusted(certs, authType)
+        delegateForTrust(null).checkServerTrusted(certs, authType)
     }
 
     override fun checkServerTrusted(
@@ -83,11 +82,9 @@ private class IncognitoCompositeTrustManager(
     ) {
         val certs = chain?.filterIsInstance<X509Certificate>()?.toTypedArray()
             ?: throw CertificateException("Empty certificate chain")
-        val host = (socket as? SSLSocket)?.session?.peerHost?.takeIf { it.isNotBlank() }
-            ?: socket?.inetAddress?.hostName?.takeIf { it.isNotBlank() }
-            ?: throw CertificateException("Missing TLS host")
+        val host = tlsPeerHostFromSocket(socket)
         enforceIncognitoMitmPolicy(host, certs)
-        delegateForHost(host).checkServerTrusted(certs, authType)
+        delegateForTrust(host).checkServerTrusted(certs, authType)
     }
 
     override fun checkServerTrusted(
@@ -97,34 +94,42 @@ private class IncognitoCompositeTrustManager(
     ) {
         val certs = chain?.filterIsInstance<X509Certificate>()?.toTypedArray()
             ?: throw CertificateException("Empty certificate chain")
-        val host = engine?.peerHost ?: throw CertificateException("Missing TLS host")
+        val host = engine?.peerHost?.takeIf { it.isNotBlank() }
+            ?: resolveIncognitoTlsPeerHost(null).takeIf { it != "unknown" }
+            ?: throw CertificateException("Missing TLS host")
         enforceIncognitoMitmPolicy(host, certs)
-        delegateForHost(host).checkServerTrusted(certs, authType)
+        delegateForTrust(host).checkServerTrusted(certs, authType)
     }
 
     override fun getAcceptedIssuers(): Array<X509Certificate> = system.acceptedIssuers
 
-    private fun delegateForHost(host: String): X509TrustManager {
-        val resolved = normalizeTlsHost(host)
-        if (IncognitoTlsHostBypass.isAllowed(resolved)) return createIncognitoBypassTrustManager()
-        if (useLetsEncryptOnlyForHost(host)) return letsEncrypt
+    private fun delegateForTrust(peerHost: String?): X509TrustManager {
+        if (incognitoTlsBypassActive(peerHost)) return createIncognitoBypassTrustManager()
+        val resolved = resolveIncognitoTlsPeerHost(peerHost)
+        if (resolved == "unknown") return system
+        return delegateForHost(resolved)
+    }
+
+    private fun delegateForHost(resolvedHost: String): X509TrustManager {
+        if (IncognitoTlsHostBypass.isAllowed(resolvedHost)) return createIncognitoBypassTrustManager()
+        if (useLetsEncryptOnlyForHost(resolvedHost)) return letsEncrypt
         return system
     }
 
     private fun enforceIncognitoMitmPolicy(host: String?, chain: Array<X509Certificate>) {
         if (!IncognitoMode.active) return
-        val resolvedHost = resolveTlsHostForMitm(host)
-        if (resolvedHost != "unknown" && IncognitoTlsHostBypass.isAllowed(resolvedHost)) return
+        if (incognitoTlsBypassActive(host)) return
+        val resolvedHost = resolveIncognitoTlsPeerHost(host)
         val marker = detectMitmCertificateMarker(chain) ?: return
         throw IncognitoMitmCertificateException(resolvedHost, marker)
     }
 
-    private fun resolveTlsHostForMitm(host: String?): String {
-        host?.takeIf { it.isNotBlank() }?.let { return normalizeTlsHost(it) }
-        InstanceIdGuard.probeConfig?.serverIp?.trim()?.takeIf { it.isNotEmpty() }?.let {
-            return normalizeTlsHost(it)
-        }
-        return "unknown"
+    private fun tlsPeerHostFromSocket(socket: java.net.Socket?): String {
+        val fromSocket = (socket as? SSLSocket)?.session?.peerHost?.takeIf { it.isNotBlank() }
+            ?: socket?.inetAddress?.hostName?.takeIf { it.isNotBlank() }
+        if (fromSocket != null) return fromSocket
+        return resolveIncognitoTlsPeerHost(null).takeIf { it != "unknown" }
+            ?: throw CertificateException("Missing TLS host")
     }
 }
 
