@@ -46,7 +46,7 @@ import ru.fromchat.incognito_tls_certificate_error_title
 import ru.fromchat.incognito_connect_anyway
 import ru.fromchat.incognito_mitm_certificate_warning_body
 import ru.fromchat.incognito_mitm_certificate_warning_title
-import ru.fromchat.incognito.IncognitoMitmBypass
+import ru.fromchat.incognito.IncognitoTlsHostBypass
 import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.incognito.findIncognitoMitmCertificateException
 import ru.fromchat.incognito.isIncognitoTlsCertificateError
@@ -326,6 +326,7 @@ fun AuthScreen(
     var showMitmCertificateDialog by remember { mutableStateOf(false) }
     var mitmMatchedMarker by remember { mutableStateOf("") }
     var mitmBypassRetryNonce by remember { mutableStateOf(0) }
+    var tlsBypassRetryNonce by remember { mutableStateOf(0) }
     val navController = LocalNavController.current
 
     fun persistDraft() {
@@ -368,9 +369,20 @@ fun AuthScreen(
             onDismissRequest = { showTlsCertificateDialog = false },
             title = { Text(stringResource(Res.string.incognito_tls_certificate_error_title)) },
             text = { Text(stringResource(Res.string.incognito_tls_certificate_error_body)) },
-            confirmButton = {
+            dismissButton = {
                 TextButton(onClick = { showTlsCertificateDialog = false }) {
                     Text(stringResource(Res.string.cancel))
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        IncognitoTlsHostBypass.allowHost(Settings.serverConfig.serverIp)
+                        showTlsCertificateDialog = false
+                        tlsBypassRetryNonce++
+                    },
+                ) {
+                    Text(stringResource(Res.string.incognito_connect_anyway))
                 }
             },
         )
@@ -396,7 +408,7 @@ fun AuthScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        IncognitoMitmBypass.allowHost(Settings.serverConfig.serverIp)
+                        IncognitoTlsHostBypass.allowHost(Settings.serverConfig.serverIp)
                         showMitmCertificateDialog = false
                         mitmBypassRetryNonce++
                     },
@@ -563,6 +575,7 @@ fun AuthScreen(
                     incognitoEnabled = incognitoEnabled,
                     onIncognitoChange = { incognitoEnabled = it },
                     mitmBypassRetryNonce = mitmBypassRetryNonce,
+                    tlsBypassRetryNonce = tlsBypassRetryNonce,
                     onContinue = {
                         flowState.pagerState.animateScrollToPage(AuthFlowStep.Password.ordinal)
                     },

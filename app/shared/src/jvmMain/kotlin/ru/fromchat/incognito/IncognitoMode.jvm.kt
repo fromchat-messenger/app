@@ -24,6 +24,9 @@ internal actual fun registerIncognitoLifecycleHooks() {
     Runtime.getRuntime().addShutdownHook(
         Thread(
             {
+                if (IncognitoMode.active) {
+                    IncognitoMode.syncContainerToDisk()
+                }
                 IncognitoMode.destroy()
             },
             "fromchat-incognito-shutdown",

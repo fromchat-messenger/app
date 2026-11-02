@@ -103,13 +103,17 @@ private class IncognitoCompositeTrustManager(
 
     override fun getAcceptedIssuers(): Array<X509Certificate> = system.acceptedIssuers
 
-    private fun delegateForHost(host: String): X509TrustManager =
-        if (useLetsEncryptOnlyForHost(host)) letsEncrypt else system
+    private fun delegateForHost(host: String): X509TrustManager {
+        val resolved = normalizeTlsHost(host)
+        if (IncognitoTlsHostBypass.isAllowed(resolved)) return system
+        if (useLetsEncryptOnlyForHost(host)) return letsEncrypt
+        return system
+    }
 
     private fun verifyMitmPolicy(host: String?, chain: Array<X509Certificate>) {
         if (!IncognitoMode.active) return
         val resolvedHost = host ?: return
-        if (IncognitoMitmBypass.isAllowed(resolvedHost)) return
+        if (IncognitoTlsHostBypass.isAllowed(resolvedHost)) return
         val marker = detectMitmCertificateMarker(chain) ?: return
         throw IncognitoMitmCertificateException(normalizeTlsHost(resolvedHost), marker)
     }

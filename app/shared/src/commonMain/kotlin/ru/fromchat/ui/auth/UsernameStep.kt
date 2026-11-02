@@ -72,6 +72,7 @@ internal fun usernameStepPage(
     incognitoEnabled: Boolean,
     onIncognitoChange: (Boolean) -> Unit,
     mitmBypassRetryNonce: Int,
+    tlsBypassRetryNonce: Int,
     onContinue: suspend () -> Unit,
     onSnackbar: (String, Throwable?) -> Unit,
     onTlsCertificateRejected: () -> Unit,
@@ -123,7 +124,6 @@ internal fun usernameStepPage(
                         onMitmCertificateDetected(probe.marker)
                     }
                     AuthServerProbeOutcome.TlsCertificateRejected -> {
-                        IncognitoMode.destroy()
                         onTlsCertificateRejected()
                     }
                     AuthServerProbeOutcome.Failed -> {
@@ -169,6 +169,12 @@ internal fun usernameStepPage(
 
     LaunchedEffect(mitmBypassRetryNonce) {
         if (mitmBypassRetryNonce > 0) {
+            attemptSubmit()
+        }
+    }
+
+    LaunchedEffect(tlsBypassRetryNonce) {
+        if (tlsBypassRetryNonce > 0) {
             attemptSubmit()
         }
     }

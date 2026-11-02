@@ -9,12 +9,6 @@ import ru.fromchat.db.MessageDatabase
 
 actual fun provideMessageDatabaseDriver(): SqlDriver =
     SingleThreadSqlDriver.run {
-        if (IncognitoMode.active) {
-            val jdbc = JdbcSqliteDriver("jdbc:sqlite::memory:")
-            MessageDatabase.Schema.create(jdbc)
-            configureJvmSqliteDriver(jdbc)
-            return@run SingleThreadSqlDriver(jdbc)
-        }
         val dir = File(PlatformFileSystem.getAppCacheDirectory(), "fromchat")
         dir.mkdirs()
         val dbFile = File(dir, "message_database.db")
@@ -26,7 +20,8 @@ actual fun provideMessageDatabaseDriver(): SqlDriver =
             MessageDatabase.Schema.create(jdbc)
         }
         configureJvmSqliteDriver(jdbc)
-        SingleThreadSqlDriver(jdbc)
+        val syncPath = if (IncognitoMode.active) dbFile.absolutePath else null
+        SingleThreadSqlDriver(jdbc, incognitoSyncPath = syncPath)
     }
 
 private fun configureJvmSqliteDriver(driver: SqlDriver) {
