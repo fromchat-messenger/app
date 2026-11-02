@@ -46,6 +46,7 @@ import ru.fromchat.error_unexpected
 import ru.fromchat.fill_all_fields
 import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.incognito.findIncognitoMitmCertificateException
+import ru.fromchat.incognito.isIncognitoTlsCertificateError
 import ru.fromchat.logging.Logger
 import ru.fromchat.settings_next
 import ru.fromchat.ui.components.ActionButton
@@ -164,6 +165,10 @@ internal fun usernameStepPage(
                         } catch (e: Exception) {
                             findIncognitoMitmCertificateException(e)?.let { mitm ->
                                 onMitmCertificateDetected(mitm.matchedMarker)
+                                return@launch
+                            }
+                            if (isIncognitoTlsCertificateError(e)) {
+                                onTlsCertificateRejected()
                                 return@launch
                             }
                             Logger.e(USERNAME_STEP_TAG, "auth username step error username=$trimmed", e)

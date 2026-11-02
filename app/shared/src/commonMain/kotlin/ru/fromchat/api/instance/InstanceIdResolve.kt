@@ -10,6 +10,7 @@ import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.db.store.InstanceRegistryStore
 import ru.fromchat.config.ServerConfigData
 import ru.fromchat.incognito.findIncognitoMitmCertificateException
+import ru.fromchat.incognito.rethrowIncognitoHttpsTlsFailure
 import kotlin.time.Duration.Companion.milliseconds
 
 private val UUID_REGEX =
@@ -51,6 +52,7 @@ suspend fun resolveInstanceId(
     if (fetchResult.isFailure) {
         val error = fetchResult.exceptionOrNull()
         error?.let { findIncognitoMitmCertificateException(it) }?.let { throw it }
+        rethrowIncognitoHttpsTlsFailure(error, config.httpsEnabled)
         return networkFailureToResolveResult(
             e = error,
             cached = cached,

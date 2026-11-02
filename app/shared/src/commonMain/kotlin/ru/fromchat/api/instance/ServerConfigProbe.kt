@@ -10,6 +10,7 @@ import ru.fromchat.config.ServerConfig
 import ru.fromchat.config.ServerConfigData
 import ru.fromchat.config.Settings
 import ru.fromchat.incognito.findIncognitoMitmCertificateException
+import ru.fromchat.incognito.rethrowIncognitoHttpsTlsFailure
 import ru.fromchat.api.sync.ChatListSync
 import ru.fromchat.logging.Logger
 import ru.fromchat.ui.main.settings.about.legal.DocumentRepository
@@ -199,6 +200,7 @@ private suspend fun probeServerOnce(
             )
         }.getOrElse { e ->
             findIncognitoMitmCertificateException(e)?.let { throw it }
+            rethrowIncognitoHttpsTlsFailure(e, config.httpsEnabled)
             Logger.e(PROBE_LOG_TAG, "resolveInstanceId threw url=$apiBase", e)
             return ServerProbeResult.Unreachable to e
         }
@@ -231,6 +233,7 @@ private suspend fun probeServerOnce(
                     ApiClient.fetchServerInstanceId(apiBase)
                 }.exceptionOrNull()
                 failure?.let { findIncognitoMitmCertificateException(it) }?.let { throw it }
+                rethrowIncognitoHttpsTlsFailure(failure, config.httpsEnabled)
                 ServerProbeResult.Unreachable to failure
             }
         }

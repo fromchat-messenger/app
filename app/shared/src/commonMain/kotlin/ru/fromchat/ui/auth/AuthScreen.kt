@@ -50,7 +50,6 @@ import ru.fromchat.incognito.IncognitoTlsHostBypass
 import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.incognito.findIncognitoMitmCertificateException
 import ru.fromchat.incognito.isIncognitoTlsCertificateError
-import ru.fromchat.incognito.useLetsEncryptOnlyForHost
 import ru.fromchat.api.instance.isSslProtocolError
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.auth.captcha.SmartCaptchaLog
@@ -146,8 +145,7 @@ internal suspend fun probeCurrentServerForAuth(): AuthServerProbeOutcome {
         when {
             IncognitoMode.active &&
                 config.httpsEnabled &&
-                useLetsEncryptOnlyForHost(config.serverIp) &&
-                (isIncognitoTlsCertificateError(e) || e.isSslProtocolError()) ->
+                isIncognitoTlsCertificateError(e) ->
                 AuthServerProbeOutcome.TlsCertificateRejected
             else -> AuthServerProbeOutcome.Failed
         }
