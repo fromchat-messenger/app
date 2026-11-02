@@ -10,10 +10,14 @@ import ru.fromchat.logging.FromChatLogDirs
  * The container grows on write and compacts/shrinks after deletes like a VM disk.
  */
 private const val DATA_REGION_START = 8192L
+private const val COMPACT_CHUNK_BYTES = 64 * 1024
+/** Reclaim disk tail on delete only when fragmentation exceeds this (avoids compact on every delete). */
+private const val COMPACT_SLACK_THRESHOLD_BYTES = 256L * 1024
 
 internal object IncognitoVolumeFileSystem {
     private const val CATALOG_LOGICAL_OFFSET = 0L
     private const val CATALOG_MAX_BYTES = 8192
+    private val currentLogRelativeKey = "fromchat/logs/${FromChatLogDirs.CURRENT_LOG_FILE}"
 
     private val json = Json { ignoreUnknownKeys = true }
     private val lock = Any()
@@ -91,8 +95,24 @@ internal object IncognitoVolumeFileSystem {
 
     fun append(relativeKey: String, bytes: ByteArray) = synchronized(lock) {
         if (bytes.isEmpty()) return
-        val existing = read(relativeKey)
-        write(relativeKey, if (existing.isEmpty()) bytes else existing + bytes)
+        val vol = volume ?: return
+        val existing = catalog.files[relativeKey]
+        if (existing != null && existing.offset + existing.size == catalog.nextDataOffset) {
+            ensureCapacityForAllocation(bytes.size.toLong(), vol)
+            val appendOffset = existing.offset + existing.size
+            vol.write(appendOffset, bytes)
+            catalog = catalog.copy(
+                files = catalog.files + (
+                    relativeKey to FileEntry(existing.offset, existing.size + bytes.size.toLong())
+                    ),
+                nextDataOffset = appendOffset + bytes.size,
+            )
+            saveCatalog(vol, catalog)
+            syncVolumeSize(vol)
+            return
+        }
+        val prior = read(relativeKey)
+        write(relativeKey, if (prior.isEmpty()) bytes else prior + bytes)
     }
 
     fun read(relativeKey: String): ByteArray = synchronized(lock) {
@@ -110,8 +130,9 @@ internal object IncognitoVolumeFileSystem {
         val vol = volume ?: return
         if (!catalog.files.containsKey(relativeKey)) return
         catalog = catalog.copy(files = catalog.files - relativeKey)
+        refreshNextDataOffsetFromFiles()
         saveCatalog(vol, catalog)
-        compactAndShrink(vol)
+        maybeCompactAfterDelete(vol)
     }
 
     fun fileSize(relativeKey: String): Long = synchronized(lock) {
@@ -138,8 +159,9 @@ internal object IncognitoVolumeFileSystem {
         }
         if (remove.isEmpty()) return
         catalog = catalog.copy(files = catalog.files.filterKeys { it !in remove.toSet() })
+        refreshNextDataOffsetFromFiles()
         saveCatalog(vol, catalog)
-        compactAndShrink(vol)
+        maybeCompactAfterDelete(vol)
     }
 
     fun ensureDirectory(relativeDirKey: String) = Unit
@@ -156,70 +178,76 @@ internal object IncognitoVolumeFileSystem {
         return offset
     }
 
-    private fun ensureCapacityForAllocation(additionalBytes: Long, vol: IncognitoBlockVolume) {
-        compactAndShrink(vol)
-        if (allocationFits(additionalBytes) && !isNearHardCap(additionalBytes)) return
-
-        val targetUsedEnd = if (allocationFits(additionalBytes)) {
-            IncognitoContainerLimits.MAX_LOGICAL_BYTES - IncognitoContainerLimits.EVICTION_HEADROOM_BYTES
+    private fun liveDataEndExclusive(): Long =
+        if (catalog.files.isEmpty()) {
+            DATA_REGION_START
         } else {
-            catalog.nextDataOffset + additionalBytes - IncognitoContainerLimits.EVICTION_HEADROOM_BYTES
-        }.coerceAtMost(IncognitoContainerLimits.MAX_LOGICAL_BYTES - additionalBytes)
+            DATA_REGION_START + catalog.files.values.sumOf { it.size }
+        }
 
-        evictDisposableFilesUntilUsedAtMost(vol, targetUsedEnd.coerceAtLeast(DATA_REGION_START))
+    private fun fragmentationSlackBytes(): Long =
+        (catalog.nextDataOffset - liveDataEndExclusive()).coerceAtLeast(0L)
+
+    private fun refreshNextDataOffsetFromFiles() {
+        val end = catalog.files.values.maxOfOrNull { it.offset + it.size } ?: DATA_REGION_START
+        catalog = catalog.copy(nextDataOffset = maxOf(end, DATA_REGION_START))
+    }
+
+    private fun ensureCapacityForAllocation(additionalBytes: Long, vol: IncognitoBlockVolume) {
+        val max = IncognitoContainerLimits.MAX_LOGICAL_BYTES
+        val headroom = IncognitoContainerLimits.EVICTION_HEADROOM_BYTES
+
+        if (catalog.nextDataOffset + additionalBytes <= max && !isLiveDataNearHardCap(additionalBytes)) {
+            return
+        }
+
+        if (catalog.nextDataOffset + additionalBytes > max && liveDataEndExclusive() + additionalBytes <= max) {
+            compactAndShrink(vol)
+            if (catalog.nextDataOffset + additionalBytes <= max && !isLiveDataNearHardCap(additionalBytes)) {
+                return
+            }
+        }
+
+        val targetLiveEnd = when {
+            liveDataEndExclusive() + additionalBytes > max ->
+                (max - additionalBytes - headroom).coerceAtLeast(DATA_REGION_START)
+            isLiveDataNearHardCap(additionalBytes) ->
+                (max - headroom - additionalBytes).coerceAtLeast(DATA_REGION_START)
+            else -> liveDataEndExclusive()
+        }
+
+        batchEvictUntilLiveAtMost(vol, targetLiveEnd)
         compactAndShrink(vol)
 
-        if (!allocationFits(additionalBytes)) {
-            evictDisposableFilesUntilUsedAtMost(
+        if (catalog.nextDataOffset + additionalBytes > max) {
+            batchEvictUntilLiveAtMost(
                 vol,
-                (catalog.nextDataOffset + additionalBytes - IncognitoContainerLimits.EVICTION_HEADROOM_BYTES)
-                    .coerceAtLeast(DATA_REGION_START),
+                (max - additionalBytes - headroom).coerceAtLeast(DATA_REGION_START),
             )
             compactAndShrink(vol)
         }
 
-        if (!allocationFits(additionalBytes)) {
+        if (catalog.nextDataOffset + additionalBytes > max) {
             throw IncognitoContainerCapacityException(
-                "Incognito container exceeds ${IncognitoContainerLimits.MAX_LOGICAL_BYTES} byte limit",
+                "Incognito container exceeds $max byte limit",
             )
         }
     }
 
-    private fun allocationFits(additionalBytes: Long): Boolean =
-        catalog.nextDataOffset + additionalBytes <= IncognitoContainerLimits.MAX_LOGICAL_BYTES
-
-    private fun isNearHardCap(additionalBytes: Long): Boolean {
-        val endAfter = catalog.nextDataOffset + additionalBytes
+    private fun isLiveDataNearHardCap(additionalBytes: Long): Boolean {
+        val endAfter = liveDataEndExclusive() + additionalBytes
         return endAfter > IncognitoContainerLimits.MAX_LOGICAL_BYTES -
             IncognitoContainerLimits.EVICTION_HEADROOM_BYTES
     }
 
-    private fun evictDisposableFilesUntilUsedAtMost(vol: IncognitoBlockVolume, targetUsedEnd: Long) {
-        val currentLogKey = "fromchat/logs/${FromChatLogDirs.CURRENT_LOG_FILE}"
-        while (catalog.nextDataOffset > targetUsedEnd) {
-            val nextKey = selectNextEvictionKey(excludingCurrentLog = true) ?: break
-            catalog = catalog.copy(files = catalog.files - nextKey)
-            saveCatalog(vol, catalog)
-            compactAndShrink(vol)
-        }
-        if (catalog.nextDataOffset > targetUsedEnd) {
-            if (catalog.files.containsKey(currentLogKey) && !IncognitoVolumeCacheEviction.isProtectedKey(currentLogKey)) {
-                catalog = catalog.copy(files = catalog.files - currentLogKey)
-                saveCatalog(vol, catalog)
-                compactAndShrink(vol)
-            }
-        }
-    }
+    /** Drops catalog entries in one pass; caller compacts once to reclaim tail and bound RAM. */
+    private fun batchEvictUntilLiveAtMost(vol: IncognitoBlockVolume, targetLiveEndExclusive: Long) {
+        if (liveDataEndExclusive() <= targetLiveEndExclusive) return
 
-    private fun selectNextEvictionKey(excludingCurrentLog: Boolean): String? {
-        val currentLogKey = "fromchat/logs/${FromChatLogDirs.CURRENT_LOG_FILE}"
-        return catalog.files.entries
+        val evictableKeys = catalog.files.entries
             .asSequence()
-            .filter { (key, _) ->
-                !IncognitoVolumeCacheEviction.isProtectedKey(key) &&
-                    !(excludingCurrentLog && key == currentLogKey)
-            }
-            .minWithOrNull { a, b ->
+            .filter { (key, _) -> !IncognitoVolumeCacheEviction.isProtectedKey(key) }
+            .sortedWith { a, b ->
                 IncognitoVolumeCacheEviction.compareEvictionOrder(
                     a.key,
                     b.key,
@@ -227,7 +255,35 @@ internal object IncognitoVolumeFileSystem {
                     b.value.offset,
                 )
             }
-            ?.key
+            .map { it.key }
+            .toList()
+
+        var liveEnd = liveDataEndExclusive()
+        val remove = LinkedHashSet<String>()
+        for (key in evictableKeys) {
+            if (liveEnd <= targetLiveEndExclusive) break
+            if (key == currentLogRelativeKey) continue
+            remove += key
+            liveEnd -= catalog.files.getValue(key).size
+        }
+        if (liveEnd > targetLiveEndExclusive &&
+            currentLogRelativeKey in catalog.files &&
+            !IncognitoVolumeCacheEviction.isProtectedKey(currentLogRelativeKey)
+        ) {
+            remove += currentLogRelativeKey
+        }
+        if (remove.isEmpty()) return
+        catalog = catalog.copy(files = catalog.files.filterKeys { it !in remove })
+        refreshNextDataOffsetFromFiles()
+        saveCatalog(vol, catalog)
+    }
+
+    private fun maybeCompactAfterDelete(vol: IncognitoBlockVolume) {
+        if (fragmentationSlackBytes() >= COMPACT_SLACK_THRESHOLD_BYTES) {
+            compactAndShrink(vol)
+        } else {
+            syncVolumeSize(vol)
+        }
     }
 
     private fun fitsInPlace(existing: FileEntry, newSize: Long): Boolean {
@@ -255,13 +311,10 @@ internal object IncognitoVolumeFileSystem {
         }
         var cursor = DATA_REGION_START
         val ordered = catalog.files.entries.sortedBy { it.value.offset }
-        val relocated = linkedMapOf<String, FileEntry>()
+        val relocated = LinkedHashMap<String, FileEntry>(ordered.size)
         for ((path, entry) in ordered) {
-            val bytes = vol.read(entry.offset, entry.size.toInt())
-            if (entry.offset != cursor) {
-                vol.write(cursor, bytes)
-            } else if (bytes.isNotEmpty()) {
-                vol.write(cursor, bytes)
+            if (entry.offset != cursor && entry.size > 0) {
+                copyVolumeRange(vol, entry.offset, cursor, entry.size)
             }
             relocated[path] = FileEntry(cursor, entry.size)
             cursor += entry.size
@@ -269,6 +322,27 @@ internal object IncognitoVolumeFileSystem {
         catalog = catalog.copy(files = relocated, nextDataOffset = cursor)
         saveCatalog(vol, catalog)
         syncVolumeSize(vol)
+    }
+
+    private fun copyVolumeRange(
+        vol: IncognitoBlockVolume,
+        srcOffset: Long,
+        dstOffset: Long,
+        length: Long,
+    ) {
+        var src = srcOffset
+        var dst = dstOffset
+        var remaining = length
+        while (remaining > 0) {
+            val chunk = minOf(remaining, COMPACT_CHUNK_BYTES.toLong()).toInt()
+            val data = vol.read(src, chunk)
+            if (data.isEmpty()) break
+            vol.write(dst, data)
+            val moved = data.size.toLong()
+            src += moved
+            dst += moved
+            remaining -= moved
+        }
     }
 
     private fun syncVolumeSize(vol: IncognitoBlockVolume) {
