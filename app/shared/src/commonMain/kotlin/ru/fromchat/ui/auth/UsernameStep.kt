@@ -35,6 +35,7 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
+import ru.fromchat.api.instance.isSslProtocolError
 import ru.fromchat.api.schema.core.ErrorResponse
 import ru.fromchat.auth_incognito_enabled_snackbar
 import ru.fromchat.auth_incognito_mode_summary
@@ -165,7 +166,7 @@ internal fun usernameStepPage(
                                 onMitmCertificateDetected(mitm.matchedMarker)
                                 return@launch
                             }
-                            if (isIncognitoTlsCertificateError(e)) {
+                            if (isIncognitoTlsCertificateError(e) || (incognitoEnabled && e.isSslProtocolError())) {
                                 onTlsCertificateRejected()
                                 return@launch
                             }

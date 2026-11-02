@@ -1,7 +1,6 @@
 package ru.fromchat.incognito
 
 import ru.fromchat.api.instance.InstanceIdGuard
-import ru.fromchat.config.Settings
 
 /** Production API host that must chain to Let's Encrypt in incognito mode. */
 const val FROMCHAT_OFFICIAL_API_HOST = "api.fromchat.ru"
@@ -36,10 +35,7 @@ private fun configuredServerTlsHost(): String? {
     InstanceIdGuard.probeConfig?.serverIp?.trim()?.takeIf { it.isNotEmpty() }?.let {
         return normalizeTlsHost(it)
     }
-    return runCatching { Settings.serverConfig.serverIp.trim() }
-        .getOrNull()
-        ?.takeIf { it.isNotEmpty() }
-        ?.let { normalizeTlsHost(it) }
+    return IncognitoTlsHostBypass.lastLogicalHost
 }
 
 /** Peer hostname for trust / MITM checks (TLS stack may omit SNI host on some code paths). */
