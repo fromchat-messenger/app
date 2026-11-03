@@ -117,7 +117,6 @@ private class IncognitoCompositeTrustManager(
     }
 
     private fun enforceIncognitoMitmPolicy(host: String?, chain: Array<X509Certificate>) {
-        if (!IncognitoMode.active) return
         if (incognitoTlsBypassActive(host)) return
         val resolvedHost = resolveIncognitoTlsPeerHost(host)
         val marker = detectMitmCertificateMarker(chain) ?: return

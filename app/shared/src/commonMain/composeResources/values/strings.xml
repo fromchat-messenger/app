@@ -90,6 +90,8 @@
     <string name="incognito_mitm_certificate_warning_title">Suspicious certificate</string>
     <string name="incognito_mitm_certificate_warning_body">The server certificate looks like a network interception device (%1$s). Connecting may expose your traffic. Continue anyway?</string>
     <string name="incognito_connect_anyway">Connect anyway</string>
+    <string name="public_http_warning_title">Unencrypted connection</string>
+    <string name="public_http_warning_body">This server uses HTTP, which is unencrypted and potentially unsafe. Traffic may be intercepted or modified by anyone between you and this server (like your ISP or the server\u2019s hosting).</string>
     <string name="auth_step_username_body">This is your login. It helps us tell you apart from everyone else.</string>
     <string name="auth_step_profile_title">Create your profile</string>
     <string name="auth_step_profile_body">Enter your display name and, if you like, a few words about yourself.</string>

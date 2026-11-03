@@ -7,11 +7,13 @@ import ru.fromchat.incognito.isIncognitoTlsCertificateError
 fun isIncognitoHttpsTlsFailure(
     error: Throwable?,
     httpsEnabled: Boolean,
-): Boolean {
-    if (error == null || !httpsEnabled) return false
-    return findIncognitoMitmCertificateException(error) != null ||
-        isIncognitoTlsCertificateError(error)
-}
+): Boolean =
+    error != null &&
+        httpsEnabled &&
+        (
+            findIncognitoMitmCertificateException(error) != null ||
+                isIncognitoTlsCertificateError(error)
+            )
 
 /**
  * @return true if the failure was an incognito TLS/MITM block (caller should treat the probe as blocked).

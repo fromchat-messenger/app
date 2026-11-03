@@ -12,14 +12,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import ru.fromchat.api.ApiClient
-import ru.fromchat.api.schema.user.keys.PublicKeyResponse
-import ru.fromchat.logging.Logger
-import ru.fromchat.config.ServerConfig
 import ru.fromchat.api.crypto.backup.BackupCrypto
-import ru.fromchat.incognito.IncognitoMode
-import ru.fromchat.api.crypto.backup.PrivateKeyBundle
 import ru.fromchat.api.crypto.backup.decodeBlob
 import ru.fromchat.api.crypto.backup.encodeBlob
+import ru.fromchat.api.crypto.backup.PrivateKeyBundle
+import ru.fromchat.api.schema.user.keys.PublicKeyResponse
+import ru.fromchat.config.ServerConfig
+import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.logging.Logger
 import kotlin.concurrent.Volatile
 
 /**
@@ -135,9 +135,7 @@ object IdentityKeyManager {
     /**
      * Get current keys from memory (non-suspend, returns cached keys only)
      */
-    fun getCurrentKeys(): IdentityKeys? {
-        return currentKeys
-    }
+    fun getCurrentKeys(): IdentityKeys? = currentKeys
 
     /**
      * Restore keys from local storage (synchronous version for getCurrentKeys)

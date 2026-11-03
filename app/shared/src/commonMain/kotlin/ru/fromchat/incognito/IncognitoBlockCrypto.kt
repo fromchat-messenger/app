@@ -53,7 +53,6 @@ internal fun incognitoBlockCryptoSelfTest(): Boolean = runBlocking {
 
 internal fun incognitoBlockCryptoSelfTest(key: ByteArray): Boolean = runBlocking {
     val plain = ByteArray(IncognitoBlockCrypto.PLAIN_BLOCK_SIZE) { 0x5A.toByte() }
-    val enc = IncognitoBlockCrypto.encryptBlock(key, plain)
-    val dec = IncognitoBlockCrypto.decryptBlock(key, enc)
-    dec.contentEquals(plain)
+    IncognitoBlockCrypto.decryptBlock(key, IncognitoBlockCrypto.encryptBlock(key, plain))
+        .contentEquals(plain)
 }

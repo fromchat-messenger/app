@@ -37,13 +37,13 @@ import coil3.memory.MemoryCache
 import coil3.network.ktor3.KtorNetworkFetcherFactory
 import coil3.svg.SvgDecoder
 import ru.fromchat.api.ApiClient
-import ru.fromchat.utils.PlatformInteractiveKeyboardDismissEffect
-import ru.fromchat.utils.LocalSystemBarsVisibility
-import ru.fromchat.utils.WindowWidthSizeClass
 import ru.fromchat.utils.currentWindowAdaptiveInfo
+import ru.fromchat.utils.LocalSystemBarsVisibility
 import ru.fromchat.utils.navigateAndWipeBackStack
+import ru.fromchat.utils.PlatformInteractiveKeyboardDismissEffect
 import ru.fromchat.utils.rememberSystemBarsController
 import ru.fromchat.utils.widthSizeClass
+import ru.fromchat.utils.WindowWidthSizeClass
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
@@ -57,54 +57,57 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import ru.fromchat.AppForeground
-import ru.fromchat.logging.Logger
-import ru.fromchat.api.local.keepWebSocketAliveInBackground
-import ru.fromchat.api.sync.DeferredStartupNetwork
-import ru.fromchat.api.sync.ProfileUpdateSync
-import ru.fromchat.api.sync.PublicChatProfileSync
-import ru.fromchat.api.sync.StatusSubscriptionCoordinator
-import ru.fromchat.api.sync.UpdateSyncManager
 import ru.fromchat.api.calls.CallStore
 import ru.fromchat.api.instance.bootstrapSessionInstance
 import ru.fromchat.api.instance.bootstrapSessionOnStartup
 import ru.fromchat.api.instance.logoutIfInstanceUnsupported
 import ru.fromchat.api.instance.scheduleSessionInstanceNetworkRefresh
-import ru.fromchat.api.local.WebSocketManager
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.cache.ensureFromChatCacheGeneration
 import ru.fromchat.api.local.db.store.messageDatabaseDispatcher
 import ru.fromchat.api.local.db.store.ProfileCache
 import ru.fromchat.api.local.db.store.UserStatusStore
+import ru.fromchat.api.local.keepWebSocketAliveInBackground
 import ru.fromchat.api.local.messages.DmInboxCoordinator
 import ru.fromchat.api.local.send.OutgoingMessageCoordinator
-import ru.fromchat.api.schema.websocket.WebSocketMessage
+import ru.fromchat.api.local.WebSocketManager
 import ru.fromchat.api.schema.websocket.types.WebSocketUpdatesData
+import ru.fromchat.api.schema.websocket.WebSocketMessage
+import ru.fromchat.api.sync.DeferredStartupNetwork
+import ru.fromchat.api.sync.ProfileUpdateSync
+import ru.fromchat.api.sync.PublicChatProfileSync
+import ru.fromchat.api.sync.StatusSubscriptionCoordinator
+import ru.fromchat.api.sync.UpdateSyncManager
+import ru.fromchat.AppForeground
 import ru.fromchat.config.ServerConfig
-import ru.fromchat.ui.release.ReleaseNotesDialog
-import ru.fromchat.ui.release.ReleaseNotesPrompt
 import ru.fromchat.desktop.DesktopMenuCommand
 import ru.fromchat.desktop.DesktopMenuCommands
+import ru.fromchat.logging.Logger
 import ru.fromchat.notifications.NotificationLaunchCoordinator
 import ru.fromchat.ui.auth.AuthScreen
-import ru.fromchat.ui.incognito.IncognitoTlsDialogHost
 import ru.fromchat.ui.auth.captcha.SmartCaptchaNav
 import ru.fromchat.ui.auth.captcha.SmartCaptchaScreen
 import ru.fromchat.ui.auth.yandex.YandexOAuthNav
 import ru.fromchat.ui.auth.yandex.YandexOAuthScreen
+import ru.fromchat.ui.calls.overlay.CallOverlay
 import ru.fromchat.ui.chat.media.ChatFullscreenImageController
 import ru.fromchat.ui.chat.media.ChatFullscreenImageHost
 import ru.fromchat.ui.chat.media.LocalChatFullscreenImageController
-import ru.fromchat.ui.calls.overlay.CallOverlay
 import ru.fromchat.ui.chat.panels.dm.currentDmChatUserId
 import ru.fromchat.ui.chat.panels.dm.isCurrentDmChat
 import ru.fromchat.ui.chat.panels.dm.navigateToDmChat
 import ru.fromchat.ui.chat.panels.publicchat.navigateToPublicChat
 import ru.fromchat.ui.chat.utils.appRootAttachmentDropTarget
+import ru.fromchat.ui.components.provideSwitchHaptics
+import ru.fromchat.ui.incognito.IncognitoTlsDialogHost
 import ru.fromchat.ui.main.ConversationListDetailShell
 import ru.fromchat.ui.main.handleAppMenuShortcutKeyEvent
-import ru.fromchat.ui.components.provideSwitchHaptics
+import ru.fromchat.ui.release.ReleaseNotesDialog
+import ru.fromchat.ui.release.ReleaseNotesPrompt
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import ru.fromchat.ui.components.LocalPaneHazeState
+import ru.fromchat.ui.components.ScreenSurface
+import ru.fromchat.ui.main.chats.ChatsSearchScreen
 import ru.fromchat.ui.main.desktop.DesktopChatsDetailNavHost
 import ru.fromchat.ui.main.desktop.DesktopContactsDetailNavHost
 import ru.fromchat.ui.main.desktop.DesktopSettingsDetailNavHost
@@ -115,23 +118,20 @@ import ru.fromchat.ui.main.desktop.LocalDesktopSettingsNavController
 import ru.fromchat.ui.main.MAIN_PAGE_CHATS
 import ru.fromchat.ui.main.MAIN_PAGE_PROFILE
 import ru.fromchat.ui.main.MAIN_PAGE_SETTINGS
-import ru.fromchat.ui.main.nav.isCurrentMainDetailRoute
 import ru.fromchat.ui.main.MainScreen
-import ru.fromchat.ui.main.nav.NavTransitionMuting
-import ru.fromchat.ui.main.chats.ChatsSearchScreen
 import ru.fromchat.ui.main.nav.conversationDetailDestinations
+import ru.fromchat.ui.main.nav.isCurrentMainDetailRoute
 import ru.fromchat.ui.main.nav.mutedEnterTransition
 import ru.fromchat.ui.main.nav.mutedExitTransition
 import ru.fromchat.ui.main.nav.navigateReplacingMainDetail
+import ru.fromchat.ui.main.nav.NavTransitionMuting
 import ru.fromchat.ui.main.nav.profileDetailDestinations
-import ru.fromchat.ui.main.settings.SettingsRoutes
-import ru.fromchat.ui.main.settings.about.AboutDialogHost
-import ru.fromchat.ui.main.settings.about.LocalOpenAbout
-import ru.fromchat.ui.main.settings.about.isShowingAboutRoute
-import ru.fromchat.ui.main.settings.about.popAboutRouteIfShowing
 import ru.fromchat.ui.main.nav.settingsDetailDestinations
-import ru.fromchat.ui.components.LocalPaneHazeState
-import ru.fromchat.ui.components.ScreenSurface
+import ru.fromchat.ui.main.settings.about.AboutDialogHost
+import ru.fromchat.ui.main.settings.about.isShowingAboutRoute
+import ru.fromchat.ui.main.settings.about.LocalOpenAbout
+import ru.fromchat.ui.main.settings.about.popAboutRouteIfShowing
+import ru.fromchat.ui.main.settings.SettingsRoutes
 import ru.fromchat.ui.theme.FromChatTheme
 import ru.fromchat.ui.welcome.WelcomeScreen
 import dev.chrisbanes.haze.rememberHazeState
@@ -186,9 +186,8 @@ private fun handlePresenceTyping(type: String, data: JsonObject?) {
     }
 }
 
-private fun extractReason(data: JsonElement?): String? {
-    return data?.jsonObject?.get("reason")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
-}
+private fun extractReason(data: JsonElement?): String? =
+    data?.jsonObject?.get("reason")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
 
 private fun handleAccountLifecycleEvent(message: WebSocketMessage) {
     when (message.type) {

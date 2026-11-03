@@ -22,14 +22,13 @@ import io.ktor.client.plugins.ClientRequestException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import org.jetbrains.compose.resources.stringResource
-import ru.fromchat.logging.Logger
-import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.crypto.IdentityKeyManager
+import ru.fromchat.api.instance.apiBaseUrlFor
+import ru.fromchat.api.instance.isSslProtocolError
+import ru.fromchat.api.instance.probeServer
 import ru.fromchat.api.instance.ServerProbeResult
 import ru.fromchat.api.instance.takeLastIncognitoTlsProbeFailure
-import ru.fromchat.api.instance.apiBaseUrlFor
-import ru.fromchat.api.instance.probeServer
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.db.clearAccountCacheOnLogout
 import ru.fromchat.api.schema.core.ErrorResponse
@@ -37,27 +36,31 @@ import ru.fromchat.api.schema.user.auth.LoginResponse
 import ru.fromchat.api.schema.user.auth.RegisterConfirmRequest
 import ru.fromchat.api.schema.user.auth.SmartCaptchaParams
 import ru.fromchat.api.schema.user.auth.YandexOAuthParams
-import ru.fromchat.change_server
 import ru.fromchat.cancel
+import ru.fromchat.change_server
+import ru.fromchat.config.ServerConfigData
 import ru.fromchat.config.Settings
-import ru.fromchat.incognito.IncognitoMode
-import ru.fromchat.ui.incognito.IncognitoTlsDialogController
+import ru.fromchat.config.shouldWarnPublicCleartextHttp
 import ru.fromchat.incognito.findIncognitoMitmCertificateException
+import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.incognito.isIncognitoTlsCertificateError
-import ru.fromchat.api.instance.isSslProtocolError
-import ru.fromchat.ui.LocalNavController
+import ru.fromchat.logging.Logger
+import ru.fromchat.Res
 import ru.fromchat.ui.auth.captcha.SmartCaptchaLog
 import ru.fromchat.ui.auth.captcha.SmartCaptchaNav
 import ru.fromchat.ui.auth.register.confirmPasswordStepPage
 import ru.fromchat.ui.auth.register.profileStepPage
 import ru.fromchat.ui.auth.yandex.yandexIdStepPage
 import ru.fromchat.ui.components.ExpressiveStepFlowScaffold
-import ru.fromchat.ui.components.Text
-import ru.fromchat.ui.components.TextCta
 import ru.fromchat.ui.components.rememberExpressiveStepFlow
 import ru.fromchat.ui.components.showLoggedSnackbar
-import ru.fromchat.ui.theme.extraStatusBars
+import ru.fromchat.ui.components.Text
+import ru.fromchat.ui.components.TextCta
+import ru.fromchat.ui.incognito.IncognitoTlsDialogController
+import ru.fromchat.ui.incognito.PublicHttpConnectionBypass
+import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
+import ru.fromchat.ui.theme.extraStatusBars
 import kotlin.time.Duration.Companion.milliseconds
 
 private enum class AuthFlowStep {
@@ -95,8 +98,13 @@ internal sealed interface AuthServerProbeOutcome {
     data object Ok : AuthServerProbeOutcome
     data object Failed : AuthServerProbeOutcome
     data object TlsCertificateRejected : AuthServerProbeOutcome
+    data object PublicHttpUnencrypted : AuthServerProbeOutcome
     data class MitmCertificateDetected(val marker: String) : AuthServerProbeOutcome
 }
+
+private fun authProbeNeedsPublicHttpWarning(config: ServerConfigData): Boolean =
+    shouldWarnPublicCleartextHttp(config) &&
+        !PublicHttpConnectionBypass.isAllowed(config.serverIp)
 
 internal suspend fun probeCurrentServer(): Boolean =
     probeCurrentServerForAuth() is AuthServerProbeOutcome.Ok
@@ -124,7 +132,14 @@ internal suspend fun probeCurrentServerForAuth(): AuthServerProbeOutcome {
                     Logger.w(AUTH_SERVER_PROBE_TAG, "probe not supported: $result url=$apiBase")
             }
             val probeOutcome = when {
-                result is ServerProbeResult.Supported -> AuthServerProbeOutcome.Ok
+                result is ServerProbeResult.Supported -> {
+                    val effective = Settings.readServerConfig()
+                    when {
+                        authProbeNeedsPublicHttpWarning(effective) ->
+                            AuthServerProbeOutcome.PublicHttpUnencrypted
+                        else -> AuthServerProbeOutcome.Ok
+                    }
+                }
                 else -> {
                     val tlsFailure = takeLastIncognitoTlsProbeFailure()
                     when {
@@ -335,14 +350,19 @@ fun AuthScreen(
     var captchaToken by remember { mutableStateOf(AuthRegisterDraft.captchaToken) }
     var incognitoEnabled by remember { mutableStateOf(false) }
     var incognitoTlsBypassRetryNonce by remember { mutableStateOf(0) }
+    var publicHttpBypassRetryNonce by remember { mutableStateOf(0) }
     val navController = LocalNavController.current
 
     DisposableEffect(Unit) {
         IncognitoTlsDialogController.onBypassConfirmed = {
             incognitoTlsBypassRetryNonce++
         }
+        IncognitoTlsDialogController.onPublicHttpBypassConfirmed = {
+            publicHttpBypassRetryNonce++
+        }
         onDispose {
             IncognitoTlsDialogController.onBypassConfirmed = null
+            IncognitoTlsDialogController.onPublicHttpBypassConfirmed = null
         }
     }
 
@@ -537,6 +557,7 @@ fun AuthScreen(
                     incognitoEnabled = incognitoEnabled,
                     onIncognitoChange = { incognitoEnabled = it },
                     mitmBypassRetryNonce = incognitoTlsBypassRetryNonce,
+                    publicHttpBypassRetryNonce = publicHttpBypassRetryNonce,
                     onContinue = {
                         flowState.pagerState.animateScrollToPage(AuthFlowStep.Password.ordinal)
                     },
@@ -549,6 +570,11 @@ fun AuthScreen(
                     onMitmCertificateDetected = { marker ->
                         IncognitoTlsDialogController.presentMitm(
                             marker,
+                            Settings.serverConfig.serverIp,
+                        )
+                    },
+                    onPublicHttpWarning = {
+                        IncognitoTlsDialogController.presentPublicHttpWarning(
                             Settings.serverConfig.serverIp,
                         )
                     },
