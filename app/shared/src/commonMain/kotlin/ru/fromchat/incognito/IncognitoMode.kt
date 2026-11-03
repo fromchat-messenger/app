@@ -5,8 +5,8 @@ import ru.fromchat.config.ServerConfig
 import ru.fromchat.logging.AppLogStore
 import ru.fromchat.logging.FromChatLogDirs
 import ru.fromchat.logging.Logger
-import ru.fromchat.utils.files.PlatformFileSystem
 import ru.fromchat.utils.files.defaultAppDataRootForPlatform
+import ru.fromchat.utils.files.PlatformFileSystem
 
 private const val TAG = "IncognitoMode"
 
@@ -76,6 +76,7 @@ internal expect fun registerIncognitoLifecycleHooks()
 
 private fun purgePlaintextLogsUnderAppData() {
     val root = defaultAppDataRootForPlatform().replace('\\', '/').trimEnd('/')
-    val logFile = "$root/fromchat/logs/${FromChatLogDirs.CURRENT_LOG_FILE}"
-    PlatformFileSystem.deletePlaintextAppDataPath(logFile)
+    PlatformFileSystem.deletePlaintextAppDataPath(
+        "$root/fromchat/logs/${FromChatLogDirs.CURRENT_LOG_FILE}",
+    )
 }

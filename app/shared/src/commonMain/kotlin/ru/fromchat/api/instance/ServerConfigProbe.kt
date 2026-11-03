@@ -2,20 +2,20 @@ package ru.fromchat.api.instance
 
 import kotlinx.coroutines.withTimeout
 import ru.fromchat.api.ApiClient
-import ru.fromchat.api.local.WebSocketManager
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.db.clearAccountCacheOnLogout
 import ru.fromchat.api.local.db.store.InstanceRegistryStore
+import ru.fromchat.api.local.WebSocketManager
+import ru.fromchat.api.sync.ChatListSync
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.config.ServerConfigData
 import ru.fromchat.config.Settings
-import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.incognito.findIncognitoMitmCertificateException
-import ru.fromchat.ui.incognito.IncognitoTlsDialogController
-import ru.fromchat.ui.incognito.handleIncognitoHttpsTlsFailure
-import ru.fromchat.ui.incognito.isIncognitoHttpsTlsFailure
-import ru.fromchat.api.sync.ChatListSync
+import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.logging.Logger
+import ru.fromchat.ui.incognito.handleIncognitoHttpsTlsFailure
+import ru.fromchat.ui.incognito.IncognitoTlsDialogController
+import ru.fromchat.ui.incognito.isIncognitoHttpsTlsFailure
 import ru.fromchat.ui.main.settings.about.legal.DocumentRepository
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource

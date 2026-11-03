@@ -20,14 +20,14 @@ import androidx.compose.ui.window.WindowExceptionHandler
 import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.awt.ComposeWindow
+import ru.fromchat.api.local.db.isSqliteBusy
 import ru.fromchat.incognito.FROMCHAT_OFFICIAL_API_HOST
 import ru.fromchat.logging.Logger
-import ru.fromchat.api.local.db.isSqliteBusy
 import ru.fromchat.ui.incognito.IncognitoTlsDialogController
 import ru.fromchat.ui.theme.FromChatTheme
-import ru.fromchat.ui.theme.LocalExtraStatusBarTop
 import ru.fromchat.ui.theme.getColorScheme
 import ru.fromchat.ui.theme.isAppInDarkTheme
+import ru.fromchat.ui.theme.LocalExtraStatusBarTop
 import java.awt.image.BufferedImage
 
 internal fun desktopThemeBackgroundCompose(darkTheme: Boolean): Color =

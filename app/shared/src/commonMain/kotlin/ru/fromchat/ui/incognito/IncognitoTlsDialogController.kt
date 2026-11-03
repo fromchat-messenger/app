@@ -3,9 +3,9 @@ package ru.fromchat.ui.incognito
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import ru.fromchat.incognito.findIncognitoMitmCertificateException
 import ru.fromchat.incognito.FROMCHAT_OFFICIAL_API_HOST
 import ru.fromchat.incognito.IncognitoTlsHostBypass
-import ru.fromchat.incognito.findIncognitoMitmCertificateException
 import ru.fromchat.incognito.isIncognitoTlsCertificateError
 
 /** Global incognito TLS / MITM dialogs (Material), replacing platform error popups. */

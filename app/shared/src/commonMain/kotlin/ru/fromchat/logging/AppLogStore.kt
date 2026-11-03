@@ -1,6 +1,5 @@
 package ru.fromchat.logging
 
-import ru.fromchat.utils.files.PlatformFileSystem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,6 +14,7 @@ import kotlinx.datetime.atStartOfDayIn
 import kotlinx.coroutines.runBlocking
 import kotlin.time.Clock
 import kotlin.time.Instant
+import ru.fromchat.utils.files.PlatformFileSystem
 
 enum class LogCleanMode {
     Size,

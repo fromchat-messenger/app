@@ -2,11 +2,13 @@ package ru.fromchat.api.local.db.store
 
 import app.cash.sqldelight.db.SqlDriver
 import ru.fromchat.api.local.db.ensureMessageDatabaseSchema
-import ru.fromchat.api.local.db.rebindUnboundMigrationInstance
-import ru.fromchat.api.local.db.withMessageDatabaseLock
 import ru.fromchat.api.local.db.isSqliteBusy
 import ru.fromchat.api.local.db.MessageDatabaseConcurrency
+import ru.fromchat.api.local.db.rebindUnboundMigrationInstance
+import ru.fromchat.api.local.db.withMessageDatabaseLock
 import ru.fromchat.db.MessageDatabase
+import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.incognito.MessageDatabaseIncognito
 
 /**
  * Platform-agnostic access to the SQLDelight [MessageDatabase].
@@ -78,9 +80,9 @@ object MessageDatabaseProvider {
         driver?.let { return it }
         return provideMessageDatabaseDriver().also { opened ->
             ensureMessageDatabaseSchema(opened)
-            if (ru.fromchat.incognito.IncognitoMode.active && !incognitoHydratedFromVolume) {
+            if (IncognitoMode.active && !incognitoHydratedFromVolume) {
                 incognitoHydratedFromVolume = true
-                ru.fromchat.incognito.MessageDatabaseIncognito.hydrateDriverFromVolume(opened)
+                MessageDatabaseIncognito.hydrateDriverFromVolume(opened)
             }
             driver = opened
         }

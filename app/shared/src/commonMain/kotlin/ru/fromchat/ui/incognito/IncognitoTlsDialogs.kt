@@ -9,13 +9,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.stringResource
-import ru.fromchat.Res
 import ru.fromchat.cancel
 import ru.fromchat.incognito_connect_anyway
 import ru.fromchat.incognito_mitm_certificate_warning_body
 import ru.fromchat.incognito_mitm_certificate_warning_title
 import ru.fromchat.incognito_tls_certificate_error_body
 import ru.fromchat.incognito_tls_certificate_error_title
+import ru.fromchat.Res
 import ru.fromchat.ui.components.ExpressiveIconFrame
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.TextCta

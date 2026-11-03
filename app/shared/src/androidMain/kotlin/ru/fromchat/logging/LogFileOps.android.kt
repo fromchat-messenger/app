@@ -45,10 +45,9 @@ internal actual object LogFileOps {
         destinationPath: String,
         onProgress: (Float) -> Unit,
     ) = withContext(Dispatchers.IO) {
-        val bytes = gunzipToByteArray(sourcePath, onProgress)
         val dest = File(destinationPath)
         dest.parentFile?.mkdirs()
-        dest.writeBytes(bytes)
+        dest.writeBytes(gunzipToByteArray(sourcePath, onProgress))
     }
 
     actual suspend fun zipFiles(
