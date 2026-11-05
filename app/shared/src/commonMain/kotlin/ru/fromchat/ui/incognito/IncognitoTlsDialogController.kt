@@ -3,10 +3,11 @@ package ru.fromchat.ui.incognito
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import ru.fromchat.incognito.findIncognitoMitmCertificateException
 import ru.fromchat.incognito.FROMCHAT_OFFICIAL_API_HOST
 import ru.fromchat.incognito.IncognitoTlsHostBypass
+import ru.fromchat.incognito.findIncognitoMitmCertificateException
 import ru.fromchat.incognito.isIncognitoTlsCertificateError
+import ru.fromchat.incognito.normalizeTlsHost
 
 /** Global incognito TLS / MITM dialogs (Material), replacing platform error popups. */
 object IncognitoTlsDialogController {
@@ -85,5 +86,21 @@ object IncognitoTlsDialogController {
             return true
         }
         return false
+    }
+}
+
+/** Session-scoped acknowledgment for cleartext HTTP to a public host (auth / server apply). */
+object PublicHttpConnectionBypass {
+    private val allowedHosts = mutableSetOf<String>()
+
+    fun allowHost(host: String) {
+        val normalized = normalizeTlsHost(host)
+        if (normalized.isNotEmpty()) allowedHosts.add(normalized)
+    }
+
+    fun isAllowed(host: String): Boolean = allowedHosts.contains(normalizeTlsHost(host))
+
+    fun clear() {
+        allowedHosts.clear()
     }
 }

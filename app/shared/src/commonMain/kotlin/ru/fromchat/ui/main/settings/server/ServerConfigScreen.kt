@@ -194,11 +194,11 @@ fun ServerConfigScreen(
         IncognitoTlsDialogController.presentFromThrowable(e, host, https)
 
     fun warnPublicHttpIfNeeded(config: ServerConfigData, onProceed: () -> Unit): Boolean {
-        if (!shouldWarnPublicCleartextHttp(config) || PublicHttpConnectionBypass.isAllowed(config.serverIp)) {
-            return false
+        if (shouldWarnPublicCleartextHttp(config) && !PublicHttpConnectionBypass.isAllowed(config.serverIp)) {
+            IncognitoTlsDialogController.presentPublicHttpWarning(config.serverIp, onProceed)
+            return true
         }
-        IncognitoTlsDialogController.presentPublicHttpWarning(config.serverIp, onProceed)
-        return true
+        return false
     }
 
     suspend fun applySupportedServerProbe(
@@ -259,6 +259,13 @@ fun ServerConfigScreen(
 
     fun verifyServer() {
         scope.launch {
+            suspend fun supportedProbeSnackbarMessage(probe: ServerProbeResult.Supported): String =
+                if (probe.callsOk) {
+                    getString(Res.string.server_config_snackbar_ok_calls, probe.pingMs)
+                } else {
+                    getString(Res.string.server_config_snackbar_ok_calls_skip, probe.pingMs)
+                }
+
             launch { snackbarHostState.showSnackbar(strChecking) }
             val parsed = buildTentativeFromParsed()
             if (parsed == null) {
@@ -286,21 +293,12 @@ fun ServerConfigScreen(
                 is ServerProbeResult.Supported -> {
                     if (warnPublicHttpIfNeeded(tentative) {
                         scope.launch {
-                            val okMsg = if (probe.callsOk) {
-                                getString(Res.string.server_config_snackbar_ok_calls, probe.pingMs)
-                            } else {
-                                getString(Res.string.server_config_snackbar_ok_calls_skip, probe.pingMs)
-                            }
-                            snackbarHostState.showSnackbar(okMsg)
+                            snackbarHostState.showSnackbar(supportedProbeSnackbarMessage(probe))
                         }
                     }) {
                         return@launch
                     }
-                    if (probe.callsOk) {
-                        getString(Res.string.server_config_snackbar_ok_calls, probe.pingMs)
-                    } else {
-                        getString(Res.string.server_config_snackbar_ok_calls_skip, probe.pingMs)
-                    }
+                    supportedProbeSnackbarMessage(probe)
                 }
                 ServerProbeResult.Unsupported -> strUnsupportedInstance
                 ServerProbeResult.Timeout -> strSnackbarTimeout
@@ -430,29 +428,29 @@ fun ServerConfigScreen(
             },
             topBar = {
                 TopAppBar(
-                        windowInsets = settingsDetailWindowInsets(),
-                        title = {},
-                        navigationIcon = {
-                            if (settingsDetailShowBackButton()) {
-                                ChromeBackIconButton(onClick = navController::navigateUp)
-                            }
+                    windowInsets = settingsDetailWindowInsets(),
+                    title = {},
+                    navigationIcon = {
+                        if (settingsDetailShowBackButton()) {
+                            ChromeBackIconButton(onClick = navController::navigateUp)
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        scrolledContainerColor = Color.Transparent,
+                    ),
+                    modifier = Modifier.hazeBlur(
+                        input = HazeInput.Backdrop(actionHazeState),
+                        style = HazeMaterials.thin().then {
+                            progressive(
+                                HazeProgressive.verticalGradient(
+                                    startIntensity = 1f,
+                                    endIntensity = 0f,
+                                ),
+                            )
                         },
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = Color.Transparent,
-                            scrolledContainerColor = Color.Transparent,
-                        ),
-                        modifier = Modifier.hazeBlur(
-                            input = HazeInput.Backdrop(actionHazeState),
-                            style = HazeMaterials.thin().then {
-                                progressive(
-                                    HazeProgressive.verticalGradient(
-                                        startIntensity = 1f,
-                                        endIntensity = 0f,
-                                    ),
-                                )
-                            },
-                        ),
-                    )
+                    ),
+                )
             }
         ) { innerPadding ->
             val floatingHeaderClearance = WindowInsets.extraStatusBars.getTop(density).toDp(density) + 68.dp
