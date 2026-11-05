@@ -11,6 +11,8 @@ import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.cancel
 import ru.fromchat.incognito_connect_anyway
+import ru.fromchat.public_http_warning_body
+import ru.fromchat.public_http_warning_title
 import ru.fromchat.incognito_mitm_certificate_warning_body
 import ru.fromchat.incognito_mitm_certificate_warning_title
 import ru.fromchat.incognito_tls_certificate_error_body
@@ -47,6 +49,34 @@ fun IncognitoTlsDialogHost() {
             },
             confirmButton = {
                 TextCta(onClick = { controller.confirmBypass() }) {
+                    Text(stringResource(Res.string.incognito_connect_anyway))
+                }
+            },
+        )
+    }
+
+    if (controller.showPublicHttpDialog) {
+        AlertDialog(
+            onDismissRequest = { controller.dismissPublicHttp() },
+            icon = {
+                ExpressiveIconFrame(
+                    icon = Icons.Rounded.Shield,
+                    containerSize = 56.dp,
+                    iconSize = 28.dp,
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    materialPolygon = MaterialShapes.SoftBurst,
+                )
+            },
+            title = { Text(stringResource(Res.string.public_http_warning_title)) },
+            text = { Text(stringResource(Res.string.public_http_warning_body)) },
+            dismissButton = {
+                TextCta(onClick = { controller.dismissPublicHttp() }) {
+                    Text(stringResource(Res.string.cancel))
+                }
+            },
+            confirmButton = {
+                TextCta(onClick = { controller.confirmPublicHttpBypass() }) {
                     Text(stringResource(Res.string.incognito_connect_anyway))
                 }
             },

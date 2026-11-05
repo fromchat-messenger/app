@@ -84,10 +84,12 @@ internal fun usernameStepPage(
     incognitoEnabled: Boolean,
     onIncognitoChange: (Boolean) -> Unit,
     mitmBypassRetryNonce: Int,
+    publicHttpBypassRetryNonce: Int,
     onContinue: suspend () -> Unit,
     onSnackbar: (String, Throwable?) -> Unit,
     onTlsCertificateRejected: () -> Unit,
     onMitmCertificateDetected: (String) -> Unit,
+    onPublicHttpWarning: () -> Unit,
 ): ExpressiveStepPage {
     val scope = rememberCoroutineScope()
     val colorScheme = MaterialTheme.colorScheme
@@ -137,6 +139,9 @@ internal fun usernameStepPage(
                     AuthServerProbeOutcome.TlsCertificateRejected -> {
                         onTlsCertificateRejected()
                     }
+                    AuthServerProbeOutcome.PublicHttpUnencrypted -> {
+                        onPublicHttpWarning()
+                    }
                     AuthServerProbeOutcome.Failed -> {
                         Logger.w(USERNAME_STEP_TAG, "submit aborted: server probe failed username=$trimmed")
                         onSnackbar(serverFail, null)
@@ -183,6 +188,12 @@ internal fun usernameStepPage(
 
     LaunchedEffect(mitmBypassRetryNonce) {
         if (mitmBypassRetryNonce > 0) {
+            attemptSubmit()
+        }
+    }
+
+    LaunchedEffect(publicHttpBypassRetryNonce) {
+        if (publicHttpBypassRetryNonce > 0) {
             attemptSubmit()
         }
     }

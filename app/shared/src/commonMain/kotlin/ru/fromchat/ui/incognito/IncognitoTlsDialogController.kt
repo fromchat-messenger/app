@@ -16,10 +16,15 @@ object IncognitoTlsDialogController {
         private set
     var showTlsDialog by mutableStateOf(false)
         private set
+    var showPublicHttpDialog by mutableStateOf(false)
+        private set
     var bypassHost by mutableStateOf("")
         private set
 
     var onBypassConfirmed: (() -> Unit)? = null
+    var onPublicHttpBypassConfirmed: (() -> Unit)? = null
+
+    private var pendingPublicHttpAction: (() -> Unit)? = null
 
     fun presentMitm(marker: String, host: String) {
         mitmMarker = marker
@@ -38,6 +43,26 @@ object IncognitoTlsDialogController {
 
     fun dismissTls() {
         showTlsDialog = false
+    }
+
+    fun presentPublicHttpWarning(host: String, onConfirmed: (() -> Unit)? = null) {
+        bypassHost = host
+        pendingPublicHttpAction = onConfirmed
+        showPublicHttpDialog = true
+    }
+
+    fun dismissPublicHttp() {
+        showPublicHttpDialog = false
+        pendingPublicHttpAction = null
+    }
+
+    fun confirmPublicHttpBypass() {
+        showPublicHttpDialog = false
+        val host = bypassHost.trim().ifEmpty { FROMCHAT_OFFICIAL_API_HOST }
+        PublicHttpConnectionBypass.allowHost(host)
+        pendingPublicHttpAction?.invoke()
+        pendingPublicHttpAction = null
+        onPublicHttpBypassConfirmed?.invoke()
     }
 
     fun confirmBypass() {

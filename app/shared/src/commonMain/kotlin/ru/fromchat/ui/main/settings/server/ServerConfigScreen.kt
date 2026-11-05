@@ -90,6 +90,7 @@ import ru.fromchat.back
 import ru.fromchat.cancel
 import ru.fromchat.config.ServerConfigData
 import ru.fromchat.config.Settings
+import ru.fromchat.config.shouldWarnPublicCleartextHttp
 import ru.fromchat.confirm
 import ru.fromchat.incognito.IncognitoTlsHostBypass
 import ru.fromchat.Res
@@ -121,6 +122,7 @@ import ru.fromchat.ui.components.rememberLazyListFocusScrollState
 import ru.fromchat.ui.components.SettingsPasswordOutlineFieldShape
 import ru.fromchat.ui.components.trackLazyListFocus
 import ru.fromchat.ui.incognito.IncognitoTlsDialogController
+import ru.fromchat.ui.incognito.PublicHttpConnectionBypass
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.main.settings.settingsDetailShowBackButton
 import ru.fromchat.ui.main.settings.settingsDetailWindowInsets
@@ -191,6 +193,48 @@ fun ServerConfigScreen(
     fun handleIncognitoProbeFailure(e: Throwable, host: String, https: Boolean): Boolean =
         IncognitoTlsDialogController.presentFromThrowable(e, host, https)
 
+    fun warnPublicHttpIfNeeded(config: ServerConfigData, onProceed: () -> Unit): Boolean {
+        if (!shouldWarnPublicCleartextHttp(config) || PublicHttpConnectionBypass.isAllowed(config.serverIp)) {
+            return false
+        }
+        IncognitoTlsDialogController.presentPublicHttpWarning(config.serverIp, onProceed)
+        return true
+    }
+
+    suspend fun applySupportedServerProbe(
+        probe: ServerProbeResult.Supported,
+        tentative: ServerConfigData,
+    ) {
+        when (
+            applyServerAndNavigate(
+                probe = probe,
+                config = tentative,
+                bearer = ApiClient.token?.trim().orEmpty(),
+                onNavigateLogin = {
+                    withContext(Dispatchers.Main) {
+                        rootNavController.navigateAndWipeBackStack("auth")
+                    }
+                },
+                onNavigateChat = {
+                    withContext(Dispatchers.Main) {
+                        if (!navController.popBackStack()) {
+                            rootNavController.navigate("chat") {
+                                popUpTo("welcome") {
+                                    inclusive = true
+                                }
+                            }
+                        }
+                    }
+                },
+            )
+        ) {
+            ApplyServerResult.Applied -> Unit
+            ApplyServerResult.ServerUnreachable -> {
+                snackbarHostState.showSnackbar(strSnackbarApiFail)
+            }
+        }
+    }
+
     suspend fun runServerEndpointProbe(parsed: ParsedServerEndpoint): Pair<ServerConfigData, ServerProbeResult> =
         runCatching {
             probeServerEndpoint(
@@ -240,6 +284,18 @@ fun ServerConfigScreen(
             }
             val msg = when (probe) {
                 is ServerProbeResult.Supported -> {
+                    if (warnPublicHttpIfNeeded(tentative) {
+                        scope.launch {
+                            val okMsg = if (probe.callsOk) {
+                                getString(Res.string.server_config_snackbar_ok_calls, probe.pingMs)
+                            } else {
+                                getString(Res.string.server_config_snackbar_ok_calls_skip, probe.pingMs)
+                            }
+                            snackbarHostState.showSnackbar(okMsg)
+                        }
+                    }) {
+                        return@launch
+                    }
                     if (probe.callsOk) {
                         getString(Res.string.server_config_snackbar_ok_calls, probe.pingMs)
                     } else {
@@ -327,9 +383,13 @@ fun ServerConfigScreen(
                                     return@launch
                                 }
 
-                                if (IncognitoTlsDialogController.showMitmDialog || IncognitoTlsDialogController.showTlsDialog) {
-                return@launch
-            }
+                                if (
+                                    IncognitoTlsDialogController.showMitmDialog ||
+                                    IncognitoTlsDialogController.showTlsDialog ||
+                                    IncognitoTlsDialogController.showPublicHttpDialog
+                                ) {
+                                    return@launch
+                                }
 
                                 when (probe) {
                                     ServerProbeResult.Unsupported -> {
@@ -347,34 +407,14 @@ fun ServerConfigScreen(
                                     }
 
                                     is ServerProbeResult.Supported -> {
-                                        when (
-                                            applyServerAndNavigate(
-                                                probe = probe,
-                                                config = tentative,
-                                                bearer = ApiClient.token?.trim().orEmpty(),
-                                                onNavigateLogin = {
-                                                    withContext(Dispatchers.Main) {
-                                                        rootNavController.navigateAndWipeBackStack("auth")
-                                                    }
-                                                },
-                                                onNavigateChat = {
-                                                    withContext(Dispatchers.Main) {
-                                                        if (!navController.popBackStack()) {
-                                                            rootNavController.navigate("chat") {
-                                                                popUpTo("welcome") {
-                                                                    inclusive = true
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                },
-                                            )
-                                        ) {
-                                            ApplyServerResult.Applied -> Unit
-                                            ApplyServerResult.ServerUnreachable -> {
-                                                snackbarHostState.showSnackbar(strSnackbarApiFail)
+                                        if (warnPublicHttpIfNeeded(tentative) {
+                                            scope.launch {
+                                                applySupportedServerProbe(probe, tentative)
                                             }
+                                        }) {
+                                            return@launch
                                         }
+                                        applySupportedServerProbe(probe, tentative)
                                     }
                                 }
                             } finally {

@@ -140,7 +140,8 @@ suspend fun probeServerEndpoint(
     val schemeAttempts = when {
         schemeExplicit -> listOf(httpsPreferred)
         IncognitoMode.active -> listOf(true)
-        else -> listOf(true, false)
+        httpsPreferred -> listOf(true, false)
+        else -> listOf(false)
     }
     schemeAttempts.apply {
         forEachIndexed { index, https ->
