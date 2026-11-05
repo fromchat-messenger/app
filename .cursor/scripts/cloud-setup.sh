@@ -28,6 +28,7 @@ missing_pkgs=()
 for tool in curl unzip git; do
   command -v "$tool" >/dev/null 2>&1 || missing_pkgs+=("$tool")
 done
+command -v inotifywait >/dev/null 2>&1 || missing_pkgs+=("inotify-tools")
 command -v java >/dev/null 2>&1 || missing_pkgs+=("openjdk-21-jdk")
 if [ "${#missing_pkgs[@]}" -gt 0 ]; then
   log "Installing missing base packages: ${missing_pkgs[*]}"

@@ -2,11 +2,13 @@ package ru.fromchat.api.local.db.store
 
 import app.cash.sqldelight.db.SqlDriver
 import ru.fromchat.api.local.db.ensureMessageDatabaseSchema
-import ru.fromchat.api.local.db.rebindUnboundMigrationInstance
-import ru.fromchat.api.local.db.withMessageDatabaseLock
 import ru.fromchat.api.local.db.isSqliteBusy
 import ru.fromchat.api.local.db.MessageDatabaseConcurrency
+import ru.fromchat.api.local.db.rebindUnboundMigrationInstance
+import ru.fromchat.api.local.db.withMessageDatabaseLock
 import ru.fromchat.db.MessageDatabase
+import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.incognito.MessageDatabaseIncognito
 
 /**
  * Platform-agnostic access to the SQLDelight [MessageDatabase].
@@ -16,11 +18,15 @@ expect fun provideMessageDatabaseDriver(): SqlDriver
 object MessageDatabaseProvider {
     private var driver: SqlDriver? = null
     private var databaseHolder: MessageDatabase? = null
+    private var incognitoHydratedFromVolume = false
 
     val database: MessageDatabase
         get() = withMessageDatabaseLock {
             databaseHolder ?: MessageDatabase(openDriverLocked()).also { databaseHolder = it }
         }
+
+    internal fun <T> withOpenDriver(block: (SqlDriver) -> T): T =
+        withMessageDatabaseLock { block(openDriverLocked()) }
 
     /**
      * Closes the open SQLite connection. Required before deleting `cacheDir/fromchat/`
@@ -31,6 +37,7 @@ object MessageDatabaseProvider {
             databaseHolder = null
             runCatching { driver?.close() }
             driver = null
+            incognitoHydratedFromVolume = false
         }
     }
 
@@ -71,9 +78,13 @@ object MessageDatabaseProvider {
     /** Caller must hold the message-database lock via [withMessageDatabaseLock]. */
     private fun openDriverLocked(): SqlDriver {
         driver?.let { return it }
-        return provideMessageDatabaseDriver().also {
-            ensureMessageDatabaseSchema(it)
-            driver = it
+        return provideMessageDatabaseDriver().also { opened ->
+            ensureMessageDatabaseSchema(opened)
+            if (IncognitoMode.active && !incognitoHydratedFromVolume) {
+                incognitoHydratedFromVolume = true
+                MessageDatabaseIncognito.hydrateDriverFromVolume(opened)
+            }
+            driver = opened
         }
     }
 }

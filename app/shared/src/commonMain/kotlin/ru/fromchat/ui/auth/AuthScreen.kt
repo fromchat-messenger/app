@@ -22,13 +22,13 @@ import io.ktor.client.plugins.ClientRequestException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import org.jetbrains.compose.resources.stringResource
-import ru.fromchat.logging.Logger
-import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.crypto.IdentityKeyManager
-import ru.fromchat.api.instance.ServerProbeResult
 import ru.fromchat.api.instance.apiBaseUrlFor
+import ru.fromchat.api.instance.isSslProtocolError
 import ru.fromchat.api.instance.probeServer
+import ru.fromchat.api.instance.ServerProbeResult
+import ru.fromchat.api.instance.takeLastIncognitoTlsProbeFailure
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.db.clearAccountCacheOnLogout
 import ru.fromchat.api.schema.core.ErrorResponse
@@ -36,21 +36,31 @@ import ru.fromchat.api.schema.user.auth.LoginResponse
 import ru.fromchat.api.schema.user.auth.RegisterConfirmRequest
 import ru.fromchat.api.schema.user.auth.SmartCaptchaParams
 import ru.fromchat.api.schema.user.auth.YandexOAuthParams
+import ru.fromchat.cancel
 import ru.fromchat.change_server
+import ru.fromchat.config.ServerConfigData
 import ru.fromchat.config.Settings
-import ru.fromchat.ui.LocalNavController
+import ru.fromchat.config.shouldWarnPublicCleartextHttp
+import ru.fromchat.incognito.findIncognitoMitmCertificateException
+import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.incognito.isIncognitoTlsCertificateError
+import ru.fromchat.logging.Logger
+import ru.fromchat.Res
 import ru.fromchat.ui.auth.captcha.SmartCaptchaLog
 import ru.fromchat.ui.auth.captcha.SmartCaptchaNav
 import ru.fromchat.ui.auth.register.confirmPasswordStepPage
 import ru.fromchat.ui.auth.register.profileStepPage
 import ru.fromchat.ui.auth.yandex.yandexIdStepPage
 import ru.fromchat.ui.components.ExpressiveStepFlowScaffold
-import ru.fromchat.ui.components.Text
-import ru.fromchat.ui.components.TextCta
 import ru.fromchat.ui.components.rememberExpressiveStepFlow
 import ru.fromchat.ui.components.showLoggedSnackbar
-import ru.fromchat.ui.theme.extraStatusBars
+import ru.fromchat.ui.components.Text
+import ru.fromchat.ui.components.TextCta
+import ru.fromchat.ui.incognito.IncognitoTlsDialogController
+import ru.fromchat.ui.incognito.PublicHttpConnectionBypass
+import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
+import ru.fromchat.ui.theme.extraStatusBars
 import kotlin.time.Duration.Companion.milliseconds
 
 private enum class AuthFlowStep {
@@ -84,13 +94,29 @@ private const val AUTH_SERVER_PROBE_TAG = "AuthServerProbe"
 /** Must cover HTTPS→HTTP fallback plus `/instance_id` (up to 10s per attempt). */
 private const val AUTH_SERVER_PROBE_TIMEOUT_MS = 25_000L
 
-internal suspend fun probeCurrentServer(): Boolean {
+internal sealed interface AuthServerProbeOutcome {
+    data object Ok : AuthServerProbeOutcome
+    data object Failed : AuthServerProbeOutcome
+    data object TlsCertificateRejected : AuthServerProbeOutcome
+    data object PublicHttpUnencrypted : AuthServerProbeOutcome
+    data class MitmCertificateDetected(val marker: String) : AuthServerProbeOutcome
+}
+
+private fun authProbeNeedsPublicHttpWarning(config: ServerConfigData): Boolean =
+    shouldWarnPublicCleartextHttp(config) &&
+        !PublicHttpConnectionBypass.isAllowed(config.serverIp)
+
+internal suspend fun probeCurrentServer(): Boolean =
+    probeCurrentServerForAuth() is AuthServerProbeOutcome.Ok
+
+internal suspend fun probeCurrentServerForAuth(): AuthServerProbeOutcome {
     val config = Settings.readServerConfig()
     val apiBase = apiBaseUrlFor(config)
+    takeLastIncognitoTlsProbeFailure()
     Logger.i(
         AUTH_SERVER_PROBE_TAG,
         "probe start storedHost=${config.serverIp} apiPort=${config.apiPort} " +
-            "https=${config.httpsEnabled} url=$apiBase",
+            "https=${config.httpsEnabled} incognito=${IncognitoMode.active} url=$apiBase",
     )
     return runCatching {
         withTimeout(AUTH_SERVER_PROBE_TIMEOUT_MS.milliseconds) {
@@ -105,7 +131,36 @@ internal suspend fun probeCurrentServer(): Boolean {
                 else ->
                     Logger.w(AUTH_SERVER_PROBE_TAG, "probe not supported: $result url=$apiBase")
             }
-            result is ServerProbeResult.Supported
+            val probeOutcome = when {
+                result is ServerProbeResult.Supported -> {
+                    val effective = Settings.readServerConfig()
+                    when {
+                        authProbeNeedsPublicHttpWarning(effective) ->
+                            AuthServerProbeOutcome.PublicHttpUnencrypted
+                        else -> AuthServerProbeOutcome.Ok
+                    }
+                }
+                else -> {
+                    val tlsFailure = takeLastIncognitoTlsProbeFailure()
+                    when {
+                        tlsFailure != null -> {
+                            findIncognitoMitmCertificateException(tlsFailure)?.let { mitm ->
+                                AuthServerProbeOutcome.MitmCertificateDetected(mitm.matchedMarker)
+                            } ?: if (
+                                IncognitoMode.active &&
+                                config.httpsEnabled &&
+                                isIncognitoTlsCertificateError(tlsFailure)
+                            ) {
+                                AuthServerProbeOutcome.TlsCertificateRejected
+                            } else {
+                                AuthServerProbeOutcome.Failed
+                            }
+                        }
+                        else -> AuthServerProbeOutcome.Failed
+                    }
+                }
+            }
+            probeOutcome
         }
     }.getOrElse { e ->
         Logger.w(
@@ -113,7 +168,16 @@ internal suspend fun probeCurrentServer(): Boolean {
             "probe failed within ${AUTH_SERVER_PROBE_TIMEOUT_MS}ms url=$apiBase",
             e,
         )
-        false
+        findIncognitoMitmCertificateException(e)?.let { mitm ->
+            return AuthServerProbeOutcome.MitmCertificateDetected(mitm.matchedMarker)
+        }
+        when {
+            IncognitoMode.active &&
+                config.httpsEnabled &&
+                isIncognitoTlsCertificateError(e) ->
+                AuthServerProbeOutcome.TlsCertificateRejected
+            else -> AuthServerProbeOutcome.Failed
+        }
     }
 }
 
@@ -284,7 +348,23 @@ fun AuthScreen(
     var captchaParams by remember { mutableStateOf(AuthRegisterDraft.captchaParams) }
     var registrationProof by remember { mutableStateOf(AuthRegisterDraft.registrationProof) }
     var captchaToken by remember { mutableStateOf(AuthRegisterDraft.captchaToken) }
+    var incognitoEnabled by remember { mutableStateOf(false) }
+    var incognitoTlsBypassRetryNonce by remember { mutableStateOf(0) }
+    var publicHttpBypassRetryNonce by remember { mutableStateOf(0) }
     val navController = LocalNavController.current
+
+    DisposableEffect(Unit) {
+        IncognitoTlsDialogController.onBypassConfirmed = {
+            incognitoTlsBypassRetryNonce++
+        }
+        IncognitoTlsDialogController.onPublicHttpBypassConfirmed = {
+            publicHttpBypassRetryNonce++
+        }
+        onDispose {
+            IncognitoTlsDialogController.onBypassConfirmed = null
+            IncognitoTlsDialogController.onPublicHttpBypassConfirmed = null
+        }
+    }
 
     fun persistDraft() {
         AuthRegisterDraft.username = username
@@ -317,6 +397,7 @@ fun AuthScreen(
 
     val wrappedBackToWelcome: () -> Unit = {
         AuthRegisterDraft.clear()
+        IncognitoMode.destroy()
         onBackToWelcome()
     }
 
@@ -473,10 +554,30 @@ fun AuthScreen(
                 usernameStepPage(
                     username = username,
                     onUsernameChange = { username = it },
+                    incognitoEnabled = incognitoEnabled,
+                    onIncognitoChange = { incognitoEnabled = it },
+                    mitmBypassRetryNonce = incognitoTlsBypassRetryNonce,
+                    publicHttpBypassRetryNonce = publicHttpBypassRetryNonce,
                     onContinue = {
                         flowState.pagerState.animateScrollToPage(AuthFlowStep.Password.ordinal)
                     },
                     onSnackbar = ::snackbar,
+                    onTlsCertificateRejected = {
+                        IncognitoTlsDialogController.presentTlsCertificateRejected(
+                            Settings.serverConfig.serverIp,
+                        )
+                    },
+                    onMitmCertificateDetected = { marker ->
+                        IncognitoTlsDialogController.presentMitm(
+                            marker,
+                            Settings.serverConfig.serverIp,
+                        )
+                    },
+                    onPublicHttpWarning = {
+                        IncognitoTlsDialogController.presentPublicHttpWarning(
+                            Settings.serverConfig.serverIp,
+                        )
+                    },
                 ),
                 passwordStepPage(
                     username = username,

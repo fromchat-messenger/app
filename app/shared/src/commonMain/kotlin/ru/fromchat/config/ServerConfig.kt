@@ -19,6 +19,11 @@ object ServerConfig {
      * Initialize configuration by loading from storage
      */
     fun initialize() {
+        reloadFromSettings()
+    }
+
+    /** Reload in-memory config after incognito toggles settings routing. */
+    fun reloadFromSettings() {
         _serverConfig.value = Settings.serverConfig
     }
 

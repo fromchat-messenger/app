@@ -82,6 +82,16 @@
     <string name="hide_password">Hide password</string>
     <string name="auth_char_count">%1$d/%2$d</string>
     <string name="auth_step_username_title">Enter your username</string>
+    <string name="auth_incognito_mode_title">Incognito mode</string>
+    <string name="auth_incognito_mode_summary">Session data stays in an encrypted folder and is erased when you quit. For api.fromchat.ru, HTTPS trusts only Let\u2019s Encrypt; other servers use normal certificates but known interception proxies are blocked unless you bypass the warning.</string>
+    <string name="auth_incognito_enabled_snackbar">Incognito mode is on for this session.</string>
+    <string name="incognito_tls_certificate_error_title">Cannot connect safely</string>
+    <string name="incognito_tls_certificate_error_body">api.fromchat.ru must present a certificate chained to Let\u2019s Encrypt. The connection was blocked.</string>
+    <string name="incognito_mitm_certificate_warning_title">Suspicious certificate</string>
+    <string name="incognito_mitm_certificate_warning_body">The server certificate looks like a network interception device (%1$s). Connecting may expose your traffic. Continue anyway?</string>
+    <string name="incognito_connect_anyway">Connect anyway</string>
+    <string name="public_http_warning_title">Unencrypted connection</string>
+    <string name="public_http_warning_body">This server uses HTTP, which is unencrypted and potentially unsafe. Traffic may be intercepted or modified by anyone between you and this server (like your ISP or the server\u2019s hosting).</string>
     <string name="auth_step_username_body">This is your login. It helps us tell you apart from everyone else.</string>
     <string name="auth_step_profile_title">Create your profile</string>
     <string name="auth_step_profile_body">Enter your display name and, if you like, a few words about yourself.</string>

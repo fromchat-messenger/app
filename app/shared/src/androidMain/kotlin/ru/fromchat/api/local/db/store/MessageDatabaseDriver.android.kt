@@ -3,19 +3,28 @@ package ru.fromchat.api.local.db.store
 import androidx.sqlite.db.SupportSQLiteDatabase
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
-import ru.fromchat.utils.UtilsLibrary
 import ru.fromchat.db.MessageDatabase
+import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.utils.files.PlatformFileSystem
+import ru.fromchat.utils.UtilsLibrary
 import java.io.File
 
 actual fun provideMessageDatabaseDriver(): SqlDriver {
     val context = UtilsLibrary.context
-    val fromchatDir = File(context.cacheDir, "fromchat").apply { mkdirs() }
-    val dbFile = File(fromchatDir, "message_database.db")
+    if (IncognitoMode.active) {
+        return AndroidSqliteDriver(
+            schema = MessageDatabase.Schema,
+            context = context,
+            name = ":memory:",
+            callback = DiffOnlyDatabaseCallback(),
+        )
+    }
+    val fromchatDir = File(PlatformFileSystem.getAppCacheDirectory(), "fromchat").apply { mkdirs() }
     removeLegacyDatabaseFiles(context.getDatabasePath("message_database.db"))
     return AndroidSqliteDriver(
         schema = MessageDatabase.Schema,
         context = context,
-        name = dbFile.absolutePath,
+        name = File(fromchatDir, "message_database.db").absolutePath,
         callback = DiffOnlyDatabaseCallback(),
     )
 }
