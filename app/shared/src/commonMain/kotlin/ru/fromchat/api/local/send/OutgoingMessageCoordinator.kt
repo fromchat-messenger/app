@@ -29,6 +29,10 @@ import ru.fromchat.api.local.cache.clearUploadArtifacts
 import ru.fromchat.api.local.cache.clearUploadSecretsOnly
 import ru.fromchat.api.local.AttachmentMediaLog
 import ru.fromchat.logging.Logger
+import ru.fromchat.api.ENCRYPTION_MODE_VERSION_STALE
+import ru.fromchat.api.WRONG_ENCRYPTION_MODE
+import ru.fromchat.api.encryptionPolicyConflictOrNull
+import ru.fromchat.api.instance.InstanceEncryptionStore
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
@@ -142,6 +146,14 @@ object OutgoingMessageCoordinator {
         instanceId: String,
         row: ru.fromchat.db.Outbox,
     ): Boolean {
+        if (InstanceEncryptionStore.requiresSendAcknowledgement()) {
+            markOutboundPaused(row.clientMessageId)
+            return false
+        }
+        val delayMs = InstanceEncryptionStore.debugOutboundDelayMs
+        if (delayMs > 0L) {
+            delay(delayMs.milliseconds)
+        }
         val sendResult = runCatching {
             val payload = json.decodeFromString<DmOutboxPayload>(row.payloadJson)
             ApiClient.sendDm(
@@ -160,6 +172,15 @@ object OutgoingMessageCoordinator {
                     .deleteOutboxItem(instanceId, row.clientMessageId)
             }
         }.onFailure { error ->
+            val conflict = error.encryptionPolicyConflictOrNull()
+            if (conflict != null &&
+                (conflict.code == WRONG_ENCRYPTION_MODE || conflict.code == ENCRYPTION_MODE_VERSION_STALE)
+            ) {
+                val fresh = InstanceEncryptionStore.refreshActiveFromNetwork()
+                if (fresh != null) {
+                    InstanceEncryptionStore.onSendPolicyMismatch(fresh)
+                }
+            }
             when {
                 error.isOutboundPermanentFailure() -> {
                     val errorKey = outboundFailureErrorKey(error)
@@ -408,6 +429,8 @@ object OutgoingMessageCoordinator {
         clearOutboundPaused(cid)
         clearOutboundCancelled(cid)
         drainScope.launch {
+            InstanceEncryptionStore.userAcknowledgedModeChange()
+            runCatching { InstanceEncryptionStore.refreshActiveFromNetwork() }
             withContext(Dispatchers.Default) {
                 MessageCacheStore.clearSendFailed(conversationId, cid)
             }

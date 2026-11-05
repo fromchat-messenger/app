@@ -17,6 +17,7 @@ import ru.fromchat.api.local.db.store.MessageRepository
 import ru.fromchat.api.local.messages.ActiveDmChatTracker
 import ru.fromchat.api.local.send.OutgoingMessageCoordinator
 import ru.fromchat.api.local.send.scheduleOutboxProcessing
+import ru.fromchat.api.instance.EncryptionModeNoticeStore
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.ui.chat.chrome.AvatarInfo
 import ru.fromchat.ui.chat.chrome.ChatScreen
@@ -37,6 +38,7 @@ fun DmScreen(
 ) {
     val currentUserId = ApiClient.user?.id
     val activeInstanceId by CacheContext.activeInstanceId.collectAsState()
+    val noticeRevision by EncryptionModeNoticeStore.revision.collectAsState()
     val peerUserId = activePeerUserId.takeIf { it > 0 } ?: panel.getState().profileUserId
 
     DisposableEffect(activePeerUserId) {
@@ -44,6 +46,10 @@ fun DmScreen(
             ActiveDmChatTracker.setActive(activePeerUserId)
         }
         onDispose { ActiveDmChatTracker.setActive(null) }
+    }
+
+    LaunchedEffect(panel, noticeRevision) {
+        panel.refreshEncryptionNotices()
     }
 
     LaunchedEffect(panel, activeInstanceId, peerUserId) {

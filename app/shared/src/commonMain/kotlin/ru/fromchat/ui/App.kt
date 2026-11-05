@@ -77,6 +77,7 @@ import ru.fromchat.api.local.db.store.messageDatabaseDispatcher
 import ru.fromchat.api.local.db.store.ProfileCache
 import ru.fromchat.api.local.db.store.UserStatusStore
 import ru.fromchat.api.local.messages.DmInboxCoordinator
+import ru.fromchat.api.instance.InstanceEncryptionCoordinator
 import ru.fromchat.api.local.send.OutgoingMessageCoordinator
 import ru.fromchat.api.schema.websocket.WebSocketMessage
 import ru.fromchat.api.schema.websocket.types.WebSocketUpdatesData
@@ -100,6 +101,7 @@ import ru.fromchat.ui.chat.panels.dm.isCurrentDmChat
 import ru.fromchat.ui.chat.panels.dm.navigateToDmChat
 import ru.fromchat.ui.chat.panels.publicchat.navigateToPublicChat
 import ru.fromchat.ui.chat.utils.appRootAttachmentDropTarget
+import ru.fromchat.ui.encryption.EncryptionModeAckDialog
 import ru.fromchat.ui.main.ConversationListDetailShell
 import ru.fromchat.ui.main.handleAppMenuShortcutKeyEvent
 import ru.fromchat.ui.components.provideSwitchHaptics
@@ -265,6 +267,7 @@ fun App(
         withContext(Dispatchers.Default) {
             runCatching { NetworkConnectivity.ensureStarted() }
             runCatching { UpdateSyncManager.initializeFromStorage(ApiClient.user?.id) }
+            runCatching { InstanceEncryptionCoordinator.ensureStarted() }
             Logger.i("App", "FromChat started")
         }
 
@@ -278,6 +281,7 @@ fun App(
         withContext(Dispatchers.Default) {
             runCatching { NetworkConnectivity.ensureStarted() }
             runCatching { UpdateSyncManager.initializeFromStorage(ApiClient.user?.id) }
+            runCatching { InstanceEncryptionCoordinator.ensureStarted() }
             Logger.i("App", "FromChat started")
         }
 
@@ -945,6 +949,7 @@ fun App(
 
                             ChatFullscreenImageHost(Modifier.fillMaxSize())
                             CallOverlay(Modifier.fillMaxSize())
+                            EncryptionModeAckDialog()
                             val aboutDocumentNavController =
                                 if (isDesktopListDetail && !ApiClient.token.isNullOrBlank()) {
                                     settingsDetailNavController

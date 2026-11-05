@@ -321,6 +321,18 @@
     <string name="server_config_unsupported_no_instance_id">Сервер не предоставляет корректный ID экземпляра. Подключение невозможно.</string>
     <string name="server_config_snackbar_timeout">Сервер не ответил вовремя. Повторите попытку.</string>
     <string name="server_config_checking">Проверка…</string>
+    <string name="server_config_info_instance">Экземпляр</string>
+    <string name="server_config_info_protocol">Протокол</string>
+    <string name="server_config_info_encryption">Шифрование</string>
+    <string name="server_config_probe_pending">Проверяем сервер…</string>
+    <string name="encryption_mode_service_message">Режим шифрования изменён на %1$s</string>
+    <string name="encryption_mode_changed_dialog_title">Режим шифрования изменён</string>
+    <string name="encryption_mode_changed_dialog_body">Сервер переключился на %1$s. Отложенные сообщения остановлены. Проверьте уведомление в чатах и отправьте сообщения повторно.</string>
+    <string name="encryption_mode_login_warning_title">Режим шифрования изменён</string>
+    <string name="encryption_mode_login_warning_body">Сервер теперь в режиме %1$s (в сохранённых настройках был %2$s). Продолжайте только если доверяете серверу.</string>
+    <string name="encryption_mode_ack_continue">Понятно, продолжить</string>
+    <string name="message_send_failed_encryption_mode">Не отправлено: изменился режим шифрования</string>
+    <string name="password_policy_error">Пароль: 8–50 символов, цифра и спецсимвол, не из списка простых паролей</string>
     <string name="server_config_session_logged_out_no_instance">Сессия завершена: не удалось определить ID экземпляра сервера.</string>
 
     <string name="action_wipe_local_cache_title">Очистить локальные данные</string>

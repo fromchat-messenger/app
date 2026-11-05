@@ -49,15 +49,7 @@ object IdentityKeyManager {
     @Volatile
     private var currentKeys: IdentityKeys? = null
 
-    /**
-     * Generate a new 32-byte key pair (simplified - for now just random keys)
-     * TODO: Replace with proper X25519 key generation when available
-     */
-    private fun generateKeyPair(): IdentityKeys {
-        val privateKey = ByteArray(32).also { randomBytes(it) }
-        val publicKey = ByteArray(32).also { randomBytes(it) }
-        return IdentityKeys(publicKey, privateKey)
-    }
+    private suspend fun generateKeyPair(): IdentityKeys = generateIdentityKeyPair()
 
     private fun randomBytes(array: ByteArray) {
         // Use platform-specific random
