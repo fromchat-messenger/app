@@ -59,6 +59,8 @@ export JAVA_HOME="<JDK 21+; on macOS with Android Studio, often /Applications/An
 
 Set `JAVA_HOME` to a JDK 21+ on your OS (the path above is a **macOS** example only).
 
+**Cloud Agents (Linux):** [`.cursor/scripts/cloud-setup.sh`](./.cursor/scripts/cloud-setup.sh) installs JDK 21, the Android SDK, Compose Desktop libraries, and throwaway keystores (`app/android/keys`, placeholder `google-services.json`). iOS targets need macOS and Xcode. Desktop packaging resolves a JDK 25 toolchain through Gradle; run the app with `./gradlew :app:desktop:run`.
+
 **Calls** (LiveKit / `Call*`, call UI, foreground call service, in-call audio/video): after changes, build debug APK and run the **Android device verify** workflow (section 5) on **every** Android target you use — emulator **and** physical device when both are available; for call work, at least **two** devices. Do not treat the task as finished until deploy succeeds on each chosen device.
 
 **Android emulator storage** (emulators only, no approval needed): on `INSTALL_FAILED_INSUFFICIENT_STORAGE`, free space on that emulator (uninstall apps, trim caches, wipe AVD if needed). **Never** use this approach on a **physical device**.
