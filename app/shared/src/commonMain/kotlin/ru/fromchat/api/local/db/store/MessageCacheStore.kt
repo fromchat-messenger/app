@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import ru.fromchat.logging.Logger
 import ru.fromchat.api.ApiClient
+import ru.fromchat.api.instance.EncryptionModeNoticeStore
 import ru.fromchat.api.local.messages.ChatListPreviewPendingIndicator
 import ru.fromchat.api.local.messages.ChatListPreviewState
 import ru.fromchat.api.local.messages.ChatListPreviewStrings
@@ -277,6 +278,30 @@ object MessageCacheStore {
                 instanceId = iid,
                 conversationId = conversationId,
                 clientMessageId = cid,
+            )
+        }
+    }
+
+    /** Durable local-only centered service notice (e.g. encryption mode change). */
+    suspend fun upsertLocalServiceNotice(conversationId: String, message: Message) {
+        if (message.user_id != EncryptionModeNoticeStore.SERVICE_USER_ID) return
+        val convId = conversationId.trim()
+        if (convId.isEmpty()) return
+        val iid = instanceId()
+        withContext(messageDatabaseDispatcher) {
+            db.messageDatabaseQueries.upsertMessage(
+                instanceId = iid,
+                id = message.id.toLong(),
+                conversationId = convId,
+                userId = message.user_id.toLong(),
+                content = message.content,
+                timestamp = message.timestamp,
+                isRead = 1L,
+                isEdited = 0L,
+                replyToId = null,
+                clientMessageId = null,
+                deletedFlag = 0L,
+                sendStatus = "sent",
             )
         }
     }

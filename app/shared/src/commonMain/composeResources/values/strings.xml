@@ -349,6 +349,15 @@
     <string name="server_config_unsupported_no_instance_id">This server does not provide a valid instance ID. Cannot connect.</string>
     <string name="server_config_snackbar_timeout">Server did not respond in time. Try again.</string>
     <string name="server_config_checking">Checking…</string>
+    <string name="server_config_info_instance">Instance</string>
+    <string name="server_config_info_protocol">Protocol</string>
+    <string name="server_config_info_encryption">Encryption</string>
+    <string name="server_config_probe_pending">Checking server…</string>
+    <string name="encryption_mode_service_message">Encryption mode changed to %1$s</string>
+    <string name="encryption_mode_login_warning_title">Encryption mode changed</string>
+    <string name="encryption_mode_login_warning_body">This server is now in %1$s mode (was %2$s in your saved settings). Continue only if you trust this server.</string>
+    <string name="message_send_failed_encryption_mode">Could not send: encryption mode changed</string>
+    <string name="password_policy_error">Password must be 8–50 characters, include a number and a special character, and not be a common password</string>
     <string name="server_config_session_logged_out_no_instance">Session ended: server instance ID could not be resolved.</string>
 
     <!-- Local offline data wipe (Settings → Server tools) -->

@@ -80,8 +80,13 @@ import ru.fromchat.api.schema.messages.dm.DmConversationsResponse
 import ru.fromchat.api.schema.messages.dm.DmHistoryResponse
 import ru.fromchat.api.schema.messages.dm.EditDmRequest
 import ru.fromchat.api.schema.messages.dm.DmMarkReadRequest
+import ru.fromchat.api.crypto.buildE2eeDmEnvelope
+import ru.fromchat.api.instance.InstanceEncryptionMode
+import ru.fromchat.api.instance.InstanceEncryptionStore
+import ru.fromchat.api.schema.messages.dm.SendDmEnvelopeRequest
 import ru.fromchat.api.schema.messages.dm.SendDmFile
 import ru.fromchat.api.schema.messages.dm.SendDmRequest
+import ru.fromchat.api.schema.instance.InstanceInfoResponse
 import ru.fromchat.api.schema.messages.dm.upload.DmUploadChunkRequest
 import ru.fromchat.api.schema.messages.dm.upload.DmUploadChunkResponse
 import ru.fromchat.api.schema.messages.dm.upload.DmUploadCompleteResponse
@@ -825,8 +830,13 @@ object ApiClient {
             }
             .body()
 
+    suspend fun fetchInstanceInfo(apiBaseUrl: String = ServerConfig.apiBaseUrl): InstanceInfoResponse =
+        httpProbe.get("$apiBaseUrl/instance/info") {
+            contentType(ContentType.Application.Json)
+        }.body()
+
     /**
-     * Send a direct message with transport-layer encryption, mirroring the Web client's /dm/send flow.
+     * Send a direct message using compliance transport or E2EE envelope depending on instance policy.
      */
     suspend fun sendDm(
         recipientId: Int,
@@ -835,7 +845,41 @@ object ApiClient {
         replyToId: Int? = null,
         transportFiles: List<SendDmFile> = emptyList(),
         uploadedFileIds: List<String> = emptyList(),
-        preparedTransport: TransportCiphertext? = null
+        preparedTransport: TransportCiphertext? = null,
+        /** Demo/debug: force the wire mode/version even if the live store moved. */
+        policyOverride: ru.fromchat.api.instance.InstanceEncryptionSnapshot? = null,
+    ) {
+        val policy = policyOverride ?: InstanceEncryptionStore.ensureActivePolicy()
+        when (policy.mode) {
+            InstanceEncryptionMode.Compliance -> sendDmComplianceTransport(
+                recipientId = recipientId,
+                plaintext = plaintext,
+                clientMessageId = clientMessageId,
+                replyToId = replyToId,
+                transportFiles = transportFiles,
+                uploadedFileIds = uploadedFileIds,
+                preparedTransport = preparedTransport,
+                policy = policy,
+            )
+            InstanceEncryptionMode.E2ee -> sendDmE2eeEnvelope(
+                recipientId = recipientId,
+                plaintext = plaintext,
+                clientMessageId = clientMessageId,
+                replyToId = replyToId,
+                policy = policy,
+            )
+        }
+    }
+
+    private suspend fun sendDmComplianceTransport(
+        recipientId: Int,
+        plaintext: String,
+        clientMessageId: String?,
+        replyToId: Int?,
+        transportFiles: List<SendDmFile>,
+        uploadedFileIds: List<String>,
+        preparedTransport: TransportCiphertext?,
+        policy: ru.fromchat.api.instance.InstanceEncryptionSnapshot,
     ) {
         val keys = IdentityKeyManager.getCurrentKeys()
             ?: IdentityKeyManager.restoreFromLocal()
@@ -861,6 +905,8 @@ object ApiClient {
             transportCiphertextB64 = transportCipher.ciphertextB64,
             senderPublicKeyB64 = senderPublicKeyB64,
             recipientPublicKeyB64 = recipientPublicKey,
+            encryptionMode = policy.mode.wireValue,
+            encryptionModeVersion = policy.version,
             clientMessageId = clientMessageId,
             replyToId = replyToId,
             transportFiles = transportFiles,
@@ -868,6 +914,36 @@ object ApiClient {
         )
 
         http.post("${ServerConfig.apiBaseUrl}/dm/send") {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+    }
+
+    private suspend fun sendDmE2eeEnvelope(
+        recipientId: Int,
+        plaintext: String,
+        clientMessageId: String?,
+        replyToId: Int?,
+        policy: ru.fromchat.api.instance.InstanceEncryptionSnapshot,
+    ) {
+        val keys = IdentityKeyManager.getCurrentKeys()
+            ?: IdentityKeyManager.restoreFromLocal()
+            ?: error("Identity keys not initialized. Please log in again.")
+        val recipientPublicKey = getUserPublicKey(recipientId).publicKey
+            ?: error("Recipient public key not found")
+        val built = buildE2eeDmEnvelope(plaintext, keys.publicKey, recipientPublicKey)
+        val body = SendDmEnvelopeRequest(
+            recipientId = recipientId,
+            ivB64 = built.ivB64,
+            ciphertextB64 = built.ciphertextB64,
+            senderWrappedMekB64 = built.senderWrappedMekB64,
+            recipientWrappedMekB64 = built.recipientWrappedMekB64,
+            encryptionMode = policy.mode.wireValue,
+            encryptionModeVersion = policy.version,
+            clientMessageId = clientMessageId,
+            replyToId = replyToId,
+        )
+        http.post("${ServerConfig.apiBaseUrl}/dm/send-envelope") {
             contentType(ContentType.Application.Json)
             setBody(body)
         }

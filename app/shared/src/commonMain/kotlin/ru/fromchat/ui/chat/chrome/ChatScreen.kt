@@ -655,6 +655,8 @@ fun ChatScreen(
                                 type = update.type,
                                 data = update.data
                             )
+                            // Propagate to global WebSocket handlers
+                            ru.fromchat.api.local.WebSocketManager.handleGlobalMessage(wsMessage)
                             when (update.type) {
                                 "statusUpdate" -> update.data?.jsonObject?.let { data ->
                                     val userId = data["userId"]?.jsonPrimitive?.content?.toIntOrNull()

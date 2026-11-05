@@ -75,7 +75,9 @@ import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.milliseconds
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
@@ -153,6 +155,7 @@ fun ServerConfigScreen(
     }
 
     var busy by remember { mutableStateOf(false) }
+    var probing by remember { mutableStateOf(false) }
     var lastProbe by remember { mutableStateOf<ServerProbeResult?>(null) }
     var lastProbedConfig by remember { mutableStateOf<ServerConfigData?>(null) }
     var showResetDialog by remember { mutableStateOf(false) }
@@ -173,6 +176,28 @@ fun ServerConfigScreen(
     val hostOk = parsedEndpoint != null
 
     val canApply = hostOk && !busy
+
+    LaunchedEffect(serverEndpoint, hostOk) {
+        if (!hostOk) {
+            lastProbe = null
+            return@LaunchedEffect
+        }
+        delay(1_000.milliseconds)
+        probing = true
+        try {
+            val parsed = parsedEndpoint ?: return@LaunchedEffect
+            val (tentative, probe) = probeServerEndpoint(
+                host = parsed.host,
+                port = parsed.port,
+                httpsPreferred = parsed.httpsPreferred,
+                schemeExplicit = parsed.schemeExplicit,
+            )
+            lastProbe = probe
+            lastProbedConfig = tentative
+        } finally {
+            probing = false
+        }
+    }
 
     fun resetToDefaults() {
         serverEndpoint = "api.fromchat.ru"
@@ -469,74 +494,16 @@ fun ServerConfigScreen(
                             )
                         }
 
-                        item { Spacer(Modifier.height(16.dp)) }
+                        item { Spacer(Modifier.height(12.dp)) }
 
                         item {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color.Transparent)
-                                    .padding(horizontal = SettingsStepHorizontalPadding)
-                                    .padding(top = 8.dp, bottom = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                val contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
-
-                                @Composable
-                                fun ActionButtonContent(
-                                    imageVector: ImageVector,
-                                    text: String,
-                                ) {
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Icon(
-                                            imageVector = imageVector,
-                                            contentDescription = null,
-                                            modifier = Modifier
-                                                .size(16.dp)
-                                                .clip(CtaShape),
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-
-                                        Text(text)
-                                    }
-                                }
-
-                                TextButton(
-                                    onClick = ::verifyServer,
-                                    modifier = Modifier.weight(1f),
-                                    shape = CtaShape,
-                                    colors = ButtonDefaults.textButtonColors(
-                                        containerColor = Color.Transparent,
-                                        contentColor = MaterialTheme.colorScheme.primary
-                                    ),
-                                    contentPadding = contentPadding
-                                ) {
-                                    ActionButtonContent(
-                                        imageVector = Icons.Rounded.FlashOn,
-                                        text = stringResource(Res.string.server_config_action_check),
-                                    )
-                                }
-
-                                TextButton(
-                                    onClick = { showResetDialog = true },
-                                    modifier = Modifier.weight(1f),
-                                    shape = CtaShape,
-                                    colors = ButtonDefaults.textButtonColors(
-                                        containerColor = Color.Transparent,
-                                        contentColor = MaterialTheme.colorScheme.primary
-                                    ),
-                                    contentPadding = contentPadding
-                                ) {
-                                    ActionButtonContent(
-                                        imageVector = Icons.Rounded.RestartAlt,
-                                        text = stringResource(Res.string.server_config_action_reset)
-                                    )
-                                }
-                            }
+                            ServerInstanceProbeCard(
+                                probe = lastProbe,
+                                probing = probing,
+                            )
                         }
+
+                        item { Spacer(Modifier.height(8.dp)) }
                     }
                 }
 

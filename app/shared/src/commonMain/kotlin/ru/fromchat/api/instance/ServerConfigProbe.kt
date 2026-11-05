@@ -20,6 +20,9 @@ sealed interface ServerProbeResult {
         val instanceId: String,
         val callsOk: Boolean,
         val pingMs: Int,
+        val protocol: String = "1",
+        val encryptionMode: String = "compliance",
+        val encryptionModeVersion: Int = 1,
     ) : ServerProbeResult
 
     data object Unsupported : ServerProbeResult
@@ -192,25 +195,33 @@ private suspend fun probeServerOnce(
 
         val pingMs = time.elapsedNow().inWholeMilliseconds.toInt().coerceAtLeast(0)
 
+        val instanceInfo = runCatching {
+            InstanceEncryptionStore.fetchInstanceInfo(apiBase)
+        }.getOrNull()
+
+        instanceInfo?.let { info ->
+            InstanceEncryptionStore.bootstrapFromProbe(info, config)
+        }
+
+        suspend fun supported(instanceId: String): ServerProbeResult.Supported {
+            val callsOk = probeCallsReachable(config)
+            return ServerProbeResult.Supported(
+                instanceId = instanceId,
+                callsOk = callsOk,
+                pingMs = pingMs,
+                protocol = instanceInfo?.protocol ?: "1",
+                encryptionMode = instanceInfo?.encryptionMode ?: "compliance",
+                encryptionModeVersion = instanceInfo?.encryptionModeVersion ?: 1,
+            )
+        }
+
         return when (resolve) {
             is InstanceIdResolveResult.Cached ->
-                ServerProbeResult.Supported(
-                    resolve.instanceId,
-                    probeCallsReachable(config),
-                    pingMs,
-                ) to null
+                supported(resolve.instanceId) to null
             is InstanceIdResolveResult.Fetched ->
-                ServerProbeResult.Supported(
-                    resolve.instanceId,
-                    probeCallsReachable(config),
-                    pingMs,
-                ) to null
+                supported(resolve.instanceId) to null
             is InstanceIdResolveResult.InstanceIdChanged ->
-                ServerProbeResult.Supported(
-                    resolve.newId,
-                    probeCallsReachable(config),
-                    pingMs,
-                ) to null
+                supported(resolve.newId) to null
             InstanceIdResolveResult.Unsupported -> ServerProbeResult.Unsupported to null
             InstanceIdResolveResult.Timeout -> ServerProbeResult.Timeout to null
             InstanceIdResolveResult.Unreachable -> {
@@ -277,6 +288,7 @@ suspend fun applyServerAndNavigate(
 
     if (token.isEmpty()) {
         applyServerConfig(config, probe.instanceId, probe.callsOk)
+        runCatching { InstanceEncryptionStore.refreshFromNetwork(config, apiBase) }
         WebSocketManager.disconnect()
         onNavigateLogin()
         return ApplyServerResult.Applied
@@ -285,6 +297,7 @@ suspend fun applyServerAndNavigate(
     when (ApiClient.checkAuthAt(apiBase, token)) {
         ApiClient.CheckAuthResult.Authenticated -> {
             applyServerConfig(config, probe.instanceId, probe.callsOk)
+            runCatching { InstanceEncryptionStore.refreshFromNetwork(config, apiBase) }
             WebSocketManager.disconnect()
             WebSocketManager.connect(forceRestart = true)
             finishLoggedInSessionAfterServerApply(probe.instanceId)

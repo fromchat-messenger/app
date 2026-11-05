@@ -66,7 +66,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import ru.fromchat.api.instance.isCenteredServiceNotice
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastAll
@@ -249,6 +251,24 @@ fun MessageItem(
     isExiting: Boolean = false,
     onExitAnimationFinished: (() -> Unit)? = null,
 ) {
+    if (message.isCenteredServiceNotice()) {
+        val scheme = MaterialTheme.colorScheme
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(vertical = 10.dp, horizontal = 24.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = message.content,
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+        }
+        return
+    }
+
     val isCorrupted = remember(message.files, message.fileThumbnails, message.dmEnvelope) {
         isMessageCorrupted(message)
     }

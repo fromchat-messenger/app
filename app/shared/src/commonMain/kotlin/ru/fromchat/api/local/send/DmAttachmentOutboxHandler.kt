@@ -77,6 +77,16 @@ object DmAttachmentOutboxHandler {
         if (OutgoingMessageCoordinator.isOutboundCancelled(clientMessageId)) return true
         if (OutgoingMessageCoordinator.isOutboundPaused(clientMessageId)) return true
         if (!outboxRowExists(instanceId, clientMessageId)) return true
+        if (ru.fromchat.api.instance.InstanceEncryptionStore.isWithinModeChangeSendCooldown()) {
+            OutgoingMessageCoordinator.markOutboundPaused(clientMessageId)
+            withContext(Dispatchers.Default) {
+                MessageCacheStore.markSendFailed(row.conversationId, clientMessageId)
+            }
+            OutboundSendNotifier.emit(
+                OutboundSendProgress.Failed(clientMessageId, SEND_ERROR_ENCRYPTION_MODE_CHANGED),
+            )
+            return true
+        }
 
         val conversationId = row.conversationId.ifBlank {
             conversationIdForDm(payload.recipientId)
