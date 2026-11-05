@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # Cloud Agent install script for the FromChat KMP client.
 #
-# Idempotent: safe to run repeatedly. Prepares everything needed to build the
-# Android app (`:app:android:assembleDebug`) and compile the shared module
-# (`:app:shared:compileAndroidMain`) on a headless Linux Cloud Agent VM:
-#   1. A JDK 17+ (uses the system JDK; installs OpenJDK 21 only if none is found).
+# Idempotent: safe to run repeatedly. Prepares a Linux Cloud Agent VM to build
+# the Android app and the Compose Desktop app:
+#   1. JDK 21 (installs OpenJDK 21 when it is missing or older).
 #   2. The Android SDK (command-line tools + required platforms/build-tools).
-#   3. Git-ignored local secrets the Gradle build reads at configuration time:
+#   3. Shared libraries Compose Desktop needs in order to open a window.
+#   4. Git-ignored local secrets the Gradle build reads at configuration time:
 #      debug/release keystores, keys/keystore.properties, and a placeholder
 #      google-services.json (Firebase config; the checked-in build applies the
 #      google-services plugin). These are throwaway, non-secret dev values.
-#   4. local.properties pointing Gradle at the SDK.
+#   5. local.properties pointing Gradle at the SDK.
 #
 # iOS targets (compileKotlinIosArm64 etc.) require macOS + Xcode and cannot be
-# built on this Linux VM; only the Android/shared-android surface is prepared.
+# built on this Linux VM.
 
 set -euo pipefail
 
@@ -28,7 +28,33 @@ missing_pkgs=()
 for tool in curl unzip git; do
   command -v "$tool" >/dev/null 2>&1 || missing_pkgs+=("$tool")
 done
-command -v java >/dev/null 2>&1 || missing_pkgs+=("openjdk-21-jdk")
+if ! command -v java >/dev/null 2>&1; then
+  missing_pkgs+=("openjdk-21-jdk")
+else
+  java_major="$(java -version 2>&1 | sed -n 's/.*version "\([0-9]*\).*/\1/p' | head -1)"
+  if [ "${java_major:-0}" -lt 21 ]; then
+    missing_pkgs+=("openjdk-21-jdk")
+  fi
+fi
+# Compose Desktop (Skiko/AWT) needs these to open a window on Linux.
+desktop_pkgs=(
+  fontconfig
+  libasound2t64
+  libgl1
+  libgtk-3-0t64
+  libx11-6
+  libxcursor1
+  libxext6
+  libxi6
+  libxinerama1
+  libxrandr2
+  libxrender1
+  libxtst6
+  libxxf86vm1
+)
+for pkg in "${desktop_pkgs[@]}"; do
+  dpkg -s "$pkg" >/dev/null 2>&1 || missing_pkgs+=("$pkg")
+done
 if [ "${#missing_pkgs[@]}" -gt 0 ]; then
   log "Installing missing base packages: ${missing_pkgs[*]}"
   sudo apt-get update -y
@@ -36,9 +62,17 @@ if [ "${#missing_pkgs[@]}" -gt 0 ]; then
 fi
 
 # --- 1. Java -----------------------------------------------------------------
+if [ -x /usr/lib/jvm/java-21-openjdk-amd64/bin/java ]; then
+  export JAVA_HOME="/usr/lib/jvm/java-21-openjdk-amd64"
+  export PATH="$JAVA_HOME/bin:$PATH"
+fi
 JAVA_BIN="$(command -v java)"
 JAVA_MAJOR="$(java -version 2>&1 | sed -n 's/.*version "\([0-9]*\).*/\1/p' | head -1)"
 log "Using Java: $JAVA_BIN (major ${JAVA_MAJOR:-unknown})"
+if [ "${JAVA_MAJOR:-0}" -lt 21 ]; then
+  echo "JDK 21 or newer is required (found major ${JAVA_MAJOR:-unknown})." >&2
+  exit 1
+fi
 
 # --- 2. Android SDK ----------------------------------------------------------
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/android-sdk}"
@@ -48,6 +82,7 @@ CMDLINE_TOOLS_ZIP_URL="https://dl.google.com/android/repository/commandlinetools
 # Package versions must match the compileSdk/build-tools the Gradle build expects.
 SDK_PACKAGES=(
   "platform-tools"
+  "platforms;android-37.2"
   "platforms;android-37.0"
   "platforms;android-36"
   "build-tools;37.0.0"
@@ -81,12 +116,12 @@ DEBUG_KEY_PASS="${DEBUG_KEY_PASS:-android}"
 RELEASE_STORE_PASS="${RELEASE_STORE_PASS:-android}"
 RELEASE_KEY_PASS="${RELEASE_KEY_PASS:-android}"
 
-# Debug keystore uses alias "debug"; release uses alias "key0" (see app/android/build.gradle.kts).
+# Both signing configs use alias "key0" (see app/android/build.gradle.kts).
 if [ ! -f "$KEYS_DIR/debug.jks" ]; then
   log "Generating debug keystore"
   keytool -genkeypair -v -keystore "$KEYS_DIR/debug.jks" \
     -keyalg RSA -keysize 2048 -validity 10000 \
-    -alias debug -storepass "$DEBUG_STORE_PASS" -keypass "$DEBUG_KEY_PASS" \
+    -alias key0 -storepass "$DEBUG_STORE_PASS" -keypass "$DEBUG_KEY_PASS" \
     -dname "CN=Debug, O=FromChat, C=RU"
 fi
 
@@ -149,8 +184,8 @@ printf 'sdk.dir=%s\n' "$ANDROID_HOME" > "$REPO_ROOT/local.properties"
 
 # --- 5. Warm the Gradle cache and validate the Android build -----------------
 export JAVA_HOME="${JAVA_HOME:-$(dirname "$(dirname "$(readlink -f "$JAVA_BIN")")")}"
-log "Warming Gradle build (assembleDebug + shared androidMain)"
-./gradlew --no-daemon :app:shared:compileAndroidMain :app:android:assembleDebug
+log "Warming Gradle build (Android debug APK + desktop compile)"
+./gradlew --no-daemon :app:shared:compileAndroidMain :app:android:assembleDebug :app:desktop:compileKotlin
 
 log "Setup complete. Debug APK:"
 ls -lh "$REPO_ROOT/app/android/build/outputs/apk/debug/" || true

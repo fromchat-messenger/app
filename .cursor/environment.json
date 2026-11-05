@@ -1,5 +1,5 @@
 {
   "name": "FromChat",
   "user": "ubuntu",
-  "install": "bash .cursor/scripts/cloud-setup.sh"
+  "install": "bash repos/app/.cursor/scripts/cloud-setup.sh"
 }
