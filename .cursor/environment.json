@@ -1,5 +1,5 @@
 {
   "name": "FromChat",
   "user": "ubuntu",
-  "install": "set -euo pipefail\nif [ -f repos/app/.cursor/scripts/cloud-setup.sh ]; then root=repos/app; else root=.; fi\nsed -i 's/-alias debug/-alias key0/' \"$root/.cursor/scripts/cloud-setup.sh\"\nbash \"$root/.cursor/scripts/cloud-setup.sh\""
+  "install": "bash repos/app/.cursor/scripts/cloud-setup.sh"
 }
