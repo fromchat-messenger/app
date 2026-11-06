@@ -5,10 +5,9 @@ import ru.fromchat.api.local.db.ensureMessageDatabaseSchema
 import ru.fromchat.api.local.db.isSqliteBusy
 import ru.fromchat.api.local.db.MessageDatabaseConcurrency
 import ru.fromchat.api.local.db.rebindUnboundMigrationInstance
+import ru.fromchat.api.local.db.withMessageDatabaseOpenMutex
 import ru.fromchat.api.local.db.withMessageDatabaseLock
 import ru.fromchat.db.MessageDatabase
-import ru.fromchat.incognito.IncognitoMode
-import ru.fromchat.incognito.MessageDatabaseIncognito
 
 /**
  * Platform-agnostic access to the SQLDelight [MessageDatabase].
@@ -18,27 +17,31 @@ expect fun provideMessageDatabaseDriver(): SqlDriver
 object MessageDatabaseProvider {
     private var driver: SqlDriver? = null
     private var databaseHolder: MessageDatabase? = null
-    private var incognitoHydratedFromVolume = false
 
     val database: MessageDatabase
-        get() = withMessageDatabaseLock {
-            databaseHolder ?: MessageDatabase(openDriverLocked()).also { databaseHolder = it }
+        get() {
+            val cached = withMessageDatabaseLock { databaseHolder }
+            if (cached != null) return cached
+            val opened = getOrOpenDriver()
+            return withMessageDatabaseLock {
+                databaseHolder ?: MessageDatabase(opened).also { databaseHolder = it }
+            }
         }
 
-    internal fun <T> withOpenDriver(block: (SqlDriver) -> T): T =
-        withMessageDatabaseLock { block(openDriverLocked()) }
+    internal fun <T> withOpenDriver(block: (SqlDriver) -> T): T = block(getOrOpenDriver())
 
     /**
      * Closes the open SQLite connection. Required before deleting `cacheDir/fromchat/`
      * (otherwise the next write hits SQLITE_READONLY_DBMOVED).
      */
     fun closeAndReset() {
-        withMessageDatabaseLock {
+        val toClose = withMessageDatabaseLock {
             databaseHolder = null
-            runCatching { driver?.close() }
+            val closing = driver
             driver = null
-            incognitoHydratedFromVolume = false
+            closing
         }
+        runCatching { toClose?.close() }
     }
 
     /** Runs [block] once; on a stale connection after cache wipe, resets and retries. */
@@ -69,22 +72,32 @@ object MessageDatabaseProvider {
 
     fun rebindUnboundPartition(targetInstanceId: String) {
         runCatching {
+            val opened = getOrOpenDriver()
             withMessageDatabaseLock {
-                rebindUnboundMigrationInstance(openDriverLocked(), targetInstanceId)
+                rebindUnboundMigrationInstance(opened, targetInstanceId)
             }
         }
     }
 
-    /** Caller must hold the message-database lock via [withMessageDatabaseLock]. */
-    private fun openDriverLocked(): SqlDriver {
-        driver?.let { return it }
-        return provideMessageDatabaseDriver().also { opened ->
+    /** Opens the driver without holding [withMessageDatabaseLock] while the SQLite thread is blocked. */
+    private fun getOrOpenDriver(): SqlDriver {
+        val existing = withMessageDatabaseLock { driver }
+        if (existing != null) return existing
+        return withMessageDatabaseOpenMutex {
+            val again = withMessageDatabaseLock { driver }
+            if (again != null) return@withMessageDatabaseOpenMutex again
+            val opened = provideMessageDatabaseDriver()
             ensureMessageDatabaseSchema(opened)
-            if (IncognitoMode.active && !incognitoHydratedFromVolume) {
-                incognitoHydratedFromVolume = true
-                MessageDatabaseIncognito.hydrateDriverFromVolume(opened)
+            withMessageDatabaseLock {
+                val raced = driver
+                if (raced != null) {
+                    runCatching { opened.close() }
+                    raced
+                } else {
+                    driver = opened
+                    opened
+                }
             }
-            driver = opened
         }
     }
 }

@@ -141,8 +141,11 @@ fun TextCta(
     enabled: Boolean = true,
     leadingIcon: ImageVector? = null,
     interactionSource: MutableInteractionSource? = null,
+    compact: Boolean = false,
     content: @Composable RowScope.() -> Unit,
 ) {
+    val minHeight = if (compact) 40.dp else 52.dp
+    val iconSize = if (compact) 18.dp else 20.dp
     val scheme = MaterialTheme.colorScheme
     val contentColor =
         if (enabled) scheme.primary
@@ -153,7 +156,7 @@ fun TextCta(
         enabled = enabled,
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 52.dp)
+            .heightIn(min = minHeight)
             .then(modifier),
         shape = CtaShape,
         colors = ButtonDefaults.textButtonColors(
@@ -172,7 +175,7 @@ fun TextCta(
                 Icon(
                     imageVector = leadingIcon,
                     contentDescription = null,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(iconSize),
                 )
                 Spacer(Modifier.width(8.dp))
             }

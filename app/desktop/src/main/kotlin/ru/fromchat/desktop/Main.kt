@@ -13,9 +13,12 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
@@ -48,9 +51,11 @@ import ru.fromchat.utils.files.configurePortableLayoutFromInstallDir
 import ru.fromchat.utils.files.desktopSingleInstanceScopeKey
 import ru.fromchat.utils.files.isPortableDesktop
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.swing.Swing
 import com.sun.jna.Library
 import com.sun.jna.Native
 import org.jetbrains.compose.resources.stringResource
@@ -62,6 +67,8 @@ import ru.fromchat.action_copy
 import ru.fromchat.action_select
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.WebSocketManager
+import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.ui.auth.resetPreAuthDraft
 import ru.fromchat.api.local.db.MessageDatabaseConcurrency
 import ru.fromchat.api.local.db.isSqliteBusy
 import ru.fromchat.api.local.db.store.ConnectionStateStore
@@ -364,6 +371,7 @@ fun main(args: Array<String>) {
     DesktopScale.startWatching()
 
     application {
+        ProvideDesktopWindowExceptionHandler {
         UtilsLibrary.init()
         var bootstrapStarted by remember { mutableStateOf(false) }
         val databaseBlocked by DatabaseLockGate.blocked.collectAsState()
@@ -415,8 +423,7 @@ fun main(args: Array<String>) {
                 onKillProcess = { DatabaseLockGate.killProcess(it) },
                 onQuit = { exitApplication() },
             )
-            return@application
-        }
+        } else {
 
         // Compose sizes the AWT window from GraphicsConfiguration.defaultTransform.scaleX, which on X11
         // is an int (1.0 here) and is NOT affected by the LocalDensity override inside Window.
@@ -432,6 +439,9 @@ fun main(args: Array<String>) {
         // Hide until App bootstrap sets startDestination (avoids ~2s empty/white window).
         var contentReady by remember { mutableStateOf(false) }
         var windowVisible by remember { mutableStateOf(true) }
+        // Bumped on next show after incognito wipe so App remounts at welcome.
+        var appSessionKey by remember { mutableIntStateOf(0) }
+        var pendingWelcomeRemount by remember { mutableStateOf(false) }
         val trayState = rememberTrayState()
         // Which resource and which post-processing apply is decided per platform inside
         // loadAppIconBufferedImage, so the call sites only have to say "this one goes to the tray".
@@ -570,7 +580,16 @@ fun main(args: Array<String>) {
         }
 
         fun showMainWindow(notificationIdentifier: String? = null) {
-            windowVisible = true
+            // Compose Desktop can show a hidden Window's last frame without recomposing.
+            // Always remount when logged out / after incognito wipe so reopen is not frozen.
+            Snapshot.withMutableSnapshot {
+                if (pendingWelcomeRemount || ApiClient.token.isNullOrBlank()) {
+                    pendingWelcomeRemount = false
+                    appSessionKey += 1
+                }
+                contentReady = true
+                windowVisible = true
+            }
             AppForeground.setForeground(true)
             DesktopNotifier.deliverPendingLaunch(notificationIdentifier)
         }
@@ -598,17 +617,55 @@ fun main(args: Array<String>) {
             DesktopMenuCommands.emit(DesktopMenuCommand.OpenAbout)
         }
 
+        /** Best-effort server logout (5s), then local wipe. Does not block the caller. */
+        fun startBackgroundLogoutThen(block: () -> Unit = {}) {
+            CoroutineScope(SupervisorJob() + Dispatchers.Swing).launch {
+                runCatching { ApiClient.logoutBestEffort() }
+                resetPreAuthDraft()
+                block()
+            }
+        }
+
+        /**
+         * Incognito window close: drop in-memory auth now, wipe disk off the EDT, remount on show.
+         */
+        fun endIncognitoSessionImmediatelyThen(block: () -> Unit = {}) {
+            val authToken = ApiClient.token
+            pendingWelcomeRemount = true
+            // So a fast reopen cannot remount still-authenticated into the old chat.
+            ApiClient.invalidateSessionForUi()
+            resetPreAuthDraft()
+            CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
+                runCatching { WebSocketManager.disconnect() }
+                runCatching { ApiClient.clearLocalSession() }
+                runCatching { ApiClient.remoteLogoutBestEffortOnly(authToken) }
+                withContext(Dispatchers.Swing) {
+                    block()
+                }
+            }
+        }
+
         /** Hide window, keep process + tray (close-to-background). Else quit. */
         fun requestCloseToBackgroundOrQuit() {
             if (traySupported) {
-                windowVisible = false
-                // Desktop keeps sockets alive while the process runs (see keepWebSocketAliveInBackground).
                 AppForeground.setForeground(true)
-                if (mac) {
-                    Logger.i(MacBackgroundLifecycle.LOG_TAG, "Window closed → background (tray kept, process alive)")
+                if (mac && IncognitoMode.active) {
+                    Logger.i(
+                        MacBackgroundLifecycle.LOG_TAG,
+                        "Window closed with incognito → hide, wipe in background, welcome on show",
+                    )
+                    windowVisible = false
+                    endIncognitoSessionImmediatelyThen()
+                } else {
+                    windowVisible = false
+                    if (mac) {
+                        Logger.i(MacBackgroundLifecycle.LOG_TAG, "Window closed → background (tray kept, process alive)")
+                    }
                 }
+            } else if (IncognitoMode.active) {
+                endIncognitoSessionImmediatelyThen { exitApplication() }
             } else {
-                exitApplication()
+                startBackgroundLogoutThen { exitApplication() }
             }
         }
 
@@ -623,9 +680,21 @@ fun main(args: Array<String>) {
             // ⌘Q / system Quit must fully exit (not close-to-tray).
             if (desktop.isSupported(Desktop.Action.APP_QUIT_HANDLER)) {
                 desktop.setQuitHandler { _, response ->
+                    windowVisible = false
                     DesktopSingleInstance.release()
-                    response.performQuit()
-                    exitApplication()
+                    if (IncognitoMode.active) {
+                        endIncognitoSessionImmediatelyThen {
+                            response.performQuit()
+                            exitApplication()
+                        }
+                    } else {
+                        CoroutineScope(SupervisorJob() + Dispatchers.Swing).launch {
+                            runCatching { ApiClient.logoutBestEffort() }
+                            resetPreAuthDraft()
+                            response.performQuit()
+                            exitApplication()
+                        }
+                    }
                 }
             }
             // Dock click while window is hidden → show again (macOS AppReopened).
@@ -651,7 +720,14 @@ fun main(args: Array<String>) {
                         Item(trayShow) { showMainWindow() }
                         Item(aboutApp) { openAbout() }
                         Separator()
-                        Item(quit) { exitApplication() }
+                        Item(quit) {
+                            windowVisible = false
+                            if (IncognitoMode.active) {
+                                endIncognitoSessionImmediatelyThen { exitApplication() }
+                            } else {
+                                startBackgroundLogoutThen { exitApplication() }
+                            }
+                        }
                     },
                 )
             } else if (trayIconImage != null) {
@@ -665,12 +741,20 @@ fun main(args: Array<String>) {
                     quitLabel = quit,
                     onShow = { showMainWindow() },
                     onAbout = { openAbout() },
-                    onQuit = { exitApplication() },
+                    onQuit = {
+                        windowVisible = false
+                        if (IncognitoMode.active) {
+                            endIncognitoSessionImmediatelyThen { exitApplication() }
+                        } else {
+                            startBackgroundLogoutThen { exitApplication() }
+                        }
+                    },
                 )
             }
         }
 
-        key(nativeFrame) {
+        // appSessionKey recreates the Window so reopen after wipe cannot keep a frozen surface.
+        key(nativeFrame, appSessionKey) {
                 Window(
                     onCloseRequest = { requestCloseToBackgroundOrQuit() },
                     title = appName,
@@ -699,7 +783,12 @@ fun main(args: Array<String>) {
                                 true
                             }
                             event.key == Key.Q -> {
-                                exitApplication()
+                                windowVisible = false
+                                if (IncognitoMode.active) {
+                                    endIncognitoSessionImmediatelyThen { exitApplication() }
+                                } else {
+                                    startBackgroundLogoutThen { exitApplication() }
+                                }
                                 true
                             }
                             else -> false
@@ -794,7 +883,10 @@ fun main(args: Array<String>) {
                                         WindowPlacement.Maximized
                                     }
                             },
-                            onQuit = { exitApplication() },
+                            onQuit = {
+                                windowVisible = false
+                                startBackgroundLogoutThen { exitApplication() }
+                            },
                         )
                     }
         
@@ -811,7 +903,7 @@ fun main(args: Array<String>) {
                                 forcedScale?.let { LocalDensity.current.fontScale } ?: 1f,
                             ),
                             LocalExtraStatusBarTop provides when {
-                            mac -> 28.dp
+                            mac -> MacOsDefaultTitleBarTopInset
                             customFrame -> WindowsTitleBarHeight
                             else -> 0.dp
                         },
@@ -847,6 +939,8 @@ fun main(args: Array<String>) {
                     }
                 }
         }
+        } // else !databaseBlocked
+        } // ProvideDesktopWindowExceptionHandler
     }
 }
 
@@ -1017,7 +1111,7 @@ private object LinuxAppIdentity {
     fun register(dockIcon: BufferedImage?) {
         if (!isLinuxOs() || dockIcon == null) return
         runCatching {
-            val dataHome = env("XDG_DATA_HOME")
+            val dataHome = System.getenv("XDG_DATA_HOME")
                 ?.takeIf { it.isNotBlank() }
                 ?: File(System.getProperty("user.home"), ".local/share").absolutePath
 
@@ -1085,8 +1179,6 @@ private object LinuxAppIdentity {
             value
         }
 
-    private fun env(key: String): String? = System.getenv(key)
-
     private fun BufferedImage.scaleToAppIconMaxEdge(): BufferedImage {
         val maxEdge = 128
         if (width <= maxEdge && height <= maxEdge) return this
@@ -1115,14 +1207,12 @@ private object LinuxAppIdentity {
 private fun applyDesktopWindowChromeBackground() {
     UIManager.put(
         "control",
-        ColorUIResource(desktopThemeBackgroundCompose(desktopAppDarkTheme()).toAwtColor()),
+        ColorUIResource(desktopThemeBackgroundCompose(desktopSystemDarkTheme()).toAwtColor()),
     )
 }
 
 private fun Color.toAwtColor() =
     java.awt.Color(red, green, blue, alpha)
-
-private fun isSystemAppearanceDark() = desktopSystemDarkTheme()
 
 internal fun applyDockIcon(image: BufferedImage?) {
     if (image == null) {

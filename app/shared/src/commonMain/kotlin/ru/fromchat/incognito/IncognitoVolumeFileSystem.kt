@@ -1,147 +1,144 @@
 package ru.fromchat.incognito
 
+import korlibs.crypto.SHA256
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import ru.fromchat.logging.FromChatLogDirs
 
 /**
- * Path-indexed files stored in an [IncognitoBlockVolume] (encrypted block container).
- * The container grows on write and compacts/shrinks after deletes like a VM disk.
+ * Host filesystem storage with length-preserving AES-XTS payloads and an encrypted path map.
+ * Logical app paths map to random host filenames; only ciphertext hits disk.
  */
-private const val DATA_REGION_START = 8192L
-private const val COMPACT_CHUNK_BYTES = 64 * 1024
-/** Reclaim disk tail on delete only when fragmentation exceeds this (avoids compact on every delete). */
-private const val COMPACT_SLACK_THRESHOLD_BYTES = 256L * 1024
-
 internal object IncognitoVolumeFileSystem {
-    private const val CATALOG_LOGICAL_OFFSET = 0L
-    private const val CATALOG_MAX_BYTES = 8192
-    private val currentLogRelativeKey = "fromchat/logs/${FromChatLogDirs.CURRENT_LOG_FILE}"
+    private const val MAP_TWEAK_SCOPE = ".incognito-path-map"
+    private const val XTS_DATA_UNIT = 512
+
+    /** Transient server ciphertext: stream on the host with normal file I/O (no XTS re-encrypt per chunk). */
+    private val PLAINTEXT_HOST_RELATIVE_PREFIXES = listOf("encrypted_downloads/")
 
     private val json = Json { ignoreUnknownKeys = true }
-    private val lock = Any()
 
-    private var volume: IncognitoBlockVolume? = null
-    private var catalog: VolumeCatalog = VolumeCatalog()
+    private var volumeKey: ByteArray? = null
+    private var storageRoot: String? = null
+    private var mapFilePath: String? = null
+    private var pathMap: PathMap = PathMap()
 
-    fun attach(blockVolume: IncognitoBlockVolume) {
-        synchronized(lock) {
-            volume = blockVolume
-            catalog = loadCatalog(blockVolume)
-            if (catalog.nextDataOffset < DATA_REGION_START) {
-                catalog = catalog.copy(nextDataOffset = DATA_REGION_START)
-                saveCatalog(blockVolume, catalog)
-            }
-            syncVolumeSize(blockVolume)
-        }
+    fun attach(volumeKey: ByteArray, absoluteStorageRoot: String) = withIncognitoVolumeLock {
+        this.volumeKey = volumeKey.copyOf()
+        storageRoot = absoluteStorageRoot.replace('\\', '/').trimEnd('/')
+        IncognitoHostRawFs.attachRoot(storageRoot!!)
+        mapFilePath = "$storageRoot/${mapHostBasename(volumeKey)}"
+        pathMap = loadPathMapLocked(volumeKey, mapFilePath!!)
     }
 
-    fun detach() {
-        synchronized(lock) {
-            volume?.let { vol ->
-                compactAndShrink(vol)
-                vol.fsync()
-            }
-            volume = null
-            catalog = VolumeCatalog()
-        }
+    fun detach() = withIncognitoVolumeLock {
+        persistPathMapLocked()
+        IncognitoHostRawFs.detachRoot()
+        volumeKey?.fill(0)
+        volumeKey = null
+        storageRoot = null
+        mapFilePath = null
+        pathMap = PathMap()
     }
 
-    fun flush() {
-        synchronized(lock) {
-            val vol = volume ?: return
-            saveCatalog(vol, catalog)
-            syncVolumeSize(vol)
-            vol.fsync()
-        }
+    fun mapFileAbsolutePathOrNull(): String? = withIncognitoVolumeLock { mapFilePath }
+
+    fun flush() = withIncognitoVolumeLock {
+        persistPathMapLocked()
     }
 
     fun relativeKeyForAppPath(absolutePath: String): String? {
         if (!IncognitoMode.active) return null
         val defaultRoot = defaultAppDataRootPath().replace('\\', '/').trimEnd('/')
         val normalizedPath = absolutePath.replace('\\', '/')
-        return when {
+        val relative = when {
             normalizedPath == defaultRoot -> ""
             normalizedPath.startsWith("$defaultRoot/") ->
                 normalizedPath.removePrefix("$defaultRoot/")
-            else -> null
+            else -> return null
+        }
+        if (relative == "encrypted_downloads" ||
+            PLAINTEXT_HOST_RELATIVE_PREFIXES.any { relative == it.trimEnd('/') || relative.startsWith(it) }
+        ) {
+            return null
+        }
+        return relative
+    }
+
+    fun write(relativeKey: String, bytes: ByteArray) = withIncognitoVolumeLock {
+        val key = volumeKey ?: return@withIncognitoVolumeLock
+        val normalized = normalizeRelativeKey(relativeKey)
+        val opaque = pathMap.entries[normalized] ?: newOpaqueHostName()
+        writeEncryptedPayloadLocked(key, opaque, bytes)
+        pathMap = pathMap.copy(entries = pathMap.entries + (normalized to opaque))
+        persistPathMapLocked()
+    }
+
+    fun append(relativeKey: String, bytes: ByteArray) = withIncognitoVolumeLock {
+        if (bytes.isEmpty()) return@withIncognitoVolumeLock
+        val key = volumeKey ?: return@withIncognitoVolumeLock
+        val normalized = normalizeRelativeKey(relativeKey)
+        val opaque = pathMap.entries[normalized]
+        if (opaque == null) {
+            writeLocked(relativeKey, bytes)
+            return@withIncognitoVolumeLock
+        }
+        val hostPath = payloadAbsolutePath(opaque)
+        val priorSize = IncognitoHostRawFs.fileSize(hostPath)
+        if (priorSize == 0L) {
+            writeEncryptedPayloadLocked(key, opaque, bytes)
+            return@withIncognitoVolumeLock
+        }
+        val logicalOffset = priorSize.toInt()
+        val misalign = logicalOffset % XTS_DATA_UNIT
+        if (misalign == 0) {
+            val cipher =
+                IncognitoXtsCrypto.encryptAtLogicalOffset(key, opaque, bytes, logicalOffset)
+            IncognitoHostRawFs.appendBytes(hostPath, cipher)
+        } else {
+            val unitStart = logicalOffset - misalign
+            val tailCipher =
+                IncognitoHostRawFs.readRange(hostPath, unitStart.toLong(), misalign)
+            val tailPlain =
+                IncognitoXtsCrypto.decryptAtLogicalOffset(key, opaque, tailCipher, unitStart)
+            val merged = ByteArray(tailPlain.size + bytes.size)
+            tailPlain.copyInto(merged)
+            bytes.copyInto(merged, destinationOffset = tailPlain.size)
+            val newCipher =
+                IncognitoXtsCrypto.encryptAtLogicalOffset(key, opaque, merged, unitStart)
+            IncognitoHostRawFs.writeBytesAt(hostPath, unitStart.toLong(), newCipher)
         }
     }
 
-    fun write(relativeKey: String, bytes: ByteArray) = synchronized(lock) {
-        val vol = volume ?: return
-        val existing = catalog.files[relativeKey]
-        val offset = when {
-            existing == null -> {
-                ensureCapacityForAllocation(bytes.size.toLong(), vol)
-                allocate(bytes.size.toLong())
-            }
-            bytes.size <= existing.size -> existing.offset
-            fitsInPlace(existing, bytes.size.toLong()) -> existing.offset
-            else -> {
-                catalog = catalog.copy(files = catalog.files - relativeKey)
-                ensureCapacityForAllocation(bytes.size.toLong(), vol)
-                allocate(bytes.size.toLong())
-            }
+    fun read(relativeKey: String): ByteArray = withIncognitoVolumeLock {
+        readLocked(relativeKey)
+    }
+
+    fun exists(relativeKey: String): Boolean = withIncognitoVolumeLock {
+        existsLocked(relativeKey)
+    }
+
+    fun delete(relativeKey: String) = withIncognitoVolumeLock {
+        deleteLocked(relativeKey)
+    }
+
+    fun fileSize(relativeKey: String): Long = withIncognitoVolumeLock {
+        fileSizeLocked(relativeKey)
+    }
+
+    /** Host path to the opaque ciphertext file for [relativeKey] (creates map entry if needed). */
+    fun resolveOrCreateOpaqueHostAbsolutePath(relativeKey: String): String = withIncognitoVolumeLock {
+        val normalized = normalizeRelativeKey(relativeKey)
+        val opaque = pathMap.entries[normalized] ?: newOpaqueHostName()
+        if (normalized !in pathMap.entries) {
+            pathMap = pathMap.copy(entries = pathMap.entries + (normalized to opaque))
+            persistPathMapLocked()
         }
-        vol.write(offset, bytes)
-        catalog = catalog.copy(
-            files = catalog.files + (relativeKey to FileEntry(offset, bytes.size.toLong())),
-        )
-        saveCatalog(vol, catalog)
-        syncVolumeSize(vol)
+        payloadAbsolutePath(pathMap.entries.getValue(normalized))
     }
 
-    fun append(relativeKey: String, bytes: ByteArray) = synchronized(lock) {
-        if (bytes.isEmpty()) return
-        val vol = volume ?: return
-        val existing = catalog.files[relativeKey]
-        if (existing != null && existing.offset + existing.size == catalog.nextDataOffset) {
-            ensureCapacityForAllocation(bytes.size.toLong(), vol)
-            val appendOffset = existing.offset + existing.size
-            vol.write(appendOffset, bytes)
-            catalog = catalog.copy(
-                files = catalog.files + (
-                    relativeKey to FileEntry(existing.offset, existing.size + bytes.size.toLong())
-                    ),
-                nextDataOffset = appendOffset + bytes.size,
-            )
-            saveCatalog(vol, catalog)
-            syncVolumeSize(vol)
-            return
-        }
-        val prior = read(relativeKey)
-        write(relativeKey, if (prior.isEmpty()) bytes else prior + bytes)
-    }
-
-    fun read(relativeKey: String): ByteArray = synchronized(lock) {
-        val vol = volume ?: return ByteArray(0)
-        val entry = catalog.files[relativeKey] ?: return ByteArray(0)
-        if (entry.size <= 0) return ByteArray(0)
-        vol.read(entry.offset, entry.size.toInt())
-    }
-
-    fun exists(relativeKey: String): Boolean = synchronized(lock) {
-        catalog.files.containsKey(relativeKey)
-    }
-
-    fun delete(relativeKey: String) = synchronized(lock) {
-        val vol = volume ?: return
-        if (!catalog.files.containsKey(relativeKey)) return
-        catalog = catalog.copy(files = catalog.files - relativeKey)
-        refreshNextDataOffsetFromFiles()
-        saveCatalog(vol, catalog)
-        maybeCompactAfterDelete(vol)
-    }
-
-    fun fileSize(relativeKey: String): Long = synchronized(lock) {
-        catalog.files[relativeKey]?.size ?: 0L
-    }
-
-    fun listFileNamesInDirectory(relativeDirKey: String): List<String> = synchronized(lock) {
+    fun listFileNamesInDirectory(relativeDirKey: String): List<String> = withIncognitoVolumeLock {
         val prefix = relativeDirKey.trimEnd('/').let { if (it.isEmpty()) "" else "$it/" }
-        catalog.files.keys
+        pathMap.entries.keys
             .filter { key ->
                 if (prefix.isEmpty()) !key.contains('/')
                 else key.startsWith(prefix) && !key.removePrefix(prefix).contains('/')
@@ -151,234 +148,118 @@ internal object IncognitoVolumeFileSystem {
             .sorted()
     }
 
-    fun deleteFilesWithPrefix(relativeDirKey: String, namePrefix: String) = synchronized(lock) {
-        val vol = volume ?: return
+    fun deleteFilesWithPrefix(relativeDirKey: String, namePrefix: String) = withIncognitoVolumeLock {
         val prefix = relativeDirKey.trimEnd('/').let { if (it.isEmpty()) "" else "$it/" }
-        val remove = catalog.files.keys.filter { key ->
+        val remove = pathMap.entries.keys.filter { key ->
             key.startsWith(prefix) && key.removePrefix(prefix).startsWith(namePrefix)
         }
-        if (remove.isEmpty()) return
-        catalog = catalog.copy(files = catalog.files.filterKeys { it !in remove.toSet() })
-        refreshNextDataOffsetFromFiles()
-        saveCatalog(vol, catalog)
-        maybeCompactAfterDelete(vol)
-    }
-
-    fun ensureDirectory(relativeDirKey: String) = Unit
-
-    private fun allocate(size: Long): Long {
-        val end = catalog.nextDataOffset + size
-        if (end > IncognitoContainerLimits.MAX_LOGICAL_BYTES) {
-            throw IncognitoContainerCapacityException(
-                "Incognito container exceeds ${IncognitoContainerLimits.MAX_LOGICAL_BYTES} byte limit",
-            )
-        }
-        val offset = catalog.nextDataOffset
-        catalog = catalog.copy(nextDataOffset = end)
-        return offset
-    }
-
-    private fun liveDataEndExclusive(): Long =
-        if (catalog.files.isEmpty()) {
-            DATA_REGION_START
-        } else {
-            DATA_REGION_START + catalog.files.values.sumOf { it.size }
-        }
-
-    private fun fragmentationSlackBytes(): Long =
-        (catalog.nextDataOffset - liveDataEndExclusive()).coerceAtLeast(0L)
-
-    private fun refreshNextDataOffsetFromFiles() {
-        val end = catalog.files.values.maxOfOrNull { it.offset + it.size } ?: DATA_REGION_START
-        catalog = catalog.copy(nextDataOffset = maxOf(end, DATA_REGION_START))
-    }
-
-    private fun ensureCapacityForAllocation(additionalBytes: Long, vol: IncognitoBlockVolume) {
-        val max = IncognitoContainerLimits.MAX_LOGICAL_BYTES
-        val headroom = IncognitoContainerLimits.EVICTION_HEADROOM_BYTES
-
-        if (catalog.nextDataOffset + additionalBytes <= max && !isLiveDataNearHardCap(additionalBytes)) {
-            return
-        }
-
-        if (catalog.nextDataOffset + additionalBytes > max && liveDataEndExclusive() + additionalBytes <= max) {
-            compactAndShrink(vol)
-            if (catalog.nextDataOffset + additionalBytes <= max && !isLiveDataNearHardCap(additionalBytes)) {
-                return
-            }
-        }
-
-        val targetLiveEnd = when {
-            liveDataEndExclusive() + additionalBytes > max ->
-                (max - additionalBytes - headroom).coerceAtLeast(DATA_REGION_START)
-            isLiveDataNearHardCap(additionalBytes) ->
-                (max - headroom - additionalBytes).coerceAtLeast(DATA_REGION_START)
-            else -> liveDataEndExclusive()
-        }
-
-        batchEvictUntilLiveAtMost(vol, targetLiveEnd)
-        compactAndShrink(vol)
-
-        if (catalog.nextDataOffset + additionalBytes > max) {
-            batchEvictUntilLiveAtMost(
-                vol,
-                (max - additionalBytes - headroom).coerceAtLeast(DATA_REGION_START),
-            )
-            compactAndShrink(vol)
-        }
-
-        if (catalog.nextDataOffset + additionalBytes > max) {
-            throw IncognitoContainerCapacityException(
-                "Incognito container exceeds $max byte limit",
-            )
+        if (remove.isEmpty()) return@withIncognitoVolumeLock
+        for (logical in remove) {
+            deleteLocked(logical)
         }
     }
 
-    private fun isLiveDataNearHardCap(additionalBytes: Long): Boolean {
-        val endAfter = liveDataEndExclusive() + additionalBytes
-        return endAfter > IncognitoContainerLimits.MAX_LOGICAL_BYTES -
-            IncognitoContainerLimits.EVICTION_HEADROOM_BYTES
-    }
-
-    /** Drops catalog entries in one pass; caller compacts once to reclaim tail and bound RAM. */
-    private fun batchEvictUntilLiveAtMost(vol: IncognitoBlockVolume, targetLiveEndExclusive: Long) {
-        if (liveDataEndExclusive() <= targetLiveEndExclusive) return
-
-        val evictableKeys = catalog.files.entries
-            .asSequence()
-            .filter { (key, _) -> !IncognitoVolumeCacheEviction.isProtectedKey(key) }
-            .sortedWith { a, b ->
-                IncognitoVolumeCacheEviction.compareEvictionOrder(
-                    a.key,
-                    b.key,
-                    a.value.offset,
-                    b.value.offset,
-                )
-            }
-            .map { it.key }
-            .toList()
-
-        var liveEnd = liveDataEndExclusive()
-        val remove = LinkedHashSet<String>()
-        for (key in evictableKeys) {
-            if (liveEnd <= targetLiveEndExclusive) break
-            if (key == currentLogRelativeKey) continue
-            remove += key
-            liveEnd -= catalog.files.getValue(key).size
-        }
-        if (liveEnd > targetLiveEndExclusive &&
-            currentLogRelativeKey in catalog.files &&
-            !IncognitoVolumeCacheEviction.isProtectedKey(currentLogRelativeKey)
-        ) {
-            remove += currentLogRelativeKey
-        }
-        if (remove.isEmpty()) return
-        catalog = catalog.copy(files = catalog.files.filterKeys { it !in remove })
-        refreshNextDataOffsetFromFiles()
-        saveCatalog(vol, catalog)
-    }
-
-    private fun maybeCompactAfterDelete(vol: IncognitoBlockVolume) {
-        if (fragmentationSlackBytes() >= COMPACT_SLACK_THRESHOLD_BYTES) {
-            compactAndShrink(vol)
-        } else {
-            syncVolumeSize(vol)
+    fun ensureDirectory(relativeDirKey: String) = withIncognitoVolumeLock {
+        val normalized = normalizeRelativeKey(relativeDirKey).trimEnd('/')
+        if (normalized.isEmpty()) return@withIncognitoVolumeLock
+        val marker = directoryMarkerKey(normalized)
+        if (marker !in pathMap.entries) {
+            writeLocked(marker, ByteArray(0))
         }
     }
 
-    private fun fitsInPlace(existing: FileEntry, newSize: Long): Boolean {
-        val end = existing.offset + newSize
-        if (end <= catalog.nextDataOffset) return true
-        return catalog.files.values.none { other ->
-            other.offset != existing.offset &&
-                rangesOverlap(existing.offset, newSize, other.offset, other.size)
+    private fun writeLocked(relativeKey: String, bytes: ByteArray) {
+        val key = volumeKey ?: return
+        val normalized = normalizeRelativeKey(relativeKey)
+        val opaque = pathMap.entries[normalized] ?: newOpaqueHostName()
+        writeEncryptedPayloadLocked(key, opaque, bytes)
+        pathMap = pathMap.copy(entries = pathMap.entries + (normalized to opaque))
+        persistPathMapLocked()
+    }
+
+    private fun readLocked(relativeKey: String): ByteArray {
+        val key = volumeKey ?: return ByteArray(0)
+        val normalized = normalizeRelativeKey(relativeKey)
+        val opaque = pathMap.entries[normalized] ?: return ByteArray(0)
+        val stored = IncognitoHostRawFs.readBytes(payloadAbsolutePath(opaque))
+        if (stored.isEmpty()) return ByteArray(0)
+        return IncognitoXtsCrypto.decrypt(key, opaque, stored)
+    }
+
+    private fun deleteLocked(relativeKey: String) {
+        val normalized = normalizeRelativeKey(relativeKey)
+        val opaque = pathMap.entries[normalized] ?: return
+        IncognitoHostRawFs.delete(payloadAbsolutePath(opaque))
+        pathMap = pathMap.copy(entries = pathMap.entries - normalized)
+        persistPathMapLocked()
+    }
+
+    private fun fileSizeLocked(relativeKey: String): Long {
+        val normalized = normalizeRelativeKey(relativeKey)
+        val opaque = pathMap.entries[normalized] ?: return 0L
+        return IncognitoHostRawFs.fileSize(payloadAbsolutePath(opaque))
+    }
+
+    private fun normalizeRelativeKey(relativeKey: String): String =
+        relativeKey.replace('\\', '/').trimStart('/')
+
+    private fun directoryMarkerKey(normalizedDir: String): String = "$normalizedDir/.incognito-dir"
+
+    private fun existsLocked(relativeKey: String): Boolean {
+        val normalized = normalizeRelativeKey(relativeKey).trimEnd('/')
+        if (pathMap.entries.containsKey(normalized)) return true
+        if (normalized.isEmpty()) return pathMap.entries.isNotEmpty()
+        if (pathMap.entries.containsKey(directoryMarkerKey(normalized))) return true
+        val prefix = "$normalized/"
+        return pathMap.entries.keys.any { it.startsWith(prefix) }
+    }
+
+    private fun payloadAbsolutePath(opaqueHostName: String): String =
+        "${storageRoot!!}/$opaqueHostName"
+
+    private fun newOpaqueHostName(): String = IncognitoObfuscatedTempNames.randomTempFileName()
+
+    private fun mapHostBasename(volumeKey: ByteArray): String {
+        val digest = SHA256.digest(volumeKey + MAP_TWEAK_SCOPE.encodeToByteArray()).bytes
+        return digest.copyOfRange(0, 12).joinToString("") { byte ->
+            (byte.toInt() and 0xFF).toString(16).padStart(2, '0')
         }
     }
 
-    private fun rangesOverlap(aStart: Long, aSize: Long, bStart: Long, bSize: Long): Boolean {
-        val aEnd = aStart + aSize
-        val bEnd = bStart + bSize
-        return aStart < bEnd && bStart < aEnd
-    }
-
-    /** Packs live files to the front of the data region and truncates trailing free space. */
-    private fun compactAndShrink(vol: IncognitoBlockVolume) {
-        if (catalog.files.isEmpty()) {
-            catalog = catalog.copy(nextDataOffset = DATA_REGION_START)
-            saveCatalog(vol, catalog)
-            syncVolumeSize(vol)
-            return
+    private fun writeEncryptedPayloadLocked(volumeKey: ByteArray, opaque: String, plaintext: ByteArray) {
+        val ciphertext = IncognitoXtsCrypto.encrypt(volumeKey, opaque, plaintext)
+        require(ciphertext.size == plaintext.size) {
+            "Incognito XTS must preserve size (plain=${plaintext.size}, cipher=${ciphertext.size})"
         }
-        var cursor = DATA_REGION_START
-        val ordered = catalog.files.entries.sortedBy { it.value.offset }
-        val relocated = LinkedHashMap<String, FileEntry>(ordered.size)
-        for ((path, entry) in ordered) {
-            if (entry.offset != cursor && entry.size > 0) {
-                copyVolumeRange(vol, entry.offset, cursor, entry.size)
-            }
-            relocated[path] = FileEntry(cursor, entry.size)
-            cursor += entry.size
-        }
-        catalog = catalog.copy(files = relocated, nextDataOffset = cursor)
-        saveCatalog(vol, catalog)
-        syncVolumeSize(vol)
+        val path = payloadAbsolutePath(opaque)
+        IncognitoHostRawFs.writeBytes(path, ciphertext)
+        IncognitoHostRawFs.fsync(path)
     }
 
-    private fun copyVolumeRange(
-        vol: IncognitoBlockVolume,
-        srcOffset: Long,
-        dstOffset: Long,
-        length: Long,
-    ) {
-        var src = srcOffset
-        var dst = dstOffset
-        var remaining = length
-        while (remaining > 0) {
-            val chunk = minOf(remaining, COMPACT_CHUNK_BYTES.toLong()).toInt()
-            val data = vol.read(src, chunk)
-            if (data.isEmpty()) break
-            vol.write(dst, data)
-            val moved = data.size.toLong()
-            src += moved
-            dst += moved
-            remaining -= moved
-        }
+    private fun loadPathMapLocked(volumeKey: ByteArray, mapPath: String): PathMap {
+        if (!IncognitoHostRawFs.exists(mapPath)) return PathMap()
+        val stored = IncognitoHostRawFs.readBytes(mapPath)
+        if (stored.isEmpty()) return PathMap()
+        val jsonBytes = IncognitoXtsCrypto.decrypt(volumeKey, MAP_TWEAK_SCOPE, stored)
+        val text = jsonBytes.takeWhile { it != 0.toByte() }.toByteArray().decodeToString()
+        if (text.isBlank()) return PathMap()
+        return runCatching { json.decodeFromString<PathMap>(text) }.getOrDefault(PathMap())
     }
 
-    private fun syncVolumeSize(vol: IncognitoBlockVolume) {
-        val catalogEnd = CATALOG_MAX_BYTES.toLong()
-        val dataEnd = maxOf(
-            catalog.nextDataOffset,
-            catalog.files.values.maxOfOrNull { it.offset + it.size } ?: DATA_REGION_START,
-        )
-        vol.truncateToLogicalByteCount(maxOf(catalogEnd, dataEnd))
-    }
-
-    private fun loadCatalog(vol: IncognitoBlockVolume): VolumeCatalog {
-        val raw = vol.read(CATALOG_LOGICAL_OFFSET, CATALOG_MAX_BYTES)
-        val text = raw.takeWhile { it != 0.toByte() }.toByteArray().decodeToString()
-        if (text.isBlank()) return VolumeCatalog(nextDataOffset = DATA_REGION_START)
-        return runCatching { json.decodeFromString<VolumeCatalog>(text) }
-            .getOrDefault(VolumeCatalog(nextDataOffset = DATA_REGION_START))
-    }
-
-    private fun saveCatalog(vol: IncognitoBlockVolume, catalog: VolumeCatalog) {
-        val bytes = json.encodeToString(catalog).encodeToByteArray()
-        require(bytes.size <= CATALOG_MAX_BYTES) { "Incognito catalog too large" }
-        val padded = ByteArray(CATALOG_MAX_BYTES)
-        bytes.copyInto(padded)
-        vol.write(CATALOG_LOGICAL_OFFSET, padded)
+    private fun persistPathMapLocked() {
+        val key = volumeKey ?: return
+        val mapPath = mapFilePath ?: return
+        val jsonBytes = json.encodeToString(pathMap).encodeToByteArray()
+        val padded = ByteArray(jsonBytes.size + 1)
+        jsonBytes.copyInto(padded)
+        val encrypted = IncognitoXtsCrypto.encrypt(key, MAP_TWEAK_SCOPE, padded)
+        require(encrypted.size == padded.size)
+        IncognitoHostRawFs.writeBytes(mapPath, encrypted)
+        IncognitoHostRawFs.fsync(mapPath)
     }
 }
 
 @Serializable
-private data class VolumeCatalog(
-    val nextDataOffset: Long = DATA_REGION_START,
-    val files: Map<String, FileEntry> = emptyMap(),
-)
-
-@Serializable
-private data class FileEntry(
-    val offset: Long,
-    val size: Long,
+private data class PathMap(
+    val entries: Map<String, String> = emptyMap(),
 )

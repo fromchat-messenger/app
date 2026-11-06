@@ -19,7 +19,6 @@ import platform.Foundation.writeToFile
 import platform.posix.fclose
 import platform.posix.fopen
 import platform.posix.fwrite
-import ru.fromchat.incognito.IncognitoMode
 
 internal actual fun expectExists(path: String): Boolean =
     NSFileManager.defaultManager.fileExistsAtPath(path)

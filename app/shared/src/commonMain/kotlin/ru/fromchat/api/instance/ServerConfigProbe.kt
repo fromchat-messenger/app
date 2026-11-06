@@ -10,11 +10,12 @@ import ru.fromchat.api.sync.ChatListSync
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.config.ServerConfigData
 import ru.fromchat.config.Settings
+import ru.fromchat.config.isPrivateOrLocalServerHost
 import ru.fromchat.incognito.findIncognitoMitmCertificateException
 import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.logging.Logger
 import ru.fromchat.ui.incognito.handleIncognitoHttpsTlsFailure
-import ru.fromchat.ui.incognito.IncognitoTlsDialogController
+import ru.fromchat.ui.security.ConnectionSecurityDialogController
 import ru.fromchat.ui.incognito.isIncognitoHttpsTlsFailure
 import ru.fromchat.ui.main.settings.about.legal.DocumentRepository
 import kotlin.time.Duration.Companion.milliseconds
@@ -54,9 +55,13 @@ internal fun noteIncognitoTlsProbeFailure(error: Throwable?, httpsEnabled: Boole
     }
 }
 
+internal fun clearIncognitoTlsProbeFailure() {
+    lastIncognitoTlsProbeFailure = null
+}
+
 fun surfaceLastIncognitoTlsProbeFailure(host: String, httpsEnabled: Boolean): Boolean {
     val error = takeLastIncognitoTlsProbeFailure() ?: return false
-    return IncognitoTlsDialogController.presentFromThrowable(error, host, httpsEnabled)
+    return ConnectionSecurityDialogController.presentFromThrowable(error, host, httpsEnabled)
 }
 
 /** True when [error] looks like a TLS/SSL handshake failure (safe to fall back to HTTP). */
@@ -140,9 +145,10 @@ suspend fun probeServerEndpoint(
 
     var lastResult: ServerProbeResult = ServerProbeResult.Unreachable
 
+    val localDevHost = isPrivateOrLocalServerHost(host)
     val schemeAttempts = when {
         schemeExplicit -> listOf(httpsPreferred)
-        IncognitoMode.active -> listOf(true)
+        localDevHost -> listOf(false)
         httpsPreferred -> listOf(true, false)
         else -> listOf(false)
     }
@@ -157,12 +163,13 @@ suspend fun probeServerEndpoint(
 
             lastConfig = config
             val attemptUrl = apiBaseUrlFor(config)
+            val recordIncognitoTlsFailure = schemeExplicit || index == lastIndex
             Logger.i(
                 PROBE_LOG_TAG,
                 "endpoint attempt ${index + 1}/${size} scheme=${if (https) "https" else "http"} url=$attemptUrl " +
                     "explicitScheme=$schemeExplicit",
             )
-            val (result, failure) = probeServerOnce(config)
+            val (result, failure) = probeServerOnce(config, recordIncognitoTlsFailure)
             lastResult = result
             if (failure != null) {
                 Logger.w(
@@ -179,18 +186,9 @@ suspend fun probeServerEndpoint(
                 ServerProbeResult.Unsupported -> return config to result
                 ServerProbeResult.Timeout,
                 ServerProbeResult.Unreachable -> {
-                    if (IncognitoMode.active && https && isIncognitoHttpsTlsFailure(failure, https)) {
-                        return config to result
-                    }
-                    if (!(!schemeExplicit && https && index < lastIndex)) return config to result
-
-                    // Browser-like: only fall back to HTTP after a TLS/protocol failure.
-                    if (failure?.isSslProtocolError() == true)
-                        return@forEachIndexed
-                    if (result is ServerProbeResult.Timeout)
-                        return config to result
-
-                    // Non-SSL Unreachable (e.g. LAN cleartext / connection refused on 443): try HTTP.
+                    val canFallbackToHttp = !schemeExplicit && https && index < lastIndex
+                    if (!canFallbackToHttp) return config to result
+                    clearIncognitoTlsProbeFailure()
                     return@forEachIndexed
                 }
             }
@@ -213,6 +211,7 @@ suspend fun persistPreAuthServerEndpoint(config: ServerConfigData) {
 
 private suspend fun probeServerOnce(
     config: ServerConfigData,
+    recordIncognitoTlsFailure: Boolean = true,
 ): Pair<ServerProbeResult, Throwable?> {
     val apiBase = apiBaseUrlFor(config)
     val time = TimeSource.Monotonic.markNow()
@@ -225,9 +224,13 @@ private suspend fun probeServerOnce(
                 apiBaseUrl = apiBase,
                 forceNetwork = true,
                 allowCachedOnFailure = false,
+                recordIncognitoTlsFailure = recordIncognitoTlsFailure,
             )
         }.getOrElse { e ->
-            if (handleIncognitoHttpsTlsFailure(e, config.httpsEnabled, config.serverIp)) {
+            if (
+                recordIncognitoTlsFailure &&
+                handleIncognitoHttpsTlsFailure(e, config.httpsEnabled, config.serverIp)
+            ) {
                 noteIncognitoTlsProbeFailure(e, config.httpsEnabled)
                 return ServerProbeResult.Unreachable to e
             }
@@ -270,7 +273,10 @@ private suspend fun probeServerOnce(
                 val failure = runCatching {
                     ApiClient.fetchServerInstanceId(apiBase)
                 }.exceptionOrNull()
-                if (handleIncognitoHttpsTlsFailure(failure, config.httpsEnabled, config.serverIp)) {
+                if (
+                    recordIncognitoTlsFailure &&
+                    handleIncognitoHttpsTlsFailure(failure, config.httpsEnabled, config.serverIp)
+                ) {
                     noteIncognitoTlsProbeFailure(failure, config.httpsEnabled)
                     return ServerProbeResult.Unreachable to failure
                 }
@@ -294,8 +300,10 @@ suspend fun applyServerConfig(
     val tentative = config.copy(callsEnabled = callsOk, callsPort = config.apiPort)
     val configKeyChanged =
         previousConfigKey.isNotEmpty() && previousConfigKey != tentative.configKey()
+    val instanceChanged =
+        previousInstanceId.isNotEmpty() && previousInstanceId != instanceId.trim()
 
-    if (configKeyChanged && previousInstanceId.isNotEmpty()) {
+    if ((configKeyChanged || instanceChanged) && previousInstanceId.isNotEmpty()) {
         clearAccountCacheOnLogout(previousInstanceId)
     }
 

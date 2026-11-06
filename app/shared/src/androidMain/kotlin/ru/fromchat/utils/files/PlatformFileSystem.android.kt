@@ -1,6 +1,5 @@
 package ru.fromchat.utils.files
 
-import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.utils.UtilsLibrary
 import java.io.File
 

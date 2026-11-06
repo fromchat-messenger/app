@@ -679,7 +679,7 @@ fun ExpressiveStepFlowScaffold(
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(top = 16.dp, bottom = 4.dp)
+                                            .padding(top = 3.dp, bottom = 3.dp)
                                             .trackExpressiveStepSnackbarAnchor(
                                                 anchors = snackbarAnchors,
                                                 role = ExpressiveStepSnackbarAnchorRole.SecondaryCta,

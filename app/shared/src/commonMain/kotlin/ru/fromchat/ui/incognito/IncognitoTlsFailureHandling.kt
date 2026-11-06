@@ -21,5 +21,5 @@ fun isIncognitoHttpsTlsFailure(
 fun handleIncognitoHttpsTlsFailure(
     error: Throwable?,
     httpsEnabled: Boolean,
-    @Suppress("UNUSED_PARAMETER") host: String,
+    _host: String,
 ): Boolean = isIncognitoHttpsTlsFailure(error, httpsEnabled)

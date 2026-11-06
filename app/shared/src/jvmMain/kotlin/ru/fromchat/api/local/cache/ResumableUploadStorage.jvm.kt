@@ -1,5 +1,7 @@
 package ru.fromchat.api.local.cache
 
+import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.incognito.IncognitoVolumeFileSystem
 import ru.fromchat.utils.files.PlatformFileSystem
 import java.io.File
 import java.io.FileInputStream
@@ -235,11 +237,22 @@ actual suspend fun readOutboundFileBytes(fileUri: String): ByteArray =
 
 actual suspend fun copyOutboundFileToPath(sourceUri: String, destinationPath: String) {
     withContext(Dispatchers.IO) {
+        val localPath = resolveLocalPath(sourceUri)
+            ?: throw OutboundFileUnavailableException("Invalid file URI")
+        val parent = destinationPath.substringBeforeLast('/', missingDelimiterValue = "")
+        if (parent.isNotEmpty()) {
+            PlatformFileSystem.ensureDirectory(parent)
+        }
+        if (IncognitoMode.active && IncognitoVolumeFileSystem.relativeKeyForAppPath(destinationPath) != null) {
+            val source = File(localPath)
+            if (!source.isFile) throw OutboundFileUnavailableException("Failed to read file from URI")
+            val bytes = source.readBytes()
+            PlatformFileSystem.writeBytes(destinationPath, bytes)
+            return@withContext
+        }
         val dest = File(destinationPath)
         dest.parentFile?.mkdirs()
-        val path = resolveLocalPath(sourceUri)
-            ?: throw OutboundFileUnavailableException("Invalid file URI")
-        val source = File(path)
+        val source = File(localPath)
         if (!source.isFile) throw OutboundFileUnavailableException("Failed to read file from URI")
         source.inputStream().use { inputStream ->
             FileOutputStream(dest).use { output ->

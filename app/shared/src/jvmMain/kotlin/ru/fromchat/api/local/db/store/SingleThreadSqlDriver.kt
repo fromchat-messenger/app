@@ -19,7 +19,6 @@ import java.util.concurrent.atomic.AtomicReference
 internal class SingleThreadSqlDriver(
     private val delegate: SqlDriver,
 ) : SqlDriver {
-    internal fun jdbcDelegateOrNull(): SqlDriver = delegate
     private fun <T> onDbThread(block: () -> T): T {
         if (Thread.currentThread() == dbThread.get()) {
             return withSqliteBusyGuard(block)

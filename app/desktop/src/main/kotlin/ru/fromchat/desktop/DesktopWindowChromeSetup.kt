@@ -16,14 +16,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.FrameWindowScope
+import androidx.compose.ui.window.LocalWindowExceptionHandlerFactory
 import androidx.compose.ui.window.WindowExceptionHandler
+import androidx.compose.ui.window.WindowExceptionHandlerFactory
 import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.awt.ComposeWindow
 import ru.fromchat.api.local.db.isSqliteBusy
-import ru.fromchat.incognito.FROMCHAT_OFFICIAL_API_HOST
 import ru.fromchat.logging.Logger
-import ru.fromchat.ui.incognito.IncognitoTlsDialogController
+import ru.fromchat.security.tls.FROMCHAT_OFFICIAL_API_HOST
+import ru.fromchat.ui.security.ConnectionSecurityDialogController
 import ru.fromchat.ui.theme.FromChatTheme
 import ru.fromchat.ui.theme.getColorScheme
 import ru.fromchat.ui.theme.isAppInDarkTheme
@@ -33,25 +35,41 @@ import java.awt.image.BufferedImage
 internal fun desktopThemeBackgroundCompose(darkTheme: Boolean): Color =
     if (darkTheme) Color(0xFF1C1B1F) else Color(0xFFFFFBFE)
 
+/** Log-only handler — never the stock blank Compose "Error" window. */
 @OptIn(ExperimentalComposeUiApi::class)
-internal fun installDesktopWindowExceptionHandler(window: ComposeWindow) {
-    window.exceptionHandler = WindowExceptionHandler { throwable ->
+internal fun desktopWindowExceptionHandler(): WindowExceptionHandler =
+    WindowExceptionHandler { throwable ->
         if (isSqliteBusy(throwable)) {
             if (!DatabaseLockGate.onSqliteBusy(throwable)) {
                 Logger.w("DesktopWindow", "Suppressed SQLITE_BUSY in composition", throwable)
             }
         } else if (
-            IncognitoTlsDialogController.presentFromThrowable(
+            ConnectionSecurityDialogController.presentFromThrowable(
                 throwable,
                 FROMCHAT_OFFICIAL_API_HOST,
                 httpsEnabled = true,
             )
         ) {
-            Logger.w("DesktopWindow", "incognito TLS failure surfaced in-app", throwable)
+            Logger.w("DesktopWindow", "TLS failure surfaced in-app", throwable)
         } else {
             Logger.e("DesktopWindow", "uncaught in composition", throwable)
         }
     }
+
+@OptIn(ExperimentalComposeUiApi::class)
+internal fun installDesktopWindowExceptionHandler(window: ComposeWindow) {
+    window.exceptionHandler = desktopWindowExceptionHandler()
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+internal fun ProvideDesktopWindowExceptionHandler(content: @Composable () -> Unit) {
+    CompositionLocalProvider(
+        LocalWindowExceptionHandlerFactory provides WindowExceptionHandlerFactory {
+            desktopWindowExceptionHandler()
+        },
+        content = content,
+    )
 }
 
 @Composable

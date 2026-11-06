@@ -1,5 +1,8 @@
 package ru.fromchat.ui.auth
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import ru.fromchat.api.schema.user.auth.SmartCaptchaParams
 import ru.fromchat.api.schema.user.auth.YandexOAuthParams
 
@@ -20,6 +23,7 @@ internal object AuthRegisterDraft {
     var registrationProof: String? = null
     var captchaToken: String? = null
     var page: Int = 0
+    var incognitoEnabled by mutableStateOf(false)
 
     fun clear() {
         username = ""
@@ -34,5 +38,11 @@ internal object AuthRegisterDraft {
         registrationProof = null
         captchaToken = null
         page = 0
+        incognitoEnabled = false
     }
+}
+
+/** Clears pre-auth draft state (visible outside the shared module, e.g. desktop window close). */
+fun resetPreAuthDraft() {
+    AuthRegisterDraft.clear()
 }

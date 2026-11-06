@@ -1,21 +1,14 @@
 package ru.fromchat.ui.auth
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -23,12 +16,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.unit.dp
 import io.ktor.client.call.body
 import io.ktor.client.plugins.ClientRequestException
 import kotlinx.coroutines.launch
@@ -37,8 +27,8 @@ import ru.fromchat.api.ApiClient
 import ru.fromchat.api.instance.isSslProtocolError
 import ru.fromchat.api.schema.core.ErrorResponse
 import ru.fromchat.auth_incognito_enabled_snackbar
-import ru.fromchat.auth_incognito_mode_summary
-import ru.fromchat.auth_incognito_mode_title
+import ru.fromchat.auth_incognito_login_body
+import ru.fromchat.auth_incognito_login_title
 import ru.fromchat.auth_server_connect_failed
 import ru.fromchat.auth_step_username_body
 import ru.fromchat.auth_step_username_title
@@ -67,8 +57,6 @@ import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 import ru.fromchat.username
 import ru.fromchat.username_chars_error
 import ru.fromchat.username_length_error
-import ru.fromchat.utils.components.Category
-import ru.fromchat.utils.components.SwitchListItem
 
 /** Matches backend `is_valid_username`: English letters, digits, hyphen, underscore. */
 private const val USERNAME_STEP_TAG = "AuthUsernameStep"
@@ -82,7 +70,7 @@ internal fun usernameStepPage(
     username: String,
     onUsernameChange: (String) -> Unit,
     incognitoEnabled: Boolean,
-    onIncognitoChange: (Boolean) -> Unit,
+    incognitoFlow: Boolean,
     mitmBypassRetryNonce: Int,
     publicHttpBypassRetryNonce: Int,
     onContinue: suspend () -> Unit,
@@ -102,8 +90,6 @@ internal fun usernameStepPage(
     val serverFail = stringResource(Res.string.auth_server_connect_failed)
     val unexpected = stringResource(Res.string.error_unexpected)
     val nextLabel = stringResource(Res.string.settings_next)
-    val incognitoTitle = stringResource(Res.string.auth_incognito_mode_title)
-    val incognitoSummary = stringResource(Res.string.auth_incognito_mode_summary)
     val incognitoEnabledMessage = stringResource(Res.string.auth_incognito_enabled_snackbar)
     val hasProhibitedChars = username.trim().any { !isAllowedUsernameChar(it) }
 
@@ -127,8 +113,13 @@ internal fun usernameStepPage(
             )
             try {
                 if (incognitoEnabled) {
-                    IncognitoMode.activate()
-                    onSnackbar(incognitoEnabledMessage, null)
+                    try {
+                        IncognitoMode.activate()
+                    } catch (e: IllegalArgumentException) {
+                        Logger.e(USERNAME_STEP_TAG, "incognito activate failed username=$trimmed", e)
+                        onSnackbar(unexpected, e)
+                        return@launch
+                    }
                 } else if (IncognitoMode.active) {
                     IncognitoMode.destroy()
                 }
@@ -147,6 +138,9 @@ internal fun usernameStepPage(
                         onSnackbar(serverFail, null)
                     }
                     AuthServerProbeOutcome.Ok -> {
+                        if (incognitoEnabled) {
+                            onSnackbar(incognitoEnabledMessage, null)
+                        }
                         try {
                             Logger.i(USERNAME_STEP_TAG, "auth username step request username=$trimmed")
                             ApiClient.authUsernameStep(trimmed)
@@ -172,7 +166,8 @@ internal fun usernameStepPage(
                                 return@launch
                             }
                             if (isIncognitoTlsCertificateError(e) || (incognitoEnabled && e.isSslProtocolError())) {
-                                onTlsCertificateRejected()
+                                Logger.w(USERNAME_STEP_TAG, "auth TLS/connect error username=$trimmed", e)
+                                onSnackbar(serverFail, e)
                                 return@launch
                             }
                             Logger.e(USERNAME_STEP_TAG, "auth username step error username=$trimmed", e)
@@ -198,12 +193,20 @@ internal fun usernameStepPage(
         }
     }
 
+    val heroContainerColor =
+        if (incognitoFlow) colorScheme.surfaceContainerHigh
+        else colorScheme.primaryContainer
+    val heroContentColor =
+        if (incognitoFlow) colorScheme.onSurfaceVariant
+        else colorScheme.onPrimaryContainer
+    val heroIcon = if (incognitoFlow) Icons.Rounded.VisibilityOff else Icons.Rounded.Person
+
     return ExpressiveStepPage(
         hero = ExpressiveHeroSpec(
-            icon = Icons.Rounded.Person,
+            icon = heroIcon,
             polygon = MaterialShapes.Cookie4Sided.normalized(),
-            containerColor = colorScheme.primaryContainer,
-            contentColor = colorScheme.onPrimaryContainer,
+            containerColor = heroContainerColor,
+            contentColor = heroContentColor,
         ),
         autoFocusPrimaryField = true,
         content = { imeScroll ->
@@ -211,8 +214,14 @@ internal fun usernameStepPage(
             ExpressiveStepAutoFocusEffect(focusRequester)
 
             ExpressiveStepPageHeader(
-                title = stringResource(Res.string.auth_step_username_title),
-                body = stringResource(Res.string.auth_step_username_body),
+                title = stringResource(
+                    if (incognitoFlow) Res.string.auth_incognito_login_title
+                    else Res.string.auth_step_username_title,
+                ),
+                body = stringResource(
+                    if (incognitoFlow) Res.string.auth_incognito_login_body
+                    else Res.string.auth_step_username_body,
+                ),
             )
 
             OutlinedTextField(
@@ -237,57 +246,8 @@ internal fun usernameStepPage(
                 colors = expressiveStepFieldColors(),
                 shape = SettingsPasswordOutlineFieldShape,
             )
-
-            Column(Modifier.fillMaxWidth()) {
-                Category(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = SettingsStepHorizontalPadding)
-                        .padding(top = SettingsStepHorizontalPadding),
-                    margin = PaddingValues(0.dp),
-                    containerColor = if (incognitoEnabled) {
-                        colorScheme.secondaryContainer
-                    } else {
-                        colorScheme.surfaceContainerLow
-                    },
-                ) {
-                    SwitchListItem(
-                        headline = incognitoTitle,
-                        supportingText = incognitoSummary,
-                        checked = incognitoEnabled,
-                        onCheckedChange = onIncognitoChange,
-                        divider = false,
-                        leadingContent = {
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(MaterialShapes.Ghostish.normalized().toShape())
-                                    .background(
-                                        if (incognitoEnabled) {
-                                            colorScheme.primaryContainer
-                                        } else {
-                                            colorScheme.surfaceContainerHighest
-                                        },
-                                    ),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.VisibilityOff,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(22.dp),
-                                    tint = if (incognitoEnabled) {
-                                        colorScheme.onPrimaryContainer
-                                    } else {
-                                        colorScheme.onSurfaceVariant
-                                    },
-                                )
-                            }
-                        },
-                    )
-                }
-            }
         },
-        listFooter = { ChangeServerButton() },
+        listFooter = { AuthStepListFooter(incognitoFlow = incognitoFlow) },
         button = {
             ActionButton(
                 onClick = ::attemptSubmit,

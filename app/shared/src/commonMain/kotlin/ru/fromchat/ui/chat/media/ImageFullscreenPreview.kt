@@ -88,6 +88,7 @@ import ru.fromchat.ui.chat.utils.imageAspectRatioForMessage
 import ru.fromchat.ui.chat.utils.peekDecodedAttachmentBitmap
 import ru.fromchat.ui.components.BackHandler
 import ru.fromchat.ui.components.Text
+import ru.fromchat.ui.theme.imageFullscreenOverlayExtraTopInset
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -766,7 +767,8 @@ fun ImageFullscreenPreview(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color.Black.copy(alpha = MENU_BG_ALPHA))
-                    .statusBarsPadding(),
+                    .statusBarsPadding()
+                    .padding(top = imageFullscreenOverlayExtraTopInset()),
             ) {
                 Row(
                     modifier = Modifier

@@ -1,46 +1,48 @@
 package ru.fromchat.incognito
 
-import java.io.File
+import kotlinx.cinterop.ExperimentalForeignApi
+import platform.Foundation.NSFileManager
+import ru.fromchat.api.local.db.store.MessageDatabaseProvider
 
+@OptIn(ExperimentalForeignApi::class)
 internal actual object IncognitoContainer {
-    private var containerPath: String? = null
     private var volumeDir: String? = null
     private var logicalRoot: String? = null
-    private var blockVolume: IncognitoBlockVolume? = null
 
     actual val containerFilePath: String?
-        get() = containerPath
+        get() = IncognitoVolumeFileSystem.mapFileAbsolutePathOrNull()
 
     actual val workRootPath: String?
         get() = logicalRoot
 
     actual fun open(key: ByteArray, volumeDirectory: String) {
         volumeDir = volumeDirectory
-        File(volumeDirectory).mkdirs()
+        NSFileManager.defaultManager.createDirectoryAtPath(volumeDirectory, true, null, null)
         hardenIncognitoVolumeDirectory(volumeDirectory)
-        containerPath = File(volumeDirectory, IncognitoContainerOnDisk.newRandomFileName()).absolutePath
-        File(containerPath!!).delete()
-        val io = openIncognitoBlockVolumeIo(containerPath!!)
-        blockVolume = IncognitoBlockVolume(key, io)
-        require(incognitoBlockCryptoSelfTest(key)) { "Incognito block crypto self-test failed" }
-        IncognitoVolumeFileSystem.attach(blockVolume!!)
+        require(incognitoCryptoSelfTest(key)) { "Incognito file crypto self-test failed" }
+        IncognitoVolumeFileSystem.attach(key, volumeDirectory)
         logicalRoot = defaultAppDataRootPath()
     }
 
     actual fun syncToContainer(key: ByteArray) {
         if (key.size != 32) return
-        MessageDatabaseIncognito.snapshotActiveDatabaseIntoVolume()
+        MessageDatabaseProvider.withOpenDriver { driver ->
+            checkpointIncognitoMessageDatabase(driver)
+        }
         IncognitoVolumeFileSystem.flush()
     }
 
-    actual fun closeAndWipe(key: ByteArray?) {
+    actual fun closeAndWipe() {
         IncognitoVolumeFileSystem.detach()
-        blockVolume = null
         logicalRoot = null
-        volumeDir?.let { File(it).deleteRecursively() }
+        volumeDir?.let { path ->
+            NSFileManager.defaultManager.removeItemAtPath(path, null)
+        }
         volumeDir = null
-        containerPath = null
     }
 
-    actual fun scheduleSyncAfterWrite(key: ByteArray) = Unit
+    actual fun scheduleSyncAfterWrite(key: ByteArray) {
+        if (key.size != 32 || !IncognitoMode.active) return
+        syncToContainer(key)
+    }
 }

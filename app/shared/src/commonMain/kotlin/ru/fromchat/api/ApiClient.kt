@@ -39,18 +39,24 @@ import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import ru.fromchat.api.crypto.IdentityKeyManager
 import ru.fromchat.api.crypto.transport.TransportCiphertext
 import ru.fromchat.api.crypto.transport.TransportCrypto
@@ -267,6 +273,9 @@ object ApiClient {
                 bearerAuth(authToken)
             }
             header("User-Agent", userAgent)
+            if (IncognitoMode.active) {
+                header(INCOGNITO_REQUEST_HEADER, "1")
+            }
         }
 
         // Handle HTTP auth errors globally.
@@ -280,10 +289,15 @@ object ApiClient {
                         InstanceIdGuard.onResponseHeader(instanceHeader, cfg)
                     }
                 }
+                val path = response.call.request.url.encodedPath
+                val isLogoutCall = path.endsWith("/logout")
                 if (response.status.value == 401) {
-                    val path = response.call.request.url.encodedPath
-                    val isCredentialCheck = path.endsWith("/auth/steps/password") || path.endsWith("/auth/steps/register/confirm")
-                    if (!isCredentialCheck && !logoutInProgress) {
+                    val isCredentialCheck =
+                        path.endsWith("/auth/steps/password") ||
+                            path.endsWith("/auth/steps/register/confirm")
+                    // Logout 401 is expected when the session is already gone — never treat as
+                    // a fresh auth failure or block local wipe.
+                    if (!isCredentialCheck && !isLogoutCall && !logoutInProgress) {
                         MainScope().launch {
                             runCatching { WebSocketManager.disconnect() }
                             runCatching { clearLocalSession() }
@@ -300,6 +314,8 @@ object ApiClient {
                 }
 
                 if (response.status.value !in (200..299) + 101) {
+                    // Best-effort logout must not throw — local session wipe still continues.
+                    if (isLogoutCall) return@validateResponse
                     throw ClientRequestException(
                         response,
                         response.status.description
@@ -328,6 +344,9 @@ object ApiClient {
         defaultRequest {
             header("User-Agent", userAgent)
             header(HttpHeaders.Connection, "close")
+            if (IncognitoMode.active) {
+                header(INCOGNITO_REQUEST_HEADER, "1")
+            }
         }
         engine {
             pipelining = false
@@ -476,10 +495,18 @@ object ApiClient {
     @Volatile
     var user: User? = null
 
+    /** Device session id from login / JWT; used to match [session_ended] updates. */
+    @Volatile
+    var currentSessionId: String? = null
+        private set
+
     @Volatile
     private var logoutInProgress = false
 
     var onAuthError: (() -> Unit)? = null
+
+    private const val SETTINGS_SESSION_ID = "device_session_id"
+    private const val INCOGNITO_REQUEST_HEADER = "X-FromChat-Incognito"
 
     private fun getSuspensionReasonFromForbiddenResponse(response: HttpResponse): String? =
         response.headers["suspension_reason"]?.trim()?.takeIf { it.isNotBlank() }
@@ -503,19 +530,28 @@ object ApiClient {
                     user = json.decodeFromString(userInfo)
                     syncSuspensionStateFromUser(user)
                 }
+                currentSessionId = settings.getString(SETTINGS_SESSION_ID, "")
+                    .ifBlank { null }
+                    ?: sessionIdFromJwt(savedToken)
             }
         } catch (e: Exception) {
             ru.fromchat.logging.Logger.e("ApiClient", "Error loading persisted data", e)
         }
     }
 
-
-    /** Auth steps always use HTTPS while incognito is active (no probe HTTP fallback). */
-    private fun authHttpBaseUrl(): String {
-        val stored = Settings.serverConfig
-        val config = if (IncognitoMode.active) stored.copy(httpsEnabled = true) else stored
-        return apiBaseUrlFor(config).trimEnd('/')
+    private fun sessionIdFromJwt(token: String): String? {
+        val payload = token.split('.').getOrNull(1) ?: return null
+        return runCatching {
+            val padded = payload + "=".repeat((4 - payload.length % 4) % 4)
+            val jsonText = Base64.decode(padded.replace('-', '+').replace('_', '/'))
+                .decodeToString()
+            json.parseToJsonElement(jsonText).jsonObject["session_id"]?.jsonPrimitive?.contentOrNull
+        }.getOrNull()
     }
+
+
+    /** Auth uses the active server config (scheme chosen by probe / server settings). */
+    private fun authHttpBaseUrl(): String = ServerConfig.apiBaseUrl.trimEnd('/')
 
     suspend fun authUsernameStep(username: String): AuthUsernameStepResponse =
         withEphemeralHttpProbe {
@@ -605,12 +641,15 @@ object ApiClient {
     fun bindSession(loginResponse: LoginResponse) {
         token = loginResponse.token
         user = loginResponse.user
+        currentSessionId = loginResponse.sessionId?.takeIf { it.isNotBlank() }
+            ?: sessionIdFromJwt(loginResponse.token)
         syncSuspensionStateFromUser(user)
     }
 
     fun clearMemorySession() {
         token = null
         user = null
+        currentSessionId = null
         clearSuspensionState()
     }
 
@@ -618,6 +657,14 @@ object ApiClient {
         secureSettings.putString("auth_token", loginResponse.token)
         settings.putString("user_info", json.encodeToString(loginResponse.user))
         settings.putInt("current_user_id", loginResponse.user.id)
+        val sid = loginResponse.sessionId?.takeIf { it.isNotBlank() }
+            ?: sessionIdFromJwt(loginResponse.token)
+        if (sid != null) {
+            settings.putString(SETTINGS_SESSION_ID, sid)
+            currentSessionId = sid
+        } else {
+            settings.remove(SETTINGS_SESSION_ID)
+        }
         MainScope().launch {
             runCatching {
                 uploadPendingFcmTokenIfAvailable()
@@ -1723,38 +1770,137 @@ object ApiClient {
      * or together with [logout] after remote logout).
      */
     suspend fun clearLocalSession() {
-        val instanceId = runCatching { CacheContext.activeInstanceId.value.trim() }.getOrDefault("")
-        runCatching { clearAccountCacheOnLogout(instanceId) }
-        val uid = user?.id
-        secureSettings.remove("auth_token")
-        settings.remove("user_info")
-        settings.remove("current_user_id")
-        settings.remove("pending_fcm_token")
-        settings.remove("current_fcm_token")
-        token = null
-        user = null
-        clearSuspensionState()
-        uid?.let { UpdateSyncManager.clearPersistedSeqForUser(it) }
-        UpdateSyncManager.resetInMemoryOnLogout()
-        runCatching { IdentityKeyManager.clearLocalKeys() }
-        runCatching { CacheContext.clearActive() }
-        IncognitoMode.destroy()
+        try {
+            val instanceId = runCatching { CacheContext.activeInstanceId.value.trim() }.getOrDefault("")
+            runCatching { clearAccountCacheOnLogout(instanceId) }
+            val uid = user?.id
+            secureSettings.remove("auth_token")
+            settings.remove("user_info")
+            settings.remove("current_user_id")
+            settings.remove("pending_fcm_token")
+            settings.remove("current_fcm_token")
+            settings.remove(SETTINGS_SESSION_ID)
+            token = null
+            user = null
+            currentSessionId = null
+            clearSuspensionState()
+            uid?.let { UpdateSyncManager.clearPersistedSeqForUser(it) }
+            UpdateSyncManager.resetInMemoryOnLogout()
+            runCatching { IdentityKeyManager.clearLocalKeys() }
+            runCatching { CacheContext.clearActive() }
+        } finally {
+            // Always wipe incognito volume on any local session end (logout, delete, auth error).
+            IncognitoMode.destroy()
+        }
     }
 
+    /**
+     * Drops in-memory auth immediately (UI thread safe). Disk/incognito wipe still needs
+     * [clearLocalSession] / [clearLocalSessionBlocking].
+     */
+    fun invalidateSessionForUi() {
+        token = null
+        user = null
+        currentSessionId = null
+        clearSuspensionState()
+        runCatching { CacheContext.clearActive() }
+    }
+
+    /**
+     * Runs [clearLocalSession] synchronously (e.g. desktop window close before process stays in tray).
+     */
+    fun clearLocalSessionBlocking() {
+        runBlocking(Dispatchers.Default) {
+            clearLocalSession()
+        }
+    }
+
+    /** GET /logout; never throws. 401/network failures are ignored so local wipe can proceed. */
+    private suspend fun requestServerLogoutIgnoringErrors(authToken: String? = null) {
+        val bearer = authToken?.trim()?.takeIf { it.isNotEmpty() } ?: token
+        runCatching {
+            http.get("${ServerConfig.apiBaseUrl}/logout") {
+                bearer?.let { bearerAuth(it) }
+            }
+        }.onFailure { e ->
+            ru.fromchat.logging.Logger.w("ApiClient", "Server logout failed (continuing local wipe)", e)
+        }
+    }
+
+    /**
+     * Best-effort server logout after local session was already cleared.
+     * Pass [authToken] snapped before wipe — [token] is already null.
+     */
+    suspend fun remoteLogoutBestEffortOnly(
+        authToken: String?,
+        timeout: Duration = 5.seconds,
+    ) {
+        val bearer = authToken?.trim()?.takeIf { it.isNotEmpty() } ?: return
+        val wasInProgress = logoutInProgress
+        logoutInProgress = true
+        try {
+            withTimeoutOrNull(timeout) {
+                requestServerLogoutIgnoringErrors(bearer)
+            }
+        } finally {
+            logoutInProgress = wasInProgress
+        }
+    }
+
+    /**
+     * Server logout + local wipe. Prefer [logoutBestEffort] when the UI must not wait.
+     * Local wipe always runs even if the server call fails.
+     */
     suspend fun logout() {
-        if (logoutInProgress) return
+        if (logoutInProgress) {
+            runCatching { clearLocalSession() }
+            return
+        }
         logoutInProgress = true
         try {
             runCatching { WebSocketManager.disconnect() }
             runCatching { unregisterFcmTokenFromServer() }
-            runCatching {
-                http.get("${ServerConfig.apiBaseUrl}/logout")
-            }.onFailure { e ->
-                ru.fromchat.logging.Logger.e("ApiClient", "Server logout failed", e)
-            }
-            clearLocalSession()
+            requestServerLogoutIgnoringErrors()
         } finally {
+            runCatching { clearLocalSession() }
             logoutInProgress = false
+        }
+    }
+
+    /**
+     * Best-effort server logout bounded by [timeout], then always [clearLocalSession].
+     * Safe to launch in the background while the window closes immediately.
+     * Local wipe always runs even if the server call fails or times out.
+     */
+    suspend fun logoutBestEffort(timeout: Duration = 5.seconds) {
+        if (logoutInProgress) {
+            runCatching { clearLocalSession() }
+            return
+        }
+        logoutInProgress = true
+        try {
+            runCatching { WebSocketManager.disconnect() }
+            withTimeoutOrNull(timeout) {
+                runCatching { unregisterFcmTokenFromServer() }
+                requestServerLogoutIgnoringErrors()
+            }
+        } catch (e: TimeoutCancellationException) {
+            ru.fromchat.logging.Logger.w("ApiClient", "logoutBestEffort timed out after $timeout", e)
+        } finally {
+            runCatching { clearLocalSession() }
+            logoutInProgress = false
+        }
+    }
+
+    /** Handle durable/ephemeral [session_ended] for this device session. */
+    fun onSessionEndedFromServer(sessionId: String?) {
+        val mine = currentSessionId
+        if (sessionId != null && mine != null && sessionId != mine) return
+        if (logoutInProgress) return
+        MainScope().launch {
+            runCatching { WebSocketManager.disconnect() }
+            runCatching { clearLocalSession() }
+            onAuthError?.invoke()
         }
     }
 

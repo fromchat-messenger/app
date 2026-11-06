@@ -536,6 +536,7 @@ kotlin {
 val macNotificationsSource = layout.projectDirectory.file("src/nativeDarwin/MacNotificationCenter.m")
 val macNotificationsDylib = layout.buildDirectory.file("natives/libfromchat_notifications.dylib")
 val compileMacNotifications = tasks.register<Exec>("compileMacNotifications") {
+    description = "Builds the macOS notification center JNI stub (clang → dylib)."
     onlyIf {
         System.getProperty("os.name").orEmpty().lowercase().contains("mac")
     }
@@ -792,6 +793,7 @@ private val ciDmgToolsReady =
 val dmgPlaywrightBrowsersDir = dmgBackgroundDir.dir(".playwright-browsers")
 
 val installDmgBackgroundTools = tasks.register<Exec>("installDmgBackgroundTools") {
+    description = "Installs Playwright and Chromium for DMG background asset generation (macOS only)."
     onlyIf { runningOnMacOs && !ciDmgToolsReady.get() }
     workingDir = dmgBackgroundDir.asFile
     inputs.file(dmgBackgroundDir.file("package.json"))
@@ -813,6 +815,7 @@ val installDmgBackgroundTools = tasks.register<Exec>("installDmgBackgroundTools"
 }
 
 val stageDmgBackground = tasks.register<Copy>("stageDmgBackground") {
+    description = "Stages DMG background project files and the app logo into the build output."
     onlyIf { runningOnMacOs }
     dependsOn(":app:shared:prepareComposeResourcesTaskForCommonMain")
     mustRunAfter(installDmgBackgroundTools)
@@ -835,6 +838,7 @@ val stageDmgBackground = tasks.register<Copy>("stageDmgBackground") {
 }
 
 val exportDmgBackground = tasks.register<Exec>("exportDmgBackground") {
+    description = "Renders DMG background PNGs via export.mjs and Playwright."
     onlyIf { runningOnMacOs }
     dependsOn(stageDmgBackground, installDmgBackgroundTools)
     workingDir = dmgBackgroundDir.asFile
@@ -863,6 +867,7 @@ fun TaskContainer.registerPackageDmgTask(
     distributableTask: String,
     scriptName: String,
 ) = register<Exec>(name) {
+    description = "Packages a macOS disk image (.dmg) from the desktop app bundle."
     onlyIf { runningOnMacOs }
     group = "compose desktop"
     dependsOn(distributableTask, exportDmgBackground)

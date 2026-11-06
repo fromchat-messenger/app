@@ -54,7 +54,7 @@ Also: **Material 3 skill** for M3 components/theming. Add or change agent skills
 
 ```bash
 export JAVA_HOME="<JDK 21+; on macOS with Android Studio, often /Applications/Android Studio.app/Contents/jbr/Contents/Home>"
-./gradlew :app:shared:compileAndroidMain :app:shared:compileKotlinIosArm64 :app:desktop:compileKotlin
+./gradlew :app:shared:compileAndroidMain :app:desktop:compileKotlin
 ```
 
 Set `JAVA_HOME` to a JDK 21+ on your OS (the path above is a **macOS** example only).

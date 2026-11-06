@@ -70,7 +70,7 @@ When unsure how to refactor something:
 After Android-affecting changes, run per [AGENTS.md](../../../AGENTS.md) (compile gate and device verify when applicable):
 
 ```bash
-export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" && ./gradlew :app:shared:compileAndroidMain :app:shared:compileKotlinIosArm64
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" && ./gradlew :app:shared:compileAndroidMain :app:desktop:compileKotlin
 ```
 
 Fix compile errors before finishing.

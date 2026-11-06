@@ -14,9 +14,8 @@ internal actual fun destroyIncognitoVolumeRoot(rootPath: String) {
     File(rootPath).deleteRecursively()
 }
 
-internal actual fun registerIncognitoLifecycleHooks() {
-    // Process kill: destroy from Application when the task is cleared.
-}
+internal actual fun registerIncognitoLifecycleHooks(): Unit =
+    Unit // Process kill: destroy from Application when the task is cleared.
 
 private fun randomHiddenDirectoryName(): String {
     val alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"

@@ -2,8 +2,6 @@ package ru.fromchat.ui.auth
 
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
@@ -37,13 +35,11 @@ import ru.fromchat.api.schema.user.auth.RegisterConfirmRequest
 import ru.fromchat.api.schema.user.auth.SmartCaptchaParams
 import ru.fromchat.api.schema.user.auth.YandexOAuthParams
 import ru.fromchat.cancel
-import ru.fromchat.change_server
 import ru.fromchat.config.ServerConfigData
 import ru.fromchat.config.Settings
 import ru.fromchat.config.shouldWarnPublicCleartextHttp
 import ru.fromchat.incognito.findIncognitoMitmCertificateException
 import ru.fromchat.incognito.IncognitoMode
-import ru.fromchat.incognito.isIncognitoTlsCertificateError
 import ru.fromchat.logging.Logger
 import ru.fromchat.Res
 import ru.fromchat.ui.auth.captcha.SmartCaptchaLog
@@ -55,9 +51,9 @@ import ru.fromchat.ui.components.ExpressiveStepFlowScaffold
 import ru.fromchat.ui.components.rememberExpressiveStepFlow
 import ru.fromchat.ui.components.showLoggedSnackbar
 import ru.fromchat.ui.components.Text
-import ru.fromchat.ui.components.TextCta
-import ru.fromchat.ui.incognito.IncognitoTlsDialogController
 import ru.fromchat.ui.incognito.PublicHttpConnectionBypass
+import ru.fromchat.ui.main.settings.server.formatServerEndpointForInput
+import ru.fromchat.ui.security.ConnectionSecurityDialogController
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 import ru.fromchat.ui.theme.extraStatusBars
@@ -143,19 +139,10 @@ internal suspend fun probeCurrentServerForAuth(): AuthServerProbeOutcome {
                 else -> {
                     val tlsFailure = takeLastIncognitoTlsProbeFailure()
                     when {
-                        tlsFailure != null -> {
+                        tlsFailure != null ->
                             findIncognitoMitmCertificateException(tlsFailure)?.let { mitm ->
                                 AuthServerProbeOutcome.MitmCertificateDetected(mitm.matchedMarker)
-                            } ?: if (
-                                IncognitoMode.active &&
-                                config.httpsEnabled &&
-                                isIncognitoTlsCertificateError(tlsFailure)
-                            ) {
-                                AuthServerProbeOutcome.TlsCertificateRejected
-                            } else {
-                                AuthServerProbeOutcome.Failed
-                            }
-                        }
+                            } ?: AuthServerProbeOutcome.Failed
                         else -> AuthServerProbeOutcome.Failed
                     }
                 }
@@ -171,13 +158,7 @@ internal suspend fun probeCurrentServerForAuth(): AuthServerProbeOutcome {
         findIncognitoMitmCertificateException(e)?.let { mitm ->
             return AuthServerProbeOutcome.MitmCertificateDetected(mitm.matchedMarker)
         }
-        when {
-            IncognitoMode.active &&
-                config.httpsEnabled &&
-                isIncognitoTlsCertificateError(e) ->
-                AuthServerProbeOutcome.TlsCertificateRejected
-            else -> AuthServerProbeOutcome.Failed
-        }
+        AuthServerProbeOutcome.Failed
     }
 }
 
@@ -195,11 +176,7 @@ private suspend fun fullLogin(
     ApiClient.bindSession(response)
 
     try {
-        IdentityKeyManager.ensureKeysOnLogin(
-            username = username,
-            password = password,
-            token = response.token,
-        )
+        IdentityKeyManager.ensureKeysOnLogin(password)
     } catch (e: Exception) {
         ApiClient.clearMemorySession()
         throw e
@@ -316,22 +293,10 @@ private suspend fun parseClientError(e: ClientRequestException, fallback: String
 }
 
 @Composable
-internal fun ChangeServerButton(modifier: Modifier = Modifier) {
-    val navController = LocalNavController.current
-
-    TextCta(
-        onClick = { navController.navigate("serverConfig") },
-        modifier = Modifier.padding(horizontal = SettingsStepHorizontalPadding).then(modifier),
-        leadingIcon = Icons.Rounded.Storage,
-    ) {
-        Text(stringResource(Res.string.change_server))
-    }
-}
-
-@Composable
 fun AuthScreen(
     onAuthSuccess: () -> Unit,
     onBackToWelcome: () -> Unit,
+    incognitoFlow: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -348,21 +313,24 @@ fun AuthScreen(
     var captchaParams by remember { mutableStateOf(AuthRegisterDraft.captchaParams) }
     var registrationProof by remember { mutableStateOf(AuthRegisterDraft.registrationProof) }
     var captchaToken by remember { mutableStateOf(AuthRegisterDraft.captchaToken) }
-    var incognitoEnabled by remember { mutableStateOf(false) }
     var incognitoTlsBypassRetryNonce by remember { mutableStateOf(0) }
     var publicHttpBypassRetryNonce by remember { mutableStateOf(0) }
     val navController = LocalNavController.current
 
+    LaunchedEffect(incognitoFlow) {
+        AuthRegisterDraft.incognitoEnabled = incognitoFlow
+    }
+
     DisposableEffect(Unit) {
-        IncognitoTlsDialogController.onBypassConfirmed = {
+        ConnectionSecurityDialogController.onBypassConfirmed = {
             incognitoTlsBypassRetryNonce++
         }
-        IncognitoTlsDialogController.onPublicHttpBypassConfirmed = {
+        ConnectionSecurityDialogController.onPublicHttpBypassConfirmed = {
             publicHttpBypassRetryNonce++
         }
         onDispose {
-            IncognitoTlsDialogController.onBypassConfirmed = null
-            IncognitoTlsDialogController.onPublicHttpBypassConfirmed = null
+            ConnectionSecurityDialogController.onBypassConfirmed = null
+            ConnectionSecurityDialogController.onPublicHttpBypassConfirmed = null
         }
     }
 
@@ -554,8 +522,8 @@ fun AuthScreen(
                 usernameStepPage(
                     username = username,
                     onUsernameChange = { username = it },
-                    incognitoEnabled = incognitoEnabled,
-                    onIncognitoChange = { incognitoEnabled = it },
+                    incognitoEnabled = incognitoFlow,
+                    incognitoFlow = incognitoFlow,
                     mitmBypassRetryNonce = incognitoTlsBypassRetryNonce,
                     publicHttpBypassRetryNonce = publicHttpBypassRetryNonce,
                     onContinue = {
@@ -563,19 +531,22 @@ fun AuthScreen(
                     },
                     onSnackbar = ::snackbar,
                     onTlsCertificateRejected = {
-                        IncognitoTlsDialogController.presentTlsCertificateRejected(
-                            Settings.serverConfig.serverIp,
+                        val cfg = Settings.serverConfig
+                        ConnectionSecurityDialogController.presentTlsCertificateRejected(
+                            formatServerEndpointForInput(cfg.serverIp, cfg.apiPort),
                         )
                     },
                     onMitmCertificateDetected = { marker ->
-                        IncognitoTlsDialogController.presentMitm(
+                        val cfg = Settings.serverConfig
+                        ConnectionSecurityDialogController.presentMitm(
                             marker,
-                            Settings.serverConfig.serverIp,
+                            formatServerEndpointForInput(cfg.serverIp, cfg.apiPort),
                         )
                     },
                     onPublicHttpWarning = {
-                        IncognitoTlsDialogController.presentPublicHttpWarning(
-                            Settings.serverConfig.serverIp,
+                        val cfg = Settings.serverConfig
+                        ConnectionSecurityDialogController.presentPublicHttpWarning(
+                            formatServerEndpointForInput(cfg.serverIp, cfg.apiPort),
                         )
                     },
                 ),
@@ -583,6 +554,7 @@ fun AuthScreen(
                     username = username,
                     password = password,
                     onPasswordChange = { password = it },
+                    incognitoFlow = incognitoFlow,
                     onLoginSuccess = wrappedAuthSuccess,
                     onNeedsRegister = { required, params, captchaReq, captcha ->
                         Logger.i(

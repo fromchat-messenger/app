@@ -1,5 +1,6 @@
 package ru.fromchat.desktop
 
+import androidx.compose.ui.unit.dp
 import ru.fromchat.config.Settings
 import ru.fromchat.ui.theme.Theme
 import ru.fromchat.ui.theme.jvmPlatformSystemDarkTheme
@@ -43,6 +44,15 @@ internal fun desktopAppDarkTheme(): Boolean =
     }
 
 internal fun desktopSystemDarkTheme(): Boolean = jvmPlatformSystemDarkTheme()
+
+/** Default top inset for macOS edge-to-edge window content (list/chat chrome). */
+val MacOsDefaultTitleBarTopInset = 28.dp
+
+/**
+ * Extra top clearance for fullscreen overlays on macOS (traffic lights in content area).
+ * Used only by fullscreen image preview — not [LocalExtraStatusBarTop].
+ */
+val MacOsFullscreenOverlayTitleBarTopInset = 52.dp
 
 /** Enables drawing under the system title bar on macOS. */
 internal fun applyDesktopEdgeToEdgeChrome(rootPane: JRootPane) {

@@ -1,5 +1,11 @@
 package ru.fromchat.config
 
+/** True for `localhost`, `127.0.0.1`, and `::1` only. */
+fun isLoopbackServerHost(host: String): Boolean {
+    val trimmed = host.trim().removeSurrounding("[", "]").lowercase()
+    return trimmed == "localhost" || trimmed == "127.0.0.1" || trimmed == "::1"
+}
+
 /** True for loopback, link-local, RFC1918, and similar non–Internet-routable hosts. */
 fun isPrivateOrLocalServerHost(host: String): Boolean {
     val trimmed = host.trim().removeSurrounding("[", "]")
@@ -15,13 +21,13 @@ fun shouldWarnPublicCleartextHttp(config: ServerConfigData): Boolean =
 private fun isPrivateIpv4(octets: IntArray): Boolean {
     val a = octets[0]
     val b = octets[1]
-    return when {
-        a == 10 -> true
-        a == 172 && b in 16..31 -> true
-        a == 192 && b == 168 -> true
-        a == 127 -> true
-        a == 169 && b == 254 -> true
-        a == 100 && b in 64..127 -> true
+    return when (a) {
+        10 -> true
+        172 -> b in 16..31
+        192 -> b == 168
+        127 -> true
+        169 -> b == 254
+        100 -> b in 64..127
         else -> false
     }
 }

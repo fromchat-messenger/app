@@ -1,12 +1,13 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package ru.fromchat.incognito
 
+import kotlin.random.Random
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSUserDomainMask
-import java.security.SecureRandom
 
-@OptIn(ExperimentalForeignApi::class)
 internal actual suspend fun provisionIncognitoVolumeRoot(): String {
     val base = NSFileManager.defaultManager.URLForDirectory(
         directory = NSCachesDirectory,
@@ -30,11 +31,12 @@ internal actual fun registerIncognitoLifecycleHooks() {
 }
 
 private fun randomHiddenDirectoryName(): String {
+    val random = Random.Default
     val alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
-    val length = 8 + SecureRandom().nextInt(5)
+    val length = 8 + random.nextInt(5)
     return buildString(length) {
         repeat(length) {
-            append(alphabet[SecureRandom().nextInt(alphabet.length)])
+            append(alphabet[random.nextInt(alphabet.length)])
         }
     }
 }

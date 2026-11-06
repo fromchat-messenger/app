@@ -1,6 +1,5 @@
 package ru.fromchat.incognito
 
-import java.security.SecureRandom
 import kotlin.random.Random
 
 /** Names that resemble ordinary OS temporary files and directories (no app-specific markers). */
@@ -28,9 +27,9 @@ internal object IncognitoObfuscatedTempNames {
         }
     }
 
-    fun randomTempDirectoryName(secureRandom: SecureRandom = SecureRandom()): String {
-        val token = secureToken(10 + secureRandom.nextInt(8), secureRandom)
-        return when (secureRandom.nextInt(5)) {
+    fun randomTempDirectoryName(random: Random = Random.Default): String {
+        val token = randomToken(10 + random.nextInt(8), random)
+        return when (random.nextInt(5)) {
             0 -> token
             1 -> "tmp$token"
             2 -> ".$token"
@@ -43,13 +42,6 @@ internal object IncognitoObfuscatedTempNames {
         buildString(length) {
             repeat(length) {
                 append(LOWER_ALNUM[random.nextInt(LOWER_ALNUM.length)])
-            }
-        }
-
-    private fun secureToken(length: Int, secureRandom: SecureRandom): String =
-        buildString(length) {
-            repeat(length) {
-                append(LOWER_ALNUM[secureRandom.nextInt(LOWER_ALNUM.length)])
             }
         }
 }

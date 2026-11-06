@@ -18,7 +18,6 @@ import ru.fromchat.api.crypto.backup.encodeBlob
 import ru.fromchat.api.crypto.backup.PrivateKeyBundle
 import ru.fromchat.api.schema.user.keys.PublicKeyResponse
 import ru.fromchat.config.ServerConfig
-import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.logging.Logger
 import kotlin.concurrent.Volatile
 
@@ -61,11 +60,11 @@ object IdentityKeyManager {
      * Ensure keys are initialized on login
      * Tries to restore from backup, otherwise generates new keys
      */
-    suspend fun ensureKeysOnLogin(username: String, password: String, token: String): IdentityKeys {
+    suspend fun ensureKeysOnLogin(password: String): IdentityKeys {
         return withContext(Dispatchers.Default) {
             try {
                 // Try to fetch backup from server
-                val backupJson = fetchBackupBlob(token)
+                val backupJson = fetchBackupBlob()
                 if (backupJson != null) {
                     // Backup exists: decrypt and restore
                     val blob = decodeBlob(backupJson)
@@ -73,18 +72,18 @@ object IdentityKeyManager {
                     val privateKey = bundle.privateKey
                     
                     // Fetch public key from server
-                    val serverPubKey = fetchPublicKey(token)
+                    val serverPubKey = fetchPublicKey()
                     val publicKey = if (serverPubKey != null) {
                         Base64.decode(serverPubKey)
                     } else {
                         // Server doesn't have public key - regenerate pair
                         val pair = generateKeyPair()
-                        uploadPublicKey(pair.publicKey, token)
+                        uploadPublicKey(pair.publicKey)
                         val newBlob = BackupCrypto.encryptBackupWithPassword(
                             password,
                             PrivateKeyBundle(version = 1, privateKey = pair.privateKey)
                         )
-                        uploadBackupBlob(encodeBlob(newBlob), token)
+                        uploadBackupBlob(encodeBlob(newBlob))
                         pair.publicKey
                     }
                     
@@ -96,12 +95,12 @@ object IdentityKeyManager {
 
                 // No backup: generate new keys and upload
                 val pair = generateKeyPair()
-                uploadPublicKey(pair.publicKey, token)
+                uploadPublicKey(pair.publicKey)
                 val blob = BackupCrypto.encryptBackupWithPassword(
                     password,
                     PrivateKeyBundle(version = 1, privateKey = pair.privateKey)
                 )
-                uploadBackupBlob(encodeBlob(blob), token)
+                uploadBackupBlob(encodeBlob(blob))
                 
                 currentKeys = pair
                 persistKeys(pair)
@@ -158,9 +157,11 @@ object IdentityKeyManager {
         secureSettings.putString("identity_private_key", Base64.encode(keys.privateKey))
     }
 
-    private suspend fun fetchBackupBlob(token: String): String? {
+    private suspend fun fetchBackupBlob(): String? {
         return try {
-            val response = ApiClient.http.get("${ServerConfig.apiBaseUrl}/crypto/backup")
+            val response = ApiClient.http.get("${ServerConfig.apiBaseUrl}/crypto/backup") {
+                contentType(ContentType.Application.Json)
+            }
             val backupResponse = response.body<BackupBlobResponse>()
             backupResponse.blob
         } catch (e: Exception) {
@@ -169,7 +170,7 @@ object IdentityKeyManager {
         }
     }
 
-    private suspend fun uploadBackupBlob(blobJson: String, token: String) {
+    private suspend fun uploadBackupBlob(blobJson: String) {
         val payload = BackupBlobRequest(blob = blobJson)
         ApiClient.http.post("${ServerConfig.apiBaseUrl}/crypto/backup") {
             contentType(ContentType.Application.Json)
@@ -177,7 +178,7 @@ object IdentityKeyManager {
         }
     }
 
-    private suspend fun fetchPublicKey(token: String): String? {
+    private suspend fun fetchPublicKey(): String? {
         return try {
             val response: PublicKeyResponse = ApiClient.getOwnPublicKey()
             response.publicKey
@@ -187,7 +188,7 @@ object IdentityKeyManager {
         }
     }
 
-    private suspend fun uploadPublicKey(publicKey: ByteArray, token: String) {
+    private suspend fun uploadPublicKey(publicKey: ByteArray) {
         val payload = UploadPublicKeyRequest(publicKey = Base64.encode(publicKey))
         ApiClient.http.post("${ServerConfig.apiBaseUrl}/crypto/public-key") {
             contentType(ContentType.Application.Json)

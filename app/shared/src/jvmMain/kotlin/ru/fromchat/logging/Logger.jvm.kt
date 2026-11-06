@@ -4,38 +4,28 @@ package ru.fromchat.logging
 actual object Logger {
     actual fun d(tag: String, message: String, throwable: Throwable?) {
         AppLogStore.record(AppLogLevel.Debug, tag, message, throwable)
-        if (mirrorLogsToPlatformConsole()) {
-            println("DEBUG: [$tag] $message ${throwable?.message ?: ""}")
-        }
+        println("DEBUG: [$tag] $message ${throwable?.message ?: ""}")
     }
 
     actual fun i(tag: String, message: String, throwable: Throwable?) {
+        println("INFO: [$tag] $message ${throwable?.message ?: ""}")
         AppLogStore.record(AppLogLevel.Info, tag, message, throwable)
-        if (mirrorLogsToPlatformConsole()) {
-            println("INFO: [$tag] $message ${throwable?.message ?: ""}")
-        }
     }
 
     actual fun w(tag: String, message: String, throwable: Throwable?) {
         AppLogStore.record(AppLogLevel.Warn, tag, message, throwable)
-        if (mirrorLogsToPlatformConsole()) {
-            System.err.println("WARN: [$tag] $message ${throwable?.message ?: ""}")
-        }
+        System.err.println("WARN: [$tag] $message ${throwable?.message ?: ""}")
     }
 
     actual fun e(tag: String, message: String, throwable: Throwable?) {
         AppLogStore.record(AppLogLevel.Error, tag, message, throwable)
-        if (mirrorLogsToPlatformConsole()) {
-            System.err.println("ERROR: [$tag] $message ${throwable?.message ?: ""}")
-            throwable?.printStackTrace()
-        }
+        System.err.println("ERROR: [$tag] $message ${throwable?.message ?: ""}")
+        throwable?.printStackTrace()
     }
 
     actual fun f(tag: String, message: String, throwable: Throwable?) {
         AppLogStore.record(AppLogLevel.Fatal, tag, message, throwable)
-        if (mirrorLogsToPlatformConsole()) {
-            System.err.println("FATAL: [$tag] $message ${throwable?.message ?: ""}")
-            throwable?.printStackTrace()
-        }
+        System.err.println("FATAL: [$tag] $message ${throwable?.message ?: ""}")
+        throwable?.printStackTrace()
     }
 }

@@ -22,12 +22,6 @@ object PlatformFileSystem {
 
     fun appendBytes(path: String, bytes: ByteArray) {
         if (bytes.isEmpty()) return
-        if (IncognitoMode.active) {
-            IncognitoVolumeFileSystem.relativeKeyForAppPath(path)?.let { key ->
-                IncognitoVolumeFileSystem.append(key, bytes)
-            }
-            return
-        }
         IncognitoVolumeFileSystem.relativeKeyForAppPath(path)?.let { key ->
             IncognitoVolumeFileSystem.append(key, bytes)
             return

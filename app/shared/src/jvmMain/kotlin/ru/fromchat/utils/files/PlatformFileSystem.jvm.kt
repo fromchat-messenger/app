@@ -3,7 +3,6 @@ package ru.fromchat.utils.files
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardOpenOption
-import ru.fromchat.incognito.IncognitoMode
 
 internal actual fun expectExists(path: String): Boolean = File(path).exists()
 

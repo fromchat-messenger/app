@@ -1,8 +1,11 @@
 package ru.fromchat.ui.auth
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
@@ -14,12 +17,15 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.Login
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import ru.fromchat.ui.components.ChromeOverflowIconButton
 import ru.fromchat.ui.components.Text
+import ru.fromchat.ui.components.TextCta
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,11 +37,19 @@ import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.about
+import ru.fromchat.auth_incognito_login_action
+import ru.fromchat.auth_standard_login_action
+import ru.fromchat.change_server
 import ru.fromchat.logs_title
+import androidx.compose.material.icons.rounded.Storage
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.theme.extraStatusBars
 import ru.fromchat.ui.main.settings.about.LocalOpenAbout
 import ru.fromchat.ui.main.settings.SettingsRoutes
+import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
+
+internal const val AUTH_ROUTE = "auth"
+internal const val AUTH_INCOGNITO_ROUTE = "auth/incognito"
 
 /** Margin between the window edge and the wide [AuthContentFrame] panel. */
 val AuthWidePanelOuterPadding = 32.dp
@@ -109,6 +123,61 @@ fun PreAuthOverflowMenu() {
                     navController.navigate(SettingsRoutes.Logs)
                 },
             )
+        }
+    }
+}
+
+/** Footer row below auth steps: server picker plus standard ↔ incognito sign-in routes. */
+@Composable
+internal fun AuthStepListFooter(incognitoFlow: Boolean) {
+    val navController = LocalNavController.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(
+                start = SettingsStepHorizontalPadding,
+                end = SettingsStepHorizontalPadding,
+                top = 6.dp,
+                bottom = 6.dp,
+            ),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        TextCta(
+            onClick = { navController.navigate("serverConfig") },
+            modifier = Modifier.weight(1f),
+            leadingIcon = Icons.Rounded.Storage,
+            compact = true,
+        ) {
+            Text(stringResource(Res.string.change_server))
+        }
+        if (incognitoFlow) {
+            TextCta(
+                onClick = {
+                    navController.navigate(AUTH_ROUTE) {
+                        popUpTo(AUTH_INCOGNITO_ROUTE) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                leadingIcon = Icons.Rounded.Login,
+                compact = true,
+            ) {
+                Text(stringResource(Res.string.auth_standard_login_action))
+            }
+        } else {
+            TextCta(
+                onClick = {
+                    navController.navigate(AUTH_INCOGNITO_ROUTE) {
+                        popUpTo(AUTH_ROUTE) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                leadingIcon = Icons.Rounded.VisibilityOff,
+                compact = true,
+            ) {
+                Text(stringResource(Res.string.auth_incognito_login_action))
+            }
         }
     }
 }

@@ -2,8 +2,6 @@
 
 package ru.fromchat.ui.main.settings.server
 
-import androidx.compose.animation.ExperimentalAnimationApi
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,7 +31,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -46,6 +43,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -90,11 +88,11 @@ import ru.fromchat.api.instance.surfaceLastIncognitoTlsProbeFailure
 import ru.fromchat.api.local.WebSocketManager
 import ru.fromchat.back
 import ru.fromchat.cancel
+import ru.fromchat.config.ServerConfig
 import ru.fromchat.config.ServerConfigData
 import ru.fromchat.config.Settings
 import ru.fromchat.config.shouldWarnPublicCleartextHttp
 import ru.fromchat.confirm
-import ru.fromchat.incognito.IncognitoTlsHostBypass
 import ru.fromchat.Res
 import ru.fromchat.save_continue
 import ru.fromchat.server_config_action_check
@@ -123,8 +121,8 @@ import ru.fromchat.ui.components.LazyListFocusScrollEffect
 import ru.fromchat.ui.components.rememberLazyListFocusScrollState
 import ru.fromchat.ui.components.SettingsPasswordOutlineFieldShape
 import ru.fromchat.ui.components.trackLazyListFocus
-import ru.fromchat.ui.incognito.IncognitoTlsDialogController
-import ru.fromchat.ui.incognito.PublicHttpConnectionBypass
+import ru.fromchat.ui.security.ConnectionSecurityDialogController
+import ru.fromchat.ui.security.PublicHttpConnectionBypass
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.main.settings.settingsDetailShowBackButton
 import ru.fromchat.ui.main.settings.settingsDetailWindowInsets
@@ -137,10 +135,8 @@ private object ServerConfigLazyListIndices {
 }
 
 @OptIn(
-    ExperimentalFoundationApi::class,
     ExperimentalMaterial3Api::class,
     ExperimentalMaterial3ExpressiveApi::class,
-    ExperimentalAnimationApi::class,
 )
 @Composable
 fun ServerConfigScreen(
@@ -154,9 +150,12 @@ fun ServerConfigScreen(
 
     var serverEndpoint by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) {
-        Settings.serverConfig.apply {
-            serverEndpoint = formatServerEndpointForInput(serverIp, apiPort)
+    val storedServerConfig by ServerConfig.serverConfig.collectAsState()
+
+    LaunchedEffect(storedServerConfig) {
+        val config = storedServerConfig ?: runCatching { Settings.readServerConfig() }.getOrNull()
+        if (config != null) {
+            serverEndpoint = formatServerEndpointForInput(config.serverIp, config.apiPort)
         }
     }
 
@@ -216,11 +215,11 @@ fun ServerConfigScreen(
     fun buildTentativeFromParsed(): ParsedServerEndpoint? = parsedEndpoint
 
     fun handleIncognitoProbeFailure(e: Throwable, host: String, https: Boolean): Boolean =
-        IncognitoTlsDialogController.presentFromThrowable(e, host, https)
+        ConnectionSecurityDialogController.presentFromThrowable(e, host, https)
 
     fun warnPublicHttpIfNeeded(config: ServerConfigData, onProceed: () -> Unit): Boolean {
         if (shouldWarnPublicCleartextHttp(config) && !PublicHttpConnectionBypass.isAllowed(config.serverIp)) {
-            IncognitoTlsDialogController.presentPublicHttpWarning(config.serverIp, onProceed)
+            ConnectionSecurityDialogController.presentPublicHttpWarning(config.serverIp, onProceed)
             return true
         }
         return false
@@ -311,7 +310,7 @@ fun ServerConfigScreen(
             ) {
                 return@launch
             }
-            if (IncognitoTlsDialogController.showMitmDialog || IncognitoTlsDialogController.showTlsDialog) {
+            if (ConnectionSecurityDialogController.showMitmDialog || ConnectionSecurityDialogController.showTlsDialog) {
                 return@launch
             }
             val msg = when (probe) {
@@ -407,9 +406,9 @@ fun ServerConfigScreen(
                                 }
 
                                 if (
-                                    IncognitoTlsDialogController.showMitmDialog ||
-                                    IncognitoTlsDialogController.showTlsDialog ||
-                                    IncognitoTlsDialogController.showPublicHttpDialog
+                                    ConnectionSecurityDialogController.showMitmDialog ||
+                                    ConnectionSecurityDialogController.showTlsDialog ||
+                                    ConnectionSecurityDialogController.showPublicHttpDialog
                                 ) {
                                     return@launch
                                 }

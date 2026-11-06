@@ -46,6 +46,7 @@ import ru.fromchat.settings_account_logout_confirm_title
 import ru.fromchat.settings_account_title
 import ru.fromchat.settings_change_password
 import ru.fromchat.settings_security_change_password_sub
+import ru.fromchat.ui.auth.resetPreAuthDraft
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.main.settings.SettingsDetailTopBar
 import ru.fromchat.ui.main.settings.rememberSettingsCollapsingScrollBehavior
@@ -163,9 +164,11 @@ fun AccountScreen(
                 TextButton(
                     onClick = {
                         showLogoutConfirm = false
+                        // Navigate away immediately; finish server logout in the background (5s cap).
+                        onLogout()
                         scope.launch {
-                            runCatching { ApiClient.logout() }
-                            onLogout()
+                            runCatching { ApiClient.logoutBestEffort() }
+                            resetPreAuthDraft()
                         }
                     },
                 ) {

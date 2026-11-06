@@ -744,14 +744,31 @@ object DecryptedImageCache {
 
     private fun ensureCacheDir(): String? {
         val base = PlatformFileSystem.getAppCacheDirectory()
-        if (base.isEmpty()) return null
+        if (base.isEmpty()) {
+            AttachmentMediaLog.diskCache("ensure_dir_failed", "reason" to "empty_app_cache_root")
+            return null
+        }
         val path = cacheDir?.takeIf { it.endsWith(SUBDIR) } ?: "$base/$SUBDIR"
         return runCatching {
             PlatformFileSystem.ensureDirectory(path)
-            if (!PlatformFileSystem.exists(path)) return null
+            if (!PlatformFileSystem.exists(path)) {
+                AttachmentMediaLog.diskCache(
+                    "ensure_dir_failed",
+                    "reason" to "path_missing_after_ensure",
+                    "path" to path,
+                )
+                return null
+            }
             cacheDir = path
             path
-        }.getOrNull()
+        }.getOrElse {
+            AttachmentMediaLog.diskCache(
+                "ensure_dir_failed",
+                "path" to path,
+                "err" to (it.message ?: it::class.simpleName),
+            )
+            null
+        }
     }
 
     private fun sanitizeKeyPart(value: String): String =
@@ -802,7 +819,14 @@ object DecryptedImageCache {
     }
 
     private fun commitCachePathLocked(storageKey: String, path: String): String? {
-        if (!PlatformFileSystem.exists(path)) return null
+        if (!PlatformFileSystem.exists(path)) {
+            AttachmentMediaLog.diskCache(
+                "commit_missing_file",
+                "key" to storageKey,
+                "path" to path,
+            )
+            return null
+        }
         val uri = "file://$path"
         memoryCache[storageKey] = uri
         writeDiskThumbLocked(storageKey, path)
