@@ -30,6 +30,8 @@ import ru.fromchat.confirm_password
 import ru.fromchat.fill_all_fields
 import ru.fromchat.hide_password
 import ru.fromchat.passwords_dont_match
+import ru.fromchat.password_policy_error
+import ru.fromchat.utils.validateNewPasswordPlaintext
 import ru.fromchat.settings_next
 import ru.fromchat.show_password
 import ru.fromchat.ui.components.ActionButton
@@ -60,11 +62,17 @@ internal fun confirmPasswordStepPage(
 
     val fillAll = stringResource(Res.string.fill_all_fields)
     val pwdMatch = stringResource(Res.string.passwords_dont_match)
+    val policyError = stringResource(Res.string.password_policy_error)
     val nextLabel = stringResource(Res.string.settings_next)
 
     fun attemptSubmit() {
         if (confirmPassword.isBlank()) {
             onSnackbar(fillAll, null)
+            return
+        }
+
+        if (validateNewPasswordPlaintext(password) != null) {
+            onSnackbar(policyError, null)
             return
         }
 

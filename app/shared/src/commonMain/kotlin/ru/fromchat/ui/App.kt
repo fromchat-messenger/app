@@ -77,6 +77,7 @@ import ru.fromchat.api.local.db.store.messageDatabaseDispatcher
 import ru.fromchat.api.local.db.store.ProfileCache
 import ru.fromchat.api.local.db.store.UserStatusStore
 import ru.fromchat.api.local.messages.DmInboxCoordinator
+import ru.fromchat.api.instance.InstanceEncryptionCoordinator
 import ru.fromchat.api.local.send.OutgoingMessageCoordinator
 import ru.fromchat.api.schema.websocket.WebSocketMessage
 import ru.fromchat.api.schema.websocket.types.WebSocketUpdatesData
@@ -265,6 +266,7 @@ fun App(
         withContext(Dispatchers.Default) {
             runCatching { NetworkConnectivity.ensureStarted() }
             runCatching { UpdateSyncManager.initializeFromStorage(ApiClient.user?.id) }
+            runCatching { InstanceEncryptionCoordinator.ensureStarted() }
             Logger.i("App", "FromChat started")
         }
 
@@ -278,6 +280,7 @@ fun App(
         withContext(Dispatchers.Default) {
             runCatching { NetworkConnectivity.ensureStarted() }
             runCatching { UpdateSyncManager.initializeFromStorage(ApiClient.user?.id) }
+            runCatching { InstanceEncryptionCoordinator.ensureStarted() }
             Logger.i("App", "FromChat started")
         }
 

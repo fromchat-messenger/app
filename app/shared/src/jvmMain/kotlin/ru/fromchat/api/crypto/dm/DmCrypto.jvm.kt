@@ -114,4 +114,28 @@ actual object DmCrypto {
             .cipher(tagSize = 128.bits)
             .decryptWithIv(iv, ciphertext)
     }
+
+    private suspend fun aesGcmEncrypt(key: ByteArray, plaintext: ByteArray): Pair<ByteArray, ByteArray> {
+        require(key.size == AES_KEY_SIZE) { "Key must be 32 bytes" }
+        val iv = ru.fromchat.api.crypto.backup.BackupCrypto.randomBytes(GCM_IV_SIZE)
+        val ciphertext = aesGcm
+            .keyDecoder()
+            .decodeFromByteArray(AES.Key.Format.RAW, key)
+            .cipher(tagSize = 128.bits)
+            .encryptWithIv(iv, plaintext)
+        return iv to ciphertext
+    }
+
+    actual suspend fun wrapMek(mek: ByteArray, wrappingKey: ByteArray): String = withContext(Dispatchers.Default) {
+        val (iv, ciphertext) = aesGcmEncrypt(wrappingKey, mek)
+        Base64.encode(iv + ciphertext)
+    }
+
+    actual suspend fun encryptEnvelopePlaintext(
+        plaintext: ByteArray,
+        mek: ByteArray,
+    ): Pair<String, String> = withContext(Dispatchers.Default) {
+        val (iv, ciphertext) = aesGcmEncrypt(mek, plaintext)
+        Base64.encode(iv) to Base64.encode(ciphertext)
+    }
 }

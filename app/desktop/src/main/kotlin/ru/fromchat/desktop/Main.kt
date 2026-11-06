@@ -289,6 +289,9 @@ private object DesktopProtocolRegistration {
 
 fun main(args: Array<String>) {
     LinuxArm64MesaEnvironment.applyIfNeeded()
+    System.getenv("FROMCHAT_DEBUG_OUTBOUND_DELAY_MS")?.toLongOrNull()?.let { delayMs ->
+        ru.fromchat.api.instance.InstanceEncryptionStore.debugOutboundDelayMs = delayMs
+    }
     applyFromChatLauncherEnvironment()
     configurePortableLayoutFromInstallDir()
     applyWindowsPortableShellDisplayNameEarly()
