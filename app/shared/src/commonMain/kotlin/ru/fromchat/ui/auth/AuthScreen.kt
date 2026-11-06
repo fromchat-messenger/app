@@ -348,7 +348,6 @@ fun AuthScreen(
     var captchaParams by remember { mutableStateOf(AuthRegisterDraft.captchaParams) }
     var registrationProof by remember { mutableStateOf(AuthRegisterDraft.registrationProof) }
     var captchaToken by remember { mutableStateOf(AuthRegisterDraft.captchaToken) }
-    var incognitoEnabled by remember { mutableStateOf(false) }
     var incognitoTlsBypassRetryNonce by remember { mutableStateOf(0) }
     var publicHttpBypassRetryNonce by remember { mutableStateOf(0) }
     val navController = LocalNavController.current
@@ -554,8 +553,7 @@ fun AuthScreen(
                 usernameStepPage(
                     username = username,
                     onUsernameChange = { username = it },
-                    incognitoEnabled = incognitoEnabled,
-                    onIncognitoChange = { incognitoEnabled = it },
+                    incognitoEnabled = AuthRegisterDraft.incognitoEnabled,
                     mitmBypassRetryNonce = incognitoTlsBypassRetryNonce,
                     publicHttpBypassRetryNonce = publicHttpBypassRetryNonce,
                     onContinue = {

@@ -10,10 +10,10 @@ actual object Logger {
     }
 
     actual fun i(tag: String, message: String, throwable: Throwable?) {
-        AppLogStore.record(AppLogLevel.Info, tag, message, throwable)
         if (mirrorLogsToPlatformConsole()) {
             println("INFO: [$tag] $message ${throwable?.message ?: ""}")
         }
+        AppLogStore.record(AppLogLevel.Info, tag, message, throwable)
     }
 
     actual fun w(tag: String, message: String, throwable: Throwable?) {

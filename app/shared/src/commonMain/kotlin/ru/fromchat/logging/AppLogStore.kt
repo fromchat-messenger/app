@@ -11,7 +11,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
-import kotlinx.coroutines.runBlocking
 import kotlin.time.Clock
 import kotlin.time.Instant
 import ru.fromchat.utils.files.PlatformFileSystem
@@ -73,9 +72,8 @@ object AppLogStore {
             } finally {
                 mutex.unlock()
             }
-        } else {
-            runBlocking { mutex.withLock { appendEntry(entry) } }
         }
+        // Never runBlocking here: auth/incognito runs on IO and can deadlock with other log writers.
     }
 
     private fun appendEntry(entry: AppLogEntry) {
@@ -89,14 +87,11 @@ object AppLogStore {
 
     /** Drops in-memory log cache when entering or leaving an incognito session. */
     fun onIncognitoSessionBoundary() {
-        if (mutex.tryLock()) {
-            try {
-                resetIncognitoLogMemoryLocked()
-            } finally {
-                mutex.unlock()
-            }
-        } else {
-            runBlocking { mutex.withLock { resetIncognitoLogMemoryLocked() } }
+        if (!mutex.tryLock()) return
+        try {
+            resetIncognitoLogMemoryLocked()
+        } finally {
+            mutex.unlock()
         }
     }
 

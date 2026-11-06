@@ -17,21 +17,21 @@ internal object MessageDatabaseExpectedSchema {
 
     val tableCreateSql: Map<String, String> = mapOf(
         "server_binding" to """
-            CREATE TABLE server_binding (
+            CREATE TABLE IF NOT EXISTS server_binding (
                 configKey TEXT NOT NULL PRIMARY KEY,
                 activeInstanceId TEXT NOT NULL,
                 updatedAt TEXT
             )
         """.trimIndent(),
         "instance_registry" to """
-            CREATE TABLE instance_registry (
+            CREATE TABLE IF NOT EXISTS instance_registry (
                 instanceId TEXT NOT NULL PRIMARY KEY,
                 firstSeenAt TEXT NOT NULL,
                 lastSeenAt TEXT NOT NULL
             )
         """.trimIndent(),
         "conversation" to """
-            CREATE TABLE conversation (
+            CREATE TABLE IF NOT EXISTS conversation (
                 instanceId TEXT NOT NULL,
                 id TEXT NOT NULL,
                 type TEXT NOT NULL,
@@ -46,7 +46,7 @@ internal object MessageDatabaseExpectedSchema {
             )
         """.trimIndent(),
         "message" to """
-            CREATE TABLE message (
+            CREATE TABLE IF NOT EXISTS message (
                 instanceId TEXT NOT NULL,
                 id INTEGER NOT NULL,
                 conversationId TEXT NOT NULL,
@@ -63,7 +63,7 @@ internal object MessageDatabaseExpectedSchema {
             )
         """.trimIndent(),
         "attachment" to """
-            CREATE TABLE attachment (
+            CREATE TABLE IF NOT EXISTS attachment (
                 instanceId TEXT NOT NULL,
                 id INTEGER NOT NULL,
                 messageId INTEGER NOT NULL,
@@ -80,7 +80,7 @@ internal object MessageDatabaseExpectedSchema {
             )
         """.trimIndent(),
         "outbox" to """
-            CREATE TABLE outbox (
+            CREATE TABLE IF NOT EXISTS outbox (
                 instanceId TEXT NOT NULL,
                 clientMessageId TEXT NOT NULL,
                 conversationId TEXT NOT NULL,
@@ -93,7 +93,7 @@ internal object MessageDatabaseExpectedSchema {
             )
         """.trimIndent(),
         "profile_cache" to """
-            CREATE TABLE profile_cache (
+            CREATE TABLE IF NOT EXISTS profile_cache (
                 instanceId TEXT NOT NULL,
                 userId INTEGER NOT NULL,
                 json TEXT NOT NULL,
@@ -101,7 +101,7 @@ internal object MessageDatabaseExpectedSchema {
             )
         """.trimIndent(),
         "public_chat_profile" to """
-            CREATE TABLE public_chat_profile (
+            CREATE TABLE IF NOT EXISTS public_chat_profile (
                 instanceId TEXT NOT NULL PRIMARY KEY,
                 json TEXT NOT NULL
             )

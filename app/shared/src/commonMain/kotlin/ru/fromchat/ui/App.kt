@@ -85,6 +85,7 @@ import ru.fromchat.desktop.DesktopMenuCommands
 import ru.fromchat.logging.Logger
 import ru.fromchat.notifications.NotificationLaunchCoordinator
 import ru.fromchat.ui.auth.AuthScreen
+import ru.fromchat.ui.auth.resetPreAuthDraft
 import ru.fromchat.ui.auth.captcha.SmartCaptchaNav
 import ru.fromchat.ui.auth.captcha.SmartCaptchaScreen
 import ru.fromchat.ui.auth.yandex.YandexOAuthNav
@@ -98,6 +99,9 @@ import ru.fromchat.ui.chat.panels.dm.isCurrentDmChat
 import ru.fromchat.ui.chat.panels.dm.navigateToDmChat
 import ru.fromchat.ui.chat.panels.publicchat.navigateToPublicChat
 import ru.fromchat.ui.chat.utils.appRootAttachmentDropTarget
+import ru.fromchat.ui.components.HoverInfoOverlayController
+import ru.fromchat.ui.components.HoverInfoOverlayHost
+import ru.fromchat.ui.components.LocalHoverInfoOverlayController
 import ru.fromchat.ui.components.provideSwitchHaptics
 import ru.fromchat.ui.incognito.IncognitoTlsDialogHost
 import ru.fromchat.ui.main.ConversationListDetailShell
@@ -107,6 +111,7 @@ import ru.fromchat.ui.release.ReleaseNotesPrompt
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import ru.fromchat.ui.components.LocalPaneHazeState
 import ru.fromchat.ui.components.ScreenSurface
+import dev.chrisbanes.haze.hazeSource
 import ru.fromchat.ui.main.chats.ChatsSearchScreen
 import ru.fromchat.ui.main.desktop.DesktopChatsDetailNavHost
 import ru.fromchat.ui.main.desktop.DesktopContactsDetailNavHost
@@ -200,15 +205,25 @@ private fun handleAccountLifecycleEvent(message: WebSocketMessage) {
         }
         "account_deleted" -> {
             MainScope().launch {
-                ApiClient.logout()
+                ApiClient.logoutBestEffort()
+                resetPreAuthDraft()
+                ApiClient.onAuthError?.invoke()
             }
+        }
+        "session_ended" -> {
+            val sessionId = message.data?.jsonObject
+                ?.get("session_id")
+                ?.jsonPrimitive
+                ?.contentOrNull
+            ApiClient.onSessionEndedFromServer(sessionId)
+            resetPreAuthDraft()
         }
     }
 }
 
 private fun handlePresenceEvent(message: WebSocketMessage) {
     when (message.type) {
-        "suspended", "unsuspended", "account_deleted" -> handleAccountLifecycleEvent(message)
+        "suspended", "unsuspended", "account_deleted", "session_ended" -> handleAccountLifecycleEvent(message)
         "statusUpdate" -> message.data?.jsonObject?.let(::handlePresenceStatus)
         "dmTyping", "stopDmTyping" -> message.data?.jsonObject?.let { handlePresenceTyping(message.type, it) }
         "dmNew", "dmDeleted", "dmEdited" -> DmInboxCoordinator.handleMessage(message)
@@ -693,6 +708,8 @@ fun App(
             }
 
             val fullscreenImageController = remember { ChatFullscreenImageController() }
+            val hoverInfoOverlayController = remember { HoverInfoOverlayController() }
+            val hoverInfoHazeState = rememberHazeState()
             var showReleaseNotesPrompt by remember { mutableStateOf(false) }
             LaunchedEffect(startDestination) {
                 if (startDestination != null && ReleaseNotesPrompt.shouldShowAutomatically()) {
@@ -708,6 +725,7 @@ fun App(
                     if (isDesktopListDetail) settingsDetailNavController else null,
                 LocalSystemBarsVisibility provides rememberSystemBarsController(),
                 LocalChatFullscreenImageController provides fullscreenImageController,
+                LocalHoverInfoOverlayController provides hoverInfoOverlayController,
             ) {
                 if (startDestination != null) {
                     UiDisplayedEffect(onDisplayed = onUiDisplayed)
@@ -879,70 +897,80 @@ fun App(
                                 }
                             }
 
-                            AppNavHost(Modifier.fillMaxSize())
+                            Box(
+                                Modifier
+                                    .fillMaxSize()
+                                    .hazeSource(hoverInfoHazeState),
+                            ) {
+                                AppNavHost(Modifier.fillMaxSize())
 
-                            // Observe back stack only after [AppNavHost] has set the graph.
-                            val currentEntry by navController.currentBackStackEntryAsState()
-                            val currentRoute = currentEntry?.destination?.route
-                            val showConversationListDetail =
-                                isDesktopListDetail && currentRoute == "chat"
+                                // Observe back stack only after [AppNavHost] has set the graph.
+                                val currentEntry by navController.currentBackStackEntryAsState()
+                                val currentRoute = currentEntry?.destination?.route
+                                val showConversationListDetail =
+                                    isDesktopListDetail && currentRoute == "chat"
 
-                            if (showConversationListDetail) {
-                                val listPaneHazeState = rememberHazeState()
-                                CompositionLocalProvider(
-                                    LocalPaneHazeState provides listPaneHazeState,
-                                    LocalDesktopMainTab provides pendingMainTab,
-                                ) {
-                                    ConversationListDetailShell(
-                                        detailInPanel = false,
-                                        detailEdgeToEdge = true,
-                                        listPane = {
-                                            MainScreen(
-                                                sharedTransitionScope = this@SharedTransitionLayout,
-                                                snackbarHostState = profileLookupSnackbarHostState,
-                                                embeddedInListDetail = true,
-                                                initialPage = pendingMainTab,
-                                                onPageChanged = { pendingMainTab = it },
-                                            )
-                                        },
-                                        detailPane = {
-                                            DesktopTabDetailHosts(
-                                                selectedTab = pendingMainTab,
-                                                chatsDetail = {
-                                                    DesktopChatsDetailNavHost(
-                                                        navController = chatsDetailNavController,
-                                                        sharedTransitionScope =
-                                                            this@SharedTransitionLayout,
-                                                        scrollToMessageId = scrollToMessageId,
-                                                    )
-                                                },
-                                                settingsDetail = {
-                                                    DesktopSettingsDetailNavHost(
-                                                        navController = settingsDetailNavController,
-                                                        rootNavController = navController,
-                                                        sharedTransitionScope =
-                                                            this@SharedTransitionLayout,
-                                                        onOpenChatFromProfile = { userId ->
-                                                            if (userId > 0) {
-                                                                pendingMainTab = MAIN_PAGE_CHATS
-                                                                chatsDetailNavController.navigateToDmChat(
-                                                                    userId,
-                                                                )
-                                                            }
-                                                        },
-                                                    )
-                                                },
-                                                contactsDetail = {
-                                                    DesktopContactsDetailNavHost(
-                                                        navController = contactsDetailNavController,
-                                                    )
-                                                },
-                                            )
-                                        },
-                                    )
+                                if (showConversationListDetail) {
+                                    val listPaneHazeState = rememberHazeState()
+                                    CompositionLocalProvider(
+                                        LocalPaneHazeState provides listPaneHazeState,
+                                        LocalDesktopMainTab provides pendingMainTab,
+                                    ) {
+                                        ConversationListDetailShell(
+                                            detailInPanel = false,
+                                            detailEdgeToEdge = true,
+                                            listPane = {
+                                                MainScreen(
+                                                    sharedTransitionScope = this@SharedTransitionLayout,
+                                                    snackbarHostState = profileLookupSnackbarHostState,
+                                                    embeddedInListDetail = true,
+                                                    initialPage = pendingMainTab,
+                                                    onPageChanged = { pendingMainTab = it },
+                                                )
+                                            },
+                                            detailPane = {
+                                                DesktopTabDetailHosts(
+                                                    selectedTab = pendingMainTab,
+                                                    chatsDetail = {
+                                                        DesktopChatsDetailNavHost(
+                                                            navController = chatsDetailNavController,
+                                                            sharedTransitionScope =
+                                                                this@SharedTransitionLayout,
+                                                            scrollToMessageId = scrollToMessageId,
+                                                        )
+                                                    },
+                                                    settingsDetail = {
+                                                        DesktopSettingsDetailNavHost(
+                                                            navController = settingsDetailNavController,
+                                                            rootNavController = navController,
+                                                            sharedTransitionScope =
+                                                                this@SharedTransitionLayout,
+                                                            onOpenChatFromProfile = { userId ->
+                                                                if (userId > 0) {
+                                                                    pendingMainTab = MAIN_PAGE_CHATS
+                                                                    chatsDetailNavController.navigateToDmChat(
+                                                                        userId,
+                                                                    )
+                                                                }
+                                                            },
+                                                        )
+                                                    },
+                                                    contactsDetail = {
+                                                        DesktopContactsDetailNavHost(
+                                                            navController = contactsDetailNavController,
+                                                        )
+                                                    },
+                                                )
+                                            },
+                                        )
+                                    }
                                 }
                             }
 
+                            HoverInfoOverlayHost(
+                                hazeState = hoverInfoHazeState,
+                                modifier = Modifier.fillMaxSize(),
+                            )
                             ChatFullscreenImageHost(Modifier.fillMaxSize())
                             CallOverlay(Modifier.fillMaxSize())
                             val aboutDocumentNavController =

@@ -6,14 +6,17 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSFileManager
 import ru.fromchat.db.MessageDatabase
 import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.incognito.IncognitoPersistingSqlDriver
 import ru.fromchat.utils.files.PlatformFileSystem
 
 @OptIn(ExperimentalForeignApi::class)
 actual fun provideMessageDatabaseDriver(): SqlDriver {
     if (IncognitoMode.active) {
-        return NativeSqliteDriver(
-            schema = MessageDatabase.Schema,
-            name = ":memory:",
+        return IncognitoPersistingSqlDriver(
+            NativeSqliteDriver(
+                schema = MessageDatabase.Schema,
+                name = ":memory:",
+            ),
         )
     }
     val base = PlatformFileSystem.getAppCacheDirectory()

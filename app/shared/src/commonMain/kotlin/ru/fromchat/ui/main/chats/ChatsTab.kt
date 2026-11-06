@@ -4,8 +4,10 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -39,6 +41,7 @@ import ru.fromchat.utils.components.ListItem
 import ru.fromchat.utils.components.ListItemPosition
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -91,11 +94,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import ru.fromchat.utils.supportClipboardManagerImpl
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
@@ -127,6 +132,9 @@ import ru.fromchat.chat_preview_image
 import ru.fromchat.chat_preview_image_emoji
 import ru.fromchat.chats_selected_count
 import ru.fromchat.config.ServerConfig
+import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.auth_incognito_mode_title
+import ru.fromchat.incognito_chats_session_tooltip
 import ru.fromchat.notifications.LocalizedChatTitles
 import ru.fromchat.public_chat
 import ru.fromchat.search_title
@@ -143,6 +151,7 @@ import ru.fromchat.ui.chat.utils.PendingChatAttachmentDrops
 import ru.fromchat.ui.components.BackHandler
 import ru.fromchat.ui.components.BrandTitle
 import ru.fromchat.ui.components.ConnectingEllipsis
+import ru.fromchat.ui.components.HoverInfoOverlay
 import ru.fromchat.ui.components.PredictiveBackHandler
 import ru.fromchat.ui.components.SuspendedAccountSupportSheet
 import ru.fromchat.ui.components.Text
@@ -371,88 +380,111 @@ private fun ChatsNormalTopBar(
     searchCollapseProgress: Float,
     searchContentDescription: String,
     onSearchClick: () -> Unit,
+    blurEnabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    TopAppBar(
-        modifier = modifier,
-        // Shell already applies/consumes status insets in list–detail; avoid double top padding.
-        windowInsets = if (LocalMainChromeInsets.current.top > 0.dp) {
-            WindowInsets.extraStatusBars
-        } else {
-            WindowInsets(0, 0, 0, 0)
-        },
-        colors = chatsTopAppBarColors(blurReveal),
-        title = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Start,
-            ) {
-                Image(
-                    painter = painterResource(Res.drawable.logo_square),
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(RoundedCornerShape(10.dp)),
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                AnimatedContent(
-                    targetState = titleKey,
-                    modifier = Modifier.weight(1f),
-                    transitionSpec = {
-                        (slideInVertically { it / 2 } + fadeIn()) togetherWith
-                            (slideOutVertically { -it / 2 } + fadeOut())
-                    },
-                    label = "chats_title",
-                ) { key ->
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.CenterStart,
-                    ) {
-                        when (key) {
-                            "connecting", "updating" -> {
-                                val style = MaterialTheme.typography.titleLarge
-                                val color = MaterialTheme.colorScheme.onSurface
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        text = if (key == "connecting") connectingTitle else updatingTitle,
-                                        style = style,
-                                        color = color,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    ConnectingEllipsis(
-                                        fontSize = style.fontSize,
-                                        color = color,
-                                        baseStyle = style,
-                                    )
-                                }
-                            }
+    val tooltipTitle = stringResource(Res.string.auth_incognito_mode_title)
+    val tooltipBody = stringResource(Res.string.incognito_chats_session_tooltip)
+    val colorScheme = MaterialTheme.colorScheme
 
-                            else -> BrandTitle()
+    HoverInfoOverlay(
+        enabled = IncognitoMode.active,
+        title = tooltipTitle,
+        body = tooltipBody,
+        blurEnabled = blurEnabled,
+        modifier = modifier,
+    ) { anchorModifier ->
+        TopAppBar(
+            modifier = Modifier.fillMaxWidth(),
+            // Shell already applies/consumes status insets in list–detail; avoid double top padding.
+            windowInsets = if (LocalMainChromeInsets.current.top > 0.dp) {
+                WindowInsets.extraStatusBars
+            } else {
+                WindowInsets(0, 0, 0, 0)
+            },
+            colors = chatsTopAppBarColors(blurReveal),
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Start,
+                ) {
+                    Image(
+                        painter = painterResource(Res.drawable.logo_square),
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(10.dp)),
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    AnimatedContent(
+                        targetState = titleKey,
+                        modifier = Modifier.weight(1f),
+                        transitionSpec = {
+                            (slideInVertically { it / 2 } + fadeIn()) togetherWith
+                                (slideOutVertically { -it / 2 } + fadeOut())
+                        },
+                        label = "chats_title",
+                    ) { key ->
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            when (key) {
+                                "connecting", "updating" -> {
+                                    val style = MaterialTheme.typography.titleLarge
+                                    val color = MaterialTheme.colorScheme.onSurface
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = if (key == "connecting") connectingTitle else updatingTitle,
+                                            style = style,
+                                            color = color,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        ConnectingEllipsis(
+                                            fontSize = style.fontSize,
+                                            color = color,
+                                            baseStyle = style,
+                                        )
+                                    }
+                                }
+
+                                else -> BrandTitle()
+                            }
                         }
                     }
                 }
-            }
-        },
-        actions = {
-            IconButton(
-                onClick = onSearchClick,
-                modifier = Modifier.graphicsLayer {
-                    alpha = searchCollapseProgress.coerceIn(0f, 1f)
-                },
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Search,
-                    contentDescription = searchContentDescription,
-                )
-            }
-        },
-    )
+            },
+            actions = {
+                IconButton(
+                    onClick = onSearchClick,
+                    modifier = Modifier.graphicsLayer {
+                        alpha = searchCollapseProgress.coerceIn(0f, 1f)
+                    },
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Search,
+                        contentDescription = searchContentDescription,
+                    )
+                }
+                if (IncognitoMode.active) {
+                    Box(
+                        modifier = anchorModifier.size(48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.VisibilityOff,
+                            contentDescription = tooltipTitle,
+                            modifier = Modifier.size(24.dp),
+                            tint = colorScheme.primary,
+                        )
+                    }
+                }
+            },
+        )
+    }
 }
 
 @Composable
@@ -1106,7 +1138,8 @@ fun ChatsTab(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .height(fixedTopBarHeight),
+                    .height(fixedTopBarHeight)
+                    .zIndex(1f),
             ) {
                 ChatsTopBarHazeBackdrop(
                     hazeState = topChromeHazeState,
@@ -1123,6 +1156,7 @@ fun ChatsTab(
                         searchCollapseProgress = topBarSearchReveal,
                         searchContentDescription = searchBarHint,
                         onSearchClick = onOpenSearch,
+                        blurEnabled = isVisible,
                         modifier = Modifier.graphicsLayer { alpha = 1f - selectionProgress },
                     )
                     if (selectionMode || selectionProgress > 0f) {

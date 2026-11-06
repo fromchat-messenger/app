@@ -43,6 +43,8 @@ androidxWork = "2.12.0"
 cryptography-kotlin = "0.6.0"
 krypto = "4.0.10"
 sqldelight = "2.4.1"
+sqlcipher-android = "4.6.1"
+sqlite-jdbc-crypt = "3.45.1.0"
 livekitAndroid = "2.29.2"
 livekitAndroidComposeComponents = "2.4.2"
 markdownRendererM3 = "0.46.0"
@@ -128,6 +130,9 @@ sqldelight-coroutines-extensions = { module = "app.cash.sqldelight:coroutines-ex
 sqldelight-driver-android = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
 sqldelight-driver-native = { module = "app.cash.sqldelight:native-driver", version.ref = "sqldelight" }
 sqldelight-driver-sqlite = { module = "app.cash.sqldelight:sqlite-driver", version.ref = "sqldelight" }
+sqlcipher-android = { module = "net.zetetic:sqlcipher-android", version.ref = "sqlcipher-android" }
+androidx-sqlite = { module = "androidx.sqlite:sqlite", version = "2.4.0" }
+sqlite-jdbc-crypt = { module = "com.github.Willena:sqlite-jdbc-crypt", version.ref = "sqlite-jdbc-crypt" }
 livekit-android = { module = "io.livekit:livekit-android", version.ref = "livekitAndroid" }
 livekit-android-compose-components = { module = "io.livekit:livekit-android-compose-components", version.ref = "livekitAndroidComposeComponents" }
 markdown-renderer-m3 = { module = "com.mikepenz:multiplatform-markdown-renderer-m3", version.ref = "markdownRendererM3" }

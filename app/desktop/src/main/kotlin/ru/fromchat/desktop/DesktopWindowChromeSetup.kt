@@ -16,7 +16,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.FrameWindowScope
+import androidx.compose.ui.window.LocalWindowExceptionHandlerFactory
 import androidx.compose.ui.window.WindowExceptionHandler
+import androidx.compose.ui.window.WindowExceptionHandlerFactory
 import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.awt.ComposeWindow
@@ -33,9 +35,10 @@ import java.awt.image.BufferedImage
 internal fun desktopThemeBackgroundCompose(darkTheme: Boolean): Color =
     if (darkTheme) Color(0xFF1C1B1F) else Color(0xFFFFFBFE)
 
+/** Log-only handler — never the stock blank Compose "Error" window. */
 @OptIn(ExperimentalComposeUiApi::class)
-internal fun installDesktopWindowExceptionHandler(window: ComposeWindow) {
-    window.exceptionHandler = WindowExceptionHandler { throwable ->
+internal fun desktopWindowExceptionHandler(): WindowExceptionHandler =
+    WindowExceptionHandler { throwable ->
         if (isSqliteBusy(throwable)) {
             if (!DatabaseLockGate.onSqliteBusy(throwable)) {
                 Logger.w("DesktopWindow", "Suppressed SQLITE_BUSY in composition", throwable)
@@ -52,6 +55,21 @@ internal fun installDesktopWindowExceptionHandler(window: ComposeWindow) {
             Logger.e("DesktopWindow", "uncaught in composition", throwable)
         }
     }
+
+@OptIn(ExperimentalComposeUiApi::class)
+internal fun installDesktopWindowExceptionHandler(window: ComposeWindow) {
+    window.exceptionHandler = desktopWindowExceptionHandler()
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+internal fun ProvideDesktopWindowExceptionHandler(content: @Composable () -> Unit) {
+    CompositionLocalProvider(
+        LocalWindowExceptionHandlerFactory provides WindowExceptionHandlerFactory {
+            desktopWindowExceptionHandler()
+        },
+        content = content,
+    )
 }
 
 @Composable

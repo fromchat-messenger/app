@@ -222,6 +222,8 @@ kotlin {
             implementation(libs.multiplatform.crypto.libsodium.bindings)
             implementation(libs.tweetnacl.java)
             implementation(libs.sqldelight.driver.android)
+            implementation(libs.sqlcipher.android)
+            implementation(libs.androidx.sqlite)
             implementation(libs.livekit.android)
             implementation(libs.livekit.android.compose.components)
             implementation(libs.androidx.webkit)
@@ -257,6 +259,7 @@ kotlin {
             implementation(libs.ktor.client.cio)
             implementation(libs.multiplatform.crypto.libsodium.bindings)
             implementation(libs.sqldelight.driver.sqlite)
+            implementation(libs.sqlite.jdbc.crypt)
             implementation(libs.bouncycastle.bcprov)
             // OpenJFX publishes empty jars without a classifier; declare every module
             // with the host classifier and exclude transitive stubs.

@@ -14,10 +14,12 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import ru.fromchat.ui.components.ChromeOverflowIconButton
 import ru.fromchat.ui.components.Text
 import androidx.compose.runtime.Composable
@@ -31,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.about
+import ru.fromchat.auth_incognito_mode_title
 import ru.fromchat.logs_title
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.theme.extraStatusBars
@@ -89,6 +92,21 @@ fun PreAuthOverflowMenu() {
             expanded = menuExpanded,
             onDismissRequest = { menuExpanded = false },
         ) {
+            DropdownMenuItem(
+                text = { Text(stringResource(Res.string.auth_incognito_mode_title)) },
+                leadingIcon = {
+                    Icon(Icons.Rounded.VisibilityOff, contentDescription = null)
+                },
+                trailingIcon = {
+                    Switch(
+                        checked = AuthRegisterDraft.incognitoEnabled,
+                        onCheckedChange = null,
+                    )
+                },
+                onClick = {
+                    AuthRegisterDraft.incognitoEnabled = !AuthRegisterDraft.incognitoEnabled
+                },
+            )
             DropdownMenuItem(
                 text = { Text(stringResource(Res.string.about)) },
                 leadingIcon = {

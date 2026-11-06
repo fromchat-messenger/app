@@ -218,6 +218,7 @@ private fun applySchemaDiff(driver: SqlDriver, diff: SchemaDiff) {
       }
     }
     for (table in diff.createTables) {
+      if (tableExists(driver, table)) continue
       val sql = MessageDatabaseExpectedSchema.tableCreateSql[table]
         ?: error("Missing CREATE SQL for $table")
       driver.execute(identifier = null, sql = sql, parameters = 0)

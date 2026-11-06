@@ -25,6 +25,7 @@ object PlatformFileSystem {
         if (IncognitoMode.active) {
             IncognitoVolumeFileSystem.relativeKeyForAppPath(path)?.let { key ->
                 IncognitoVolumeFileSystem.append(key, bytes)
+                return
             }
             return
         }

@@ -1,8 +1,8 @@
 package ru.fromchat.incognito
 
 /**
- * Single encrypted block container on disk ([containerFilePath]).
- * App data paths are stored inside via [IncognitoVolumeFileSystem] (userspace block encryption).
+ * Ephemeral incognito session directory on the host filesystem.
+ * Payload files use random names; logical paths live in an encrypted map file ([containerFilePath]).
  */
 internal expect object IncognitoContainer {
     val containerFilePath: String?

@@ -1,6 +1,9 @@
 package ru.fromchat.incognito
 
-import ru.fromchat.api.local.db.store.MessageDatabaseProvider
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.withContext
+import ru.fromchat.api.local.db.store.closeMessageDatabaseForIncognitoSession
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.logging.AppLogStore
 import ru.fromchat.logging.FromChatLogDirs
@@ -10,7 +13,7 @@ import ru.fromchat.utils.files.PlatformFileSystem
 
 private const val TAG = "IncognitoMode"
 
-/** Ephemeral incognito session: userspace encrypted block container + RAM-only key. */
+/** Ephemeral incognito session: host temp dir, XTS-encrypted files, encrypted path map, RAM-only key. */
 object IncognitoMode {
     @Volatile
     var active: Boolean = false
@@ -30,19 +33,21 @@ object IncognitoMode {
 
     suspend fun activate() {
         if (active) return
-        val key = IncognitoVault.randomKey()
-        val root = provisionIncognitoVolumeRoot()
-        volumeKey = key
-        volumeRootPath = root
-        active = true
-        IncognitoContainer.open(key, root)
-        registerIncognitoLifecycleHooks()
-        purgePlaintextLogsUnderAppData()
-        AppLogStore.onIncognitoSessionBoundary()
-        FromChatLogDirs.logsDirectoryPath()
-        MessageDatabaseProvider.closeAndReset()
-        ServerConfig.reloadFromSettings()
-        Logger.i(TAG, "activated incognito encrypted session")
+        withContext(Dispatchers.IO) {
+            val key = IncognitoVault.randomKey()
+            val root = provisionIncognitoVolumeRoot()
+            volumeKey = key
+            volumeRootPath = root
+            IncognitoContainer.open(key, root)
+            registerIncognitoLifecycleHooks()
+            purgePlaintextLogsUnderAppData()
+            AppLogStore.onIncognitoSessionBoundary()
+            closeMessageDatabaseForIncognitoSession()
+            active = true
+            FromChatLogDirs.logsDirectoryPath()
+            ServerConfig.reloadFromSettings()
+            Logger.i(TAG, "activated incognito encrypted session")
+        }
     }
 
     fun syncContainerToDisk() {
@@ -51,10 +56,13 @@ object IncognitoMode {
         IncognitoContainer.syncToContainer(key)
     }
 
+    /**
+     * Wipes the ephemeral volume immediately. Does not flush to disk first — callers that need a
+     * last sync (e.g. process shutdown) should call [syncContainerToDisk] themselves beforehand.
+     */
     fun destroy() {
         if (!active && volumeRootPath == null) return
-        syncContainerToDisk()
-        MessageDatabaseProvider.closeAndReset()
+        closeMessageDatabaseForIncognitoSession()
         val key = volumeKey
         IncognitoContainer.closeAndWipe(key)
         volumeKey?.fill(0)
