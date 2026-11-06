@@ -150,6 +150,11 @@ object OutgoingMessageCoordinator {
             return true
         }
         if (InstanceEncryptionStore.isWithinModeChangeSendCooldown()) {
+            Logger.i(
+                "OutgoingMessageCoordinator",
+                "DM send blocked: mode-change cool-down " +
+                    "(${InstanceEncryptionStore.modeChangeCooldownRemainingMs()}ms left)",
+            )
             failOutboundForModeChange(row.conversationId, row.clientMessageId)
             return true
         }
@@ -324,6 +329,15 @@ object OutgoingMessageCoordinator {
                 nextAttemptAt = null,
                 bytesUploaded = 0L,
             )
+        }
+        if (InstanceEncryptionStore.isWithinModeChangeSendCooldown()) {
+            Logger.i(
+                "OutgoingMessageCoordinator",
+                "DM enqueue rejected: within mode-change cool-down " +
+                    "(${InstanceEncryptionStore.modeChangeCooldownRemainingMs()}ms left)",
+            )
+            failOutboundForModeChange(conversationId, clientMessageId)
+            return
         }
         kickOutboxDrain(instanceId)
     }
