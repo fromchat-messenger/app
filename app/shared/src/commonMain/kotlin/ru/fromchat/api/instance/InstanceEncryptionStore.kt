@@ -47,7 +47,7 @@ object InstanceEncryptionStore {
     val events: SharedFlow<EncryptionModeChangeEvent> = _events.asSharedFlow()
 
     /** Demo-only hook for queued-message video; 0 = disabled. */
-    @Volatile
+    // @Volatile
     var debugOutboundDelayMs: Long = 0L
 
     suspend fun fetchInstanceInfo(apiBaseUrl: String): InstanceInfoResponse =
@@ -84,10 +84,14 @@ object InstanceEncryptionStore {
         return mutex.withLock {
             val previous = _active.value
             _active.value = snapshot
+            Logger.i(TAG, "applyInstanceInfo: previous=${previous?.mode}@v${previous?.version}, new=${snapshot.mode}@v${snapshot.version}, emitEvents=$emitEvents")
             InstanceEncryptionCache.upsert(snapshot)
-            val versionBumped = previous != null &&
-                (previous.version != snapshot.version || previous.mode != snapshot.mode)
+            // Emit event if version changed OR if this is a non-initial version (v>1) and we just don't have previous loaded yet
+            val versionBumped = (previous != null && (previous.version != snapshot.version || previous.mode != snapshot.mode)) ||
+                (previous == null && snapshot.version > 1)
+            Logger.i(TAG, "versionBumped=$versionBumped (prev!=null=${previous!=null}, verDiff=${previous?.version != snapshot.version}, modeDiff=${previous?.mode != snapshot.mode})")
             if (emitEvents && versionBumped) {
+                Logger.i(TAG, "Emitting PolicyUpdated event!")
                 _awaitingUserAck.value = true
                 _events.tryEmit(
                     EncryptionModeChangeEvent.PolicyUpdated(snapshot, previous),
