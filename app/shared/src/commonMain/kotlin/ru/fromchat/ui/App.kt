@@ -101,7 +101,6 @@ import ru.fromchat.ui.chat.panels.dm.isCurrentDmChat
 import ru.fromchat.ui.chat.panels.dm.navigateToDmChat
 import ru.fromchat.ui.chat.panels.publicchat.navigateToPublicChat
 import ru.fromchat.ui.chat.utils.appRootAttachmentDropTarget
-import ru.fromchat.ui.encryption.EncryptionModeAckDialog
 import ru.fromchat.ui.main.ConversationListDetailShell
 import ru.fromchat.ui.main.handleAppMenuShortcutKeyEvent
 import ru.fromchat.ui.components.provideSwitchHaptics
@@ -949,7 +948,6 @@ fun App(
 
                             ChatFullscreenImageHost(Modifier.fillMaxSize())
                             CallOverlay(Modifier.fillMaxSize())
-                            EncryptionModeAckDialog()
                             val aboutDocumentNavController =
                                 if (isDesktopListDetail && !ApiClient.token.isNullOrBlank()) {
                                     settingsDetailNavController

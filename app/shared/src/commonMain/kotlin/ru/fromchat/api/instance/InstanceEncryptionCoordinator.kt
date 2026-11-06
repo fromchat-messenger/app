@@ -6,13 +6,16 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import org.jetbrains.compose.resources.getString
 import ru.fromchat.Res
 import ru.fromchat.api.local.cache.CacheContext
+import ru.fromchat.api.local.db.store.MessageCacheStore
 import ru.fromchat.api.local.db.store.MessageDatabaseProvider
+import ru.fromchat.api.local.send.OutgoingMessageCoordinator
 import ru.fromchat.encryption_mode_service_message
 import ru.fromchat.logging.Logger
 
@@ -74,25 +77,31 @@ object InstanceEncryptionCoordinator {
             Logger.w(TAG, "instanceId is blank, skipping")
             return
         }
-        Logger.i(TAG, "instanceId=$instanceId")
         val label = InstanceEncryptionMode.displayLabel(event.snapshot.mode)
         val body = getString(Res.string.encryption_mode_service_message, label)
         val timestamp = event.snapshot.changedAt
-        with(Dispatchers.Default) {
+        withContext(Dispatchers.Default) {
             val conversations = MessageDatabaseProvider.database.messageDatabaseQueries
                 .selectActiveDmConversationsForInstance(instanceId)
                 .executeAsList()
             Logger.i(TAG, "Found ${conversations.size} active DM conversations")
             conversations.forEach { row ->
-                Logger.i(TAG, "Inserting notice for conversation ${row.id}")
-                EncryptionModeNoticeStore.insertModeChangedNotice(
+                val inserted = EncryptionModeNoticeStore.insertModeChangedNotice(
                     conversationId = row.id,
                     mode = event.snapshot.mode,
                     atIso = timestamp,
                     body = body,
                 )
+                if (inserted != null) {
+                    runCatching {
+                        MessageCacheStore.upsertLocalServiceNotice(row.id, inserted)
+                    }.onFailure {
+                        Logger.w(TAG, "persist encryption notice failed for ${row.id}", it)
+                    }
+                }
             }
         }
+        OutgoingMessageCoordinator.failPendingDmSendsForModeChange(instanceId)
         Logger.i(TAG, "Inserted encryption mode notices for ${event.snapshot.mode} v${event.snapshot.version}")
     }
 }

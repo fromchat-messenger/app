@@ -1,5 +1,6 @@
 package ru.fromchat.api.instance
 
+import kotlin.time.Clock
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -35,19 +36,20 @@ sealed interface EncryptionModeChangeEvent {
 object InstanceEncryptionStore {
     private const val TAG = "InstanceEncryptionStore"
 
+    /** Client-only cool-down after a detected mode change before outbound DM sends are allowed. */
+    const val MODE_CHANGE_SEND_COOLDOWN_MS = 5_000L
+
     private val mutex = Mutex()
     private val _active = MutableStateFlow<InstanceEncryptionSnapshot?>(null)
     val active: StateFlow<InstanceEncryptionSnapshot?> = _active.asStateFlow()
 
-    /** When true, outbound DM sends stay paused until the user acknowledges the mode change dialog. */
-    private val _awaitingUserAck = MutableStateFlow(false)
-    val awaitingUserAck: StateFlow<Boolean> = _awaitingUserAck.asStateFlow()
-
     private val _events = MutableSharedFlow<EncryptionModeChangeEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<EncryptionModeChangeEvent> = _events.asSharedFlow()
 
+    @Volatile
+    private var lastModeChangeDetectedAtMs: Long? = null
+
     /** Demo-only hook for queued-message video; 0 = disabled. */
-    // @Volatile
     var debugOutboundDelayMs: Long = 0L
 
     suspend fun fetchInstanceInfo(apiBaseUrl: String): InstanceInfoResponse =
@@ -84,15 +86,24 @@ object InstanceEncryptionStore {
         return mutex.withLock {
             val previous = _active.value
             _active.value = snapshot
-            Logger.i(TAG, "applyInstanceInfo: previous=${previous?.mode}@v${previous?.version}, new=${snapshot.mode}@v${snapshot.version}, emitEvents=$emitEvents")
+            Logger.i(
+                TAG,
+                "applyInstanceInfo: previous=${previous?.mode}@v${previous?.version}, " +
+                    "new=${snapshot.mode}@v${snapshot.version}, emitEvents=$emitEvents",
+            )
             InstanceEncryptionCache.upsert(snapshot)
-            // Emit event if version changed OR if this is a non-initial version (v>1) and we just don't have previous loaded yet
-            val versionBumped = (previous != null && (previous.version != snapshot.version || previous.mode != snapshot.mode)) ||
+            val versionBumped = (previous != null &&
+                (previous.version != snapshot.version || previous.mode != snapshot.mode)) ||
                 (previous == null && snapshot.version > 1)
-            Logger.i(TAG, "versionBumped=$versionBumped (prev!=null=${previous!=null}, verDiff=${previous?.version != snapshot.version}, modeDiff=${previous?.mode != snapshot.mode})")
+            Logger.i(
+                TAG,
+                "versionBumped=$versionBumped (prev!=null=${previous != null}, " +
+                    "verDiff=${previous?.version != snapshot.version}, " +
+                    "modeDiff=${previous?.mode != snapshot.mode})",
+            )
             if (emitEvents && versionBumped) {
+                noteModeChangeDetectedLocked()
                 Logger.i(TAG, "Emitting PolicyUpdated event!")
-                _awaitingUserAck.value = true
                 _events.tryEmit(
                     EncryptionModeChangeEvent.PolicyUpdated(snapshot, previous),
                 )
@@ -128,18 +139,26 @@ object InstanceEncryptionStore {
             val previous = _active.value
             _active.value = fresh
             InstanceEncryptionCache.upsert(fresh)
-            _awaitingUserAck.value = true
+            noteModeChangeDetectedLocked()
             _events.tryEmit(
                 EncryptionModeChangeEvent.DetectedOnSendFailure(fresh, previous),
             )
         }
     }
 
-    fun userAcknowledgedModeChange() {
-        _awaitingUserAck.value = false
+    fun isWithinModeChangeSendCooldown(
+        nowMs: Long = Clock.System.now().toEpochMilliseconds(),
+    ): Boolean {
+        val at = lastModeChangeDetectedAtMs ?: return false
+        return nowMs - at < MODE_CHANGE_SEND_COOLDOWN_MS
     }
 
-    fun requiresSendAcknowledgement(): Boolean = _awaitingUserAck.value
+    fun modeChangeCooldownRemainingMs(
+        nowMs: Long = Clock.System.now().toEpochMilliseconds(),
+    ): Long {
+        val at = lastModeChangeDetectedAtMs ?: return 0L
+        return (MODE_CHANGE_SEND_COOLDOWN_MS - (nowMs - at)).coerceAtLeast(0L)
+    }
 
     suspend fun refreshActiveFromNetwork(): InstanceEncryptionSnapshot? {
         val config = ServerConfig.serverConfig.value ?: Settings.readServerConfig()
@@ -166,6 +185,11 @@ object InstanceEncryptionStore {
 
     fun clearSessionPolicy() {
         _active.value = null
-        _awaitingUserAck.value = false
+        lastModeChangeDetectedAtMs = null
+    }
+
+    private fun noteModeChangeDetectedLocked() {
+        lastModeChangeDetectedAtMs = Clock.System.now().toEpochMilliseconds()
+        Logger.i(TAG, "mode change cooldown started (${MODE_CHANGE_SEND_COOLDOWN_MS}ms)")
     }
 }
