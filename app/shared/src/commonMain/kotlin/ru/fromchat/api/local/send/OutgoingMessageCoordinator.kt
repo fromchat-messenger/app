@@ -151,8 +151,13 @@ object OutgoingMessageCoordinator {
             return false
         }
         val delayMs = InstanceEncryptionStore.debugOutboundDelayMs
-        if (delayMs > 0L) {
-            delay(delayMs.milliseconds)
+        // Freeze policy before the demo delay so a silent mid-flight mode switch still 409s.
+        val frozenPolicy = if (delayMs > 0L) {
+            InstanceEncryptionStore.ensureActivePolicy().also {
+                delay(delayMs.milliseconds)
+            }
+        } else {
+            null
         }
         val sendResult = runCatching {
             val payload = json.decodeFromString<DmOutboxPayload>(row.payloadJson)
@@ -163,6 +168,7 @@ object OutgoingMessageCoordinator {
                 replyToId = payload.replyToId,
                 transportFiles = payload.transportFiles,
                 uploadedFileIds = payload.uploadedFileIds,
+                policyOverride = frozenPolicy,
             )
         }
         var ok = true

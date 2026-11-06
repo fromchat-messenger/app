@@ -845,9 +845,11 @@ object ApiClient {
         replyToId: Int? = null,
         transportFiles: List<SendDmFile> = emptyList(),
         uploadedFileIds: List<String> = emptyList(),
-        preparedTransport: TransportCiphertext? = null
+        preparedTransport: TransportCiphertext? = null,
+        /** Demo/debug: force the wire mode/version even if the live store moved. */
+        policyOverride: ru.fromchat.api.instance.InstanceEncryptionSnapshot? = null,
     ) {
-        val policy = InstanceEncryptionStore.ensureActivePolicy()
+        val policy = policyOverride ?: InstanceEncryptionStore.ensureActivePolicy()
         when (policy.mode) {
             InstanceEncryptionMode.Compliance -> sendDmComplianceTransport(
                 recipientId = recipientId,
