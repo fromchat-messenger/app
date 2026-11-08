@@ -254,7 +254,9 @@ fun ServerConfigScreen(
         ) {
             ApplyServerResult.Applied -> Unit
             ApplyServerResult.ServerUnreachable -> {
-                snackbarHostState.showSnackbar(strSnackbarApiFail)
+                withContext(Dispatchers.Main) {
+                    snackbarHostState.showSnackbar(strSnackbarApiFail)
+                }
             }
         }
     }
@@ -373,70 +375,90 @@ fun ServerConfigScreen(
                         scope.launch {
                             try {
                                 busy = true
-
-                                val parsed = buildTentativeFromParsed()
-                                if (parsed == null) {
-                                    snackbarHostState.showSnackbar(strHostError)
-                                    return@launch
-                                }
-                                val endpointOnly = ServerConfigData(
-                                    serverIp = parsed.host,
-                                    apiPort = parsed.port,
-                                    callsPort = parsed.port,
-                                    httpsEnabled = parsed.httpsPreferred,
-                                    callsEnabled = false,
-                                )
-                                if (preAuth) {
-                                    persistPreAuthServerEndpoint(endpointOnly)
-                                }
-                                val (tentative, probe) = try {
-                                    runServerEndpointProbe(parsed)
-                                } catch (e: Exception) {
-                                    snackbarHostState.showSnackbar(strSnackbarApiFail)
-                                    return@launch
-                                }
-                                lastProbe = probe
-                                lastProbedConfig = tentative
-
-                                if (
-                                    probe == ServerProbeResult.Unreachable &&
-                                    surfaceLastIncognitoTlsProbeFailure(parsed.host, parsed.httpsPreferred)
-                                ) {
-                                    return@launch
-                                }
-
-                                if (
-                                    ConnectionSecurityDialogController.showMitmDialog ||
-                                    ConnectionSecurityDialogController.showTlsDialog ||
-                                    ConnectionSecurityDialogController.showPublicHttpDialog
-                                ) {
-                                    return@launch
-                                }
-
-                                when (probe) {
-                                    ServerProbeResult.Unsupported -> {
-                                        snackbarHostState.showSnackbar(
-                                            strUnsupportedInstance
-                                        )
+                                withContext(Dispatchers.Default) {
+                                    val parsed = buildTentativeFromParsed()
+                                    if (parsed == null) {
+                                        withContext(Dispatchers.Main) {
+                                            snackbarHostState.showSnackbar(strHostError)
+                                        }
+                                        return@withContext
+                                    }
+                                    val endpointOnly = ServerConfigData(
+                                        serverIp = parsed.host,
+                                        apiPort = parsed.port,
+                                        callsPort = parsed.port,
+                                        httpsEnabled = parsed.httpsPreferred,
+                                        callsEnabled = false,
+                                    )
+                                    if (preAuth) {
+                                        persistPreAuthServerEndpoint(endpointOnly)
+                                    }
+                                    val (tentative, probe) = try {
+                                        runServerEndpointProbe(parsed)
+                                    } catch (e: Exception) {
+                                        withContext(Dispatchers.Main) {
+                                            snackbarHostState.showSnackbar(strSnackbarApiFail)
+                                        }
+                                        return@withContext
+                                    }
+                                    withContext(Dispatchers.Main) {
+                                        lastProbe = probe
+                                        lastProbedConfig = tentative
                                     }
 
-                                    ServerProbeResult.Timeout -> {
-                                        snackbarHostState.showSnackbar(strSnackbarTimeout)
+                                    if (
+                                        probe == ServerProbeResult.Unreachable &&
+                                        withContext(Dispatchers.Main) {
+                                            surfaceLastIncognitoTlsProbeFailure(
+                                                parsed.host,
+                                                parsed.httpsPreferred,
+                                            )
+                                        }
+                                    ) {
+                                        return@withContext
                                     }
 
-                                    ServerProbeResult.Unreachable -> {
-                                        snackbarHostState.showSnackbar(strSnackbarApiFail)
+                                    if (
+                                        withContext(Dispatchers.Main) {
+                                            ConnectionSecurityDialogController.showMitmDialog ||
+                                                ConnectionSecurityDialogController.showTlsDialog ||
+                                                ConnectionSecurityDialogController.showPublicHttpDialog
+                                        }
+                                    ) {
+                                        return@withContext
                                     }
 
-                                    is ServerProbeResult.Supported -> {
-                                        if (warnPublicHttpIfNeeded(tentative) {
-                                            scope.launch {
+                                    when (probe) {
+                                        ServerProbeResult.Unsupported -> {
+                                            withContext(Dispatchers.Main) {
+                                                snackbarHostState.showSnackbar(strUnsupportedInstance)
+                                            }
+                                        }
+
+                                        ServerProbeResult.Timeout -> {
+                                            withContext(Dispatchers.Main) {
+                                                snackbarHostState.showSnackbar(strSnackbarTimeout)
+                                            }
+                                        }
+
+                                        ServerProbeResult.Unreachable -> {
+                                            withContext(Dispatchers.Main) {
+                                                snackbarHostState.showSnackbar(strSnackbarApiFail)
+                                            }
+                                        }
+
+                                        is ServerProbeResult.Supported -> {
+                                            val warned = withContext(Dispatchers.Main) {
+                                                warnPublicHttpIfNeeded(tentative) {
+                                                    scope.launch(Dispatchers.Default) {
+                                                        applySupportedServerProbe(probe, tentative)
+                                                    }
+                                                }
+                                            }
+                                            if (!warned) {
                                                 applySupportedServerProbe(probe, tentative)
                                             }
-                                        }) {
-                                            return@launch
                                         }
-                                        applySupportedServerProbe(probe, tentative)
                                     }
                                 }
                             } finally {
@@ -499,7 +521,7 @@ fun ServerConfigScreen(
                         .background(listBackground)
                         .hazeSource(actionHazeState)
                         .onGloballyPositioned { listViewportBounds = it.boundsInWindow() },
-                        contentPadding = PaddingValues(bottom = bottomInsetPadding),
+                        contentPadding = PaddingValues(bottom = bottomInsetPadding + 16.dp),
                         verticalArrangement = remember {
                             LastAnchoredBottomArrangement(space = 4.dp)
                         },

@@ -41,8 +41,8 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import ru.fromchat.ui.components.SpringDropdownMenuItem
+import ru.fromchat.ui.components.SpringExpandingOverflowMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -132,6 +132,7 @@ import ru.fromchat.chats_selected_count
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.auth_incognito_mode_title
+import ru.fromchat.ui.auth.AUTH_INCOGNITO_ROUTE
 import ru.fromchat.incognito_chats_session_tooltip
 import ru.fromchat.notifications.LocalizedChatTitles
 import ru.fromchat.public_chat
@@ -380,10 +381,12 @@ private fun ChatsNormalTopBar(
     searchCollapseProgress: Float,
     searchContentDescription: String,
     onSearchClick: () -> Unit,
+    onIncognitoOverlayLogin: () -> Unit,
     blurEnabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val tooltipTitle = stringResource(Res.string.auth_incognito_mode_title)
+    var logoMenuExpanded by remember { mutableStateOf(false) }
 
     HoverInfoOverlay(
         enabled = IncognitoMode.active,
@@ -418,7 +421,6 @@ private fun ChatsNormalTopBar(
                     Spacer(modifier = Modifier.width(10.dp))
                     AnimatedContent(
                         targetState = titleKey,
-                        modifier = Modifier.weight(1f),
                         transitionSpec = {
                             (slideInVertically { it / 2 } + fadeIn()) togetherWith
                                 (slideOutVertically { -it / 2 } + fadeOut())
@@ -456,20 +458,24 @@ private fun ChatsNormalTopBar(
                 }
             },
             actions = {
-                IconButton(
-                    onClick = onSearchClick,
-                    modifier = Modifier.graphicsLayer {
-                        alpha = searchCollapseProgress.coerceIn(0f, 1f)
-                    },
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Search,
-                        contentDescription = searchContentDescription,
-                    )
+                if (searchCollapseProgress > 0.01f) {
+                    IconButton(
+                        onClick = onSearchClick,
+                        modifier = Modifier.graphicsLayer {
+                            alpha = searchCollapseProgress.coerceIn(0f, 1f)
+                        },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Search,
+                            contentDescription = searchContentDescription,
+                        )
+                    }
                 }
                 if (IncognitoMode.active) {
                     Box(
-                        modifier = anchorModifier.size(48.dp),
+                        modifier = anchorModifier
+                            .padding(end = 4.dp)
+                            .size(48.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
@@ -477,6 +483,23 @@ private fun ChatsNormalTopBar(
                             contentDescription = tooltipTitle,
                             modifier = Modifier.size(24.dp),
                             tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                } else {
+                    SpringExpandingOverflowMenu(
+                        expanded = logoMenuExpanded,
+                        onExpandedChange = { logoMenuExpanded = it },
+                        modifier = Modifier.padding(end = 4.dp),
+                    ) {
+                        SpringDropdownMenuItem(
+                            text = { Text(stringResource(Res.string.auth_incognito_mode_title)) },
+                            leadingIcon = {
+                                Icon(Icons.Rounded.VisibilityOff, contentDescription = null)
+                            },
+                            onClick = {
+                                logoMenuExpanded = false
+                                onIncognitoOverlayLogin()
+                            },
                         )
                     }
                 }
@@ -535,25 +558,17 @@ private fun ChatsSelectionTopBar(
                 }
             }
             if (bulkActions.canMarkRead) {
-                Box {
-                    IconButton(onClick = { overflowOpen = true }) {
-                        Icon(
-                            imageVector = Icons.Rounded.MoreVert,
-                            contentDescription = moreActionsCd,
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = overflowOpen,
-                        onDismissRequest = { overflowOpen = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(markReadLabel) },
-                            onClick = {
-                                overflowOpen = false
-                                onMarkRead()
-                            },
-                        )
-                    }
+                SpringExpandingOverflowMenu(
+                    expanded = overflowOpen,
+                    onExpandedChange = { overflowOpen = it },
+                ) {
+                    SpringDropdownMenuItem(
+                        text = { Text(markReadLabel) },
+                        onClick = {
+                            overflowOpen = false
+                            onMarkRead()
+                        },
+                    )
                 }
             }
         },
@@ -571,6 +586,7 @@ fun ChatsTab(
 ) {
     val navController =
         LocalDesktopChatsNavController.current ?: LocalNavController.current
+    val rootNavController = LocalNavController.current
     val clipboard = supportClipboardManagerImpl
     val haptic = rememberHapticFeedback()
     val scope = rememberCoroutineScope()
@@ -1154,6 +1170,11 @@ fun ChatsTab(
                         searchCollapseProgress = topBarSearchReveal,
                         searchContentDescription = searchBarHint,
                         onSearchClick = onOpenSearch,
+                        onIncognitoOverlayLogin = {
+                            rootNavController.navigate(AUTH_INCOGNITO_ROUTE) {
+                                launchSingleTop = true
+                            }
+                        },
                         blurEnabled = isVisible,
                         modifier = Modifier.graphicsLayer { alpha = 1f - selectionProgress },
                     )

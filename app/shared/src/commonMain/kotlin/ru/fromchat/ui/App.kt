@@ -1,5 +1,6 @@
 package ru.fromchat.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.SharedTransitionLayout
@@ -87,6 +88,7 @@ import ru.fromchat.logging.Logger
 import ru.fromchat.notifications.NotificationLaunchCoordinator
 import ru.fromchat.ui.auth.AUTH_INCOGNITO_ROUTE
 import ru.fromchat.ui.auth.AUTH_ROUTE
+import ru.fromchat.incognito.IncognitoOverlaySession
 import ru.fromchat.ui.auth.AuthScreen
 import ru.fromchat.ui.auth.resetPreAuthDraft
 import ru.fromchat.ui.auth.captcha.SmartCaptchaNav
@@ -105,6 +107,9 @@ import ru.fromchat.ui.chat.utils.appRootAttachmentDropTarget
 import ru.fromchat.ui.components.HoverInfoOverlayController
 import ru.fromchat.ui.components.HoverInfoOverlayHost
 import ru.fromchat.ui.components.LocalHoverInfoOverlayController
+import ru.fromchat.ui.components.LocalSpringOverflowMenuOverlayController
+import ru.fromchat.ui.components.SpringOverflowMenuOverlayController
+import ru.fromchat.ui.components.SpringOverflowMenuOverlayHost
 import ru.fromchat.ui.components.provideSwitchHaptics
 import ru.fromchat.ui.security.ConnectionSecurityDialogHost
 import ru.fromchat.ui.main.ConversationListDetailShell
@@ -733,6 +738,7 @@ fun App(
 
             val fullscreenImageController = remember { ChatFullscreenImageController() }
             val hoverInfoOverlayController = remember { HoverInfoOverlayController() }
+            val springOverflowMenuOverlayController = remember { SpringOverflowMenuOverlayController() }
             val hoverInfoHazeState = rememberHazeState()
             var showReleaseNotesPrompt by remember { mutableStateOf(false) }
             LaunchedEffect(startDestination) {
@@ -750,6 +756,7 @@ fun App(
                 LocalSystemBarsVisibility provides rememberSystemBarsController(),
                 LocalChatFullscreenImageController provides fullscreenImageController,
                 LocalHoverInfoOverlayController provides hoverInfoOverlayController,
+                LocalSpringOverflowMenuOverlayController provides springOverflowMenuOverlayController,
             ) {
                 if (startDestination != null) {
                     UiDisplayedEffect(onDisplayed = onUiDisplayed)
@@ -828,8 +835,15 @@ fun App(
                                     }
 
                                     composable(AUTH_INCOGNITO_ROUTE) {
+                                        val openedFromChats =
+                                            navController.previousBackStackEntry
+                                                ?.destination
+                                                ?.route == "chat"
                                         AuthScreen(
                                             onAuthSuccess = {
+                                                if (openedFromChats) {
+                                                    IncognitoOverlaySession.onOverlayIncognitoLoginSuccess()
+                                                }
                                                 MainScope().launch {
                                                     runCatching {
                                                         bootstrapSessionInstance(
@@ -847,6 +861,7 @@ fun App(
                                             },
                                             onBackToWelcome = { navController.navigateUp() },
                                             incognitoFlow = true,
+                                            incognitoOverlayFromChat = openedFromChats,
                                         )
                                     }
 
@@ -952,13 +967,16 @@ fun App(
                             ) {
                                 AppNavHost(Modifier.fillMaxSize())
 
-                                // Observe back stack only after [AppNavHost] has set the graph.
                                 val currentEntry by navController.currentBackStackEntryAsState()
                                 val currentRoute = currentEntry?.destination?.route
                                 val showConversationListDetail =
                                     isDesktopListDetail && currentRoute == "chat"
 
-                                if (showConversationListDetail) {
+                                AnimatedVisibility(
+                                    visible = showConversationListDetail,
+                                    enter = mutedEnterTransition(rootNavPopEnterTransition()),
+                                    exit = mutedExitTransition(rootNavExitTransition()),
+                                ) {
                                     val listPaneHazeState = rememberHazeState()
                                     CompositionLocalProvider(
                                         LocalPaneHazeState provides listPaneHazeState,
@@ -1019,6 +1037,7 @@ fun App(
                                 hazeState = hoverInfoHazeState,
                                 modifier = Modifier.fillMaxSize(),
                             )
+                            SpringOverflowMenuOverlayHost(Modifier.fillMaxSize())
                             ChatFullscreenImageHost(Modifier.fillMaxSize())
                             CallOverlay(Modifier.fillMaxSize())
                             val aboutDocumentNavController =

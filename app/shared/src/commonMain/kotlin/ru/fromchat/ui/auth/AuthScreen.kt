@@ -40,6 +40,7 @@ import ru.fromchat.config.Settings
 import ru.fromchat.config.shouldWarnPublicCleartextHttp
 import ru.fromchat.incognito.findIncognitoMitmCertificateException
 import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.incognito.IncognitoOverlaySession
 import ru.fromchat.logging.Logger
 import ru.fromchat.Res
 import ru.fromchat.ui.auth.captcha.SmartCaptchaLog
@@ -297,6 +298,7 @@ fun AuthScreen(
     onAuthSuccess: () -> Unit,
     onBackToWelcome: () -> Unit,
     incognitoFlow: Boolean = false,
+    incognitoOverlayFromChat: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -319,6 +321,12 @@ fun AuthScreen(
 
     LaunchedEffect(incognitoFlow) {
         AuthRegisterDraft.incognitoEnabled = incognitoFlow
+    }
+
+    LaunchedEffect(incognitoOverlayFromChat) {
+        if (incognitoOverlayFromChat) {
+            IncognitoOverlaySession.beginFromChats()
+        }
     }
 
     DisposableEffect(Unit) {
@@ -365,8 +373,15 @@ fun AuthScreen(
 
     val wrappedBackToWelcome: () -> Unit = {
         AuthRegisterDraft.clear()
-        IncognitoMode.destroy()
-        onBackToWelcome()
+        if (incognitoOverlayFromChat) {
+            scope.launch {
+                IncognitoOverlaySession.restoreNormalSessionAfterOverlayCancel()
+                onBackToWelcome()
+            }
+        } else {
+            IncognitoMode.destroy()
+            onBackToWelcome()
+        }
     }
 
     val resetToUsername: () -> Unit = {
@@ -524,6 +539,7 @@ fun AuthScreen(
                     onUsernameChange = { username = it },
                     incognitoEnabled = incognitoFlow,
                     incognitoFlow = incognitoFlow,
+                    hideAuthRouteSwitch = incognitoOverlayFromChat,
                     mitmBypassRetryNonce = incognitoTlsBypassRetryNonce,
                     publicHttpBypassRetryNonce = publicHttpBypassRetryNonce,
                     onContinue = {
@@ -555,6 +571,7 @@ fun AuthScreen(
                     password = password,
                     onPasswordChange = { password = it },
                     incognitoFlow = incognitoFlow,
+                    hideAuthRouteSwitch = incognitoOverlayFromChat,
                     onLoginSuccess = wrappedAuthSuccess,
                     onNeedsRegister = { required, params, captchaReq, captcha ->
                         Logger.i(

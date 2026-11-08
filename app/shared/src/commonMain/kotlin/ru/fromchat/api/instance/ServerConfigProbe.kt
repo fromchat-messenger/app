@@ -1,5 +1,9 @@
 package ru.fromchat.api.instance
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.cache.CacheContext
@@ -316,13 +320,17 @@ suspend fun applyServerConfig(
     CacheContext.setActiveInstance(instanceId, userId)
 }
 
+private val serverApplyFollowUpScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
 private suspend fun finishLoggedInSessionAfterServerApply(instanceId: String) {
     when (bootstrapSessionInstance(hasToken = true, forceNetwork = true)) {
         SessionBootstrapResult.Ready,
         SessionBootstrapResult.OfflineCached,
         -> {
             ChatListSync.ensureStarted()
-            runCatching { ChatListSync.syncFromNetwork() }
+            serverApplyFollowUpScope.launch {
+                runCatching { ChatListSync.syncFromNetwork() }
+            }
         }
         SessionBootstrapResult.LogoutRequired -> {
             runCatching { logoutIfInstanceUnsupported() }
@@ -354,8 +362,10 @@ suspend fun applyServerAndNavigate(
             runCatching { InstanceEncryptionStore.refreshFromNetwork(config, apiBase) }
             WebSocketManager.disconnect()
             WebSocketManager.connect(forceRestart = true)
-            finishLoggedInSessionAfterServerApply(probe.instanceId)
             onNavigateChat()
+            serverApplyFollowUpScope.launch {
+                runCatching { finishLoggedInSessionAfterServerApply(probe.instanceId) }
+            }
             return ApplyServerResult.Applied
         }
 

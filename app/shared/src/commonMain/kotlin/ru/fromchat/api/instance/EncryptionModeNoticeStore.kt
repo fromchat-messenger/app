@@ -66,7 +66,10 @@ object EncryptionModeNoticeStore {
             val byId = LinkedHashMap<Int, Message>()
             for (msg in existing) byId[msg.id] = msg
             for (msg in service) {
-                if (byId.putIfAbsent(msg.id, msg) == null) changed = true
+                if (msg.id !in byId) {
+                    byId[msg.id] = msg
+                    changed = true
+                }
             }
             if (!changed) return@update current
             current + (conversationId to sortMessagesForChatDisplay(byId.values.toList()))
@@ -79,7 +82,9 @@ object EncryptionModeNoticeStore {
         if (notices.isEmpty()) return messages
         val byId = LinkedHashMap<Int, Message>()
         for (msg in messages) byId[msg.id] = msg
-        for (notice in notices) byId.putIfAbsent(notice.id, notice)
+        for (notice in notices) {
+            if (notice.id !in byId) byId[notice.id] = notice
+        }
         return sortMessagesForChatDisplay(byId.values.toList())
     }
 

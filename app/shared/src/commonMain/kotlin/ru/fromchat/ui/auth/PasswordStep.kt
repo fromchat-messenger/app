@@ -27,9 +27,7 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.auth_rate_limit
-import ru.fromchat.auth_incognito_login_body
 import ru.fromchat.auth_incognito_login_cta
-import ru.fromchat.auth_incognito_login_title
 import ru.fromchat.auth_step_password_body
 import ru.fromchat.auth_step_password_title
 import ru.fromchat.auth_wrong_password
@@ -62,6 +60,7 @@ internal fun passwordStepPage(
     password: String,
     onPasswordChange: (String) -> Unit,
     incognitoFlow: Boolean,
+    hideAuthRouteSwitch: Boolean = false,
     onLoginSuccess: () -> Unit,
     onNeedsRegister: suspend (
         yandexRequired: Boolean,
@@ -82,13 +81,9 @@ internal fun passwordStepPage(
     val loginLabel = stringResource(
         if (incognitoFlow) Res.string.auth_incognito_login_cta else Res.string.login,
     )
-    val heroContainerColor =
-        if (incognitoFlow) colorScheme.surfaceContainerHigh
-        else colorScheme.secondaryContainer
-    val heroContentColor =
-        if (incognitoFlow) colorScheme.onSurfaceVariant
-        else colorScheme.onSecondaryContainer
-    val heroIcon = if (incognitoFlow) Icons.Rounded.VisibilityOff else Icons.Rounded.Lock
+    val heroContainerColor = colorScheme.secondaryContainer
+    val heroContentColor = colorScheme.onSecondaryContainer
+    val heroIcon = Icons.Rounded.Lock
 
     fun attemptSubmit() {
         if (busy) return
@@ -153,14 +148,8 @@ internal fun passwordStepPage(
             var visible by rememberSaveable { mutableStateOf(false) }
 
             ExpressiveStepPageHeader(
-                title = stringResource(
-                    if (incognitoFlow) Res.string.auth_incognito_login_title
-                    else Res.string.auth_step_password_title,
-                ),
-                body = stringResource(
-                    if (incognitoFlow) Res.string.auth_incognito_login_body
-                    else Res.string.auth_step_password_body,
-                ),
+                title = stringResource(Res.string.auth_step_password_title),
+                body = stringResource(Res.string.auth_step_password_body),
             )
             OutlinedTextField(
                 value = password,
@@ -190,7 +179,12 @@ internal fun passwordStepPage(
                 shape = SettingsPasswordOutlineFieldShape,
             )
         },
-        listFooter = { AuthStepListFooter(incognitoFlow = incognitoFlow) },
+        listFooter = {
+            AuthStepListFooter(
+                incognitoFlow = incognitoFlow,
+                hideAuthRouteSwitch = hideAuthRouteSwitch,
+            )
+        },
         button = {
             ActionButton(
                 onClick = ::attemptSubmit,

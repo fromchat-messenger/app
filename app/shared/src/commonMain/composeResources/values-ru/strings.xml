@@ -73,12 +73,12 @@
     <string name="hide_password">Скрыть пароль</string>
     <string name="auth_char_count">%1$d/%2$d</string>
     <string name="auth_step_username_title">Введите имя пользователя</string>
-    <string name="auth_incognito_mode_title">Режим инкогнито</string>
+    <string name="auth_incognito_mode_title">Инкогнито</string>
     <string name="auth_incognito_mode_summary">Вход остаётся приватным. Данные сессии шифруются и удаляются при выходе. Для api.fromchat.ru действуют дополнительные проверки HTTPS.</string>
     <string name="auth_incognito_enabled_snackbar">Инкогнито включён для этой сессии.</string>
     <string name="auth_incognito_login_title">Режим инкогнито</string>
     <string name="auth_incognito_login_body">После закрытия ваша сессия и кэш будут удалены, а тот, кто воспользуется устройством после вас, вряд ли сможет что-то восстановить.</string>
-    <string name="auth_incognito_login_action">Режим инкогнито</string>
+    <string name="auth_incognito_login_action">Инкогнито</string>
     <string name="auth_incognito_login_cta">Режим инкогнито</string>
     <string name="auth_standard_login_action">Обычный вход</string>
     <string name="incognito_chats_session_tooltip">Сейчас включён инкогнито. После закрытия приложения сессия и кэш будут удалены.</string>
@@ -337,6 +337,7 @@
     <string name="server_config_unsupported_no_instance_id">Сервер не предоставляет корректный ID экземпляра. Подключение невозможно.</string>
     <string name="server_config_snackbar_timeout">Сервер не ответил вовремя. Повторите попытку.</string>
     <string name="server_config_checking">Проверка…</string>
+    <string name="server_config_info_category">Сервер</string>
     <string name="server_config_info_instance">Экземпляр</string>
     <string name="server_config_info_protocol">Протокол</string>
     <string name="server_config_info_encryption">Шифрование</string>
@@ -354,7 +355,7 @@
     <string name="action_wipe_local_cache_confirm_body">Будут удалены офлайн-сообщения и загрузки для всех экземпляров сервера на этом устройстве. Неотправленные сообщения из очереди будут потеряны.</string>
     <string name="action_wipe_local_cache_done">Локальные данные очищены</string>
     <string name="save_continue">Сохранить и продолжить</string>
-    <string name="change_server">Сменить сервер</string>
+    <string name="change_server">Сервер</string>
     <string name="change_server_d">Подключиться к альтернативному серверу FromChat и выйти из аккаунта.</string>
     <string name="logout">Выйти</string>
     <string name="materialYou">Material You</string>

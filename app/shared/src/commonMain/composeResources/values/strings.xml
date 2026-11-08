@@ -82,12 +82,12 @@
     <string name="hide_password">Hide password</string>
     <string name="auth_char_count">%1$d/%2$d</string>
     <string name="auth_step_username_title">Enter your username</string>
-    <string name="auth_incognito_mode_title">Incognito mode</string>
+    <string name="auth_incognito_mode_title">Incognito</string>
     <string name="auth_incognito_mode_summary">Keeps this sign-in private. Session data is encrypted and deleted when you quit. Extra HTTPS checks apply for api.fromchat.ru.</string>
     <string name="auth_incognito_enabled_snackbar">Incognito is on for this session.</string>
     <string name="auth_incognito_login_title">Incognito login</string>
     <string name="auth_incognito_login_body">After you close the app, your session and cache will be deleted, and anyone using this device after you shouldn\u2019t be able to recover anything.</string>
-    <string name="auth_incognito_login_action">Incognito login</string>
+    <string name="auth_incognito_login_action">Incognito</string>
     <string name="auth_incognito_login_cta">Incognito login</string>
     <string name="auth_standard_login_action">Standard login</string>
     <string name="incognito_chats_session_tooltip">Incognito is on. Closing the app clears this session and its cache.</string>
@@ -365,6 +365,7 @@
     <string name="server_config_unsupported_no_instance_id">This server does not provide a valid instance ID. Cannot connect.</string>
     <string name="server_config_snackbar_timeout">Server did not respond in time. Try again.</string>
     <string name="server_config_checking">Checking…</string>
+    <string name="server_config_info_category">Server</string>
     <string name="server_config_info_instance">Instance</string>
     <string name="server_config_info_protocol">Protocol</string>
     <string name="server_config_info_encryption">Encryption</string>
@@ -385,7 +386,7 @@
     <string name="save_continue">Save and continue</string>
 
     <!-- Settings -->
-    <string name="change_server">Change server</string>
+    <string name="change_server">Server</string>
     <string name="change_server_d">Connect to an alternative FromChat server and sign out.</string>
     <string name="logout">Log out</string>
     <string name="materialYou">Material You</string>

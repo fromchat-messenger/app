@@ -66,7 +66,7 @@ fun HazeBottomBar(
                     .fillMaxWidth()
                     .navigationBarsPadding()
                     .padding(horizontal = SettingsStepHorizontalPadding)
-                    .padding(top = 2.dp, bottom = 4.dp),
+                    .padding(top = 2.dp, bottom = 16.dp),
             ) {
                 content()
             }

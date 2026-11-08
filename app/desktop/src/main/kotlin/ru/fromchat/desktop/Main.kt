@@ -622,7 +622,9 @@ fun main(args: Array<String>) {
         }
 
         fun openAbout() {
-            showMainWindow()
+            if (!windowVisible) {
+                showMainWindow()
+            }
             DesktopMenuCommands.emit(DesktopMenuCommand.OpenAbout)
         }
 

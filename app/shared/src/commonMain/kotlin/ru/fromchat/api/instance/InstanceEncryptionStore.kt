@@ -15,6 +15,7 @@ import ru.fromchat.config.ServerConfig
 import ru.fromchat.config.ServerConfigData
 import ru.fromchat.config.Settings
 import ru.fromchat.logging.Logger
+import kotlin.concurrent.Volatile
 
 sealed interface EncryptionModeChangeEvent {
     val snapshot: InstanceEncryptionSnapshot

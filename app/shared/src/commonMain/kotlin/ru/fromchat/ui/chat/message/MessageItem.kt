@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -43,6 +44,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -220,6 +222,74 @@ private fun Modifier.enterBubbleScale(
     }
 }
 
+private val serviceNoticeEnterSpring = spring<Float>(
+    dampingRatio = Spring.DampingRatioLowBouncy,
+    stiffness = Spring.StiffnessMediumLow,
+)
+
+@Composable
+private fun CenteredServiceNotice(
+    text: String,
+    messageId: Int,
+    modifier: Modifier = Modifier,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val progress = remember(messageId) { Animatable(0f) }
+    var measuredHeightPx by remember(messageId) { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+
+    LaunchedEffect(messageId) {
+        progress.snapTo(0f)
+        progress.animateTo(1f, serviceNoticeEnterSpring)
+    }
+
+    val scale = 0.82f + 0.18f * progress.value
+    val alpha = progress.value
+    val revealHeight =
+        if (measuredHeightPx > 0) with(density) { (measuredHeightPx * progress.value).toDp() }
+        else 0.dp
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp, horizontal = 24.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (measuredHeightPx == 0) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onSurface,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .graphicsLayer { this.alpha = 0f }
+                    .onGloballyPositioned { measuredHeightPx = it.size.height },
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(revealHeight)
+                    .clipToBounds(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurface,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                        this.alpha = alpha
+                        transformOrigin = TransformOrigin.Center
+                    },
+                )
+            }
+        }
+    }
+}
+
 @Composable
 fun MessageItem(
     message: Message,
@@ -252,20 +322,11 @@ fun MessageItem(
     onExitAnimationFinished: (() -> Unit)? = null,
 ) {
     if (message.isCenteredServiceNotice()) {
-        val scheme = MaterialTheme.colorScheme
-        Box(
-            modifier = modifier
-                .fillMaxWidth()
-                .padding(vertical = 10.dp, horizontal = 24.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = message.content,
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurface,
-                textAlign = TextAlign.Center,
-            )
-        }
+        CenteredServiceNotice(
+            text = message.content,
+            messageId = message.id,
+            modifier = modifier,
+        )
         return
     }
 

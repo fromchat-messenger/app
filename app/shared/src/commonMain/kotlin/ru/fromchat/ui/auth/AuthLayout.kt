@@ -19,11 +19,10 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Login
 import androidx.compose.material.icons.rounded.VisibilityOff
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import ru.fromchat.ui.components.ChromeOverflowIconButton
+import ru.fromchat.ui.components.SpringExpandingOverflowMenu
+import ru.fromchat.ui.components.SpringDropdownMenuItem
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.TextCta
 import androidx.compose.runtime.Composable
@@ -97,39 +96,39 @@ fun PreAuthOverflowMenu() {
     val openAbout = LocalOpenAbout.current
     var menuExpanded by remember { mutableStateOf(false) }
 
-    Box {
-        ChromeOverflowIconButton(onClick = { menuExpanded = true })
-        DropdownMenu(
-            expanded = menuExpanded,
-            onDismissRequest = { menuExpanded = false },
-        ) {
-            DropdownMenuItem(
-                text = { Text(stringResource(Res.string.about)) },
-                leadingIcon = {
-                    Icon(Icons.Rounded.Info, contentDescription = null)
-                },
-                onClick = {
-                    menuExpanded = false
-                    openAbout()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(Res.string.logs_title)) },
-                leadingIcon = {
-                    Icon(Icons.Rounded.BugReport, contentDescription = null)
-                },
-                onClick = {
-                    menuExpanded = false
-                    navController.navigate(SettingsRoutes.Logs)
-                },
-            )
-        }
+    SpringExpandingOverflowMenu(
+        expanded = menuExpanded,
+        onExpandedChange = { menuExpanded = it },
+    ) {
+        SpringDropdownMenuItem(
+            text = { Text(stringResource(Res.string.about)) },
+            leadingIcon = {
+                Icon(Icons.Rounded.Info, contentDescription = null)
+            },
+            onClick = {
+                menuExpanded = false
+                openAbout()
+            },
+        )
+        SpringDropdownMenuItem(
+            text = { Text(stringResource(Res.string.logs_title)) },
+            leadingIcon = {
+                Icon(Icons.Rounded.BugReport, contentDescription = null)
+            },
+            onClick = {
+                menuExpanded = false
+                navController.navigate(SettingsRoutes.Logs)
+            },
+        )
     }
 }
 
 /** Footer row below auth steps: server picker plus standard ↔ incognito sign-in routes. */
 @Composable
-internal fun AuthStepListFooter(incognitoFlow: Boolean) {
+internal fun AuthStepListFooter(
+    incognitoFlow: Boolean,
+    hideAuthRouteSwitch: Boolean = false,
+) {
     val navController = LocalNavController.current
     Row(
         Modifier
@@ -144,12 +143,13 @@ internal fun AuthStepListFooter(incognitoFlow: Boolean) {
     ) {
         TextCta(
             onClick = { navController.navigate("serverConfig") },
-            modifier = Modifier.weight(1f),
+            modifier = if (hideAuthRouteSwitch) Modifier.fillMaxWidth() else Modifier.weight(1f),
             leadingIcon = Icons.Rounded.Storage,
             compact = true,
         ) {
             Text(stringResource(Res.string.change_server))
         }
+        if (hideAuthRouteSwitch) return@Row
         if (incognitoFlow) {
             TextCta(
                 onClick = {

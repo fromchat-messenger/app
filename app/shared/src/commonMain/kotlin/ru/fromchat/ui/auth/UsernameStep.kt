@@ -71,6 +71,7 @@ internal fun usernameStepPage(
     onUsernameChange: (String) -> Unit,
     incognitoEnabled: Boolean,
     incognitoFlow: Boolean,
+    hideAuthRouteSwitch: Boolean = false,
     mitmBypassRetryNonce: Int,
     publicHttpBypassRetryNonce: Int,
     onContinue: suspend () -> Unit,
@@ -193,13 +194,15 @@ internal fun usernameStepPage(
         }
     }
 
+    val incognitoFirstStep = incognitoFlow || incognitoEnabled
     val heroContainerColor =
-        if (incognitoFlow) colorScheme.surfaceContainerHigh
+        if (incognitoFirstStep) colorScheme.surfaceContainerHigh
         else colorScheme.primaryContainer
     val heroContentColor =
-        if (incognitoFlow) colorScheme.onSurfaceVariant
+        if (incognitoFirstStep) colorScheme.onSurfaceVariant
         else colorScheme.onPrimaryContainer
-    val heroIcon = if (incognitoFlow) Icons.Rounded.VisibilityOff else Icons.Rounded.Person
+    val heroIcon =
+        if (incognitoFirstStep) Icons.Rounded.VisibilityOff else Icons.Rounded.Person
 
     return ExpressiveStepPage(
         hero = ExpressiveHeroSpec(
@@ -215,11 +218,11 @@ internal fun usernameStepPage(
 
             ExpressiveStepPageHeader(
                 title = stringResource(
-                    if (incognitoFlow) Res.string.auth_incognito_login_title
+                    if (incognitoFirstStep) Res.string.auth_incognito_login_title
                     else Res.string.auth_step_username_title,
                 ),
                 body = stringResource(
-                    if (incognitoFlow) Res.string.auth_incognito_login_body
+                    if (incognitoFirstStep) Res.string.auth_incognito_login_body
                     else Res.string.auth_step_username_body,
                 ),
             )
@@ -247,7 +250,12 @@ internal fun usernameStepPage(
                 shape = SettingsPasswordOutlineFieldShape,
             )
         },
-        listFooter = { AuthStepListFooter(incognitoFlow = incognitoFlow) },
+        listFooter = {
+            AuthStepListFooter(
+                incognitoFlow = incognitoFlow,
+                hideAuthRouteSwitch = hideAuthRouteSwitch,
+            )
+        },
         button = {
             ActionButton(
                 onClick = ::attemptSubmit,

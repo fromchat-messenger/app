@@ -24,13 +24,17 @@ fun SplashHandoffContainer(
     handoffActive: Boolean,
     content: @Composable () -> Unit,
 ) {
-    val scale = remember { Animatable(SplashHandoffInitialScale) }
+    val scale = remember { Animatable(1f) }
     LaunchedEffect(handoffActive) {
-        if (!handoffActive) return@LaunchedEffect
-        scale.animateTo(
-            targetValue = 1f,
-            animationSpec = handoffSpring,
-        )
+        if (handoffActive) {
+            scale.snapTo(SplashHandoffInitialScale)
+            scale.animateTo(
+                targetValue = 1f,
+                animationSpec = handoffSpring,
+            )
+        } else {
+            scale.snapTo(1f)
+        }
     }
     Box(
         modifier = Modifier

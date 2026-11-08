@@ -27,12 +27,11 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import ru.fromchat.ui.components.ChromeBackIconButton
-import ru.fromchat.ui.components.ChromeOverflowIconButton
 import androidx.compose.material.icons.automirrored.rounded.Reply
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.SaveAlt
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import ru.fromchat.ui.components.SpringDropdownMenuItem
+import ru.fromchat.ui.components.SpringExpandingOverflowMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -797,63 +796,66 @@ fun ImageFullscreenPreview(
                     )
                 }
                 var menuExpanded by remember { mutableStateOf(false) }
-                Box {
-                    ChromeOverflowIconButton(
-                        onClick = { menuExpanded = true },
-                        contentDescription = cdMenu,
-                    )
-                    DropdownMenu(
-                        expanded = menuExpanded,
-                        onDismissRequest = { menuExpanded = false },
-                        modifier = Modifier.background(Color.Black.copy(alpha = MENU_BG_ALPHA))
-                    ) {
-                        DropdownMenuItem(
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.AutoMirrored.Rounded.Reply, null, tint = Color.White)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(labelReply, color = Color.White)
-                                }
-                            },
+                SpringExpandingOverflowMenu(
+                    expanded = menuExpanded,
+                    onExpandedChange = { menuExpanded = it },
+                    containerColor = Color.Black.copy(alpha = MENU_BG_ALPHA),
+                    buttonContainerColor = Color.Black.copy(alpha = MENU_BG_ALPHA),
+                    buttonContentColor = Color.White,
+                ) {
+                    val menuContentColor = Color.White
+                    SpringDropdownMenuItem(
+                        text = { Text(labelReply, color = menuContentColor) },
+                        leadingIcon = {
+                            Icon(
+                                Icons.AutoMirrored.Rounded.Reply,
+                                contentDescription = null,
+                                tint = menuContentColor,
+                            )
+                        },
+                        contentColor = menuContentColor,
                         onClick = {
                             menuExpanded = false
                             onReply(message)
                             dismissRequested = true
-                        }
+                        },
+                    )
+                    if (isMessageImageFullyLoaded(message, fileIndex)) {
+                        SpringDropdownMenuItem(
+                            text = { Text(labelSave, color = menuContentColor) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Rounded.SaveAlt,
+                                    contentDescription = null,
+                                    tint = menuContentColor,
+                                )
+                            },
+                            contentColor = menuContentColor,
+                            onClick = {
+                                menuExpanded = false
+                                onSave(message, fileIndex)
+                            },
                         )
-                        if (isMessageImageFullyLoaded(message, fileIndex)) {
-                            DropdownMenuItem(
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Rounded.SaveAlt, null, tint = Color.White)
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(labelSave, color = Color.White)
-                                    }
-                                },
-                                onClick = {
-                                    menuExpanded = false
-                                    onSave(message, fileIndex)
-                                },
-                            )
-                        }
-                        if (currentUserId != null &&
-                            (message.user_id == currentUserId || currentUserId == 1)
-                        ) {
-                            DropdownMenuItem(
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Rounded.Delete, null, tint = Color.White)
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(labelDelete, color = Color.White)
-                                    }
-                                },
-                                onClick = {
-                                    menuExpanded = false
-                                    onDelete(message)
-                                    dismissRequested = true
-                                },
-                            )
-                        }
+                    }
+                    if (currentUserId != null &&
+                        (message.user_id == currentUserId || currentUserId == 1)
+                    ) {
+                        SpringDropdownMenuItem(
+                            text = { Text(labelDelete, color = menuContentColor) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Rounded.Delete,
+                                    contentDescription = null,
+                                    tint = menuContentColor,
+                                )
+                            },
+                            contentColor = menuContentColor,
+                            onClick = {
+                                menuExpanded = false
+                                onDelete(message)
+                                dismissRequested = true
+                            },
+                        )
                     }
                 }
             }
