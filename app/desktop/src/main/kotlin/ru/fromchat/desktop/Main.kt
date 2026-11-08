@@ -594,6 +594,15 @@ fun main(args: Array<String>) {
             DesktopNotifier.deliverPendingLaunch(notificationIdentifier)
         }
 
+        fun handleMacDockReopen() {
+            if (!mac) return
+            if (windowVisible && MacDesktopWindowHost.isMainWindowShowing()) {
+                MacNotificationCenter.activateApplication()
+                return
+            }
+            showMainWindow()
+        }
+
         LaunchedEffect(mac, windowVisible) {
             if (!mac) return@LaunchedEffect
             MacNotificationCenter.onActivated = { identifier ->
@@ -617,15 +626,6 @@ fun main(args: Array<String>) {
             DesktopMenuCommands.emit(DesktopMenuCommand.OpenAbout)
         }
 
-        /** Best-effort server logout (5s), then local wipe. Does not block the caller. */
-        fun startBackgroundLogoutThen(block: () -> Unit = {}) {
-            CoroutineScope(SupervisorJob() + Dispatchers.Swing).launch {
-                runCatching { ApiClient.logoutBestEffort() }
-                resetPreAuthDraft()
-                block()
-            }
-        }
-
         /**
          * Incognito window close: drop in-memory auth now, wipe disk off the EDT, remount on show.
          */
@@ -643,6 +643,22 @@ fun main(args: Array<String>) {
                     block()
                 }
             }
+        }
+
+        /**
+         * Exit the desktop app. Incognito always wipes local auth; standard sessions stay on disk
+         * so the next launch is still signed in (same as close-to-tray).
+         */
+        fun quitDesktopApplication(block: () -> Unit = {}) {
+            if (IncognitoMode.active) {
+                endIncognitoSessionImmediatelyThen(block)
+                return
+            }
+            resetPreAuthDraft()
+            CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
+                runCatching { WebSocketManager.disconnect() }
+            }
+            block()
         }
 
         /** Hide window, keep process + tray (close-to-background). Else quit. */
@@ -665,7 +681,7 @@ fun main(args: Array<String>) {
             } else if (IncognitoMode.active) {
                 endIncognitoSessionImmediatelyThen { exitApplication() }
             } else {
-                startBackgroundLogoutThen { exitApplication() }
+                quitDesktopApplication { exitApplication() }
             }
         }
 
@@ -682,26 +698,17 @@ fun main(args: Array<String>) {
                 desktop.setQuitHandler { _, response ->
                     windowVisible = false
                     DesktopSingleInstance.release()
-                    if (IncognitoMode.active) {
-                        endIncognitoSessionImmediatelyThen {
-                            response.performQuit()
-                            exitApplication()
-                        }
-                    } else {
-                        CoroutineScope(SupervisorJob() + Dispatchers.Swing).launch {
-                            runCatching { ApiClient.logoutBestEffort() }
-                            resetPreAuthDraft()
-                            response.performQuit()
-                            exitApplication()
-                        }
+                    quitDesktopApplication {
+                        response.performQuit()
+                        exitApplication()
                     }
                 }
             }
-            // Dock click while window is hidden → show again (macOS AppReopened).
+            // Dock click: show when hidden; if already on screen, only activate (no visibility flash).
             if (mac) {
                 desktop.addAppEventListener(
                     AppReopenedListener {
-                        SwingUtilities.invokeLater { showMainWindow() }
+                        SwingUtilities.invokeLater { handleMacDockReopen() }
                     },
                 )
             }
@@ -722,11 +729,7 @@ fun main(args: Array<String>) {
                         Separator()
                         Item(quit) {
                             windowVisible = false
-                            if (IncognitoMode.active) {
-                                endIncognitoSessionImmediatelyThen { exitApplication() }
-                            } else {
-                                startBackgroundLogoutThen { exitApplication() }
-                            }
+                            quitDesktopApplication { exitApplication() }
                         }
                     },
                 )
@@ -743,11 +746,7 @@ fun main(args: Array<String>) {
                     onAbout = { openAbout() },
                     onQuit = {
                         windowVisible = false
-                        if (IncognitoMode.active) {
-                            endIncognitoSessionImmediatelyThen { exitApplication() }
-                        } else {
-                            startBackgroundLogoutThen { exitApplication() }
-                        }
+                        quitDesktopApplication { exitApplication() }
                     },
                 )
             }
@@ -784,19 +783,37 @@ fun main(args: Array<String>) {
                             }
                             event.key == Key.Q -> {
                                 windowVisible = false
-                                if (IncognitoMode.active) {
-                                    endIncognitoSessionImmediatelyThen { exitApplication() }
-                                } else {
-                                    startBackgroundLogoutThen { exitApplication() }
-                                }
+                                quitDesktopApplication { exitApplication() }
                                 true
                             }
                             else -> false
                         }
                     },
                 ) {
+                    val composeWindowShouldShow = contentReady && (windowVisible || !traySupported)
+                    var hadComposeWindowShown by remember { mutableStateOf(false) }
+                    var previousComposeWindowShouldShow by remember { mutableStateOf(false) }
+                    LaunchedEffect(composeWindowShouldShow) {
+                        if (!mac) {
+                            previousComposeWindowShouldShow = composeWindowShouldShow
+                            return@LaunchedEffect
+                        }
+                        val becameVisible = composeWindowShouldShow && !previousComposeWindowShouldShow
+                        when {
+                            becameVisible && !hadComposeWindowShown -> {
+                                hadComposeWindowShown = true
+                                MacDesktopWindowPresentation.onFirstComposeShow()
+                            }
+                            becameVisible && hadComposeWindowShown -> {
+                                MacDesktopWindowPresentation.presentAfterHidden()
+                            }
+                        }
+                        previousComposeWindowShouldShow = composeWindowShouldShow
+                    }
+
                     LaunchedEffect(window, appName, windowChrome) {
                         window.title = appName
+                        installMacDesktopEdgeToEdgeChromeAfterOpen(window)
                         windowChrome.toAwtColor().also {
                             window.background = it
                             window.contentPane.background = it
@@ -809,14 +826,18 @@ fun main(args: Array<String>) {
                             installWindowsNativeCaptionChrome(window)
                             applyWindowsRoundedCorners(window)
                         }
-                        applyDesktopEdgeToEdgeChrome(window.rootPane)
-                        dockIconImage?.let { image ->
-                            window.iconImages = listOf(image)
-                            applyDockIcon(image)
+                        if (!mac) {
+                            dockIconImage?.let { image ->
+                                window.iconImages = listOf(image)
+                                applyDockIcon(image)
+                            }
                         }
                     }
         
                     DisposableEffect(window) {
+                        if (mac) {
+                            MacDesktopWindowHost.mainWindow = window
+                        }
                         installDesktopWindowExceptionHandler(window)
                         AppForeground.setForeground(true)
                         fun syncWindowFocus(focused: Boolean) {
@@ -831,6 +852,9 @@ fun main(args: Array<String>) {
                         val listener = object : java.awt.event.WindowAdapter() {
                             override fun windowActivated(e: java.awt.event.WindowEvent?) {
                                 syncWindowFocus(true)
+                                if (mac) {
+                                    MacDesktopWindowPresentation.repairMainWindowKeyboardFocus()
+                                }
                             }
         
                             override fun windowDeactivated(e: java.awt.event.WindowEvent?) {
@@ -839,6 +863,9 @@ fun main(args: Array<String>) {
         
                             override fun windowGainedFocus(e: java.awt.event.WindowEvent?) {
                                 syncWindowFocus(true)
+                                if (mac) {
+                                    MacDesktopWindowPresentation.repairMainWindowKeyboardFocus()
+                                }
                             }
         
                             override fun windowLostFocus(e: java.awt.event.WindowEvent?) {
@@ -853,6 +880,9 @@ fun main(args: Array<String>) {
                         window.addWindowListener(listener)
                         window.addWindowFocusListener(listener)
                         onDispose {
+                            if (mac && MacDesktopWindowHost.mainWindow === window) {
+                                MacDesktopWindowHost.mainWindow = null
+                            }
                             window.removeWindowListener(listener)
                             window.removeWindowFocusListener(listener)
                         }
@@ -885,7 +915,7 @@ fun main(args: Array<String>) {
                             },
                             onQuit = {
                                 windowVisible = false
-                                startBackgroundLogoutThen { exitApplication() }
+                                quitDesktopApplication { exitApplication() }
                             },
                         )
                     }
@@ -1217,6 +1247,11 @@ private fun Color.toAwtColor() =
 internal fun applyDockIcon(image: BufferedImage?) {
     if (image == null) {
         Logger.w("DesktopIcon", "applyDockIcon skipped — image is null")
+        return
+    }
+    // Bundled apps use CFBundleIconFile / -Xdock:icon (liquid-glass .icns). Raster override flattens the Dock.
+    if (isMacOs()) {
+        Logger.i("DesktopIcon", "macOS: leaving native dock icon (not overriding with classpath raster)")
         return
     }
 

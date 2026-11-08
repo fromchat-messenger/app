@@ -5,7 +5,9 @@ package ru.fromchat.desktop
  *
  * ## Window close → background (not quit)
  * The red traffic-light / window close hides the main window and keeps the JVM process
- * plus menu-bar tray alive (close-to-tray). Quit is only via tray Quit, File → Quit, or ⌘Q.
+ * plus menu-bar tray alive (close-to-tray). Dock reopen: activate only when already visible;
+ * otherwise AppKit document-window presentation (see MacDesktopWindowPresentation).
+ * Quit is only via tray Quit, File → Quit, or ⌘Q (persists sign-in unless incognito).
  * Dock icon stays (NSApplicationActivationPolicyRegular) so macOS can show the Dock
  * "Running in Background" indicator when no windows are visible.
  *

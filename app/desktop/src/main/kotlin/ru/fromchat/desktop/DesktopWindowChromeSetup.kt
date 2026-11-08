@@ -99,10 +99,12 @@ internal fun FrameWindowScope.DesktopRootSurface(
             installWindowsNativeCaptionChrome(window)
             applyWindowsRoundedCorners(window)
         }
-        applyDesktopEdgeToEdgeChrome(window.rootPane)
-        dockIconImage?.let { image ->
-            window.iconImages = listOf(image)
-            applyDockIcon(image)
+        installMacDesktopEdgeToEdgeChromeAfterOpen(window)
+        if (!isMacOs()) {
+            dockIconImage?.let { image ->
+                window.iconImages = listOf(image)
+                applyDockIcon(image)
+            }
         }
     }
 

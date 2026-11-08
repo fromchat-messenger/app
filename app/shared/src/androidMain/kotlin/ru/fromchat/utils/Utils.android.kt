@@ -860,6 +860,8 @@ inline fun String.decodeWindows1251() = String(
 @get:ChecksSdkIntAtLeast(api = Build.VERSION_CODES.S)
 actual val materialYouAvailable get() = Build.VERSION.SDK_INT >= 31
 
+actual val expressiveStepFieldsFocusableDuringPagerMotion get() = false
+
 private fun String?.trimIfNotBlank(): String? =
     this?.trim()?.takeIf { it.isNotEmpty() }
 

@@ -5,6 +5,7 @@ import ru.fromchat.api.local.messages.conversationIdForDm
 import ru.fromchat.api.local.messages.conversationIdForGroup
 import ru.fromchat.api.local.messages.dmOtherUserIdFromConversationId
 import ru.fromchat.api.local.messages.groupIdFromConversationId
+import ru.fromchat.api.instance.isCenteredServiceNotice
 import ru.fromchat.api.schema.messages.Message
 
 /**
@@ -24,6 +25,9 @@ object CacheValidator {
         currentUserId: Int?,
         dmPeerUserId: Int? = dmOtherUserIdFromConversationId(conversationId),
     ): Boolean {
+        if (message.isCenteredServiceNotice()) {
+            return groupIdFromConversationId(conversationId) == null && dmPeerUserId != null
+        }
         val groupId = groupIdFromConversationId(conversationId)
         if (groupId != null) {
             return groupId == GENERAL_PUBLIC_GROUP_ID && message.user_id > 0

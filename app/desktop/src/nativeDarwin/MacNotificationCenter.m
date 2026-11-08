@@ -466,3 +466,103 @@ JNIEXPORT void JNICALL Java_ru_fromchat_desktop_MacNotificationCenter_nativeRegi
     if (url == nil) return;
     LSRegisterURL((__bridge CFURLRef)url, true);
 }
+
+static BOOL fromchatIsMainTitledWindow(NSWindow *window) {
+    return (window.styleMask & NSWindowStyleMaskTitled) != 0;
+}
+
+static void fromchatApplyDocumentWindowAnimation(NSWindow *window) {
+    if (@available(macOS 10.12, *)) {
+        window.animationBehavior = NSWindowAnimationBehaviorDocumentWindow;
+    }
+}
+
+JNIEXPORT void JNICALL Java_ru_fromchat_desktop_MacNotificationCenter_nativeApplySystemWindowAnimationBehavior(
+    JNIEnv *env,
+    jclass cls
+) {
+    fromchatRunOnMain(^{
+        for (NSWindow *window in [NSApp windows]) {
+            if (!fromchatIsMainTitledWindow(window)) continue;
+            fromchatApplyDocumentWindowAnimation(window);
+        }
+    });
+}
+
+JNIEXPORT void JNICALL Java_ru_fromchat_desktop_MacNotificationCenter_nativePresentMainWindows(
+    JNIEnv *env,
+    jclass cls
+) {
+    fromchatRunOnMain(^{
+        [NSApp activateIgnoringOtherApps:YES];
+        for (NSWindow *window in [NSApp windows]) {
+            if (!fromchatIsMainTitledWindow(window)) continue;
+            fromchatApplyDocumentWindowAnimation(window);
+            if (window.isMiniaturized) {
+                [window deminiaturize:nil];
+                continue;
+            }
+            if (!window.isVisible || !window.isKeyWindow) {
+                [window makeKeyAndOrderFront:nil];
+            } else {
+                // Re-makeKey on an already visible key window resets Skiko's first responder;
+                // typing in Compose text fields fails until the window is iconified and restored.
+                [window orderFront:nil];
+            }
+        }
+    });
+}
+
+JNIEXPORT void JNICALL Java_ru_fromchat_desktop_MacNotificationCenter_nativeActivateApplication(
+    JNIEnv *env,
+    jclass cls
+) {
+    fromchatRunOnMain(^{
+        [NSApp activateIgnoringOtherApps:YES];
+        NSWindow *key = [NSApp keyWindow];
+        if (key != nil) {
+            [key makeKeyAndOrderFront:nil];
+            return;
+        }
+        for (NSWindow *window in [NSApp windows]) {
+            if (window.isVisible && (window.styleMask & NSWindowStyleMaskTitled)) {
+                [window makeKeyAndOrderFront:nil];
+                break;
+            }
+        }
+    });
+}
+
+static NSView *fromchatKeyboardHostView(NSWindow *window) {
+    NSView *content = [window contentView];
+    if (content == nil) return nil;
+    for (NSView *child in [[content subviews] reverseObjectEnumerator]) {
+        if ([child acceptsFirstResponder]) return child;
+    }
+    return content;
+}
+
+JNIEXPORT void JNICALL Java_ru_fromchat_desktop_MacNotificationCenter_nativeRepairMainWindowKeyboardFocus(
+    JNIEnv *env,
+    jclass cls
+) {
+    fromchatRunOnMain(^{
+        [NSApp activateIgnoringOtherApps:YES];
+        NSWindow *target = [NSApp keyWindow];
+        if (target == nil || !fromchatIsMainTitledWindow(target)) {
+            for (NSWindow *window in [NSApp windows]) {
+                if (!fromchatIsMainTitledWindow(window) || !window.isVisible) continue;
+                target = window;
+                if (!window.isKeyWindow) {
+                    [window makeKeyAndOrderFront:nil];
+                }
+                break;
+            }
+        }
+        if (target == nil) return;
+        NSView *host = fromchatKeyboardHostView(target);
+        if (host != nil) {
+            [target makeFirstResponder:host];
+        }
+    });
+}

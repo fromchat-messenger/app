@@ -12,6 +12,7 @@ import kotlinx.serialization.json.Json
 import ru.fromchat.logging.Logger
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.instance.EncryptionModeNoticeStore
+import ru.fromchat.api.instance.isCenteredServiceNotice
 import ru.fromchat.api.local.messages.ChatListPreviewPendingIndicator
 import ru.fromchat.api.local.messages.ChatListPreviewState
 import ru.fromchat.api.local.messages.ChatListPreviewStrings
@@ -284,7 +285,7 @@ object MessageCacheStore {
 
     /** Durable local-only centered service notice (e.g. encryption mode change). */
     suspend fun upsertLocalServiceNotice(conversationId: String, message: Message) {
-        if (message.user_id != EncryptionModeNoticeStore.SERVICE_USER_ID) return
+        if (!message.isCenteredServiceNotice()) return
         val convId = conversationId.trim()
         if (convId.isEmpty()) return
         val iid = instanceId()
@@ -830,9 +831,11 @@ object MessageCacheStore {
     suspend fun purgePendingNotFromUser(userId: Int) {
         val iid = instanceId()
         withContext(messageDatabaseDispatcher) {
+            val serviceUserId = EncryptionModeNoticeStore.SERVICE_USER_ID.toLong()
             val foreign = db.messageDatabaseQueries
                 .selectForeignPendingMessages(iid, userId.toLong())
                 .executeAsList()
+                .filter { it.userId != serviceUserId }
             foreign.forEach { row ->
                 val cid = row.clientMessageId?.trim().orEmpty()
                 if (cid.isNotEmpty()) {
@@ -1091,8 +1094,25 @@ object MessageCacheStore {
     private suspend fun clearConversationMessages(conversationId: String) {
         val iid = instanceId()
         Logger.d("MessageCache", "clearConversationMessages convId=$conversationId")
+        val preserved = loadPersistedServiceNotices(iid, conversationId)
         withContext(messageDatabaseDispatcher) {
             db.messageDatabaseQueries.deleteMessagesForConversation(iid, conversationId)
+            preserved.forEach { notice ->
+                db.messageDatabaseQueries.upsertMessage(
+                    instanceId = iid,
+                    id = notice.id.toLong(),
+                    conversationId = conversationId,
+                    userId = notice.user_id.toLong(),
+                    content = notice.content,
+                    timestamp = notice.timestamp,
+                    isRead = 1L,
+                    isEdited = 0L,
+                    replyToId = null,
+                    clientMessageId = null,
+                    deletedFlag = 0L,
+                    sendStatus = "sent",
+                )
+            }
         }
     }
 
@@ -1153,7 +1173,7 @@ object MessageCacheStore {
                 replyToId = resolveReplyToIdForPersistence(msg, existing?.replyToId),
                 clientMessageId = msg.client_message_id,
                 deletedFlag = 0L,
-                sendStatus = if (msg.id < 0) "pending" else "sent"
+                sendStatus = sendStatusForPersistence(msg),
             )
         }
     }
@@ -1399,6 +1419,24 @@ object MessageCacheStore {
         }
     }
 
+    private suspend fun loadPersistedServiceNotices(
+        instanceId: String,
+        conversationId: String,
+    ): List<Message> = withContext(messageDatabaseDispatcher) {
+        if (instanceId.isBlank() || conversationId.isBlank()) return@withContext emptyList()
+        db.messageDatabaseQueries
+            .selectMessagesByConversation(instanceId, conversationId)
+            .executeAsList()
+            .map { it.toAppMessage() }
+            .filter { it.isCenteredServiceNotice() }
+    }
+
+    private fun sendStatusForPersistence(msg: Message): String = when {
+        msg.isCenteredServiceNotice() -> "sent"
+        msg.id < 0 -> "pending"
+        else -> "sent"
+    }
+
     private fun resolveReplyToIdForPersistence(msg: Message, existingReplyToId: Long? = null): Long? {
         return msg.reply_to?.id?.toLong()
             ?: msg.replyToId?.toLong()
@@ -1488,6 +1526,7 @@ object MessageCacheStore {
         messages.map { hydrateAttachmentPreviewFromDisk(it) }
 
     private fun storedMessageContent(msg: Message): String = when {
+        msg.isCenteredServiceNotice() -> msg.content
         msg.id < 0 -> encodeOptimisticOutboundMessage(msg)
         !msg.files.isNullOrEmpty() && msg.dmEnvelope != null -> encodePersistedDmMessage(msg)
         !msg.files.isNullOrEmpty() -> encodePersistedPublicMessage(msg)
@@ -1530,6 +1569,12 @@ object MessageCacheStore {
         }
         val validated = CacheValidator.filterMessages(conversationId, messages, self)
         val iid = instanceId()
+        val preservedNotices = if (replaceAll) {
+            loadPersistedServiceNotices(iid, conversationId)
+        } else {
+            emptyList()
+        }
+        val toPersist = (validated + preservedNotices).distinctBy { it.id }
         val beforeCount = withContext(messageDatabaseDispatcher) {
             db.messageDatabaseQueries
                 .selectMessagesByConversation(iid, conversationId)
@@ -1539,7 +1584,8 @@ object MessageCacheStore {
         Logger.d(
             "MessageCache",
             "replaceMessages convId=$conversationId replaceAll=$replaceAll " +
-                "incoming=${messages.size} validated=${validated.size} rowsBefore=$beforeCount",
+                "incoming=${messages.size} validated=${validated.size} " +
+                "preservedNotices=${preservedNotices.size} rowsBefore=$beforeCount",
         )
         withContext(messageDatabaseDispatcher) {
             val existingRows = db.messageDatabaseQueries
@@ -1552,7 +1598,7 @@ object MessageCacheStore {
             if (replaceAll) {
                 db.messageDatabaseQueries.transaction {
                     db.messageDatabaseQueries.deleteMessagesForConversation(iid, conversationId)
-                    validated.forEach { msg: Message ->
+                    toPersist.forEach { msg: Message ->
                         db.messageDatabaseQueries.upsertMessage(
                             instanceId = iid,
                             id = msg.id.toLong(),
@@ -1568,13 +1614,13 @@ object MessageCacheStore {
                             replyToId = resolveReplyToIdForPersistence(msg, existingReplyToIds[msg.id]),
                             clientMessageId = msg.client_message_id,
                             deletedFlag = 0L,
-                            sendStatus = if (msg.id < 0) "pending" else "sent",
+                            sendStatus = sendStatusForPersistence(msg),
                         )
                     }
                 }
             } else {
                 // Merge into existing rows — partial UI snapshots must not wipe full history.
-                validated.forEach { msg: Message ->
+                toPersist.forEach { msg: Message ->
                     upsertSingle(conversationId, msg)
                 }
             }

@@ -167,7 +167,22 @@ object InstanceEncryptionStore {
 
     suspend fun ensureActivePolicy(): InstanceEncryptionSnapshot {
         _active.value?.let { return it }
+        restoreActiveFromDiskCache()?.let { return it }
         return refreshActiveFromNetwork() ?: error("Instance encryption policy unavailable")
+    }
+
+    private suspend fun restoreActiveFromDiskCache(): InstanceEncryptionSnapshot? {
+        val config = ServerConfig.serverConfig.value ?: Settings.readServerConfig()
+        val instanceId = Settings.lastKnownServerInstanceId.trim()
+        if (instanceId.isBlank()) return null
+        val snapshot = InstanceEncryptionCache.snapshotForConfig(instanceId, config) ?: return null
+        mutex.withLock {
+            if (_active.value == null) {
+                _active.value = snapshot
+                Logger.i(TAG, "restored encryption policy from disk: ${snapshot.mode} v${snapshot.version}")
+            }
+        }
+        return _active.value
     }
 
     fun modeMismatchWarning(

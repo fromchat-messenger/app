@@ -1,6 +1,8 @@
 package ru.fromchat.desktop
 
+import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.unit.dp
+import javax.swing.SwingUtilities
 import ru.fromchat.config.Settings
 import ru.fromchat.ui.theme.Theme
 import ru.fromchat.ui.theme.jvmPlatformSystemDarkTheme
@@ -60,4 +62,15 @@ internal fun applyDesktopEdgeToEdgeChrome(rootPane: JRootPane) {
     rootPane.putClientProperty("apple.awt.fullWindowContent", true)
     rootPane.putClientProperty("apple.awt.transparentTitleBar", true)
     rootPane.putClientProperty("apple.awt.windowTitleVisible", false)
+}
+
+/** Re-apply edge-to-edge client props once the Cocoa peer exists (cold open). */
+internal fun installMacDesktopEdgeToEdgeChromeAfterOpen(window: ComposeWindow) {
+    if (!isMacOs()) return
+    applyDesktopEdgeToEdgeChrome(window.rootPane)
+    MacDesktopWindowPresentation.applySystemAnimationBehavior()
+    SwingUtilities.invokeLater {
+        applyDesktopEdgeToEdgeChrome(window.rootPane)
+        MacDesktopWindowPresentation.applySystemAnimationBehavior()
+    }
 }

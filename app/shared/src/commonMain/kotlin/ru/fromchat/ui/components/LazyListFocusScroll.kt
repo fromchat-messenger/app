@@ -37,10 +37,14 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import ru.fromchat.AppForeground
+import ru.fromchat.utils.expressiveStepFieldsFocusableDuringPagerMotion
 import ru.fromchat.utils.ImeKeyboardPhase
+import kotlinx.coroutines.delay
 import ru.fromchat.utils.keyboardPhase
 import ru.fromchat.utils.rememberImeMotion
 import ru.fromchat.utils.toPx
+import androidx.compose.runtime.collectAsState
 import kotlin.math.roundToInt
 
 /** Lazy list item indices for [ExpressiveStepFlowScaffold] haze layout. */
@@ -75,9 +79,12 @@ fun expressiveStepSubmitKeyboardActions(onSubmit: () -> Unit): KeyboardActions =
 @Composable
 fun ExpressiveStepAutoFocusEffect(focusRequester: FocusRequester) {
     val autoFocus = LocalExpressiveStepAutoFocusPrimary.current
-    LaunchedEffect(autoFocus) {
-        if (autoFocus) {
+    val windowFocused by AppForeground.isWindowFocused.collectAsState()
+    LaunchedEffect(autoFocus, windowFocused) {
+        if (!autoFocus || !windowFocused) return@LaunchedEffect
+        repeat(3) { attempt ->
             focusRequester.requestFocus()
+            if (attempt < 2) delay(80L * (attempt + 1))
         }
     }
 }
@@ -110,7 +117,7 @@ fun Modifier.trackImeScrollTarget(
     var focused by remember { mutableStateOf(false) }
 
     focusProperties {
-        canFocus = focusEnabled
+        canFocus = focusEnabled || expressiveStepFieldsFocusableDuringPagerMotion
     }.onFocusChanged { state ->
         val wasFocused = focused
         focused = state.isFocused

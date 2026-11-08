@@ -100,6 +100,7 @@ abstract class ChatPanel(
         addMessageMutex.withLock {
             batchStateUpdates {
                 updateState { current ->
+                    EncryptionModeNoticeStore.registerPersistedNotices(current.id, messages)
                     val panelSnap = panelMessagesForDbMerge()
                     val merged = mergeDatabaseMessagesWithPanelState(
                         panelSnap,

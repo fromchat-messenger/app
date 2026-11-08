@@ -5,11 +5,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import ru.fromchat.api.local.messages.nowMessageTimestampIso
+import ru.fromchat.api.local.messages.sortMessagesForChatDisplay
 import ru.fromchat.api.schema.messages.Message
 
 /** Local-only centered notices (encryption mode changes). Also persisted to the message DB. */
 object EncryptionModeNoticeStore {
-    const val SERVICE_USER_ID = -9001
+    const val SERVICE_USER_ID = 0
 
     private val _noticesByConversation = MutableStateFlow<Map<String, List<Message>>>(emptyMap())
     private val _revision = MutableStateFlow(0)
@@ -45,7 +46,7 @@ object EncryptionModeNoticeStore {
                 current
             } else {
                 inserted = message
-                current + (conversationId to (existing + message).sortedBy { it.timestamp })
+                current + (conversationId to sortMessagesForChatDisplay(existing + message))
             }
         }
         if (inserted != null) _revision.update { it + 1 }
@@ -55,13 +56,31 @@ object EncryptionModeNoticeStore {
     fun noticesFor(conversationId: String): List<Message> =
         _noticesByConversation.value[conversationId].orEmpty()
 
+    /** Rebuild in-memory notices after cold start from rows already in SQLite. */
+    fun registerPersistedNotices(conversationId: String, messages: List<Message>) {
+        val service = messages.filter { it.isCenteredServiceNotice() }
+        if (service.isEmpty()) return
+        var changed = false
+        _noticesByConversation.update { current ->
+            val existing = current[conversationId].orEmpty()
+            val byId = LinkedHashMap<Int, Message>()
+            for (msg in existing) byId[msg.id] = msg
+            for (msg in service) {
+                if (byId.putIfAbsent(msg.id, msg) == null) changed = true
+            }
+            if (!changed) return@update current
+            current + (conversationId to sortMessagesForChatDisplay(byId.values.toList()))
+        }
+        if (changed) _revision.update { it + 1 }
+    }
+
     fun mergeIntoTimeline(conversationId: String, messages: List<Message>): List<Message> {
         val notices = noticesFor(conversationId)
         if (notices.isEmpty()) return messages
         val byId = LinkedHashMap<Int, Message>()
         for (msg in messages) byId[msg.id] = msg
         for (notice in notices) byId.putIfAbsent(notice.id, notice)
-        return byId.values.sortedBy { it.timestamp }
+        return sortMessagesForChatDisplay(byId.values.toList())
     }
 
     fun clearAll() {
@@ -70,4 +89,5 @@ object EncryptionModeNoticeStore {
     }
 }
 
-fun Message.isCenteredServiceNotice(): Boolean = user_id == EncryptionModeNoticeStore.SERVICE_USER_ID
+fun Message.isCenteredServiceNotice(): Boolean =
+    user_id == EncryptionModeNoticeStore.SERVICE_USER_ID

@@ -121,13 +121,13 @@ LIMIT :limit;
 selectPendingMessagesByConversation:
 SELECT *
 FROM message
-WHERE instanceId = ? AND conversationId = ? AND deletedFlag = 0 AND id < 0
+WHERE instanceId = ? AND conversationId = ? AND deletedFlag = 0 AND id < 0 AND userId != 0
 ORDER BY timestamp ASC;
 
 selectLatestPendingMessageByConversation:
 SELECT *
 FROM message
-WHERE instanceId = ? AND conversationId = ? AND deletedFlag = 0 AND id < 0
+WHERE instanceId = ? AND conversationId = ? AND deletedFlag = 0 AND id < 0 AND userId != 0
 ORDER BY timestamp DESC
 LIMIT 1;
 
@@ -302,20 +302,20 @@ WHERE instanceId = ? AND type = 'dm' AND lastMessageId IS NULL AND id NOT IN (
 selectForeignPendingMessages:
 SELECT *
 FROM message
-WHERE instanceId = ? AND id < 0 AND deletedFlag = 0 AND userId != ?;
+WHERE instanceId = ? AND id < 0 AND deletedFlag = 0 AND userId != ? AND userId != 0;
 
 selectAllPendingMessagesForInstance:
 SELECT *
 FROM message
-WHERE instanceId = ? AND id < 0 AND deletedFlag = 0;
+WHERE instanceId = ? AND id < 0 AND deletedFlag = 0 AND userId != 0;
 
 deleteAllPendingMessagesForInstance:
 DELETE FROM message
-WHERE instanceId = ? AND id < 0;
+WHERE instanceId = ? AND id < 0 AND userId != 0;
 
 deletePendingMessagesNotFromUser:
 DELETE FROM message
-WHERE instanceId = ? AND id < 0 AND userId != ?;
+WHERE instanceId = ? AND id < 0 AND userId != ? AND userId != 0;
 
 updateConversationArchived:
 UPDATE conversation

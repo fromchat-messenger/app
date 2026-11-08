@@ -21,6 +21,8 @@ actual fun ToggleNavScrimEffect(enabled: Boolean) {}
 actual fun DialogEdgeToEdgeEffect() {}
 actual val materialYouAvailable get() = false
 
+actual val expressiveStepFieldsFocusableDuringPagerMotion get() = false
+
 inline fun htons(short: UShort) = if (isLittleEndian) _OSSwapInt16(short) else short
 inline fun htonl(data: UInt) = if (isLittleEndian) _OSSwapInt32(data) else data
 inline fun htonll(data: ULong) = if (isLittleEndian) _OSSwapInt64(data) else data
