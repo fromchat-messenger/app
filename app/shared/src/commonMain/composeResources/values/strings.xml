@@ -416,8 +416,10 @@
     <string name="appearance_nav_bar_floating">Floating</string>
     <string name="appearance_nav_bar_show_titles">Show tab titles</string>
     <string name="appearance_nav_bar_show_titles_d">Reveal the label of the selected tab</string>
-    <string name="settings_category_server_tools">Server and tools</string>
-    <string name="settings_category_server_tools_d">Change server, debug API</string>
+    <string name="settings_category_server_tools">Server and network</string>
+    <string name="settings_category_server_tools_d">Server address and proxy</string>
+    <string name="settings_category_app">App</string>
+    <string name="settings_category_app_d">About and debug logs</string>
     <string name="settings_category_notifications">Notifications</string>
     <string name="settings_category_notifications_d">Open system notification settings</string>
     <string name="settings_category_devices">Devices</string>

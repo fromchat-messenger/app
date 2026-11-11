@@ -14,13 +14,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.rounded.Http
-import androidx.compose.material.icons.rounded.Hub
-import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.OutlinedTextField
@@ -65,7 +61,6 @@ import ru.fromchat.proxy_type_socks
 import ru.fromchat.proxy_type_ssh
 import ru.fromchat.proxy_username
 import ru.fromchat.ui.components.ActionButton
-import ru.fromchat.ui.components.ExpressiveIconFrame
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.expressiveStepFieldColors
 import ru.fromchat.utils.components.Category
@@ -127,15 +122,6 @@ fun AddProxySheetContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 8.dp),
-        )
-
-        ExpressiveIconFrame(
-            icon = when (type) {
-                ProxyType.HTTP -> Icons.Rounded.Http
-                ProxyType.SOCKS5 -> Icons.Rounded.Hub
-                ProxyType.SSH -> Icons.Rounded.Terminal
-            },
-            materialPolygon = MaterialShapes.Cookie4Sided,
         )
 
         val fieldColors = expressiveStepFieldColors()

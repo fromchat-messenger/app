@@ -5,7 +5,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -21,17 +20,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.Http
-import androidx.compose.material.icons.rounded.Hub
-import androidx.compose.material.icons.rounded.Terminal
-import androidx.compose.material.icons.rounded.VpnLock
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LoadingIndicator
-import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
@@ -50,7 +44,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -82,8 +75,6 @@ import ru.fromchat.proxy_type_http
 import ru.fromchat.proxy_type_socks
 import ru.fromchat.proxy_type_ssh
 import ru.fromchat.settings_proxy_title
-import ru.fromchat.ui.components.ExpressiveIconFrame
-import ru.fromchat.ui.components.ExpressiveTints
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.main.settings.SettingsDetailTopBar
 import ru.fromchat.ui.main.settings.rememberSettingsCollapsingScrollBehavior
@@ -116,7 +107,7 @@ fun ProxyScreen(
 
     val selection by ProxyRuntime.selection.collectAsState()
     val savedProxies by ProxyRuntime.savedProxies.collectAsState()
-    val systemProxyEnabled = remember { systemProxyAvailable() }
+    var systemProxyEnabled by remember { mutableStateOf(systemProxyAvailable()) }
 
     var directCheck by remember { mutableStateOf<ProxyCheckResult>(ProxyCheckResult.Checking) }
     var systemCheck by remember { mutableStateOf<ProxyCheckResult?>(null) }
@@ -153,6 +144,7 @@ fun ProxyScreen(
     }
 
     LaunchedEffect(Unit) {
+        systemProxyEnabled = systemProxyAvailable()
         ProxyRuntime.refreshSavedProxies()
         runConnectivityChecks()
     }
@@ -183,7 +175,11 @@ fun ProxyScreen(
         contentColor = scheme.onSurface,
         topBar = {
             SettingsDetailTopBar(
-                title = stringResource(Res.string.settings_proxy_title),
+                title = if (useCollapsing) {
+                    stringResource(Res.string.settings_proxy_title)
+                } else {
+                    ""
+                },
                 onBack = onBack,
                 hazeState = hazeState,
                 scrollBehavior = scrollBehavior,
@@ -221,23 +217,28 @@ fun ProxyScreen(
                         .padding(top = 8.dp, bottom = 16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    ExpressiveIconFrame(
-                        icon = Icons.Rounded.VpnLock,
-                        materialPolygon = MaterialShapes.VerySunny,
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        text = stringResource(Res.string.settings_proxy_title),
-                        style = MaterialTheme.typography.headlineMedium,
-                        textAlign = TextAlign.Center,
-                    )
-                    Text(
-                        text = stringResource(Res.string.proxy_screen_subtitle),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = scheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp),
-                    )
+                    if (!useCollapsing) {
+                        Text(
+                            text = stringResource(Res.string.settings_proxy_title),
+                            style = MaterialTheme.typography.headlineMedium,
+                            textAlign = TextAlign.Center,
+                        )
+                        Text(
+                            text = stringResource(Res.string.proxy_screen_subtitle),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = scheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp),
+                        )
+                    } else {
+                        Text(
+                            text = stringResource(Res.string.proxy_screen_subtitle),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = scheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp),
+                        )
+                    }
                 }
             }
 
@@ -278,24 +279,15 @@ fun ProxyScreen(
                         title = stringResource(Res.string.proxy_custom_proxies),
                         margin = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp),
                     ) {
-                        Column(
-                            Modifier
+                        Text(
+                            text = stringResource(Res.string.proxy_no_proxies),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = scheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 28.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            ExpressiveIconFrame(
-                                icon = Icons.Rounded.VpnLock,
-                                materialPolygon = MaterialShapes.Gem,
-                            )
-                            Spacer(Modifier.height(12.dp))
-                            Text(
-                                text = stringResource(Res.string.proxy_no_proxies),
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = scheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center,
-                            )
-                        }
+                        )
                     }
                 }
             }
@@ -329,13 +321,10 @@ fun ProxyScreen(
                     headline = proxy.label,
                     supportingText = proxyTypeLabel(proxy.type),
                     leadingContent = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(
-                                selected = selection == ProxySelection.Custom(proxy.id),
-                                onClick = null,
-                            )
-                            ProxyTypeIcon(proxy.type)
-                        }
+                        RadioButton(
+                            selected = selection == ProxySelection.Custom(proxy.id),
+                            onClick = null,
+                        )
                     },
                     supportingSlot = {
                         ProxyCheckStatusText(check)
@@ -411,21 +400,6 @@ private fun proxyTypeLabel(type: ProxyType): String = when (type) {
     ProxyType.HTTP -> stringResource(Res.string.proxy_type_http)
     ProxyType.SOCKS5 -> stringResource(Res.string.proxy_type_socks)
     ProxyType.SSH -> stringResource(Res.string.proxy_type_ssh)
-}
-
-@Composable
-private fun ProxyTypeIcon(type: ProxyType) {
-    val (icon, tint) = when (type) {
-        ProxyType.HTTP -> Icons.Rounded.Http to ExpressiveTints.Cyan
-        ProxyType.SOCKS5 -> Icons.Rounded.Hub to ExpressiveTints.Blue
-        ProxyType.SSH -> Icons.Rounded.Terminal to ExpressiveTints.Purple
-    }
-    Icon(
-        imageVector = icon,
-        contentDescription = null,
-        tint = tint.foreground,
-        modifier = Modifier.size(22.dp),
-    )
 }
 
 @Composable

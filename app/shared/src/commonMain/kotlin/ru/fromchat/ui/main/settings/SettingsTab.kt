@@ -47,6 +47,8 @@ import ru.fromchat.settings_category_devices
 import ru.fromchat.settings_category_devices_d
 import ru.fromchat.settings_category_notifications
 import ru.fromchat.settings_category_notifications_d
+import ru.fromchat.settings_category_app
+import ru.fromchat.settings_category_server_tools
 import ru.fromchat.settings_hub_about_sub
 import ru.fromchat.settings_hub_logs_sub
 import ru.fromchat.settings_hub_profile_sub
@@ -170,7 +172,10 @@ fun SettingsTab() {
                 )
             }
 
-            Category(Modifier.padding(top = 8.dp)) {
+            Category(
+                Modifier.padding(top = 8.dp),
+                title = stringResource(Res.string.settings_category_server_tools),
+            ) {
                 ExpressiveListItem(
                     icon = Icons.Rounded.Storage,
                     iconPreset = ExpressiveTints.Cyan,
@@ -186,9 +191,13 @@ fun SettingsTab() {
                     headline = stringResource(Res.string.settings_proxy),
                     supportingText = stringResource(Res.string.settings_proxy_d),
                     onClick = { openDetail(SettingsRoutes.Proxy) },
-                    divider = true
                 )
+            }
 
+            Category(
+                Modifier.padding(top = 8.dp),
+                title = stringResource(Res.string.settings_category_app),
+            ) {
                 ExpressiveListItem(
                     icon = Icons.Rounded.Info,
                     iconPreset = ExpressiveTints.Purple,
