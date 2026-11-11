@@ -22,22 +22,12 @@ actual fun configureEngineProxy(config: HttpClientConfig<*>, route: ProxyRoute) 
     }
 }
 
-/**
- * Desktop JVM only: true when a system HTTP(S)/SOCKS proxy is configured (selector or JVM properties).
- */
-actual fun systemProxyAvailable(): Boolean {
-  if (!isDesktopJvmRuntime()) return false
-    return jvmSystemProxyConfigured()
-}
+/** JVM desktop: true when a system HTTP(S)/SOCKS proxy is configured (selector or JVM properties). */
+actual fun systemProxyAvailable(): Boolean = jvmSystemProxyConfigured()
 
 actual fun systemProxyIsHttp(): Boolean {
     val proxy = resolveSystemProxy() ?: return false
     return proxy.type() == Proxy.Type.HTTP
-}
-
-private fun isDesktopJvmRuntime(): Boolean {
-    val headless = System.getProperty("java.awt.headless")?.toBooleanStrictOrNull()
-    return headless == false
 }
 
 internal fun jvmSystemProxyConfigured(): Boolean = resolveSystemProxy() != null
