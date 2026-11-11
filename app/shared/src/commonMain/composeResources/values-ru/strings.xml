@@ -357,6 +357,14 @@
     <string name="proxy_delete">Удалить</string>
     <string name="proxy_ping_ms">%1$d мс</string>
     <string name="proxy_check_failed">Недоступно</string>
+    <string name="proxy_certificate_issue">Проблема с сертификатом</string>
+    <string name="proxy_trust_cert_title">Доверять этому сертификату?</string>
+    <string name="proxy_trust_cert_body">TLS-сертификат сервера не подписан доверенным центром. Продолжайте только если узнаёте этот сервер.</string>
+    <string name="proxy_trust_yes">Да</string>
+    <string name="proxy_trust_once">Только сейчас</string>
+    <string name="proxy_trusted_certs_title">Доверенные сертификаты</string>
+    <string name="proxy_trusted_certs_empty">Нет сохранённых доверенных сертификатов</string>
+    <string name="proxy_trusted_certs_manage">Доверенные сертификаты</string>
     <string name="proxy_screen_subtitle">Как FromChat подключается к серверу по защищённому каналу.</string>
     <string name="proxy_step_type_title">Тип прокси</string>
     <string name="proxy_step_type_body">HTTP, SOCKS5 или SSH-туннель как SOCKS.</string>

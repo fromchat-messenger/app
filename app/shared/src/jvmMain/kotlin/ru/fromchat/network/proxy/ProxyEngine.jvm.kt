@@ -8,6 +8,7 @@ import java.net.ProxySelector
 import java.net.URI
 
 actual fun configureEngineProxy(config: HttpClientConfig<*>, route: ProxyRoute) {
+    configureEngineTls(config)
     val javaProxy = when (route) {
         ProxyRoute.Direct -> return
         ProxyRoute.System -> resolveSystemProxy() ?: return
@@ -32,7 +33,7 @@ actual fun systemProxyIsHttp(): Boolean {
 
 internal fun jvmSystemProxyConfigured(): Boolean = resolveSystemProxy() != null
 
-private fun resolveSystemProxy(): Proxy? {
+internal fun resolveSystemProxy(): Proxy? {
     val target = URI(ServerConfig.apiBaseUrl)
     ProxySelector.getDefault()?.select(target)?.firstOrNull { it.type() != Proxy.Type.DIRECT }?.let {
         return it

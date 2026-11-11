@@ -85,4 +85,5 @@ sealed class ProxyCheckResult {
     data object Checking : ProxyCheckResult()
     data class Success(val pingMs: Int, val instanceId: String) : ProxyCheckResult()
     data class Failed(val reason: String? = null) : ProxyCheckResult()
+    data class CertificateIssue(val pem: String, val detail: String? = null) : ProxyCheckResult()
 }

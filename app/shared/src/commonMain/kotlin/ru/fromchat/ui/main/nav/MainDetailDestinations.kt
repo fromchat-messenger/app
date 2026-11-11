@@ -33,6 +33,7 @@ import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexOAuthScreen
 import ru.fromchat.ui.main.settings.account.delete.DeleteAccountScreen
 import ru.fromchat.ui.main.settings.proxy.AddProxyFlowScreen
 import ru.fromchat.ui.main.settings.proxy.ProxyScreen
+import ru.fromchat.ui.main.settings.proxy.TrustedCertificatesScreen
 import ru.fromchat.ui.main.settings.server.ServerConfigScreen
 import ru.fromchat.ui.main.desktop.detailPaneShowBackButton
 import ru.fromchat.ui.profile.EditProfileFocusField
@@ -304,6 +305,17 @@ fun NavGraphBuilder.settingsDetailDestinations(
                     launchSingleTop = true
                 }
             },
+            onManageTrustedCerts = {
+                navController.navigate(SettingsRoutes.ProxyTrustedCerts) {
+                    launchSingleTop = true
+                }
+            },
+        )
+    }
+
+    composable(SettingsRoutes.ProxyTrustedCerts) {
+        TrustedCertificatesScreen(
+            onBack = { navController.navigateUp() },
         )
     }
 

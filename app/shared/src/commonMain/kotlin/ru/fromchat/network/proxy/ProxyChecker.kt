@@ -7,6 +7,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import ru.fromchat.api.ApiClient
 import ru.fromchat.api.createProbeHttpClient
 import ru.fromchat.api.schema.server.ServerInstanceIdResponse
 import ru.fromchat.config.ServerConfig
@@ -76,11 +77,16 @@ object ProxyChecker {
         }
     }
 
-    private suspend fun checkWithRoute(route: ProxyRoute): ProxyCheckResult {
+    private suspend fun checkWithRoute(route: ProxyRoute): ProxyCheckResult =
+        ProxyRuntime.withProbeIsolation {
+            performCheckWithRoute(route)
+        }
+
+    private suspend fun performCheckWithRoute(route: ProxyRoute): ProxyCheckResult {
         val mark = TimeSource.Monotonic.markNow()
+        val base = ServerConfig.apiBaseUrl.trimEnd('/')
         val client = createProbeHttpClient(proxyRoute = route, bypassHttpProxyForCalls = false)
         return try {
-            val base = ServerConfig.apiBaseUrl.trimEnd('/')
             val instanceId = client.get("$base/instance_id").body<ServerInstanceIdResponse>().instanceId.trim()
             if (instanceId.isEmpty()) {
                 ProxyCheckResult.Failed("Empty instance id")
@@ -91,9 +97,46 @@ object ProxyChecker {
                 )
             }
         } catch (e: Exception) {
-            ProxyCheckResult.Failed(e.message)
+            if (e.isCertificateError()) {
+                val host = tlsHostFromUrl(base)
+                val pem = fetchPeerCertificatePem(route).orEmpty()
+                if (pem.isNotEmpty() && ProxyTlsTrust.hasTrustForPem(host, pem)) {
+                    client.close()
+                    val retryClient = createProbeHttpClient(proxyRoute = route, bypassHttpProxyForCalls = false)
+                    return try {
+                        val instanceId = retryClient.get("$base/instance_id").body<ServerInstanceIdResponse>()
+                            .instanceId.trim()
+                        if (instanceId.isEmpty()) {
+                            ProxyCheckResult.Failed("Empty instance id")
+                        } else {
+                            ProxyCheckResult.Success(
+                                pingMs = mark.elapsedNow().inWholeMilliseconds.toInt(),
+                                instanceId = instanceId,
+                            )
+                        }
+                    } catch (retry: Exception) {
+                        if (retry.isCertificateError()) {
+                            ProxyCheckResult.CertificateIssue(
+                                pem = pem,
+                                detail = retry.message,
+                            )
+                        } else {
+                            ProxyCheckResult.Failed(retry.message)
+                        }
+                    } finally {
+                        retryClient.close()
+                    }
+                }
+                ProxyCheckResult.CertificateIssue(pem = pem, detail = e.message)
+            } else {
+                ProxyCheckResult.Failed(e.message)
+            }
         } finally {
             client.close()
         }
+    }
+
+    fun notifyTlsTrustChanged() {
+        ApiClient.rebuildHttpClients()
     }
 }

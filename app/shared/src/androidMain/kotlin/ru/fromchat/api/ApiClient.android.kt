@@ -18,7 +18,11 @@ actual fun createPlatformHttpClient(
             connectTimeoutMillis = 5_000
             socketTimeoutMillis = 30_000
         }
-        val route = proxyRoute ?: ProxyRuntime.currentRoute
+        val route = when {
+            proxyRoute != null -> proxyRoute
+            ProxyRuntime.probeIsolation -> ProxyRoute.Direct
+            else -> ProxyRuntime.currentRoute
+        }
         configureEngineProxy(this, route)
         block()
     }

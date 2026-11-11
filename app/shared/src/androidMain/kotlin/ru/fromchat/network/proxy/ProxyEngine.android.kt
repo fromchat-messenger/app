@@ -7,6 +7,7 @@ import java.net.InetSocketAddress
 import java.net.Proxy
 
 actual fun configureEngineProxy(config: HttpClientConfig<*>, route: ProxyRoute) {
+    configureEngineTls(config)
     val javaProxy = when (route) {
         ProxyRoute.Direct, ProxyRoute.System -> return
         is ProxyRoute.Custom -> when (route.endpointType) {

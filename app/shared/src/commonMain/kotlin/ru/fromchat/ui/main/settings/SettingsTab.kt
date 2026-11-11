@@ -196,7 +196,6 @@ fun SettingsTab() {
 
             Category(
                 Modifier.padding(top = 8.dp),
-                title = stringResource(Res.string.settings_category_app),
             ) {
                 ExpressiveListItem(
                     icon = Icons.Rounded.Info,

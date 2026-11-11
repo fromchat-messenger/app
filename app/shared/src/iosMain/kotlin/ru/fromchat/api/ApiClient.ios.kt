@@ -15,7 +15,11 @@ actual fun createPlatformHttpClient(
     proxyRoute: ProxyRoute?,
     block: HttpClientConfig<*>.() -> Unit,
 ): HttpClient {
-    val route = proxyRoute ?: ProxyRuntime.currentRoute
+    val route = when {
+        proxyRoute != null -> proxyRoute
+        ProxyRuntime.probeIsolation -> ProxyRoute.Direct
+        else -> ProxyRuntime.currentRoute
+    }
     return HttpClient(Darwin) {
         engine {
             configureRequest {

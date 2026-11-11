@@ -53,15 +53,19 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
+import ru.fromchat.config.ServerConfig
 import ru.fromchat.network.proxy.ProxyCheckResult
 import ru.fromchat.network.proxy.ProxyChecker
 import ru.fromchat.network.proxy.ProxyCheckTarget
 import ru.fromchat.network.proxy.ProxyRuntime
 import ru.fromchat.network.proxy.ProxySelection
+import ru.fromchat.network.proxy.ProxyTlsTrust
 import ru.fromchat.network.proxy.ProxyType
 import ru.fromchat.network.proxy.SavedProxy
 import ru.fromchat.network.proxy.systemProxyAvailable
+import ru.fromchat.network.proxy.tlsHostFromUrl
 import ru.fromchat.proxy_add
+import ru.fromchat.proxy_certificate_issue
 import ru.fromchat.proxy_check_failed
 import ru.fromchat.proxy_checking
 import ru.fromchat.proxy_custom_proxies
@@ -74,7 +78,11 @@ import ru.fromchat.proxy_system_proxy
 import ru.fromchat.proxy_type_http
 import ru.fromchat.proxy_type_socks
 import ru.fromchat.proxy_type_ssh
+import ru.fromchat.proxy_trusted_certs_manage
 import ru.fromchat.settings_proxy_title
+import ru.fromchat.ui.components.ExpressiveListItem
+import ru.fromchat.ui.components.ExpressiveTints
+import androidx.compose.material.icons.rounded.VerifiedUser
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.main.settings.SettingsDetailTopBar
 import ru.fromchat.ui.main.settings.rememberSettingsCollapsingScrollBehavior
@@ -89,6 +97,12 @@ import ru.fromchat.utils.conditional
 
 private val ProxyPingSuccessColor = Color(0xFF2E7D32)
 
+private data class PendingCertTrust(
+    val selection: ProxySelection,
+    val pem: String,
+    val label: String,
+)
+
 @OptIn(
     ExperimentalMaterial3Api::class,
     ExperimentalMaterial3ExpressiveApi::class,
@@ -98,6 +112,7 @@ private val ProxyPingSuccessColor = Color(0xFF2E7D32)
 fun ProxyScreen(
     onBack: () -> Unit,
     onAddProxy: () -> Unit,
+    onManageTrustedCerts: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val useCollapsing = settingsDetailUseCollapsingTopBar()
@@ -115,6 +130,8 @@ fun ProxyScreen(
 
     var addSheetOpen by remember { mutableStateOf(false) }
     var editingProxy by remember { mutableStateOf<SavedProxy?>(null) }
+    var pendingCertTrust by remember { mutableStateOf<PendingCertTrust?>(null) }
+    val apiHost = remember { tlsHostFromUrl(ServerConfig.apiBaseUrl) }
 
     suspend fun runConnectivityChecks() {
         directCheck = ProxyCheckResult.Checking
@@ -147,6 +164,18 @@ fun ProxyScreen(
         systemProxyEnabled = systemProxyAvailable()
         ProxyRuntime.refreshSavedProxies()
         runConnectivityChecks()
+    }
+
+    fun certPemFrom(result: ProxyCheckResult?): String? =
+        (result as? ProxyCheckResult.CertificateIssue)?.pem?.takeIf { it.isNotBlank() }
+
+    fun requestSelection(selection: ProxySelection, check: ProxyCheckResult?, label: String) {
+        val pem = certPemFrom(check)
+        if (pem != null && !ProxyTlsTrust.hasTrustForPem(apiHost, pem)) {
+            pendingCertTrust = PendingCertTrust(selection = selection, pem = pem, label = label)
+            return
+        }
+        scope.launch { ProxyRuntime.applySelection(selection) }
     }
 
     LaunchedEffect(savedProxies) {
@@ -243,7 +272,18 @@ fun ProxyScreen(
             }
 
             item {
-                Category(margin = PaddingValues(horizontal = 16.dp)) {
+                Category(margin = PaddingValues(start = 16.dp, end = 16.dp, bottom = 8.dp)) {
+                    ExpressiveListItem(
+                        icon = Icons.Rounded.VerifiedUser,
+                        iconPreset = ExpressiveTints.Cyan,
+                        headline = stringResource(Res.string.proxy_trusted_certs_manage),
+                        onClick = onManageTrustedCerts,
+                    )
+                }
+            }
+
+            item {
+                Category(margin = PaddingValues(start = 16.dp, end = 16.dp)) {
                     ProxySelectionRow(
                         headline = stringResource(Res.string.proxy_direct_connection),
                         selected = selection is ProxySelection.Direct,
@@ -253,7 +293,7 @@ fun ProxyScreen(
                         divider = systemProxyEnabled,
                         containerColor = scheme.surfaceContainer,
                         onSelect = {
-                            scope.launch { ProxyRuntime.applySelection(ProxySelection.Direct) }
+                            requestSelection(ProxySelection.Direct, directCheck, apiHost)
                         },
                     )
                     if (systemProxyEnabled) {
@@ -266,7 +306,7 @@ fun ProxyScreen(
                             divider = false,
                             containerColor = scheme.surfaceContainer,
                             onSelect = {
-                                scope.launch { ProxyRuntime.applySelection(ProxySelection.System) }
+                                requestSelection(ProxySelection.System, systemCheck, apiHost)
                             },
                         )
                     }
@@ -334,9 +374,11 @@ fun ProxyScreen(
                     position = listItemPositionInGroup(index, sortedProxies.size),
                     groupItemCount = sortedProxies.size,
                     onClick = {
-                        scope.launch {
-                            ProxyRuntime.applySelection(ProxySelection.Custom(proxy.id))
-                        }
+                        requestSelection(
+                            ProxySelection.Custom(proxy.id),
+                            check,
+                            proxy.label,
+                        )
                     },
                     contextMenu = {
                         item(Icons.Rounded.Edit, editProxyLabel) {
@@ -348,6 +390,31 @@ fun ProxyScreen(
             }
         }
     }
+
+    ProxyTrustCertificateDialog(
+        visible = pendingCertTrust != null,
+        onDismiss = { pendingCertTrust = null },
+        onTrustPermanent = {
+            val pending = pendingCertTrust ?: return@ProxyTrustCertificateDialog
+            ProxyTlsTrust.trustPersistently(apiHost, pending.label, pending.pem)
+            ProxyChecker.notifyTlsTrustChanged()
+            pendingCertTrust = null
+            scope.launch {
+                ProxyRuntime.applySelection(pending.selection)
+                runConnectivityChecks()
+            }
+        },
+        onTrustSession = {
+            val pending = pendingCertTrust ?: return@ProxyTrustCertificateDialog
+            ProxyTlsTrust.trustThisSession(apiHost, pending.pem)
+            ProxyChecker.notifyTlsTrustChanged()
+            pendingCertTrust = null
+            scope.launch {
+                ProxyRuntime.applySelection(pending.selection)
+                runConnectivityChecks()
+            }
+        },
+    )
 
     if (addSheetOpen && editingProxy != null) {
         val sheetState = rememberBottomSheetState(
@@ -467,6 +534,14 @@ private fun ProxyCheckStatusText(result: ProxyCheckResult) {
             is ProxyCheckResult.Failed -> {
                 Text(
                     text = stringResource(Res.string.proxy_check_failed),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = scheme.error,
+                )
+            }
+
+            is ProxyCheckResult.CertificateIssue -> {
+                Text(
+                    text = stringResource(Res.string.proxy_certificate_issue),
                     style = MaterialTheme.typography.bodyMedium,
                     color = scheme.error,
                 )

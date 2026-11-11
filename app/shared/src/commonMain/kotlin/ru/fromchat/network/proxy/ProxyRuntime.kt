@@ -8,6 +8,18 @@ import kotlinx.coroutines.sync.withLock
 import ru.fromchat.api.ApiClient
 
 object ProxyRuntime {
+    @Volatile
+    var probeIsolation: Boolean = false
+
+    suspend fun <T> withProbeIsolation(block: suspend () -> T): T {
+        probeIsolation = true
+        try {
+            return block()
+        } finally {
+            probeIsolation = false
+        }
+    }
+
     private val applyMutex = Mutex()
 
     private val _selection = MutableStateFlow<ProxySelection>(ProxySelection.Direct)
@@ -43,6 +55,9 @@ object ProxyRuntime {
     suspend fun applySelection(selection: ProxySelection) {
         applyMutex.withLock {
             stopSshTunnel()
+            if (_selection.value != selection) {
+                ProxyTlsTrust.clearSession()
+            }
             _selection.value = selection
             ProxyStore.setSelection(selection)
             refreshEffectiveRoute(startTunnel = true)
@@ -169,7 +184,7 @@ object ProxyRuntime {
         }
 
     suspend fun routeForCheckTarget(target: ProxyCheckTarget): ProxyRoute? = when (target) {
-        ProxyCheckTarget.ActiveSelection -> currentRoute
+        ProxyCheckTarget.ActiveSelection -> ProxyRoute.Direct
         is ProxyCheckTarget.SavedProxyById -> {
             val proxy = ProxyStore.readProxies().firstOrNull { it.id == target.id } ?: return null
             ephemeralRouteForProxy(proxy)
