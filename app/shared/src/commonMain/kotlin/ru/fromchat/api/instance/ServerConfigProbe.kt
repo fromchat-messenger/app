@@ -73,7 +73,8 @@ suspend fun probeCallsReachable(config: ServerConfigData) = runCatching {
                 append(":")
                 append(config.apiPort)
                 append("/livekit-health")
-            }
+            },
+            bypassProxy = true,
         )
     }
 }.getOrDefault(false)

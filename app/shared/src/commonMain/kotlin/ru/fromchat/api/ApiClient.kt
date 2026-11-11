@@ -139,15 +139,17 @@ import ru.fromchat.api.schema.websocket.types.DmTypingData
 import ru.fromchat.api.schema.websocket.types.SubscribeStatusData
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.config.Settings
+import ru.fromchat.network.proxy.ProxyRoute
+import ru.fromchat.network.proxy.ProxyRuntime
 import kotlin.concurrent.Volatile
-import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Creates a platform-specific HTTP client that supports WebSockets
  * The config block is applied to configure plugins like WebSockets, JSON, etc.
  */
 expect fun createPlatformHttpClient(
-    block: io.ktor.client.HttpClientConfig<*>.() -> Unit = {}
+    proxyRoute: ProxyRoute? = null,
+    block: io.ktor.client.HttpClientConfig<*>.() -> Unit = {},
 ): HttpClient
 
 object ApiClient {
@@ -227,114 +229,14 @@ object ApiClient {
 
     // --- HTTP clients ---
 
-    val http = createPlatformHttpClient {
-        install(ContentNegotiation) {
-            json(json)
-        }
+    val http: HttpClient
+        get() = HttpClients.http
 
-        install(Logging) {
-            logger = Logger.SIMPLE
-            level = LogLevel.INFO
-        }
+    private val httpProbe: HttpClient
+        get() = HttpClients.httpProbe
 
-        install(WebSockets) {
-            pingInterval = 5000.milliseconds
-        }
-
-        val currentDevice = currentDeviceInfo()
-        val osName = currentDevice.osName?.takeIfNotBlank()
-        val osVersion = currentDevice.osVersion?.takeIfNotBlank()
-        val brand = currentDevice.brand?.takeIfNotBlank()
-        val model = currentDevice.model?.takeIfNotBlank()
-        val userAgent = buildLoginUserAgent(
-            osName = osName,
-            osVersion = osVersion,
-            model = model,
-            brand = brand
-        )
-
-        defaultRequest {
-            token?.let { authToken ->
-                bearerAuth(authToken)
-            }
-            header("User-Agent", userAgent)
-        }
-
-        // Handle HTTP auth errors globally.
-        // - 401 => token/session invalid, clear auth state and trigger auth recovery flow.
-        // - 403 => forbidden, keep session intact (used for read-only/suspension workflows).
-        HttpResponseValidator {
-            validateResponse { response ->
-                val instanceHeader = response.headers[InstanceIdGuard.INSTANCE_ID_HEADER]
-                runCatching {
-                    ServerConfig.serverConfig.value?.let { cfg ->
-                        InstanceIdGuard.onResponseHeader(instanceHeader, cfg)
-                    }
-                }
-                if (response.status.value == 401) {
-                    val path = response.call.request.url.encodedPath
-                    val isCredentialCheck = path.endsWith("/auth/steps/password") || path.endsWith("/auth/steps/register/confirm")
-                    if (!isCredentialCheck && !logoutInProgress) {
-                        MainScope().launch {
-                            runCatching { WebSocketManager.disconnect() }
-                            runCatching { clearLocalSession() }
-                            onAuthError?.invoke()
-                        }
-                    }
-                }
-                if (response.status.value == 403) {
-                    handleForbiddenAsPotentialSuspension(response)
-                }
-
-                if (response.status.value in 200..299 && token != null) {
-                    WebSocketManager.onServerLikelyReachable()
-                }
-
-                if (response.status.value !in (200..299) + 101) {
-                    throw ClientRequestException(
-                        response,
-                        response.status.description
-                    )
-                }
-            }
-        }
-    }
-
-    /** GET-only client: no global 401 handler (used when probing a not-yet-saved server URL). */
-    private val httpProbe by lazy {
-        createPlatformHttpClient {
-            install(ContentNegotiation) {
-                json(json)
-            }
-            install(Logging) {
-                logger = Logger.SIMPLE
-                level = LogLevel.INFO
-            }
-            val currentDevice = currentDeviceInfo()
-            val userAgent = buildLoginUserAgent(
-                osName = currentDevice.osName?.takeIfNotBlank(),
-                osVersion = currentDevice.osVersion?.takeIfNotBlank(),
-                model = currentDevice.model?.takeIfNotBlank(),
-                brand = currentDevice.brand?.takeIfNotBlank(),
-            )
-            defaultRequest {
-                header("User-Agent", userAgent)
-            }
-            HttpResponseValidator {
-                validateResponse { response ->
-                    val instanceHeader = response.headers[InstanceIdGuard.INSTANCE_ID_HEADER]
-                    runCatching {
-                        InstanceIdGuard.onResponseHeader(instanceHeader)
-                    }
-                    if (response.status.value !in (200..299) + 101) {
-                        throw ClientRequestException(
-                            response,
-                            response.status.description,
-                        )
-                    }
-                }
-            }
-        }
+    fun rebuildHttpClients() {
+        HttpClients.rebuildHttpClients()
     }
 
     // --- Server probe ---
@@ -345,9 +247,10 @@ object ApiClient {
     }
 
     /** Minimal TCP/HTTP check: true if a GET succeeds without throwing (any HTTP status). */
-    suspend fun probeHttpGet(url: String): Boolean =
+    suspend fun probeHttpGet(url: String, bypassProxy: Boolean = false): Boolean =
         runCatching {
-            httpProbe.get(url.trim())
+            val client = if (bypassProxy) HttpClients.callDirectHttp else httpProbe
+            client.get(url.trim())
         }.isSuccess
 
     sealed interface CheckAuthResult {
@@ -424,7 +327,7 @@ object ApiClient {
             .replace(".", "_")
             .trim('_')
 
-    private fun buildLoginUserAgent(
+    internal fun buildLoginUserAgent(
         osName: String?,
         osVersion: String?,
         model: String?,
@@ -451,14 +354,14 @@ object ApiClient {
     var user: User? = null
 
     @Volatile
-    private var logoutInProgress = false
+    internal var logoutInProgress = false
 
     var onAuthError: (() -> Unit)? = null
 
     private fun getSuspensionReasonFromForbiddenResponse(response: HttpResponse): String? =
         response.headers["suspension_reason"]?.trim()?.takeIf { it.isNotBlank() }
 
-    private fun handleForbiddenAsPotentialSuspension(response: HttpResponse) {
+    internal fun handleForbiddenAsPotentialSuspension(response: HttpResponse) {
         if (response.status.value != 403) return
         getSuspensionReasonFromForbiddenResponse(response)?.let { reason ->
             setSuspended(reason)
@@ -1870,7 +1773,8 @@ object ApiClient {
         if (_suspensionState.value.isSuspended) {
             throw IllegalStateException("Suspended")
         }
-        return http
+        val client = if (ProxyRuntime.needsDirectBypassForCalls) HttpClients.callDirectHttp else http
+        return client
             .post("${ServerConfig.apiBaseUrl}/livekit/token") {
                 contentType(ContentType.Application.Json)
                 setBody(LiveKitTokenRequest(peerUserId = peerUserId, roomName = roomName))

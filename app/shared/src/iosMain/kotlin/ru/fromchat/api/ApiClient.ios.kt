@@ -7,10 +7,15 @@ import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import ru.fromchat.network.proxy.ProxyRoute
+import ru.fromchat.network.proxy.ProxyRuntime
+import ru.fromchat.network.proxy.configureEngineProxy
 
 actual fun createPlatformHttpClient(
-    block: HttpClientConfig<*>.() -> Unit
+    proxyRoute: ProxyRoute?,
+    block: HttpClientConfig<*>.() -> Unit,
 ): HttpClient {
+    val route = proxyRoute ?: ProxyRuntime.currentRoute
     return HttpClient(Darwin) {
         engine {
             configureRequest {
@@ -35,6 +40,7 @@ actual fun createPlatformHttpClient(
             socketTimeoutMillis = 30_000
         }
 
+        configureEngineProxy(this, route)
         block(this)
     }
 }
