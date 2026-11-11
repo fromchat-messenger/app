@@ -31,6 +31,7 @@ import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexConfirmScre
 import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexDoneScreen
 import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexOAuthScreen
 import ru.fromchat.ui.main.settings.account.delete.DeleteAccountScreen
+import ru.fromchat.ui.main.settings.proxy.AddProxyFlowScreen
 import ru.fromchat.ui.main.settings.proxy.ProxyScreen
 import ru.fromchat.ui.main.settings.server.ServerConfigScreen
 import ru.fromchat.ui.main.desktop.detailPaneShowBackButton
@@ -296,7 +297,25 @@ fun NavGraphBuilder.settingsDetailDestinations(
     }
 
     composable(SettingsRoutes.Proxy) {
-        ProxyScreen(onBack = { navController.navigateUp() })
+        ProxyScreen(
+            onBack = { navController.navigateUp() },
+            onAddProxy = {
+                navController.navigate(SettingsRoutes.ProxyAdd) {
+                    launchSingleTop = true
+                }
+            },
+        )
+    }
+
+    composable(SettingsRoutes.ProxyAdd) {
+        AddProxyFlowScreen(
+            onBack = { navController.navigateUp() },
+            onDone = {
+                if (!navController.popBackStack(SettingsRoutes.Proxy, false)) {
+                    navController.navigateUp()
+                }
+            },
+        )
     }
 }
 

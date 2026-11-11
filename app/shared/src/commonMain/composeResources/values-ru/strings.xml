@@ -357,6 +357,11 @@
     <string name="proxy_delete">Удалить</string>
     <string name="proxy_ping_ms">%1$d мс</string>
     <string name="proxy_check_failed">Недоступно</string>
+    <string name="proxy_screen_subtitle">Как FromChat подключается к серверу по защищённому каналу.</string>
+    <string name="proxy_step_type_title">Тип прокси</string>
+    <string name="proxy_step_type_body">HTTP, SOCKS5 или SSH-туннель как SOCKS.</string>
+    <string name="proxy_step_details_title">Параметры подключения</string>
+    <string name="proxy_step_details_body">Название, хост, порт и учётные данные при необходимости.</string>
     <string name="logout">Выйти</string>
     <string name="materialYou">Material You</string>
     <string name="materialYou_d">Цвета как на обоях. Работает с Android 12 и новее.</string>

@@ -1,24 +1,36 @@
 package ru.fromchat.ui.main.settings.proxy
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Http
+import androidx.compose.material.icons.rounded.Hub
+import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.VpnLock
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -38,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -52,6 +65,7 @@ import ru.fromchat.network.proxy.ProxyChecker
 import ru.fromchat.network.proxy.ProxyCheckTarget
 import ru.fromchat.network.proxy.ProxyRuntime
 import ru.fromchat.network.proxy.ProxySelection
+import ru.fromchat.network.proxy.ProxyType
 import ru.fromchat.network.proxy.SavedProxy
 import ru.fromchat.network.proxy.systemProxyAvailable
 import ru.fromchat.proxy_add
@@ -62,9 +76,14 @@ import ru.fromchat.proxy_direct_connection
 import ru.fromchat.proxy_label
 import ru.fromchat.proxy_no_proxies
 import ru.fromchat.proxy_ping_ms
+import ru.fromchat.proxy_screen_subtitle
 import ru.fromchat.proxy_system_proxy
+import ru.fromchat.proxy_type_http
+import ru.fromchat.proxy_type_socks
+import ru.fromchat.proxy_type_ssh
 import ru.fromchat.settings_proxy_title
 import ru.fromchat.ui.components.ExpressiveIconFrame
+import ru.fromchat.ui.components.ExpressiveTints
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.main.settings.SettingsDetailTopBar
 import ru.fromchat.ui.main.settings.rememberSettingsCollapsingScrollBehavior
@@ -85,11 +104,15 @@ private val ProxyPingSuccessColor = Color(0xFF2E7D32)
     ExperimentalFoundationApi::class,
 )
 @Composable
-fun ProxyScreen(onBack: () -> Unit) {
+fun ProxyScreen(
+    onBack: () -> Unit,
+    onAddProxy: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
     val useCollapsing = settingsDetailUseCollapsingTopBar()
     val scrollBehavior = rememberSettingsCollapsingScrollBehavior()
     val hazeState = rememberSettingsDetailHazeState()
+    val scheme = MaterialTheme.colorScheme
 
     val selection by ProxyRuntime.selection.collectAsState()
     val savedProxies by ProxyRuntime.savedProxies.collectAsState()
@@ -145,7 +168,7 @@ fun ProxyScreen(onBack: () -> Unit) {
 
     val editProxyLabel = stringResource(Res.string.proxy_label)
 
-    val sortedProxies = remember(savedProxies, customChecks.keys) {
+    val sortedProxies = remember(savedProxies, customChecks.toMap()) {
         savedProxies.sortedBy { proxy ->
             when (val result = customChecks[proxy.id]) {
                 is ProxyCheckResult.Success -> result.pingMs
@@ -156,7 +179,8 @@ fun ProxyScreen(onBack: () -> Unit) {
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = Color.Transparent,
+        contentColor = scheme.onSurface,
         topBar = {
             SettingsDetailTopBar(
                 title = stringResource(Res.string.settings_proxy_title),
@@ -167,14 +191,13 @@ fun ProxyScreen(onBack: () -> Unit) {
         },
         floatingActionButton = {
             ExtendedFloatingActionButton(
-                onClick = {
-                    editingProxy = null
-                    addSheetOpen = true
-                },
+                onClick = onAddProxy,
                 icon = {
                     Icon(Icons.Rounded.Add, contentDescription = null)
                 },
                 text = { Text(stringResource(Res.string.proxy_add)) },
+                containerColor = scheme.primaryContainer,
+                contentColor = scheme.onPrimaryContainer,
             )
         },
     ) { innerPadding ->
@@ -187,23 +210,47 @@ fun ProxyScreen(onBack: () -> Unit) {
                     Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
                 },
             contentPadding = PaddingValues(
-                top = innerPadding.calculateTopPadding() + 8.dp,
-                bottom = innerPadding.calculateBottomPadding() + 88.dp,
+                top = innerPadding.calculateTopPadding(),
+                bottom = innerPadding.calculateBottomPadding() + 96.dp,
             ),
         ) {
             item {
-                Category(margin = PaddingValues()) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp, bottom = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    ExpressiveIconFrame(
+                        icon = Icons.Rounded.VpnLock,
+                        materialPolygon = MaterialShapes.VerySunny,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(Res.string.settings_proxy_title),
+                        style = MaterialTheme.typography.headlineMedium,
+                        textAlign = TextAlign.Center,
+                    )
+                    Text(
+                        text = stringResource(Res.string.proxy_screen_subtitle),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = scheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp),
+                    )
+                }
+            }
+
+            item {
+                Category(margin = PaddingValues(horizontal = 16.dp)) {
                     ProxySelectionRow(
                         headline = stringResource(Res.string.proxy_direct_connection),
                         selected = selection is ProxySelection.Direct,
                         checkResult = directCheck,
-                        position = if (systemProxyEnabled) {
-                            ListItemPosition.START
-                        } else {
-                            ListItemPosition.START
-                        },
+                        position = ListItemPosition.START,
                         groupItemCount = if (systemProxyEnabled) 2 else 1,
                         divider = systemProxyEnabled,
+                        containerColor = scheme.surfaceContainer,
                         onSelect = {
                             scope.launch { ProxyRuntime.applySelection(ProxySelection.Direct) }
                         },
@@ -216,6 +263,7 @@ fun ProxyScreen(onBack: () -> Unit) {
                             position = ListItemPosition.END,
                             groupItemCount = 2,
                             divider = false,
+                            containerColor = scheme.surfaceContainer,
                             onSelect = {
                                 scope.launch { ProxyRuntime.applySelection(ProxySelection.System) }
                             },
@@ -228,37 +276,38 @@ fun ProxyScreen(onBack: () -> Unit) {
                 item {
                     Category(
                         title = stringResource(Res.string.proxy_custom_proxies),
-                        margin = PaddingValues(top = 8.dp),
+                        margin = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp),
                     ) {
                         Column(
                             Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 24.dp),
+                                .padding(vertical = 28.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             ExpressiveIconFrame(
                                 icon = Icons.Rounded.VpnLock,
                                 materialPolygon = MaterialShapes.Gem,
-                                modifier = Modifier.align(Alignment.CenterHorizontally),
                             )
                             Spacer(Modifier.height(12.dp))
                             Text(
                                 text = stringResource(Res.string.proxy_no_proxies),
                                 style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = scheme.onSurfaceVariant,
                                 textAlign = TextAlign.Center,
                             )
                         }
                     }
                 }
-            } else {
+            }
+
+            if (sortedProxies.isNotEmpty()) {
                 item {
                     Text(
                         text = stringResource(Res.string.proxy_custom_proxies),
-                        color = MaterialTheme.colorScheme.primary,
+                        color = scheme.primary,
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.padding(
-                            top = 8.dp,
+                            top = 12.dp,
                             start = 32.dp,
                             end = 32.dp,
                             bottom = 10.dp,
@@ -278,15 +327,20 @@ fun ProxyScreen(onBack: () -> Unit) {
                         .animateItem()
                         .padding(horizontal = 16.dp),
                     headline = proxy.label,
+                    supportingText = proxyTypeLabel(proxy.type),
                     leadingContent = {
-                        RadioButton(
-                            selected = selection == ProxySelection.Custom(proxy.id),
-                            onClick = null,
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(
+                                selected = selection == ProxySelection.Custom(proxy.id),
+                                onClick = null,
+                            )
+                            ProxyTypeIcon(proxy.type)
+                        }
                     },
                     supportingSlot = {
                         ProxyCheckStatusText(check)
                     },
+                    containerColor = scheme.surfaceContainer,
                     divider = index < sortedProxies.lastIndex,
                     position = listItemPositionInGroup(index, sortedProxies.size),
                     groupItemCount = sortedProxies.size,
@@ -306,7 +360,7 @@ fun ProxyScreen(onBack: () -> Unit) {
         }
     }
 
-    if (addSheetOpen) {
+    if (addSheetOpen && editingProxy != null) {
         val sheetState = rememberBottomSheetState(
             initialValue = SheetValue.Expanded,
             enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded),
@@ -317,6 +371,8 @@ fun ProxyScreen(onBack: () -> Unit) {
                 editingProxy = null
             },
             sheetState = sheetState,
+            dragHandle = { BottomSheetDefaults.DragHandle() },
+            containerColor = scheme.surfaceContainerHigh,
         ) {
             AddProxySheetContent(
                 editing = editingProxy,
@@ -351,6 +407,28 @@ fun ProxyScreen(onBack: () -> Unit) {
 }
 
 @Composable
+private fun proxyTypeLabel(type: ProxyType): String = when (type) {
+    ProxyType.HTTP -> stringResource(Res.string.proxy_type_http)
+    ProxyType.SOCKS5 -> stringResource(Res.string.proxy_type_socks)
+    ProxyType.SSH -> stringResource(Res.string.proxy_type_ssh)
+}
+
+@Composable
+private fun ProxyTypeIcon(type: ProxyType) {
+    val (icon, tint) = when (type) {
+        ProxyType.HTTP -> Icons.Rounded.Http to ExpressiveTints.Cyan
+        ProxyType.SOCKS5 -> Icons.Rounded.Hub to ExpressiveTints.Blue
+        ProxyType.SSH -> Icons.Rounded.Terminal to ExpressiveTints.Purple
+    }
+    Icon(
+        imageVector = icon,
+        contentDescription = null,
+        tint = tint.foreground,
+        modifier = Modifier.size(22.dp),
+    )
+}
+
+@Composable
 private fun ProxySelectionRow(
     headline: String,
     selected: Boolean,
@@ -358,10 +436,12 @@ private fun ProxySelectionRow(
     position: ListItemPosition,
     groupItemCount: Int,
     divider: Boolean,
+    containerColor: Color,
     onSelect: () -> Unit,
 ) {
     ListItem(
         headline = headline,
+        containerColor = containerColor,
         leadingContent = {
             RadioButton(selected = selected, onClick = null)
         },
@@ -377,32 +457,46 @@ private fun ProxySelectionRow(
     )
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ProxyCheckStatusText(result: ProxyCheckResult) {
     val scheme = MaterialTheme.colorScheme
-    when (result) {
-        ProxyCheckResult.Checking -> {
-            Text(
-                text = stringResource(Res.string.proxy_checking),
-                style = MaterialTheme.typography.bodyMedium,
-                color = scheme.onSurface,
-            )
-        }
+    AnimatedContent(
+        targetState = result,
+        transitionSpec = { fadeIn() togetherWith fadeOut() },
+        label = "proxyCheck",
+    ) { state ->
+        when (state) {
+            ProxyCheckResult.Checking -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    LoadingIndicator(
+                        modifier = Modifier
+                            .size(18.dp)
+                            .padding(end = 6.dp),
+                    )
+                    Text(
+                        text = stringResource(Res.string.proxy_checking),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = scheme.onSurface,
+                    )
+                }
+            }
 
-        is ProxyCheckResult.Success -> {
-            Text(
-                text = stringResource(Res.string.proxy_ping_ms, result.pingMs),
-                style = MaterialTheme.typography.bodyMedium,
-                color = ProxyPingSuccessColor,
-            )
-        }
+            is ProxyCheckResult.Success -> {
+                Text(
+                    text = stringResource(Res.string.proxy_ping_ms, state.pingMs),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ProxyPingSuccessColor,
+                )
+            }
 
-        is ProxyCheckResult.Failed -> {
-            Text(
-                text = stringResource(Res.string.proxy_check_failed),
-                style = MaterialTheme.typography.bodyMedium,
-                color = scheme.error,
-            )
+            is ProxyCheckResult.Failed -> {
+                Text(
+                    text = stringResource(Res.string.proxy_check_failed),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = scheme.error,
+                )
+            }
         }
     }
 }
