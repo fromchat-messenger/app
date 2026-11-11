@@ -16,6 +16,7 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.VpnLock
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TopAppBar
@@ -49,6 +50,8 @@ import ru.fromchat.settings_category_notifications_d
 import ru.fromchat.settings_hub_about_sub
 import ru.fromchat.settings_hub_logs_sub
 import ru.fromchat.settings_hub_profile_sub
+import ru.fromchat.settings_proxy
+import ru.fromchat.settings_proxy_d
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.components.ExpressiveListItem
@@ -174,6 +177,15 @@ fun SettingsTab() {
                     headline = stringResource(Res.string.change_server),
                     supportingText = stringResource(Res.string.change_server_d),
                     onClick = { openDetail(SettingsRoutes.ServerConfig) },
+                    divider = true
+                )
+
+                ExpressiveListItem(
+                    icon = Icons.Rounded.VpnLock,
+                    iconPreset = ExpressiveTints.Cyan,
+                    headline = stringResource(Res.string.settings_proxy),
+                    supportingText = stringResource(Res.string.settings_proxy_d),
+                    onClick = { openDetail(SettingsRoutes.Proxy) },
                     divider = true
                 )
 

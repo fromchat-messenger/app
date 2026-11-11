@@ -31,6 +31,7 @@ import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexConfirmScre
 import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexDoneScreen
 import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexOAuthScreen
 import ru.fromchat.ui.main.settings.account.delete.DeleteAccountScreen
+import ru.fromchat.ui.main.settings.proxy.ProxyScreen
 import ru.fromchat.ui.main.settings.server.ServerConfigScreen
 import ru.fromchat.ui.main.desktop.detailPaneShowBackButton
 import ru.fromchat.ui.profile.EditProfileFocusField
@@ -292,6 +293,10 @@ fun NavGraphBuilder.settingsDetailDestinations(
     // Same route string as pre-auth server config on the root graph; fine on a nested graph.
     composable(SettingsRoutes.ServerConfig) {
         ServerConfigScreen(rootNavController = rootNavController)
+    }
+
+    composable(SettingsRoutes.Proxy) {
+        ProxyScreen(onBack = { navController.navigateUp() })
     }
 }
 
