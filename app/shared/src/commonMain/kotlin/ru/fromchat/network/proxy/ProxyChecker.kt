@@ -17,10 +17,14 @@ private const val MAX_CUSTOM_PROXIES_TO_CHECK = 10
 
 object ProxyChecker {
     suspend fun checkProxy(endpoint: ProxyCheckTarget): ProxyCheckResult {
-        val route = ProxyRuntime.routeForCheckTarget(endpoint) ?: return ProxyCheckResult.Failed("Unknown proxy")
-        if (route is ProxyRoute.Direct) {
-            return checkWithRoute(ProxyRoute.Direct)
+        if (endpoint is ProxyCheckTarget.SavedProxyById) {
+            val proxy = ProxyStore.readProxies().firstOrNull { it.id == endpoint.id }
+                ?: return ProxyCheckResult.Failed("Unknown proxy")
+            if (proxy.type == ProxyType.SSH) {
+                return checkSshSavedProxy(proxy)
+            }
         }
+        val route = ProxyRuntime.routeForCheckTarget(endpoint) ?: return ProxyCheckResult.Failed("Unknown proxy")
         return checkWithRoute(route)
     }
 
@@ -43,6 +47,33 @@ object ProxyChecker {
                 }
             }
         }.awaitAll().toMap()
+    }
+
+    private suspend fun checkSshSavedProxy(proxy: SavedProxy): ProxyCheckResult {
+        val user = proxy.user?.trim().orEmpty()
+        if (user.isEmpty()) return ProxyCheckResult.Failed("SSH user required")
+        val forwarder = SshDynamicSocksForwarder(
+            host = proxy.host,
+            sshPort = proxy.sshPort,
+            username = user,
+            authType = proxy.sshAuthType,
+            password = ProxyStore.readPassword(proxy.id),
+            privateKeyPem = ProxyStore.readPrivateKey(proxy.id),
+        )
+        val localPort = runCatching { forwarder.start() }.getOrElse {
+            return ProxyCheckResult.Failed(it.message)
+        }
+        return try {
+            checkWithRoute(
+                ProxyRoute.Custom(
+                    endpointType = ProxyType.SOCKS5,
+                    host = "127.0.0.1",
+                    port = localPort,
+                ),
+            )
+        } finally {
+            forwarder.stop()
+        }
     }
 
     private suspend fun checkWithRoute(route: ProxyRoute): ProxyCheckResult {

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -48,6 +49,7 @@ import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.network.proxy.ProxyCheckResult
 import ru.fromchat.network.proxy.ProxyChecker
+import ru.fromchat.network.proxy.ProxyCheckTarget
 import ru.fromchat.network.proxy.ProxyRuntime
 import ru.fromchat.network.proxy.ProxySelection
 import ru.fromchat.network.proxy.SavedProxy
@@ -77,7 +79,11 @@ import ru.fromchat.utils.conditional
 
 private val ProxyPingSuccessColor = Color(0xFF2E7D32)
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(
+    ExperimentalMaterial3Api::class,
+    ExperimentalMaterial3ExpressiveApi::class,
+    ExperimentalFoundationApi::class,
+)
 @Composable
 fun ProxyScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
@@ -109,12 +115,15 @@ fun ProxyScreen(onBack: () -> Unit) {
                 if (systemProxyEnabled) {
                     add(async { systemCheck = ProxyChecker.checkSystem() })
                 }
-                add(
-                    async {
-                        val results = ProxyChecker.checkAllSavedProxies()
-                        results.forEach { (id, result) -> customChecks[id] = result }
-                    },
-                )
+                savedProxies.forEach { proxy ->
+                    add(
+                        async {
+                            customChecks[proxy.id] = ProxyChecker.checkProxy(
+                                ProxyCheckTarget.SavedProxyById(proxy.id),
+                            )
+                        },
+                    )
+                }
             }
             jobs.awaitAll()
         }
@@ -265,7 +274,9 @@ fun ProxyScreen(onBack: () -> Unit) {
                 val check = customChecks[proxy.id] ?: ProxyCheckResult.Checking
                 val index = sortedProxies.indexOf(proxy)
                 ListItem(
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                    modifier = Modifier
+                        .animateItem()
+                        .padding(horizontal = 16.dp),
                     headline = proxy.label,
                     leadingContent = {
                         RadioButton(

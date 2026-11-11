@@ -184,27 +184,6 @@ object ProxyRuntime {
             user = proxy.user,
             password = ProxyStore.readPassword(proxy.id),
         )
-        ProxyType.SSH -> {
-            val user = proxy.user?.trim().orEmpty()
-            if (user.isEmpty()) return null
-            val forwarder = SshDynamicSocksForwarder(
-                host = proxy.host,
-                sshPort = proxy.sshPort,
-                username = user,
-                authType = proxy.sshAuthType,
-                password = ProxyStore.readPassword(proxy.id),
-                privateKeyPem = ProxyStore.readPrivateKey(proxy.id),
-            )
-            val localPort = runCatching { forwarder.start() }.getOrNull() ?: return null
-            try {
-                ProxyRoute.Custom(
-                    endpointType = ProxyType.SOCKS5,
-                    host = "127.0.0.1",
-                    port = localPort,
-                )
-            } finally {
-                forwarder.stop()
-            }
-        }
+        ProxyType.SSH -> null
     }
 }
