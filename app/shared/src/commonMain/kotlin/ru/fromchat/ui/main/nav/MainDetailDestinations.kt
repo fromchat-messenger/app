@@ -305,15 +305,10 @@ fun NavGraphBuilder.settingsDetailDestinations(
                     launchSingleTop = true
                 }
             },
-            onManageTrustedCerts = {
-                navController.navigate(SettingsRoutes.ProxyTrustedCerts) {
-                    launchSingleTop = true
-                }
-            },
         )
     }
 
-    composable(SettingsRoutes.ProxyTrustedCerts) {
+    composable(SettingsRoutes.TrustedCertificates) {
         TrustedCertificatesScreen(
             onBack = { navController.navigateUp() },
         )

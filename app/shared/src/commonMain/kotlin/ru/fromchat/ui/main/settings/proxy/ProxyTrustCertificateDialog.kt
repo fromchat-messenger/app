@@ -25,6 +25,7 @@ import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.proxy_trust_cert_body
 import ru.fromchat.proxy_trust_cert_title
+import ru.fromchat.proxy_trust_no
 import ru.fromchat.proxy_trust_once
 import ru.fromchat.proxy_trust_yes
 import ru.fromchat.ui.components.Text
@@ -33,13 +34,13 @@ import ru.fromchat.ui.components.Text
 @Composable
 fun ProxyTrustCertificateDialog(
     visible: Boolean,
-    onDismiss: () -> Unit,
     onTrustPermanent: () -> Unit,
     onTrustSession: () -> Unit,
+    onDontTrust: () -> Unit,
 ) {
     if (!visible) return
     val scheme = MaterialTheme.colorScheme
-    BasicAlertDialog(onDismissRequest = onDismiss) {
+    BasicAlertDialog(onDismissRequest = onDontTrust) {
         Surface(
             shape = MaterialTheme.shapes.extraLarge,
             color = scheme.surfaceContainerHigh,
@@ -81,6 +82,12 @@ fun ProxyTrustCertificateDialog(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(stringResource(Res.string.proxy_trust_once))
+                }
+                TextButton(
+                    onClick = onDontTrust,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(Res.string.proxy_trust_no))
                 }
             }
         }

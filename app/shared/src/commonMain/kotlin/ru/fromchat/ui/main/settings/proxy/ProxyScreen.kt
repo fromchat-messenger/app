@@ -78,11 +78,7 @@ import ru.fromchat.proxy_system_proxy
 import ru.fromchat.proxy_type_http
 import ru.fromchat.proxy_type_socks
 import ru.fromchat.proxy_type_ssh
-import ru.fromchat.proxy_trusted_certs_manage
 import ru.fromchat.settings_proxy_title
-import ru.fromchat.ui.components.ExpressiveListItem
-import ru.fromchat.ui.components.ExpressiveTints
-import androidx.compose.material.icons.rounded.VerifiedUser
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.main.settings.SettingsDetailTopBar
 import ru.fromchat.ui.main.settings.rememberSettingsCollapsingScrollBehavior
@@ -112,7 +108,6 @@ private data class PendingCertTrust(
 fun ProxyScreen(
     onBack: () -> Unit,
     onAddProxy: () -> Unit,
-    onManageTrustedCerts: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val useCollapsing = settingsDetailUseCollapsingTopBar()
@@ -272,17 +267,6 @@ fun ProxyScreen(
             }
 
             item {
-                Category(margin = PaddingValues(start = 16.dp, end = 16.dp, bottom = 8.dp)) {
-                    ExpressiveListItem(
-                        icon = Icons.Rounded.VerifiedUser,
-                        iconPreset = ExpressiveTints.Cyan,
-                        headline = stringResource(Res.string.proxy_trusted_certs_manage),
-                        onClick = onManageTrustedCerts,
-                    )
-                }
-            }
-
-            item {
                 Category(margin = PaddingValues(start = 16.dp, end = 16.dp)) {
                     ProxySelectionRow(
                         headline = stringResource(Res.string.proxy_direct_connection),
@@ -393,7 +377,7 @@ fun ProxyScreen(
 
     ProxyTrustCertificateDialog(
         visible = pendingCertTrust != null,
-        onDismiss = { pendingCertTrust = null },
+        onDontTrust = { pendingCertTrust = null },
         onTrustPermanent = {
             val pending = pendingCertTrust ?: return@ProxyTrustCertificateDialog
             ProxyTlsTrust.trustPersistently(apiHost, pending.label, pending.pem)
