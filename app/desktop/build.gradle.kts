@@ -441,7 +441,14 @@ compose.desktop {
         // Application-level, and per host: an unqualified jvmArgs() inside
         // nativeDistributions.<platform> { } lands here anyway and then leaks into every platform's
         // launcher config. See hostGpuJvmArgs().
-        jvmArgs(*(desktopMemoryJvmArgs() + hostGpuJvmArgs() + hostScalingJvmArgs()).toTypedArray())
+        jvmArgs(
+            *(desktopMemoryJvmArgs() + hostGpuJvmArgs() + hostScalingJvmArgs()).toMutableList().apply {
+                if (System.getenv("FROMCHAT_TEST_SYSTEM_PROXY") == "1") {
+                    add("-Dhttp.proxyHost=127.0.0.1")
+                    add("-Dhttp.proxyPort=18888")
+                }
+            }.toTypedArray(),
+        )
 
         buildTypes.release.proguard {
             version = proguardVersion

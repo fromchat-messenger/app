@@ -225,6 +225,7 @@ kotlin {
             implementation(libs.livekit.android)
             implementation(libs.livekit.android.compose.components)
             implementation(libs.androidx.webkit)
+            implementation(libs.sshj)
         }
 
         iosMain.dependencies {
@@ -268,6 +269,7 @@ kotlin {
                 }
             }
             implementation(libs.jna.platform)
+            implementation(libs.sshj)
         }
     }
 }

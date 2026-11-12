@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.VpnLock
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -32,6 +33,7 @@ import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.about
 import ru.fromchat.logs_title
+import ru.fromchat.settings_proxy
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.theme.extraStatusBars
 import ru.fromchat.ui.main.settings.about.LocalOpenAbout
@@ -97,6 +99,16 @@ fun PreAuthOverflowMenu() {
                 onClick = {
                     menuExpanded = false
                     openAbout()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(Res.string.settings_proxy)) },
+                leadingIcon = {
+                    Icon(Icons.Rounded.VpnLock, contentDescription = null)
+                },
+                onClick = {
+                    menuExpanded = false
+                    navController.navigate(SettingsRoutes.Proxy)
                 },
             )
             DropdownMenuItem(

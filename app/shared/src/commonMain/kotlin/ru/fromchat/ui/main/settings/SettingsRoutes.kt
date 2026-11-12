@@ -17,7 +17,11 @@ object SettingsRoutes {
     const val AccountYandexOAuth = "settings/account/yandex/oauth"
     const val AccountYandexDone = "settings/account/yandex/done"
     const val ServerConfig = "serverConfig"
+    const val Proxy = "settings/proxy"
     const val About = "about"
     const val Logs = "settings/logs"
     const val LogFiles = "settings/logs/files"
+    const val ProxyAdd = "settings/proxy/add"
+    const val TrustedCertificates = "settings/trusted-certificates"
+    const val Connection = "settings/connection"
 }
