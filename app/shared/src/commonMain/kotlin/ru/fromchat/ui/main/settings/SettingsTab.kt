@@ -44,7 +44,6 @@ import ru.fromchat.settings_category_devices
 import ru.fromchat.settings_category_devices_d
 import ru.fromchat.settings_category_notifications
 import ru.fromchat.settings_category_notifications_d
-import ru.fromchat.settings_category_app
 import ru.fromchat.settings_connection_settings
 import ru.fromchat.settings_connection_settings_d
 import ru.fromchat.settings_hub_about_sub
