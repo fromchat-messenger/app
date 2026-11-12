@@ -68,7 +68,6 @@ import ru.fromchat.proxy_add
 import ru.fromchat.proxy_certificate_issue
 import ru.fromchat.proxy_check_failed
 import ru.fromchat.proxy_checking
-import ru.fromchat.proxy_custom_proxies
 import ru.fromchat.proxy_direct_connection
 import ru.fromchat.proxy_label
 import ru.fromchat.proxy_no_proxies
@@ -300,7 +299,6 @@ fun ProxyScreen(
             if (sortedProxies.isEmpty()) {
                 item {
                     Category(
-                        title = stringResource(Res.string.proxy_custom_proxies),
                         margin = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp),
                     ) {
                         Text(
@@ -313,22 +311,6 @@ fun ProxyScreen(
                                 .padding(vertical = 28.dp),
                         )
                     }
-                }
-            }
-
-            if (sortedProxies.isNotEmpty()) {
-                item {
-                    Text(
-                        text = stringResource(Res.string.proxy_custom_proxies),
-                        color = scheme.primary,
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(
-                            top = 12.dp,
-                            start = 32.dp,
-                            end = 32.dp,
-                            bottom = 10.dp,
-                        ),
-                    )
                 }
             }
 

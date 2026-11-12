@@ -396,6 +396,9 @@
     <string name="appearance_nav_bar_show_titles_d">Показывать подпись выбранной вкладки</string>
     <string name="settings_category_server_tools">Сервер и сеть</string>
     <string name="settings_category_server_tools_d">Адрес сервера и прокси</string>
+    <string name="settings_connection_settings">Настройки подключения</string>
+    <string name="settings_connection_settings_title">Настройки подключения</string>
+    <string name="settings_connection_settings_d">Адрес сервера, прокси и доверенные сертификаты</string>
     <string name="settings_category_app">Приложение</string>
     <string name="settings_category_app_d">О приложении и журналы</string>
     <string name="settings_category_notifications">Уведомления</string>

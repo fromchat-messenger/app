@@ -23,4 +23,5 @@ object SettingsRoutes {
     const val LogFiles = "settings/logs/files"
     const val ProxyAdd = "settings/proxy/add"
     const val TrustedCertificates = "settings/trusted-certificates"
+    const val Connection = "settings/connection"
 }

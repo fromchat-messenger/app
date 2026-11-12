@@ -428,6 +428,9 @@
     <string name="appearance_nav_bar_show_titles_d">Reveal the label of the selected tab</string>
     <string name="settings_category_server_tools">Server and network</string>
     <string name="settings_category_server_tools_d">Server address and proxy</string>
+    <string name="settings_connection_settings">Connection settings</string>
+    <string name="settings_connection_settings_title">Connection settings</string>
+    <string name="settings_connection_settings_d">Server address, proxy, and trusted certificates</string>
     <string name="settings_category_app">App</string>
     <string name="settings_category_app_d">About and debug logs</string>
     <string name="settings_category_notifications">Notifications</string>

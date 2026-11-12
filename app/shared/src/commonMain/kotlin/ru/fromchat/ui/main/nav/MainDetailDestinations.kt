@@ -32,6 +32,7 @@ import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexDoneScreen
 import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexOAuthScreen
 import ru.fromchat.ui.main.settings.account.delete.DeleteAccountScreen
 import ru.fromchat.ui.main.settings.proxy.AddProxyFlowScreen
+import ru.fromchat.ui.main.settings.ConnectionSettingsScreen
 import ru.fromchat.ui.main.settings.proxy.ProxyScreen
 import ru.fromchat.ui.main.settings.proxy.TrustedCertificatesScreen
 import ru.fromchat.ui.main.settings.server.ServerConfigScreen
@@ -293,6 +294,23 @@ fun NavGraphBuilder.settingsDetailDestinations(
     }
 
     // Same route string as pre-auth server config on the root graph; fine on a nested graph.
+    composable(SettingsRoutes.Connection) {
+        ConnectionSettingsScreen(
+            onBack = { navController.navigateUp() },
+            onChangeServer = { navController.navigate(SettingsRoutes.ServerConfig) },
+            onProxy = {
+                navController.navigate(SettingsRoutes.Proxy) {
+                    launchSingleTop = true
+                }
+            },
+            onTrustedCertificates = {
+                navController.navigate(SettingsRoutes.TrustedCertificates) {
+                    launchSingleTop = true
+                }
+            },
+        )
+    }
+
     composable(SettingsRoutes.ServerConfig) {
         ServerConfigScreen(rootNavController = rootNavController)
     }
