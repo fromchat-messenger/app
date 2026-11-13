@@ -16,6 +16,27 @@ import ru.fromchat.utils.components.ListItemContextMenuScope
 import ru.fromchat.utils.components.ListItemPosition
 import tech.annexflow.constraintlayout.compose.ConstraintLayoutScope
 
+/** 40dp expressive icon tile used in settings lists (e.g. proxy rows). */
+@Composable
+fun ExpressiveListIconChip(
+    icon: ImageVector,
+    iconPreset: IconPreset = ExpressiveTints.Purple,
+) {
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .background(iconPreset.background, shape = CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = iconPreset.foreground,
+            modifier = Modifier.size(26.dp),
+        )
+    }
+}
+
 /**
  * A [ListItem] with the "expressive" settings-card look: a soft colored icon
  * chip (40dp tile, full-round corners) behind a 26dp glyph, on a
@@ -46,19 +67,7 @@ fun ExpressiveListItem(
         headline = headline,
         supportingText = supportingText,
         leadingContent = {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(iconPreset.background, shape = CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = iconPreset.foreground,
-                    modifier = Modifier.size(26.dp),
-                )
-            }
+            ExpressiveListIconChip(icon = icon, iconPreset = iconPreset)
         },
         trailingContent = trailingContent,
         containerColor = MaterialTheme.colorScheme.surfaceContainer,

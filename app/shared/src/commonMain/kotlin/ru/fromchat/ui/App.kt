@@ -281,6 +281,8 @@ fun App(
 
     LaunchedEffect(Unit) {
         runCatching { ServerConfig.initialize() }
+        runCatching { ru.fromchat.network.proxy.ProxyRuntime.initialize() }
+        runCatching { ApiClient.rebuildHttpClients() }
         withContext(messageDatabaseDispatcher) {
             runCatching { ensureFromChatCacheGeneration() }
             runCatching { ApiClient.loadPersistedData() }

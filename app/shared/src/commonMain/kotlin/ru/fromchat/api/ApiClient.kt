@@ -154,6 +154,8 @@ import ru.fromchat.api.sync.UpdateSyncManager
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.config.Settings
 import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.network.proxy.ProxyRoute
+import ru.fromchat.network.proxy.ProxyRuntime
 import kotlin.concurrent.Volatile
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -162,7 +164,8 @@ import kotlin.time.Duration.Companion.milliseconds
  * The config block is applied to configure plugins like WebSockets, JSON, etc.
  */
 expect fun createPlatformHttpClient(
-    block: io.ktor.client.HttpClientConfig<*>.() -> Unit = {}
+    proxyRoute: ProxyRoute? = null,
+    block: io.ktor.client.HttpClientConfig<*>.() -> Unit = {},
 ): HttpClient
 
 object ApiClient {
@@ -242,91 +245,18 @@ object ApiClient {
 
     // --- HTTP clients ---
 
-    val http = createPlatformHttpClient {
-        install(ContentNegotiation) {
-            json(json)
-        }
+    val http: HttpClient
+        get() = HttpClients.http
 
-        install(Logging) {
-            logger = Logger.SIMPLE
-            level = LogLevel.INFO
-        }
+    private val httpProbe: HttpClient
+        get() = HttpClients.httpProbe
 
-        install(WebSockets) {
-            pingInterval = 5000.milliseconds
-        }
-
-        val currentDevice = currentDeviceInfo()
-        val osName = currentDevice.osName?.takeIfNotBlank()
-        val osVersion = currentDevice.osVersion?.takeIfNotBlank()
-        val brand = currentDevice.brand?.takeIfNotBlank()
-        val model = currentDevice.model?.takeIfNotBlank()
-        val userAgent = buildLoginUserAgent(
-            osName = osName,
-            osVersion = osVersion,
-            model = model,
-            brand = brand
-        )
-
-        defaultRequest {
-            token?.let { authToken ->
-                bearerAuth(authToken)
-            }
-            header("User-Agent", userAgent)
-            if (IncognitoMode.active) {
-                header(INCOGNITO_REQUEST_HEADER, "1")
-            }
-        }
-
-        // Handle HTTP auth errors globally.
-        // - 401 => token/session invalid, clear auth state and trigger auth recovery flow.
-        // - 403 => forbidden, keep session intact (used for read-only/suspension workflows).
-        HttpResponseValidator {
-            validateResponse { response ->
-                val instanceHeader = response.headers[InstanceIdGuard.INSTANCE_ID_HEADER]
-                runCatching {
-                    ServerConfig.serverConfig.value?.let { cfg ->
-                        InstanceIdGuard.onResponseHeader(instanceHeader, cfg)
-                    }
-                }
-                val path = response.call.request.url.encodedPath
-                val isLogoutCall = path.endsWith("/logout")
-                if (response.status.value == 401) {
-                    val isCredentialCheck =
-                        path.endsWith("/auth/steps/password") ||
-                            path.endsWith("/auth/steps/register/confirm")
-                    // Logout 401 is expected when the session is already gone — never treat as
-                    // a fresh auth failure or block local wipe.
-                    if (!isCredentialCheck && !isLogoutCall && !logoutInProgress) {
-                        MainScope().launch {
-                            runCatching { WebSocketManager.disconnect() }
-                            runCatching { clearLocalSession() }
-                            onAuthError?.invoke()
-                        }
-                    }
-                }
-                if (response.status.value == 403) {
-                    handleForbiddenAsPotentialSuspension(response)
-                }
-
-                if (response.status.value in 200..299 && token != null) {
-                    WebSocketManager.onServerLikelyReachable()
-                }
-
-                if (response.status.value !in (200..299) + 101) {
-                    // Best-effort logout must not throw — local session wipe still continues.
-                    if (isLogoutCall) return@validateResponse
-                    throw ClientRequestException(
-                        response,
-                        response.status.description
-                    )
-                }
-            }
-        }
+    fun rebuildHttpClients() {
+        HttpClients.rebuildHttpClients()
     }
 
     /** GET-only client: no global 401 handler (used when probing a not-yet-saved server URL). */
-    private fun HttpClientConfig<*>.configureHttpProbeClient() {
+    internal fun HttpClientConfig<*>.configureHttpProbeClient() {
         install(ContentNegotiation) {
             json(json)
         }
@@ -367,14 +297,10 @@ object ApiClient {
         }
     }
 
-    private val httpProbe by lazy {
-        createPlatformHttpClient {
+    private suspend inline fun <T> withEphemeralHttpProbe(crossinline request: suspend HttpClient.() -> T): T {
+        val client = createPlatformHttpClient(proxyRoute = ProxyRuntime.currentRoute) {
             configureHttpProbeClient()
         }
-    }
-
-    private suspend inline fun <T> withEphemeralHttpProbe(crossinline request: suspend HttpClient.() -> T): T {
-        val client = createPlatformHttpClient { configureHttpProbeClient() }
         return try {
             client.request()
         } finally {
@@ -390,9 +316,10 @@ object ApiClient {
     }
 
     /** Minimal TCP/HTTP check: true if a GET succeeds without throwing (any HTTP status). */
-    suspend fun probeHttpGet(url: String): Boolean =
+    suspend fun probeHttpGet(url: String, bypassProxy: Boolean = false): Boolean =
         runCatching {
-            httpProbe.get(url.trim())
+            val client = if (bypassProxy) HttpClients.callDirectHttp else httpProbe
+            client.get(url.trim())
         }.isSuccess
 
     sealed interface CheckAuthResult {
@@ -469,7 +396,7 @@ object ApiClient {
             .replace(".", "_")
             .trim('_')
 
-    private fun buildLoginUserAgent(
+    internal fun buildLoginUserAgent(
         osName: String?,
         osVersion: String?,
         model: String?,
@@ -501,7 +428,7 @@ object ApiClient {
         private set
 
     @Volatile
-    private var logoutInProgress = false
+    internal var logoutInProgress = false
 
     var onAuthError: (() -> Unit)? = null
 
@@ -511,7 +438,7 @@ object ApiClient {
     private fun getSuspensionReasonFromForbiddenResponse(response: HttpResponse): String? =
         response.headers["suspension_reason"]?.trim()?.takeIf { it.isNotBlank() }
 
-    private fun handleForbiddenAsPotentialSuspension(response: HttpResponse) {
+    internal fun handleForbiddenAsPotentialSuspension(response: HttpResponse) {
         if (response.status.value != 403) return
         getSuspensionReasonFromForbiddenResponse(response)?.let { reason ->
             setSuspended(reason)
