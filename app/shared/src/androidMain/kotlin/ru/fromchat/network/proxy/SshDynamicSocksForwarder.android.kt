@@ -1,10 +1,9 @@
 package ru.fromchat.network.proxy
 
 import net.schmizz.sshj.SSHClient
+import ru.fromchat.network.proxy.ssh.keyProviderFromPem
 import net.schmizz.sshj.transport.verification.PromiscuousVerifier
-import net.schmizz.sshj.userauth.keyprovider.OpenSSHKeyFile
 import java.io.IOException
-import java.io.StringReader
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -23,6 +22,7 @@ actual class SshDynamicSocksForwarder actual constructor(
     private val authType: SshAuthType,
     private val password: String?,
     private val privateKeyPem: String?,
+    private val privateKeyPassphrase: String?,
 ) {
     private var sshClient: SSHClient? = null
     private var serverSocket: ServerSocket? = null
@@ -39,8 +39,7 @@ actual class SshDynamicSocksForwarder actual constructor(
         when (authType) {
             SshAuthType.Password -> ssh.authPassword(username, password.orEmpty())
             SshAuthType.PrivateKey -> {
-                val key = OpenSSHKeyFile()
-                key.init(StringReader(privateKeyPem.orEmpty()), null, null)
+                val key = keyProviderFromPem(privateKeyPem.orEmpty(), privateKeyPassphrase)
                 ssh.authPublickey(username, key)
             }
         }

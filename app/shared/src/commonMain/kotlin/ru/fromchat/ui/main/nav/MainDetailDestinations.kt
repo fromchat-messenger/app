@@ -31,6 +31,11 @@ import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexConfirmScre
 import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexDoneScreen
 import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexOAuthScreen
 import ru.fromchat.ui.main.settings.account.delete.DeleteAccountScreen
+import ru.fromchat.network.proxy.ProxyRuntime
+import ru.fromchat.network.proxy.ProxyType
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import ru.fromchat.ui.main.settings.proxy.AddProxyFlowScreen
 import ru.fromchat.ui.main.settings.ConnectionSettingsScreen
 import ru.fromchat.ui.main.settings.proxy.ProxyScreen
@@ -318,8 +323,13 @@ fun NavGraphBuilder.settingsDetailDestinations(
     composable(SettingsRoutes.Proxy) {
         ProxyScreen(
             onBack = { navController.navigateUp() },
-            onAddProxy = {
-                navController.navigate(SettingsRoutes.ProxyAdd) {
+            onAddProxy = { proxyType ->
+                navController.navigate(SettingsRoutes.proxyAdd(proxyType)) {
+                    launchSingleTop = true
+                }
+            },
+            onEditProxy = { proxyId ->
+                navController.navigate(SettingsRoutes.proxyEdit(proxyId)) {
                     launchSingleTop = true
                 }
             },
@@ -332,8 +342,43 @@ fun NavGraphBuilder.settingsDetailDestinations(
         )
     }
 
-    composable(SettingsRoutes.ProxyAdd) {
+    composable(
+        route = SettingsRoutes.ProxyAdd,
+        arguments = listOf(
+            navArgument("proxyType") { type = NavType.StringType },
+        ),
+    ) { entry ->
+        val proxyTypeName = entry.savedStateHandle.get<String>("proxyType")
+        val proxyType = ProxyType.entries.firstOrNull { it.name == proxyTypeName } ?: ProxyType.HTTP
         AddProxyFlowScreen(
+            proxyType = proxyType,
+            onBack = { navController.navigateUp() },
+            onDone = {
+                if (!navController.popBackStack(SettingsRoutes.Proxy, false)) {
+                    navController.navigateUp()
+                }
+            },
+        )
+    }
+
+    composable(
+        route = SettingsRoutes.ProxyEdit,
+        arguments = listOf(
+            navArgument("proxyId") { type = NavType.StringType },
+        ),
+    ) { entry ->
+        val proxyId = entry.savedStateHandle.get<String>("proxyId")?.trim().orEmpty()
+        val savedProxies by ProxyRuntime.savedProxies.collectAsState()
+        val editingProxy = savedProxies.firstOrNull { it.id == proxyId }
+        if (proxyId.isEmpty() || editingProxy == null) {
+            LaunchedEffect(proxyId) {
+                navController.navigateUp()
+            }
+            return@composable
+        }
+        AddProxyFlowScreen(
+            proxyType = editingProxy.type,
+            editingProxyId = proxyId,
             onBack = { navController.navigateUp() },
             onDone = {
                 if (!navController.popBackStack(SettingsRoutes.Proxy, false)) {

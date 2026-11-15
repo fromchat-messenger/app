@@ -81,9 +81,17 @@ sealed class ProxyCheckTarget {
     data class SavedProxyById(val id: String) : ProxyCheckTarget()
 }
 
+enum class ProxyCheckFailKind {
+    Generic,
+    SshAuth,
+}
+
 sealed class ProxyCheckResult {
     data object Checking : ProxyCheckResult()
     data class Success(val pingMs: Int, val instanceId: String) : ProxyCheckResult()
-    data class Failed(val reason: String? = null) : ProxyCheckResult()
+    data class Failed(
+        val reason: String? = null,
+        val kind: ProxyCheckFailKind = ProxyCheckFailKind.Generic,
+    ) : ProxyCheckResult()
     data class CertificateIssue(val pem: String, val detail: String? = null) : ProxyCheckResult()
 }

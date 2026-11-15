@@ -140,6 +140,31 @@ suspend fun probeServerEndpoint(
     port: Int,
     httpsPreferred: Boolean,
     schemeExplicit: Boolean,
+    persistBinding: Boolean = true,
+): Pair<ServerConfigData, ServerProbeResult> {
+    val previousProbeWrites = InstanceIdGuard.probeRegistryWritesEnabled
+    if (!persistBinding) {
+        InstanceIdGuard.probeRegistryWritesEnabled = false
+    }
+    try {
+        return probeServerEndpointInner(
+            host = host,
+            port = port,
+            httpsPreferred = httpsPreferred,
+            schemeExplicit = schemeExplicit,
+            persistBinding = persistBinding,
+        )
+    } finally {
+        InstanceIdGuard.probeRegistryWritesEnabled = previousProbeWrites
+    }
+}
+
+private suspend fun probeServerEndpointInner(
+    host: String,
+    port: Int,
+    httpsPreferred: Boolean,
+    schemeExplicit: Boolean,
+    persistBinding: Boolean,
 ): Pair<ServerConfigData, ServerProbeResult> {
     var lastConfig = ServerConfigData(
         serverIp = host,
@@ -174,7 +199,11 @@ suspend fun probeServerEndpoint(
                 "endpoint attempt ${index + 1}/${size} scheme=${if (https) "https" else "http"} url=$attemptUrl " +
                     "explicitScheme=$schemeExplicit",
             )
-            val (result, failure) = probeServerOnce(config, recordIncognitoTlsFailure)
+            val (result, failure) = probeServerOnce(
+                config,
+                recordIncognitoTlsFailure = recordIncognitoTlsFailure,
+                persistBinding = persistBinding,
+            )
             lastResult = result
             if (failure != null) {
                 Logger.w(
@@ -217,6 +246,7 @@ suspend fun persistPreAuthServerEndpoint(config: ServerConfigData) {
 private suspend fun probeServerOnce(
     config: ServerConfigData,
     recordIncognitoTlsFailure: Boolean = true,
+    persistBinding: Boolean = true,
 ): Pair<ServerProbeResult, Throwable?> {
     val apiBase = apiBaseUrlFor(config)
     val time = TimeSource.Monotonic.markNow()
@@ -230,6 +260,7 @@ private suspend fun probeServerOnce(
                 forceNetwork = true,
                 allowCachedOnFailure = false,
                 recordIncognitoTlsFailure = recordIncognitoTlsFailure,
+                persistBinding = persistBinding,
             )
         }.getOrElse { e ->
             if (
@@ -249,8 +280,10 @@ private suspend fun probeServerOnce(
             InstanceEncryptionStore.fetchInstanceInfo(apiBase)
         }.getOrNull()
 
-        instanceInfo?.let { info ->
-            InstanceEncryptionStore.bootstrapFromProbe(info, config)
+        if (persistBinding) {
+            instanceInfo?.let { info ->
+                InstanceEncryptionStore.bootstrapFromProbe(info, config)
+            }
         }
 
         suspend fun supported(instanceId: String): ServerProbeResult.Supported {

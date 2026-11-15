@@ -196,6 +196,7 @@ fun ServerConfigScreen(
                 port = parsed.port,
                 httpsPreferred = parsed.httpsPreferred,
                 schemeExplicit = parsed.schemeExplicit,
+                persistBinding = false,
             )
             lastProbe = probe
             lastProbedConfig = tentative
@@ -261,13 +262,17 @@ fun ServerConfigScreen(
         }
     }
 
-    suspend fun runServerEndpointProbe(parsed: ParsedServerEndpoint): Pair<ServerConfigData, ServerProbeResult> =
+    suspend fun runServerEndpointProbe(
+        parsed: ParsedServerEndpoint,
+        persistBinding: Boolean = false,
+    ): Pair<ServerConfigData, ServerProbeResult> =
         runCatching {
             probeServerEndpoint(
                 host = parsed.host,
                 port = parsed.port,
                 httpsPreferred = parsed.httpsPreferred,
                 schemeExplicit = parsed.schemeExplicit,
+                persistBinding = persistBinding,
             )
         }.getOrElse { e ->
             if (handleIncognitoProbeFailure(e, parsed.host, parsed.httpsPreferred)) {
@@ -394,7 +399,7 @@ fun ServerConfigScreen(
                                         persistPreAuthServerEndpoint(endpointOnly)
                                     }
                                     val (tentative, probe) = try {
-                                        runServerEndpointProbe(parsed)
+                                        runServerEndpointProbe(parsed, persistBinding = false)
                                     } catch (e: Exception) {
                                         withContext(Dispatchers.Main) {
                                             snackbarHostState.showSnackbar(strSnackbarApiFail)

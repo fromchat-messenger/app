@@ -2,6 +2,8 @@
 
 package ru.fromchat.ui.main.settings
 
+import ru.fromchat.network.proxy.ProxyType
+
 object SettingsRoutes {
     const val Appearance = "settings/appearance"
     const val Notifications = "settings/notifications"
@@ -21,7 +23,12 @@ object SettingsRoutes {
     const val About = "about"
     const val Logs = "settings/logs"
     const val LogFiles = "settings/logs/files"
-    const val ProxyAdd = "settings/proxy/add"
+    const val ProxyAdd = "settings/proxy/add/{proxyType}"
+    const val ProxyEdit = "settings/proxy/edit/{proxyId}"
+
+    fun proxyAdd(proxyType: ProxyType): String = "settings/proxy/add/${proxyType.name}"
+
+    fun proxyEdit(proxyId: String): String = "settings/proxy/edit/$proxyId"
     const val TrustedCertificates = "settings/trusted-certificates"
     const val Connection = "settings/connection"
 }

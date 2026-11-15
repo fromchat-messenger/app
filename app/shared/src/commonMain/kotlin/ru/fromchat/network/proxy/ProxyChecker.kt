@@ -11,6 +11,8 @@ import ru.fromchat.api.ApiClient
 import ru.fromchat.api.createProbeHttpClient
 import ru.fromchat.api.schema.server.ServerInstanceIdResponse
 import ru.fromchat.config.ServerConfig
+import ru.fromchat.network.proxy.ssh.KeyPassphraseSessionCache
+import ru.fromchat.network.proxy.ssh.proxyCheckFailKindForError
 import kotlin.time.TimeSource
 
 private const val MAX_PARALLEL_CHECKS = 10
@@ -60,9 +62,13 @@ object ProxyChecker {
             authType = proxy.sshAuthType,
             password = ProxyStore.readPassword(proxy.id),
             privateKeyPem = ProxyStore.readPrivateKey(proxy.id),
+            privateKeyPassphrase = KeyPassphraseSessionCache.get(proxy.id),
         )
-        val localPort = runCatching { forwarder.start() }.getOrElse {
-            return ProxyCheckResult.Failed(it.message)
+        val localPort = runCatching { forwarder.start() }.getOrElse { error ->
+            return ProxyCheckResult.Failed(
+                reason = error.message,
+                kind = proxyCheckFailKindForError(error),
+            )
         }
         return try {
             checkWithRoute(

@@ -111,6 +111,7 @@ import ru.fromchat.ui.components.LocalSpringOverflowMenuOverlayController
 import ru.fromchat.ui.components.SpringOverflowMenuOverlayController
 import ru.fromchat.ui.components.SpringOverflowMenuOverlayHost
 import ru.fromchat.ui.components.provideSwitchHaptics
+import ru.fromchat.ui.main.settings.proxy.ProxySshPassphraseDialogHost
 import ru.fromchat.ui.security.ConnectionSecurityDialogHost
 import ru.fromchat.ui.main.ConversationListDetailShell
 import ru.fromchat.ui.main.handleAppMenuShortcutKeyEvent
@@ -394,6 +395,7 @@ fun App(
 
     FromChatTheme {
         PlatformInteractiveKeyboardDismissEffect()
+        ProxySshPassphraseDialogHost()
         provideSwitchHaptics {
         SharedTransitionLayout {
             val navController = rememberNavController()

@@ -1,11 +1,20 @@
 package ru.fromchat.network.proxy
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import ru.fromchat.api.ApiClient
+import ru.fromchat.network.proxy.ssh.KeyPassphrasePrompt
+import ru.fromchat.network.proxy.ssh.KeyPassphraseSessionCache
+import ru.fromchat.network.proxy.ssh.KeyPassphraseSubmit
+import ru.fromchat.network.proxy.ssh.decryptAndExportPrivateKeyPem
+import ru.fromchat.network.proxy.ssh.isPassphraseFailure
+import ru.fromchat.network.proxy.ssh.privateKeyNeedsPassphrase
 
 object ProxyRuntime {
     @Volatile
@@ -22,7 +31,7 @@ object ProxyRuntime {
 
     private val applyMutex = Mutex()
 
-    private val _selection = MutableStateFlow<ProxySelection>(ProxySelection.Direct)
+    private val _selection = MutableStateFlow<ProxySelection>(defaultProxySelection())
     val selection: StateFlow<ProxySelection> = _selection.asStateFlow()
 
     private val _tunnelState = MutableStateFlow<ProxyTunnelState>(ProxyTunnelState.Idle)
@@ -35,11 +44,20 @@ object ProxyRuntime {
     val currentRoute: ProxyRoute
         get() = _currentRoute.value
 
+    private val _sshPassphrasePrompt = MutableStateFlow<KeyPassphrasePrompt?>(null)
+    val sshPassphrasePrompt: StateFlow<KeyPassphrasePrompt?> = _sshPassphrasePrompt.asStateFlow()
+
+    private var sshPassphraseDeferred: CompletableDeferred<KeyPassphraseSubmit?>? = null
+
     private var sshForwarder: SshDynamicSocksForwarder? = null
 
     fun initialize() {
         _savedProxies.value = ProxyStore.loadProxies()
-        _selection.value = ProxyStore.loadSelection()
+        val loaded = ProxyStore.loadSelection()
+        _selection.value = loaded
+        if (loaded == ProxySelection.System && !systemProxyAvailable()) {
+            _selection.value = ProxySelection.Direct
+        }
         kotlinx.coroutines.runBlocking {
             refreshEffectiveRoute(startTunnel = true)
         }
@@ -53,16 +71,28 @@ object ProxyRuntime {
         }
 
     suspend fun applySelection(selection: ProxySelection) {
-        applyMutex.withLock {
-            stopSshTunnel()
-            if (_selection.value != selection) {
-                ProxyTlsTrust.clearSession()
+        withContext(Dispatchers.Default) {
+            applyMutex.withLock {
+                stopSshTunnel()
+                if (_selection.value != selection) {
+                    ProxyTlsTrust.clearSession()
+                }
+                _selection.value = selection
+                ProxyStore.setSelection(selection)
             }
-            _selection.value = selection
-            ProxyStore.setSelection(selection)
             refreshEffectiveRoute(startTunnel = true)
-            ApiClient.rebuildHttpClients()
+            applyMutex.withLock {
+                ApiClient.rebuildHttpClients()
+            }
         }
+    }
+
+    fun cancelSshKeyPassphrasePrompt() {
+        sshPassphraseDeferred?.complete(null)
+    }
+
+    fun completeSshKeyPassphrasePrompt(submit: KeyPassphraseSubmit) {
+        sshPassphraseDeferred?.complete(submit)
     }
 
     suspend fun refreshSavedProxies() {
@@ -79,9 +109,20 @@ object ProxyRuntime {
             list.add(proxy)
         }
         ProxyStore.setProxies(list)
-        ProxyStore.writePassword(proxy.id, password)
-        if (proxy.type == ProxyType.SSH) {
-            ProxyStore.writePrivateKey(proxy.id, privateKey)
+        when {
+            proxy.type == ProxyType.SSH && proxy.sshAuthType == SshAuthType.PrivateKey -> {
+                if (!privateKey.isNullOrEmpty()) {
+                    ProxyStore.writePrivateKey(proxy.id, privateKey)
+                }
+                ProxyStore.writePassword(proxy.id, null)
+            }
+            proxy.type == ProxyType.SSH -> {
+                if (!password.isNullOrEmpty()) {
+                    ProxyStore.writePassword(proxy.id, password)
+                }
+                ProxyStore.writePrivateKey(proxy.id, null)
+            }
+            !password.isNullOrEmpty() -> ProxyStore.writePassword(proxy.id, password)
         }
         _savedProxies.value = list
         if (_selection.value == ProxySelection.Custom(proxy.id)) {
@@ -93,9 +134,10 @@ object ProxyRuntime {
         val list = ProxyStore.readProxies().filterNot { it.id == id }
         ProxyStore.setProxies(list)
         ProxyStore.removeSecrets(id)
+        KeyPassphraseSessionCache.remove(id)
         _savedProxies.value = list
         if (_selection.value == ProxySelection.Custom(id)) {
-            applySelection(ProxySelection.Direct)
+            applySelection(defaultProxySelection())
         }
     }
 
@@ -106,6 +148,18 @@ object ProxyRuntime {
         _currentRoute.value = buildRoute(_selection.value, _savedProxies.value, loadSecrets = true)
     }
 
+    private suspend fun awaitSshKeyPassphrase(prompt: KeyPassphrasePrompt): KeyPassphraseSubmit? {
+        _sshPassphrasePrompt.value = prompt
+        val deferred = CompletableDeferred<KeyPassphraseSubmit?>()
+        sshPassphraseDeferred = deferred
+        return try {
+            deferred.await()
+        } finally {
+            _sshPassphrasePrompt.value = null
+            sshPassphraseDeferred = null
+        }
+    }
+
     private suspend fun prepareTunnelForSelection(selection: ProxySelection) {
         val customId = (selection as? ProxySelection.Custom)?.id ?: return
         val proxy = _savedProxies.value.firstOrNull { it.id == customId }
@@ -114,27 +168,91 @@ object ProxyRuntime {
         if (proxy.type != ProxyType.SSH) return
 
         _tunnelState.value = ProxyTunnelState.Connecting
-        val password = ProxyStore.readPassword(proxy.id)
-        val privateKey = ProxyStore.readPrivateKey(proxy.id)
         val user = proxy.user?.trim().orEmpty()
         if (user.isEmpty()) {
             _tunnelState.value = ProxyTunnelState.Error("SSH user required")
             return
         }
-        runCatching {
-            val forwarder = SshDynamicSocksForwarder(
-                host = proxy.host,
-                sshPort = proxy.sshPort,
-                username = user,
-                authType = proxy.sshAuthType,
-                password = password,
-                privateKeyPem = privateKey,
-            )
-            val localPort = forwarder.start()
-            sshForwarder = forwarder
-            _tunnelState.value = ProxyTunnelState.Active(localPort)
-        }.onFailure { e ->
-            _tunnelState.value = ProxyTunnelState.Error(e.message ?: e::class.simpleName.orEmpty())
+
+        while (true) {
+            val storedPem = ProxyStore.readPrivateKey(proxy.id)
+            val password = ProxyStore.readPassword(proxy.id)
+            var keyPem = storedPem
+            var keyPassphrase: String? = null
+
+            if (proxy.sshAuthType == SshAuthType.PrivateKey) {
+                val pem = storedPem?.takeIf { it.isNotBlank() }
+                if (pem == null) {
+                    _tunnelState.value = ProxyTunnelState.Error("SSH private key required")
+                    return
+                }
+                keyPem = pem
+                if (privateKeyNeedsPassphrase(pem)) {
+                    keyPassphrase = KeyPassphraseSessionCache.get(proxy.id)
+                        if (keyPassphrase == null) {
+                        val submit = awaitSshKeyPassphrase(
+                            KeyPassphrasePrompt(proxyId = proxy.id, proxyLabel = proxy.label),
+                        )
+                        if (submit == null) {
+                            _tunnelState.value = ProxyTunnelState.Error("Passphrase required")
+                            return
+                        }
+                        keyPassphrase = submit.passphrase
+                        if (submit.saveDecrypted) {
+                            runCatching {
+                                val decrypted = withContext(Dispatchers.Default) {
+                                    decryptAndExportPrivateKeyPem(pem, submit.passphrase)
+                                }
+                                ProxyStore.writePrivateKey(proxy.id, decrypted)
+                                keyPem = decrypted
+                                keyPassphrase = null
+                            }.onFailure {
+                                KeyPassphraseSessionCache.remove(proxy.id)
+                                _tunnelState.value = ProxyTunnelState.Error(it.message ?: "Decrypt failed")
+                                return
+                            }
+                        }
+                    }
+                }
+            }
+
+            val connectResult = runCatching {
+                withContext(Dispatchers.IO) {
+                    val forwarder = SshDynamicSocksForwarder(
+                        host = proxy.host,
+                        sshPort = proxy.sshPort,
+                        username = user,
+                        authType = proxy.sshAuthType,
+                        password = password,
+                        privateKeyPem = keyPem,
+                        privateKeyPassphrase = keyPassphrase,
+                    )
+                    val localPort = forwarder.start()
+                    forwarder to localPort
+                }
+            }
+
+            connectResult.onSuccess { (forwarder, localPort) ->
+                sshForwarder = forwarder
+                if (keyPassphrase != null) {
+                    KeyPassphraseSessionCache.put(proxy.id, keyPassphrase)
+                }
+                _tunnelState.value = ProxyTunnelState.Active(localPort)
+                return
+            }
+
+            val error = connectResult.exceptionOrNull()
+            val message = error?.message ?: error?.javaClass?.simpleName.orEmpty()
+            if (
+                proxy.sshAuthType == SshAuthType.PrivateKey &&
+                keyPassphrase != null &&
+                isPassphraseFailure(message)
+            ) {
+                KeyPassphraseSessionCache.remove(proxy.id)
+                continue
+            }
+            _tunnelState.value = ProxyTunnelState.Error(message)
+            return
         }
     }
 
@@ -151,7 +269,7 @@ object ProxyRuntime {
     ): ProxyRoute =
         when (selection) {
             ProxySelection.Direct -> ProxyRoute.Direct
-            ProxySelection.System -> if (systemProxyAvailable()) ProxyRoute.System else ProxyRoute.Direct
+            ProxySelection.System -> ProxyRoute.System
             is ProxySelection.Custom -> {
                 val proxy = proxies.firstOrNull { it.id == selection.id } ?: return ProxyRoute.Direct
                 val password = if (loadSecrets) ProxyStore.readPassword(proxy.id) else null

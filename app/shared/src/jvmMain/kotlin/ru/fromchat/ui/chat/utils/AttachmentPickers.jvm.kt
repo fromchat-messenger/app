@@ -79,9 +79,14 @@ private fun showNativeFilePicker(
     }
     dialog.isVisible = true
     val dir = dialog.directory
-    val files = dialog.files
-    if (dir != null && files != null && files.isNotEmpty()) {
-        onResult(files.map { File(dir, it.name).absolutePath })
+    val multi = dialog.files
+    when {
+        dir != null && multi != null && multi.isNotEmpty() -> {
+            onResult(multi.map { File(dir, it.name).absolutePath })
+        }
+        dir != null && dialog.file != null -> {
+            onResult(listOf(File(dir, dialog.file).absolutePath))
+        }
     }
 }
 

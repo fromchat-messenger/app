@@ -50,8 +50,6 @@ import ru.fromchat.utils.currentWindowAdaptiveInfo
 import ru.fromchat.utils.widthSizeClass
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.blur.HazeBlurStyle
-import dev.chrisbanes.haze.blur.HazeColorEffect
 import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
@@ -80,6 +78,7 @@ import ru.fromchat.ui.components.FloatingNavItemSpec
 import ru.fromchat.ui.components.LocalPaneHazeState
 import ru.fromchat.ui.components.Text
 import ru.fromchat.ui.theme.extraStatusBars
+import ru.fromchat.ui.components.ContextMenuBlurLayer
 import ru.fromchat.ui.main.chats.ChatContextMenuOverlayController
 import ru.fromchat.ui.main.chats.ChatContextMenuOverlayHost
 import ru.fromchat.ui.main.chats.ChatsSearchScreen
@@ -456,7 +455,7 @@ fun MainScreen(
         }
 
         if (chatMenuBlurProgress > 0f) {
-            ChatContextMenuBlurLayer(
+            ContextMenuBlurLayer(
                 hazeState = contextMenuHazeState,
                 blurProgress = chatMenuBlurProgress,
                 modifier = Modifier.zIndex(2f),
@@ -505,34 +504,3 @@ fun MainScreen(
     }
 }
 
-@Composable
-private fun ChatContextMenuBlurLayer(
-    hazeState: HazeState,
-    blurProgress: Float,
-    modifier: Modifier = Modifier,
-) {
-    val progress = blurProgress.coerceIn(0f, 1f)
-    val blurRadius = 12.dp * progress
-    if (blurRadius <= 0.dp) return
-
-    // Opaque enough background so rounded chrome corners don't stay razor-sharp while
-    // interiors look frosted (Transparent + no tint left original AA edges unblurred).
-    // In-tree under the overlay (zIndex). Never use a Popup here: platform popups stack above
-    // the sharp row/menu, blur them, and intercept dismiss taps.
-    val surface = MaterialTheme.colorScheme.surfaceContainerLowest
-    val tint = HazeColorEffect.tint(surface.copy(alpha = 0.4f * progress))
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .hazeBlur(
-                input = HazeInput.Backdrop(hazeState),
-                style = HazeBlurStyle {
-                    blurRadius(blurRadius)
-                    backgroundColor(surface)
-                    colorEffects(listOf(tint))
-                    noiseFactor(0f)
-                    fallbackColorEffect(tint)
-                },
-            ),
-    )
-}

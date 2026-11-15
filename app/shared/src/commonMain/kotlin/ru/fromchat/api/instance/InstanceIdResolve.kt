@@ -39,6 +39,7 @@ suspend fun resolveInstanceId(
     forceNetwork: Boolean,
     allowCachedOnFailure: Boolean = true,
     recordIncognitoTlsFailure: Boolean = true,
+    persistBinding: Boolean = true,
 ): InstanceIdResolveResult {
     val cached = InstanceRegistryStore.getActiveInstanceIdForConfig(config)?.trim().orEmpty()
     if (!forceNetwork && cached.isNotEmpty() && isValidInstanceUuid(cached)) {
@@ -72,15 +73,21 @@ suspend fun resolveInstanceId(
     }
 
     if (cached.isEmpty()) {
-        InstanceRegistryStore.rebindServerInstance(config, fetched)
+        if (persistBinding) {
+            InstanceRegistryStore.rebindServerInstance(config, fetched)
+        }
         return InstanceIdResolveResult.Fetched(fetched)
     }
     if (cached.equals(fetched, ignoreCase = true)) {
-        InstanceRegistryStore.registerInstanceEncountered(fetched)
+        if (persistBinding) {
+            InstanceRegistryStore.registerInstanceEncountered(fetched)
+        }
         return InstanceIdResolveResult.Fetched(fetched)
     }
-    runCatching { clearAccountCacheOnLogout(cached) }
-    InstanceRegistryStore.rebindServerInstanceOnMismatch(config, cached, fetched)
+    if (persistBinding) {
+        runCatching { clearAccountCacheOnLogout(cached) }
+        InstanceRegistryStore.rebindServerInstanceOnMismatch(config, cached, fetched)
+    }
     return InstanceIdResolveResult.InstanceIdChanged(cached, fetched)
 }
 

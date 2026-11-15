@@ -20,11 +20,17 @@ object InstanceIdGuard {
     @Volatile
     var probeConfig: ServerConfigData? = null
 
+    /** When false, server-endpoint probes must not mutate instance registry / active instance. */
+    @Volatile
+    var probeRegistryWritesEnabled: Boolean = true
+
     fun onResponseHeader(headerValue: String?, config: ServerConfigData? = null) {
         val raw = headerValue?.trim().orEmpty()
         if (raw.isEmpty() || !isValidInstanceUuid(raw)) return
         val cfg = config ?: probeConfig ?: return
+        if (probeConfig != null && config == null && !probeRegistryWritesEnabled) return
         scope.launch {
+            if (probeConfig != null && config == null && !probeRegistryWritesEnabled) return@launch
             val bound = InstanceRegistryStore.getActiveInstanceIdForConfig(cfg)?.trim().orEmpty()
             when {
                 bound.isEmpty() -> InstanceRegistryStore.rebindServerInstance(cfg, raw)

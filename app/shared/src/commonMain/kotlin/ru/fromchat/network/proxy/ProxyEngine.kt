@@ -16,6 +16,7 @@ expect class SshDynamicSocksForwarder(
     authType: SshAuthType,
     password: String?,
     privateKeyPem: String?,
+    privateKeyPassphrase: String?,
 ) {
     fun start(): Int
     fun stop()

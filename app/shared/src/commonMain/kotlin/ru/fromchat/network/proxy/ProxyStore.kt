@@ -11,9 +11,13 @@ import kotlinx.serialization.json.Json
 import ru.fromchat.utils.settings.Settings as PlatformSettings
 import ru.fromchat.utils.settings.secureSettings
 
+fun defaultProxySelection(): ProxySelection =
+    if (systemProxyAvailable()) ProxySelection.System else ProxySelection.Direct
+
 object ProxyStore {
     private const val SAVED_PROXIES_KEY = "saved_proxies_v1"
     private const val PROXY_SELECTION_KEY = "proxy_selection_v1"
+    private const val PROXY_DIRECT_EXPLICIT_KEY = "proxy_direct_explicit_v1"
 
     private fun passwordKey(id: String) = "proxy_secret_password_$id"
     private fun privateKeyKey(id: String) = "proxy_secret_private_key_$id"
@@ -56,21 +60,43 @@ object ProxyStore {
 
     suspend fun readSelection(): ProxySelection = withContext(Dispatchers.IO) {
         val raw = settings.getString(PROXY_SELECTION_KEY, "")
-        if (raw.isEmpty()) return@withContext ProxySelection.Direct
-        runCatching {
+        if (raw.isEmpty()) return@withContext defaultProxySelection()
+        val decoded = runCatching {
             json.decodeFromString(ProxySelection.serializer(), raw)
-        }.getOrDefault(ProxySelection.Direct)
+        }.getOrDefault(defaultProxySelection())
+        if (
+            decoded == ProxySelection.Direct &&
+            systemProxyAvailable() &&
+            !settings.getBoolean(PROXY_DIRECT_EXPLICIT_KEY, false)
+        ) {
+            settings.putString(
+                PROXY_SELECTION_KEY,
+                json.encodeToString(ProxySelection.serializer(), ProxySelection.System),
+            )
+            settings.putBoolean(PROXY_DIRECT_EXPLICIT_KEY, false)
+            ProxySelection.System
+        } else {
+            decoded
+        }
     }
 
     fun saveSelection(selection: ProxySelection) {
         runIo {
             settings.putString(PROXY_SELECTION_KEY, json.encodeToString(ProxySelection.serializer(), selection))
+            settings.putBoolean(
+                PROXY_DIRECT_EXPLICIT_KEY,
+                selection == ProxySelection.Direct,
+            )
         }
     }
 
     suspend fun setSelection(selection: ProxySelection) {
         withContext(Dispatchers.IO) {
             settings.putString(PROXY_SELECTION_KEY, json.encodeToString(ProxySelection.serializer(), selection))
+            settings.putBoolean(
+                PROXY_DIRECT_EXPLICIT_KEY,
+                selection == ProxySelection.Direct,
+            )
         }
     }
 

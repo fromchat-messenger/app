@@ -1166,7 +1166,7 @@ private fun PublicChatProfileLoadedBody(
                         )
                     },
                     contextMenu = {
-                        item(Icons.Rounded.ContentCopy, labelCopy) {
+                        menuItem(Icons.Rounded.ContentCopy, labelCopy) {
                             scope.launch {
                                 clipboard.setText(resolvedProfile.bio.orEmpty())
                             }
@@ -1366,11 +1366,11 @@ private fun ProfileLoadedBody(
                 pressScale = ProfileDisplayNamePressScale,
                 onContextMenuOpen = openContextMenuHaptic,
                 contextMenu = {
-                    item(Icons.Rounded.ContentCopy, labelCopy) {
+                    menuItem(Icons.Rounded.ContentCopy, labelCopy) {
                         scope.launch { clipboard.setText(displayName) }
                     }
                     if (isOwnProfile) {
-                        item(Icons.Rounded.Edit, labelEdit) {
+                        menuItem(Icons.Rounded.Edit, labelEdit) {
                             navController.navigate(
                                 ProfileRoutes.editRoute(EditProfileFocusField.DisplayName),
                             )
@@ -1470,13 +1470,13 @@ private fun ProfileLoadedBody(
                             )
                         },
                         contextMenu = {
-                            item(Icons.Rounded.ContentCopy, labelCopy) {
+                            menuItem(Icons.Rounded.ContentCopy, labelCopy) {
                                 scope.launch {
                                     clipboard.setText(usernameForLinks.orEmpty())
                                 }
                             }
                             if (isOwnProfile) {
-                                item(Icons.Rounded.Edit, labelEdit) {
+                                menuItem(Icons.Rounded.Edit, labelEdit) {
                                     navController.navigate(
                                         ProfileRoutes.editRoute(EditProfileFocusField.Username),
                                     )
@@ -1508,7 +1508,7 @@ private fun ProfileLoadedBody(
                             )
                         },
                         contextMenu = {
-                            item(Icons.Rounded.ContentCopy, labelCopy) {
+                            menuItem(Icons.Rounded.ContentCopy, labelCopy) {
                                 scope.launch { clipboard.setText(memberSinceText) }
                             }
                         },
@@ -1541,13 +1541,13 @@ private fun ProfileLoadedBody(
                             )
                         },
                         contextMenu = {
-                            item(Icons.Rounded.ContentCopy, labelCopy) {
+                            menuItem(Icons.Rounded.ContentCopy, labelCopy) {
                                 scope.launch {
                                     clipboard.setText(resolvedProfile.bio.orEmpty())
                                 }
                             }
                             if (isOwnProfile) {
-                                item(Icons.Rounded.Edit, labelEdit) {
+                                menuItem(Icons.Rounded.Edit, labelEdit) {
                                     navController.navigate(
                                         ProfileRoutes.editRoute(EditProfileFocusField.Bio),
                                     )

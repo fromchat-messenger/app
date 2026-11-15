@@ -15,6 +15,7 @@ actual class SshDynamicSocksForwarder actual constructor(
     authType: SshAuthType,
     password: String?,
     privateKeyPem: String?,
+    privateKeyPassphrase: String?,
 ) {
     actual fun start(): Int = error("SSH dynamic forward is not available")
 
