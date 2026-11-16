@@ -4,7 +4,6 @@
  */
 package ru.fromchat.ui.components
 
-import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -19,7 +18,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -32,7 +30,6 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
 import ru.fromchat.ui.components.ChromeBackIconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -93,10 +90,8 @@ import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import org.jetbrains.compose.resources.stringResource
-import ru.fromchat.Res
-import ru.fromchat.back
-import ru.fromchat.ui.theme.extraStatusBars
+import ru.fromchat.ui.main.settings.settingsDetailScaffoldContentWindowInsets
+import ru.fromchat.ui.main.settings.settingsDetailWindowInsets
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 import kotlin.math.abs
 
@@ -147,7 +142,6 @@ val SettingsPasswordOutlineFieldShape = RoundedCornerShape(18.dp)
 class ExpressiveStepFlowState internal constructor(
     val pagerState: PagerState,
     internal val scope: CoroutineScope,
-    internal val pageCount: Int,
 ) {
     internal var predictiveFromPage by mutableStateOf<Int?>(null)
     internal var predictiveToPage by mutableStateOf<Int?>(null)
@@ -182,8 +176,8 @@ class ExpressiveStepPage(
 fun rememberExpressiveStepFlow(pageCount: Int): ExpressiveStepFlowState {
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { pageCount })
     val scope = rememberCoroutineScope()
-    return remember(pagerState, scope, pageCount) {
-        ExpressiveStepFlowState(pagerState, scope, pageCount)
+    return remember(pagerState, scope) {
+        ExpressiveStepFlowState(pagerState, scope)
     }
 }
 
@@ -331,10 +325,7 @@ fun MorphedExpressiveStepButton(
     }
 }
 
-@OptIn(
-    ExperimentalAnimationApi::class,
-    ExperimentalMaterial3Api::class,
-)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExpressiveStepFlowScaffold(
     flowState: ExpressiveStepFlowState,
@@ -344,8 +335,9 @@ fun ExpressiveStepFlowScaffold(
     trailingTopBarActions: @Composable (() -> Unit)? = null,
     hazeScaffold: Boolean = true,
     contentBackground: Color = MaterialTheme.colorScheme.background,
-    topBarWindowInsets: WindowInsets = WindowInsets.extraStatusBars,
+    topBarWindowInsets: WindowInsets? = null,
 ) {
+    val resolvedTopBarWindowInsets = topBarWindowInsets ?: settingsDetailWindowInsets()
     val pagerState = flowState.pagerState
     val scope = flowState.scope
     val pageCount = pages.size.coerceAtLeast(1)
@@ -552,7 +544,7 @@ fun ExpressiveStepFlowScaffold(
     @Composable
     fun HazeTopBar(hazeState: HazeState) {
         TopAppBar(
-            windowInsets = topBarWindowInsets,
+            windowInsets = resolvedTopBarWindowInsets,
             title = {},
             navigationIcon = {
                 ChromeBackIconButton(onClick = navigateBack)
@@ -583,7 +575,7 @@ fun ExpressiveStepFlowScaffold(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .windowInsetsPadding(topBarWindowInsets)
+                .windowInsetsPadding(resolvedTopBarWindowInsets)
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -610,7 +602,7 @@ fun ExpressiveStepFlowScaffold(
             ) {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
-                    contentWindowInsets = WindowInsets.navigationBars,
+                    contentWindowInsets = settingsDetailScaffoldContentWindowInsets(),
                     containerColor = Color.Transparent,
                     contentColor = scheme.onSurface,
                     topBar = { HazeTopBar(hazeState = hazeState) },
@@ -772,7 +764,7 @@ fun ExpressiveStepFlowScaffold(
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class, )
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun MorphedExpressiveHero(
     currentSpec: ExpressiveHeroSpec,

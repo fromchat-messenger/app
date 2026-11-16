@@ -2,11 +2,6 @@ package ru.fromchat.network.proxy
 
 import io.ktor.client.call.body
 import io.ktor.client.request.get
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.createProbeHttpClient
 import ru.fromchat.api.schema.server.ServerInstanceIdResponse
@@ -15,20 +10,18 @@ import ru.fromchat.network.proxy.ssh.KeyPassphraseSessionCache
 import ru.fromchat.network.proxy.ssh.proxyCheckFailKindForError
 import kotlin.time.TimeSource
 
-private const val MAX_PARALLEL_CHECKS = 10
-private const val MAX_CUSTOM_PROXIES_TO_CHECK = 10
-
 object ProxyChecker {
     suspend fun checkProxy(endpoint: ProxyCheckTarget): ProxyCheckResult {
         if (endpoint is ProxyCheckTarget.SavedProxyById) {
             val proxy = ProxyStore.readProxies().firstOrNull { it.id == endpoint.id }
                 ?: return ProxyCheckResult.Failed("Unknown proxy")
-            if (proxy.type == ProxyType.SSH) {
+            if (proxy is SshProxy) {
                 return checkSshSavedProxy(proxy)
             }
         }
-        val route = ProxyRuntime.routeForCheckTarget(endpoint) ?: return ProxyCheckResult.Failed("Unknown proxy")
-        return checkWithRoute(route)
+        return checkWithRoute(
+            ProxyRuntime.routeForCheckTarget(endpoint) ?: return ProxyCheckResult.Failed("Unknown proxy"),
+        )
     }
 
     suspend fun checkDirect(): ProxyCheckResult = checkWithRoute(ProxyRoute.Direct)
@@ -40,26 +33,14 @@ object ProxyChecker {
             ProxyCheckResult.Failed("System proxy unavailable")
         }
 
-    suspend fun checkAllSavedProxies(): Map<String, ProxyCheckResult> = coroutineScope {
-        val proxies = ProxyStore.readProxies().take(MAX_CUSTOM_PROXIES_TO_CHECK)
-        val semaphore = Semaphore(MAX_PARALLEL_CHECKS)
-        proxies.map { proxy ->
-            async {
-                semaphore.withPermit {
-                    proxy.id to checkProxy(ProxyCheckTarget.SavedProxyById(proxy.id))
-                }
-            }
-        }.awaitAll().toMap()
-    }
-
-    private suspend fun checkSshSavedProxy(proxy: SavedProxy): ProxyCheckResult {
-        val user = proxy.user?.trim().orEmpty()
+    private suspend fun checkSshSavedProxy(proxy: SshProxy): ProxyCheckResult {
+        val user = proxy.username?.trim().orEmpty()
         if (user.isEmpty()) return ProxyCheckResult.Failed("SSH user required")
         val forwarder = SshDynamicSocksForwarder(
             host = proxy.host,
-            sshPort = proxy.sshPort,
+            port = proxy.port,
             username = user,
-            authType = proxy.sshAuthType,
+            auth = proxy.auth,
             password = ProxyStore.readPassword(proxy.id),
             privateKeyPem = ProxyStore.readPrivateKey(proxy.id),
             privateKeyPassphrase = KeyPassphraseSessionCache.get(proxy.id),

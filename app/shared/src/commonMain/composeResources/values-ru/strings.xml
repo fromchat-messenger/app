@@ -25,7 +25,7 @@
     <string name="legal_document_load_error">Не удалось загрузить документ. Проверьте подключение к интернету и попробуйте снова.</string>
     <string name="auth_legal_notice_prefix">Регистрируясь, вы соглашаетесь с </string>
     <string name="auth_legal_notice_and"> и </string>
-    <string name="app_desc">100% бесплатный и открытый мессенджер. Поддерживает self-hosted установку на своём сервере.</string>
+    <string name="app_desc">100%% бесплатный и открытый мессенджер. Поддерживает self-hosted установку на своём сервере.</string>
     <string name="desktop_menu_file">Файл</string>
     <string name="desktop_menu_edit">Правка</string>
     <string name="desktop_menu_window">Окно</string>
@@ -64,7 +64,7 @@
     <string name="password_length_error">Пароль — от 5 до 50 символов</string>
     <string name="passwords_dont_match">Пароли не совпадают</string>
     <string name="auth_welcome_title">Добро пожаловать в FromChat</string>
-    <string name="auth_welcome_tagline">100% бесплатный мессенджер с открытым исходным кодом.</string>
+    <string name="auth_welcome_tagline">100%% бесплатный мессенджер с открытым исходным кодом.</string>
     <string name="auth_get_started">Начать</string>
     <string name="auth_server_connect_failed">Не удалось подключиться к серверу</string>
     <string name="auth_wrong_password">Неверный пароль</string>
@@ -313,9 +313,7 @@
     <string name="server_ip_label">Сервер</string>
     <string name="server_ip_hint">api.fromchat.ru или host:порт</string>
     <string name="api_port_label">Порт</string>
-    <string name="api_port_hint"></string>
     <string name="calls_port_label">Порт звонков</string>
-    <string name="calls_port_hint"></string>
     <string name="https_enabled">Защищённое соединение</string>
     <string name="server_config_https_hint">HTTPS. Отключайте только для HTTP без шифрования.</string>
     <string name="server_config_https_headline">HTTPS</string>
@@ -413,8 +411,12 @@
     <string name="proxy_ssh_key_passphrase">Passphrase ключа</string>
     <string name="proxy_ssh_passphrase_connect">Подключить</string>
     <string name="proxy_ssh_passphrase_save_decrypted">Сохранить ключ без шифрования (больше не спрашивать)</string>
-    <string name="proxy_step_details_title">Параметры подключения</string>
-    <string name="proxy_step_details_body">Название, хост, порт и учётные данные при необходимости.</string>
+    <string name="proxy_add_http_title">Добавить HTTP-прокси</string>
+    <string name="proxy_add_http_body">Самый простой тип прокси. Не работает для звонков.</string>
+    <string name="proxy_add_socks_title">Добавить SOCKS5-прокси</string>
+    <string name="proxy_add_socks_body">SOCKS5 поддерживает TCP и UDP.</string>
+    <string name="proxy_add_ssh_title">Добавить SSH-прокси</string>
+    <string name="proxy_add_ssh_body">Трафик идет через ваш SSH-сервер в зашифрованном виде. Поддерживается авторизация паролем или ключем.</string>
     <string name="logout">Выйти</string>
     <string name="materialYou">Material You</string>
     <string name="materialYou_d">Цвета как на обоях. Работает с Android 12 и новее.</string>
@@ -439,8 +441,8 @@
     <string name="appearance_nav_bar_show_titles_d">Показывать подпись выбранной вкладки</string>
     <string name="settings_category_server_tools">Сервер и сеть</string>
     <string name="settings_category_server_tools_d">Адрес сервера и прокси</string>
-    <string name="settings_connection_settings">Настройки подключения</string>
-    <string name="settings_connection_settings_title">Настройки подключения</string>
+    <string name="settings_connection_settings">Подключение</string>
+    <string name="settings_connection_settings_title">Подключение</string>
     <string name="settings_connection_settings_d">Адрес сервера, прокси и доверенные сертификаты</string>
     <string name="settings_category_app">Приложение</string>
     <string name="settings_category_app_d">О приложении и журналы</string>

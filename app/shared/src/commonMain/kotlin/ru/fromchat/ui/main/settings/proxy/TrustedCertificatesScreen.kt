@@ -9,7 +9,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -36,13 +35,13 @@ import ru.fromchat.ui.main.settings.SettingsDetailTopBar
 import ru.fromchat.ui.main.settings.rememberSettingsCollapsingScrollBehavior
 import ru.fromchat.ui.main.settings.rememberSettingsDetailHazeState
 import ru.fromchat.ui.main.settings.settingsDetailHazeSource
+import ru.fromchat.ui.main.settings.settingsDetailScaffoldContentWindowInsets
 import ru.fromchat.ui.main.settings.settingsDetailUseCollapsingTopBar
 import ru.fromchat.utils.components.ListItem
 import ru.fromchat.utils.components.listItemPositionInGroup
 import ru.fromchat.utils.conditional
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TrustedCertificatesScreen(
     onBack: () -> Unit,
@@ -60,6 +59,7 @@ fun TrustedCertificatesScreen(
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
+        contentWindowInsets = settingsDetailScaffoldContentWindowInsets(),
         containerColor = Color.Transparent,
         contentColor = scheme.onSurface,
         topBar = {

@@ -7,7 +7,6 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Http
 import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.Terminal
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButtonMenu
 import androidx.compose.material3.FloatingActionButtonMenuItem
 import androidx.compose.material3.Icon
@@ -30,7 +29,6 @@ import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.network.proxy.ProxyType
@@ -42,8 +40,8 @@ import ru.fromchat.ui.components.BackHandler
 import ru.fromchat.ui.components.Text
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.ui.unit.Dp
+import ru.fromchat.ui.main.settings.LocalSettingsDetailInDialog
+import ru.fromchat.utils.conditional
 
 private fun proxyTypeMenuIcon(type: ProxyType): ImageVector = when (type) {
     ProxyType.HTTP -> Icons.Rounded.Http
@@ -51,13 +49,10 @@ private fun proxyTypeMenuIcon(type: ProxyType): ImageVector = when (type) {
     ProxyType.SSH -> Icons.Rounded.Terminal
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BoxScope.ProxyAddFabMenu(
     listState: LazyListState,
     onAddProxy: (ProxyType) -> Unit,
-    endPadding: Dp = 16.dp,
-    bottomPadding: Dp = 16.dp,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     BackHandler(enabled = expanded) { expanded = false }
@@ -73,12 +68,10 @@ fun BoxScope.ProxyAddFabMenu(
         ProxyType.SOCKS5 to stringResource(Res.string.proxy_type_socks),
         ProxyType.SSH to stringResource(Res.string.proxy_type_ssh),
     )
-
     FloatingActionButtonMenu(
         modifier = Modifier
             .align(Alignment.BottomEnd)
-            .navigationBarsPadding()
-            .padding(end = endPadding, bottom = bottomPadding),
+            .conditional(!LocalSettingsDetailInDialog.current) { navigationBarsPadding() },
         expanded = expanded,
         button = {
             ToggleFloatingActionButton(

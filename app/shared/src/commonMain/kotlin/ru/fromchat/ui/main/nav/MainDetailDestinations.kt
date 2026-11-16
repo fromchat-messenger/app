@@ -36,7 +36,7 @@ import ru.fromchat.network.proxy.ProxyType
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import ru.fromchat.ui.main.settings.proxy.AddProxyFlowScreen
+import ru.fromchat.ui.main.settings.proxy.AddProxyScreen
 import ru.fromchat.ui.main.settings.ConnectionSettingsScreen
 import ru.fromchat.ui.main.settings.proxy.ProxyScreen
 import ru.fromchat.ui.main.settings.proxy.TrustedCertificatesScreen
@@ -298,22 +298,19 @@ fun NavGraphBuilder.settingsDetailDestinations(
         )
     }
 
-    // Same route string as pre-auth server config on the root graph; fine on a nested graph.
+    connectionDetailDestinations(
+        navController = navController,
+        rootNavController = rootNavController,
+    )
+}
+
+/** Connection hub + server / proxy / trusted-certificates (settings pane + auth dialog). */
+fun NavGraphBuilder.connectionDetailDestinations(
+    navController: NavController,
+    rootNavController: NavController,
+) {
     composable(SettingsRoutes.Connection) {
-        ConnectionSettingsScreen(
-            onBack = { navController.navigateUp() },
-            onChangeServer = { navController.navigate(SettingsRoutes.ServerConfig) },
-            onProxy = {
-                navController.navigate(SettingsRoutes.Proxy) {
-                    launchSingleTop = true
-                }
-            },
-            onTrustedCertificates = {
-                navController.navigate(SettingsRoutes.TrustedCertificates) {
-                    launchSingleTop = true
-                }
-            },
-        )
+        ConnectionSettingsScreen()
     }
 
     composable(SettingsRoutes.ServerConfig) {
@@ -350,7 +347,7 @@ fun NavGraphBuilder.settingsDetailDestinations(
     ) { entry ->
         val proxyTypeName = entry.savedStateHandle.get<String>("proxyType")
         val proxyType = ProxyType.entries.firstOrNull { it.name == proxyTypeName } ?: ProxyType.HTTP
-        AddProxyFlowScreen(
+        AddProxyScreen(
             proxyType = proxyType,
             onBack = { navController.navigateUp() },
             onDone = {
@@ -376,7 +373,7 @@ fun NavGraphBuilder.settingsDetailDestinations(
             }
             return@composable
         }
-        AddProxyFlowScreen(
+        AddProxyScreen(
             proxyType = editingProxy.type,
             editingProxyId = proxyId,
             onBack = { navController.navigateUp() },

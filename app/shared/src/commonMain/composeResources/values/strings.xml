@@ -19,16 +19,16 @@
     <string name="about_link_license">License</string>
     <string name="about_link_license_desc">AGPL-3.0</string>
     <string name="about_what_changed">What changed in this update</string>
-    <string name="release_notes_title">What's new</string>
+    <string name="release_notes_title">What\'s new</string>
     <string name="release_notes_ok">OK</string>
-    <string name="release_notes_dont_show_again">Don't show again</string>
+    <string name="release_notes_dont_show_again">Don\'t show again</string>
     <string name="legal_privacy_title">Privacy policy</string>
     <string name="legal_terms_title">Terms of service</string>
     <string name="legal_document_cached_banner">Showing a saved copy. Content may be out of date.</string>
     <string name="legal_document_load_error">Couldn\'t load the document. Check your connection and try again.</string>
     <string name="auth_legal_notice_prefix">By creating an account you agree to the </string>
     <string name="auth_legal_notice_and"> and </string>
-    <string name="app_desc">100% free and open messenger. Supports self-hosted installation on your own server.</string>
+    <string name="app_desc">100%% free and open messenger. Supports self-hosted installation on your own server.</string>
 
     <!-- Desktop menu / tray -->
     <string name="desktop_menu_file">File</string>
@@ -73,7 +73,7 @@
     <string name="password_length_error">Password must be 5 to 50 characters</string>
     <string name="passwords_dont_match">The two passwords don’t match</string>
     <string name="auth_welcome_title">Welcome to FromChat</string>
-    <string name="auth_welcome_tagline">The 100% free and open source messenger.</string>
+    <string name="auth_welcome_tagline">The 100%% free and open source messenger.</string>
     <string name="auth_get_started">Get started</string>
     <string name="auth_server_connect_failed">Failed to connect to the server</string>
     <string name="auth_wrong_password">Wrong password</string>
@@ -86,13 +86,13 @@
     <string name="auth_incognito_mode_summary">Keeps this sign-in private. Session data is encrypted and deleted when you quit. Extra HTTPS checks apply for api.fromchat.ru.</string>
     <string name="auth_incognito_enabled_snackbar">Incognito is on for this session.</string>
     <string name="auth_incognito_login_title">Incognito login</string>
-    <string name="auth_incognito_login_body">After you close the app, your session and cache will be deleted, and anyone using this device after you shouldn\u2019t be able to recover anything.</string>
+    <string name="auth_incognito_login_body">After you close the app, your session and cache will be deleted, and anyone using this device after you shouldn\'t be able to recover anything.</string>
     <string name="auth_incognito_login_action">Incognito</string>
     <string name="auth_incognito_login_cta">Incognito login</string>
     <string name="auth_standard_login_action">Standard login</string>
     <string name="incognito_chats_session_tooltip">Incognito is on. Closing the app clears this session and its cache.</string>
-    <string name="incognito_tls_certificate_error_title">Can\u2019t connect securely</string>
-    <string name="incognito_tls_certificate_error_body">FromChat couldn\u2019t verify this server\u2019s certificate for api.fromchat.ru, so the connection was blocked.</string>
+    <string name="incognito_tls_certificate_error_title">Can\'t connect securely</string>
+    <string name="incognito_tls_certificate_error_body">FromChat couldn\'t verify this server\'s certificate for api.fromchat.ru, so the connection was blocked.</string>
     <string name="incognito_mitm_certificate_warning_title">Unusual certificate</string>
     <string name="incognito_mitm_certificate_warning_body">This looks like a network filter or proxy (%1$s). Your traffic could be monitored. Connect anyway?</string>
     <string name="incognito_connect_anyway">Connect anyway</string>
@@ -113,7 +113,7 @@
     <string name="auth_captcha_body">Confirm you’re human to continue creating your account.</string>
     <string name="auth_captcha_failed">Captcha verification failed. Please try again.</string>
     <string name="auth_yandex_webview_title">Yandex ID</string>
-    <string name="auth_yandex_browser_body">Complete sign-in in your browser</string>
+    <string name="auth_yandex_browser_body">Complete sign-in in the browser</string>
     <string name="auth_yandex_client_mismatch">This server returned an unexpected Yandex app id. Update the app or contact support.</string>
     <string name="auth_yandex_failed">Yandex sign-in was cancelled or failed.</string>
     <!-- Main Screen -->
@@ -151,7 +151,7 @@
     <string name="search_not_found_message">Nothing found here. Try rephrasing your query.</string>
     <string name="message_placeholder">Write a message…</string>
     <string name="chat_drop_attachment_hint">Drop file here</string>
-    <string name="chat_drop_not_a_file">This isn't a file</string>
+    <string name="chat_drop_not_a_file">This isn\'t a file</string>
 
     <!-- Connection / chat chrome -->
     <string name="status_connecting">Connecting</string>
@@ -438,14 +438,18 @@
     <string name="proxy_ssh_key_configured">Private key selected</string>
     <string name="proxy_remove_ssh_key">Remove private key</string>
     <string name="proxy_ssh_invalid_key_title">Invalid private key</string>
-    <string name="proxy_ssh_invalid_key_body">This file doesn't contain a usable SSH private key. The PEM block may be incomplete, corrupted, or not base64. Choose an unencrypted private key (OpenSSH or PEM).</string>
+    <string name="proxy_ssh_invalid_key_body">This file doesn\'t contain a usable SSH private key. The PEM block may be incomplete, corrupted, or not base64. Choose an unencrypted private key (OpenSSH or PEM).</string>
     <string name="proxy_ssh_passphrase_title">Unlock SSH key</string>
     <string name="proxy_ssh_passphrase_body">Enter the passphrase for the private key used by “%1$s”.</string>
     <string name="proxy_ssh_key_passphrase">Key passphrase</string>
     <string name="proxy_ssh_passphrase_connect">Connect</string>
     <string name="proxy_ssh_passphrase_save_decrypted">Save decrypted key (do not ask again)</string>
-    <string name="proxy_step_details_title">Connection details</string>
-    <string name="proxy_step_details_body">Name, host, port, and optional credentials.</string>
+    <string name="proxy_add_http_title">Add HTTP proxy</string>
+    <string name="proxy_add_http_body">The simplest proxy type. Does not work for calls.</string>
+    <string name="proxy_add_socks_title">Add SOCKS5 proxy</string>
+    <string name="proxy_add_socks_body">SOCKS5 supports TCP and UDP.</string>
+    <string name="proxy_add_ssh_title">Add SSH proxy</string>
+    <string name="proxy_add_ssh_body">Traffic goes through your SSH server encrypted. Password or key authentication is supported.</string>
     <string name="logout">Log out</string>
     <string name="materialYou">Material You</string>
     <string name="materialYou_d">Match colors to your wallpaper. Works on Android 12 and up.</string>
@@ -629,7 +633,7 @@
     <string name="settings_delete_step_final_title">Last warning</string>
     <string name="settings_delete_step_final_body">Your account will be deleted FOREVER and CANNOT be recovered. You will be signed out on all devices and lose access immediately.</string>
     <string name="settings_delete_account_button">Delete account</string>
-    <string name="settings_delete_confirm_phrase">i confirm that i want to delete my account</string>
+    <string name="settings_delete_confirm_phrase">I confirm that I want to delete my account</string>
     <string name="settings_delete_confirm_phrase_quote">I confirm that I want to delete my account</string>
     <string name="settings_delete_confirm_phrase_instruction">To avoid you accidentally clicking the button, please type “%1$s” (case-insensitive).</string>
 

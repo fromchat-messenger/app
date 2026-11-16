@@ -17,9 +17,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 actual class SshDynamicSocksForwarder actual constructor(
     private val host: String,
-    private val sshPort: Int,
+    private val port: Int,
     private val username: String,
-    private val authType: SshAuthType,
+    private val auth: Auth,
     private val password: String?,
     private val privateKeyPem: String?,
     private val privateKeyPassphrase: String?,
@@ -35,13 +35,14 @@ actual class SshDynamicSocksForwarder actual constructor(
         }
         val ssh = SSHClient()
         ssh.addHostKeyVerifier(PromiscuousVerifier())
-        ssh.connect(host, sshPort)
-        when (authType) {
-            SshAuthType.Password -> ssh.authPassword(username, password.orEmpty())
-            SshAuthType.PrivateKey -> {
+        ssh.connect(host, port)
+        when (auth) {
+            is PasswordAuth -> ssh.authPassword(username, password.orEmpty())
+            is SshKeyAuth -> {
                 val key = keyProviderFromPem(privateKeyPem.orEmpty(), privateKeyPassphrase)
                 ssh.authPublickey(username, key)
             }
+            else -> error("Unsupported SSH auth")
         }
         val server = ServerSocket()
         server.bind(InetSocketAddress(InetAddress.getLoopbackAddress(), 0))

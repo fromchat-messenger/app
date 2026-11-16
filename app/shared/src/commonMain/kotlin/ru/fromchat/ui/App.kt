@@ -141,10 +141,13 @@ import ru.fromchat.ui.main.nav.navigateReplacingMainDetail
 import ru.fromchat.ui.main.nav.NavTransitionMuting
 import ru.fromchat.ui.main.nav.profileDetailDestinations
 import ru.fromchat.ui.main.nav.settingsDetailDestinations
+import ru.fromchat.ui.main.settings.ConnectionFlowHost
+import ru.fromchat.ui.main.settings.LocalOpenConnection
 import ru.fromchat.ui.main.settings.about.AboutDialogHost
 import ru.fromchat.ui.main.settings.about.isShowingAboutRoute
 import ru.fromchat.ui.main.settings.about.LocalOpenAbout
 import ru.fromchat.ui.main.settings.about.popAboutRouteIfShowing
+import ru.fromchat.ui.main.settings.resetConnectionFlowToRoot
 import ru.fromchat.ui.main.settings.SettingsRoutes
 import ru.fromchat.ui.theme.FromChatTheme
 import ru.fromchat.ui.welcome.WelcomeScreen
@@ -258,7 +261,7 @@ fun App(
     startAtAppearance: Boolean = false,
     profileLookupErrorMessage: String? = null,
     onProfileLookupErrorMessageConsumed: () -> Unit = {},
-    /** Desktop: fired once [startDestination] is known so the window can show after bootstrap. */
+    /** Desktop: fired once `startDestination` is known so the window can show after bootstrap. */
     onContentReady: () -> Unit = {},
     /** Android: first pre-draw of main UI once status-bar insets are available. */
     onUiDisplayed: () -> Unit = {},
@@ -402,6 +405,7 @@ fun App(
             val chatsDetailNavController = rememberNavController()
             val settingsDetailNavController = rememberNavController()
             val contactsDetailNavController = rememberNavController()
+            val connectionFlowNavController = rememberNavController()
             val profileLookupSnackbarHostState = remember { SnackbarHostState() }
             LaunchedEffect(profileLookupErrorMessage) {
                 profileLookupErrorMessage?.let { message ->
@@ -419,7 +423,13 @@ fun App(
             val isDesktopListDetail = widthSizeClass != WindowWidthSizeClass.COMPACT
             var pendingMainTab by remember { mutableIntStateOf(MAIN_PAGE_CHATS) }
             var aboutDialogVisible by remember { mutableStateOf(false) }
+            var connectionFlowActive by remember { mutableStateOf(false) }
             var carryAboutFullScreenAfterShrink by remember { mutableStateOf(false) }
+
+            fun dismissConnectionFlow() {
+                connectionFlowNavController.resetConnectionFlowToRoot()
+                connectionFlowActive = false
+            }
 
             fun openAboutPresentation() {
                 if (isDesktopListDetail) {
@@ -434,6 +444,11 @@ fun App(
                 } else {
                     navController.navigateReplacingMainDetail(SettingsRoutes.About)
                 }
+            }
+
+            fun openConnectionPresentation() {
+                if (!ApiClient.token.isNullOrBlank()) return
+                connectionFlowActive = true
             }
 
             // Handle startup/deep-link navigation targets (profile links)
@@ -454,11 +469,10 @@ fun App(
                     return@LaunchedEffect
                 }
 
-                val dmUserId = startAtDmConversationUserId
-                if (dmUserId != null && dmUserId > 0) {
+                if (startAtDmConversationUserId != null && startAtDmConversationUserId > 0) {
                     Logger.d(
                         "DmDeepLink",
-                        "startup nav to dm user=$dmUserId messageId=$scrollToMessageId",
+                        "startup nav to dm user=$startAtDmConversationUserId messageId=$scrollToMessageId",
                     )
                     if (isDesktopListDetail) {
                         pendingMainTab = MAIN_PAGE_CHATS
@@ -466,12 +480,12 @@ fun App(
                             navController.popBackStack("chat", inclusive = false)
                         }
                         chatsDetailNavController.navigateToDmChat(
-                            otherUserId = dmUserId,
+                            otherUserId = startAtDmConversationUserId,
                             sourceMessageId = scrollToMessageId,
                         )
                     } else {
                         navController.navigateToDmChat(
-                            otherUserId = dmUserId,
+                            otherUserId = startAtDmConversationUserId,
                             sourceMessageId = scrollToMessageId,
                         )
                     }
@@ -753,6 +767,7 @@ fun App(
             CompositionLocalProvider(
                 LocalNavController provides navController,
                 LocalOpenAbout provides { openAboutPresentation() },
+                LocalOpenConnection provides { openConnectionPresentation() },
                 LocalDesktopChatsNavController provides
                     if (isDesktopListDetail) chatsDetailNavController else null,
                 LocalDesktopSettingsNavController provides
@@ -1054,6 +1069,13 @@ fun App(
                                 visible = aboutDialogVisible,
                                 onDismiss = { aboutDialogVisible = false },
                                 documentNavController = aboutDocumentNavController,
+                            )
+                            ConnectionFlowHost(
+                                active = connectionFlowActive,
+                                useDialog = isDesktopListDetail,
+                                navController = connectionFlowNavController,
+                                onDismiss = { dismissConnectionFlow() },
+                                rootNavController = navController,
                             )
                             if (showReleaseNotesPrompt) {
                                 ReleaseNotesDialog(onDismiss = { showReleaseNotesPrompt = false })

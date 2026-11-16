@@ -6,14 +6,14 @@ expect fun configureEngineProxy(config: HttpClientConfig<*>, route: ProxyRoute)
 
 expect fun systemProxyAvailable(): Boolean
 
-/** When [route] is [ProxyRoute.System], true if the OS proxy is HTTP (not SOCKS). */
+/** When `route` is [ProxyRoute.System], true if the OS proxy is HTTP (not SOCKS). */
 expect fun systemProxyIsHttp(): Boolean
 
 expect class SshDynamicSocksForwarder(
     host: String,
-    sshPort: Int,
+    port: Int,
     username: String,
-    authType: SshAuthType,
+    auth: Auth,
     password: String?,
     privateKeyPem: String?,
     privateKeyPassphrase: String?,

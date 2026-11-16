@@ -3,32 +3,23 @@
 package ru.fromchat.ui.main.settings.server
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import ru.fromchat.ui.components.ChromeBackIconButton
 import androidx.compose.material.icons.rounded.Dns
-import androidx.compose.material.icons.rounded.FlashOn
-import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialShapes
@@ -53,18 +44,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import ru.fromchat.utils.navigateAndWipeBackStack
-import ru.fromchat.utils.toDp
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.blur.hazeBlur
@@ -76,7 +64,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlin.time.Duration.Companion.milliseconds
-import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.instance.applyServerAndNavigate
@@ -85,8 +72,6 @@ import ru.fromchat.api.instance.persistPreAuthServerEndpoint
 import ru.fromchat.api.instance.probeServerEndpoint
 import ru.fromchat.api.instance.ServerProbeResult
 import ru.fromchat.api.instance.surfaceLastIncognitoTlsProbeFailure
-import ru.fromchat.api.local.WebSocketManager
-import ru.fromchat.back
 import ru.fromchat.cancel
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.config.ServerConfigData
@@ -95,8 +80,6 @@ import ru.fromchat.config.shouldWarnPublicCleartextHttp
 import ru.fromchat.confirm
 import ru.fromchat.Res
 import ru.fromchat.save_continue
-import ru.fromchat.server_config_action_check
-import ru.fromchat.server_config_action_reset
 import ru.fromchat.server_config_action_reset_confirm_body
 import ru.fromchat.server_config_action_reset_confirm_title
 import ru.fromchat.server_config_checking
@@ -112,7 +95,6 @@ import ru.fromchat.server_config_unsupported_no_instance_id
 import ru.fromchat.server_ip_hint
 import ru.fromchat.server_ip_label
 import ru.fromchat.ui.auth.AuthContentFrame
-import ru.fromchat.ui.components.CtaShape
 import ru.fromchat.ui.components.DisabledBringIntoViewSpec
 import ru.fromchat.ui.components.ExpressiveIconFrame
 import ru.fromchat.ui.components.FromChatSnackbarHost
@@ -124,20 +106,19 @@ import ru.fromchat.ui.components.trackLazyListFocus
 import ru.fromchat.ui.security.ConnectionSecurityDialogController
 import ru.fromchat.ui.security.PublicHttpConnectionBypass
 import ru.fromchat.ui.LocalNavController
+import ru.fromchat.ui.main.settings.LocalConnectionDialogRootDismiss
 import ru.fromchat.ui.main.settings.settingsDetailShowBackButton
+import ru.fromchat.ui.main.settings.settingsDetailOverlayTopClearance
+import ru.fromchat.ui.main.settings.settingsDetailScaffoldContentWindowInsets
 import ru.fromchat.ui.main.settings.settingsDetailWindowInsets
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
-import ru.fromchat.ui.theme.extraStatusBars
 import ru.fromchat.utils.LastAnchoredBottomArrangement
 
 private object ServerConfigLazyListIndices {
     const val SERVER_IP_FIELD = 2
 }
 
-@OptIn(
-    ExperimentalMaterial3Api::class,
-    ExperimentalMaterial3ExpressiveApi::class,
-)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ServerConfigScreen(
     rootNavController: NavController,
@@ -146,7 +127,6 @@ fun ServerConfigScreen(
     val scope = rememberCoroutineScope()
     val scheme = MaterialTheme.colorScheme
     val snackbarHostState = remember { SnackbarHostState() }
-    val density = LocalDensity.current
 
     var serverEndpoint by remember { mutableStateOf("") }
 
@@ -173,7 +153,6 @@ fun ServerConfigScreen(
     val strSnackbarApiFail = stringResource(Res.string.server_config_snackbar_api_fail)
     val strSnackbarTimeout = stringResource(Res.string.server_config_snackbar_timeout)
     val strUnsupportedInstance = stringResource(Res.string.server_config_unsupported_no_instance_id)
-    val strChecking = stringResource(Res.string.server_config_checking)
     val strResetConfirmTitle = stringResource(Res.string.server_config_action_reset_confirm_title)
     val strResetConfirmBody = stringResource(Res.string.server_config_action_reset_confirm_body)
 
@@ -190,7 +169,7 @@ fun ServerConfigScreen(
         delay(1_000.milliseconds)
         probing = true
         try {
-            val parsed = parsedEndpoint ?: return@LaunchedEffect
+            val parsed = parsedEndpoint
             val (tentative, probe) = probeServerEndpoint(
                 host = parsed.host,
                 port = parsed.port,
@@ -288,57 +267,6 @@ fun ServerConfigScreen(
             throw e
         }
 
-    fun verifyServer() {
-        scope.launch {
-            suspend fun supportedProbeSnackbarMessage(probe: ServerProbeResult.Supported): String =
-                if (probe.callsOk) {
-                    getString(Res.string.server_config_snackbar_ok_calls, probe.pingMs)
-                } else {
-                    getString(Res.string.server_config_snackbar_ok_calls_skip, probe.pingMs)
-                }
-
-            launch { snackbarHostState.showSnackbar(strChecking) }
-            val parsed = buildTentativeFromParsed()
-            if (parsed == null) {
-                snackbarHostState.showSnackbar(strHostError)
-                return@launch
-            }
-            val (tentative, probe) = try {
-                runServerEndpointProbe(parsed)
-            } catch (e: Exception) {
-                snackbarHostState.showSnackbar(strSnackbarApiFail)
-                return@launch
-            }
-            lastProbe = probe
-            lastProbedConfig = tentative
-            if (
-                probe == ServerProbeResult.Unreachable &&
-                surfaceLastIncognitoTlsProbeFailure(parsed.host, parsed.httpsPreferred)
-            ) {
-                return@launch
-            }
-            if (ConnectionSecurityDialogController.showMitmDialog || ConnectionSecurityDialogController.showTlsDialog) {
-                return@launch
-            }
-            val msg = when (probe) {
-                is ServerProbeResult.Supported -> {
-                    if (warnPublicHttpIfNeeded(tentative) {
-                        scope.launch {
-                            snackbarHostState.showSnackbar(supportedProbeSnackbarMessage(probe))
-                        }
-                    }) {
-                        return@launch
-                    }
-                    supportedProbeSnackbarMessage(probe)
-                }
-                ServerProbeResult.Unsupported -> strUnsupportedInstance
-                ServerProbeResult.Timeout -> strSnackbarTimeout
-                ServerProbeResult.Unreachable -> strSnackbarApiFail
-            }
-            snackbarHostState.showSnackbar(msg)
-        }
-    }
-
     val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedTextColor = scheme.onSurface,
         unfocusedTextColor = scheme.onSurface,
@@ -367,7 +295,7 @@ fun ServerConfigScreen(
 
         Scaffold(
             modifier = Modifier.fillMaxSize(),
-            contentWindowInsets = WindowInsets.navigationBars,
+            contentWindowInsets = settingsDetailScaffoldContentWindowInsets(),
             containerColor = Color.Transparent,
             contentColor = scheme.onSurface,
             snackbarHost = { FromChatSnackbarHost(hostState = snackbarHostState) },
@@ -504,7 +432,7 @@ fun ServerConfigScreen(
                 )
             }
         ) { innerPadding ->
-            val floatingHeaderClearance = WindowInsets.extraStatusBars.getTop(density).toDp(density) + 68.dp
+            val floatingHeaderClearance = settingsDetailOverlayTopClearance()
             val bottomInsetPadding = innerPadding.calculateBottomPadding()
             val serverConfigListState = rememberLazyListState()
             var listViewportBounds by remember { mutableStateOf<Rect?>(null) }
@@ -656,7 +584,8 @@ fun ServerConfigScreen(
         }
     }
 
-    if (preAuth) {
+    val inConnectionFlow = LocalConnectionDialogRootDismiss.current != null
+    if (preAuth && !inConnectionFlow) {
         AuthContentFrame { _ ->
             ServerConfigContent()
         }

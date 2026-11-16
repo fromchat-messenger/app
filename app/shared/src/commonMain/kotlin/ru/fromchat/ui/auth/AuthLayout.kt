@@ -17,10 +17,9 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.BugReport
-import androidx.compose.material.icons.rounded.Login
+import androidx.compose.material.icons.automirrored.rounded.Login
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import ru.fromchat.ui.components.SpringExpandingOverflowMenu
 import ru.fromchat.ui.components.SpringDropdownMenuItem
 import ru.fromchat.ui.components.Text
@@ -38,12 +37,13 @@ import ru.fromchat.Res
 import ru.fromchat.about
 import ru.fromchat.auth_incognito_login_action
 import ru.fromchat.auth_standard_login_action
-import ru.fromchat.change_server
 import ru.fromchat.logs_title
-import androidx.compose.material.icons.rounded.Storage
+import ru.fromchat.settings_connection_settings
+import androidx.compose.material.icons.rounded.SettingsEthernet
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.theme.extraStatusBars
 import ru.fromchat.ui.main.settings.about.LocalOpenAbout
+import ru.fromchat.ui.main.settings.LocalOpenConnection
 import ru.fromchat.ui.main.settings.SettingsRoutes
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
 
@@ -55,7 +55,7 @@ val AuthWidePanelOuterPadding = 32.dp
 
 /**
  * Centers auth content on wide layouts (max 600×800.dp, [AuthWidePanelOuterPadding] margin).
- * Narrow layouts fill the window edge-to-edge ([widePanel] = false) so top-bar haze can
+ * Narrow layouts fill the window edge-to-edge (`widePanel` = false) so top-bar haze can
  * draw under the status bar; wide layouts clear system bars outside the panel.
  */
 @Composable
@@ -94,6 +94,7 @@ fun AuthContentFrame(
 fun PreAuthOverflowMenu() {
     val navController = LocalNavController.current
     val openAbout = LocalOpenAbout.current
+    val openConnection = LocalOpenConnection.current
     var menuExpanded by remember { mutableStateOf(false) }
 
     SpringExpandingOverflowMenu(
@@ -108,6 +109,16 @@ fun PreAuthOverflowMenu() {
             onClick = {
                 menuExpanded = false
                 openAbout()
+            },
+        )
+        SpringDropdownMenuItem(
+            text = { Text(stringResource(Res.string.settings_connection_settings)) },
+            leadingIcon = {
+                Icon(Icons.Rounded.SettingsEthernet, contentDescription = null)
+            },
+            onClick = {
+                menuExpanded = false
+                openConnection()
             },
         )
         SpringDropdownMenuItem(
@@ -130,6 +141,7 @@ internal fun AuthStepListFooter(
     hideAuthRouteSwitch: Boolean = false,
 ) {
     val navController = LocalNavController.current
+    if (hideAuthRouteSwitch) return
     Row(
         Modifier
             .fillMaxWidth()
@@ -141,15 +153,6 @@ internal fun AuthStepListFooter(
             ),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        TextCta(
-            onClick = { navController.navigate("serverConfig") },
-            modifier = if (hideAuthRouteSwitch) Modifier.fillMaxWidth() else Modifier.weight(1f),
-            leadingIcon = Icons.Rounded.Storage,
-            compact = true,
-        ) {
-            Text(stringResource(Res.string.change_server))
-        }
-        if (hideAuthRouteSwitch) return@Row
         if (incognitoFlow) {
             TextCta(
                 onClick = {
@@ -158,8 +161,8 @@ internal fun AuthStepListFooter(
                         launchSingleTop = true
                     }
                 },
-                modifier = Modifier.weight(1f),
-                leadingIcon = Icons.Rounded.Login,
+                modifier = Modifier.fillMaxWidth(),
+                leadingIcon = Icons.AutoMirrored.Rounded.Login,
                 compact = true,
             ) {
                 Text(stringResource(Res.string.auth_standard_login_action))
@@ -172,7 +175,7 @@ internal fun AuthStepListFooter(
                         launchSingleTop = true
                     }
                 },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
                 leadingIcon = Icons.Rounded.VisibilityOff,
                 compact = true,
             ) {

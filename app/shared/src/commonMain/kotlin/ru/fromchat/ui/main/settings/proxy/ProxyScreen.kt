@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -19,7 +20,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Http
@@ -29,9 +29,7 @@ import androidx.compose.material.icons.rounded.SettingsEthernet
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.VpnLock
 import androidx.compose.material3.MaterialShapes
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
@@ -54,7 +52,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -62,8 +59,6 @@ import kotlinx.coroutines.yield
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.action_edit
-import ru.fromchat.cancel
-import ru.fromchat.confirm
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.network.proxy.ProxyCheckResult
 import ru.fromchat.network.proxy.ProxyChecker
@@ -72,6 +67,8 @@ import ru.fromchat.network.proxy.ProxyRuntime
 import ru.fromchat.network.proxy.ProxySelection
 import ru.fromchat.network.proxy.ProxyTlsTrust
 import ru.fromchat.network.proxy.ProxyType
+import ru.fromchat.network.proxy.Proxy
+import ru.fromchat.network.proxy.listHeadline
 import ru.fromchat.network.proxy.systemProxyAvailable
 import ru.fromchat.network.proxy.tlsHostFromUrl
 import ru.fromchat.proxy_certificate_issue
@@ -85,9 +82,6 @@ import ru.fromchat.proxy_no_proxies
 import ru.fromchat.proxy_ping_ms
 import ru.fromchat.proxy_screen_subtitle
 import ru.fromchat.proxy_system_proxy
-import ru.fromchat.proxy_type_http
-import ru.fromchat.proxy_type_socks
-import ru.fromchat.proxy_type_ssh
 import ru.fromchat.settings_proxy_title
 import ru.fromchat.ui.components.ExpressiveIconFrame
 import ru.fromchat.ui.components.ExpressiveListItem
@@ -98,13 +92,35 @@ import ru.fromchat.ui.main.settings.SettingsDetailTopBar
 import ru.fromchat.ui.main.settings.rememberSettingsCollapsingScrollBehavior
 import ru.fromchat.ui.main.settings.rememberSettingsDetailHazeState
 import ru.fromchat.ui.main.settings.settingsDetailHazeSource
+import ru.fromchat.ui.main.settings.settingsDetailScaffoldContentWindowInsets
 import ru.fromchat.ui.main.settings.settingsDetailUseCollapsingTopBar
 import ru.fromchat.utils.components.Category
+import ru.fromchat.utils.components.CategoryDefaults
 import ru.fromchat.utils.components.ListItemContextMenuScope
 import ru.fromchat.utils.components.ListItemPosition
+import ru.fromchat.utils.components.ReorderingCategory
 import ru.fromchat.utils.conditional
 
 private val ProxyPingSuccessColor = Color(0xFF2E7D32)
+
+/** Ranked by `customCheckSort` (last settled results). Stays stable while `customCheckDisplay` show Checking. */
+private fun proxyListDisplayOrder(
+    savedProxies: List<Proxy>,
+    sortChecks: Map<String, ProxyCheckResult>,
+): List<Proxy> {
+    val ranked = savedProxies
+        .filter { sortChecks[it.id] is ProxyCheckResult.Success }
+        .sortedBy { (sortChecks[it.id] as ProxyCheckResult.Success).pingMs }
+    return ranked + savedProxies.filter { sortChecks[it.id] !is ProxyCheckResult.Success }
+}
+
+private fun applySettledProxyCheck(
+    sortChecks: MutableMap<String, ProxyCheckResult>,
+    id: String,
+    result: ProxyCheckResult,
+) {
+    sortChecks[id] = result
+}
 
 private data class PendingCertTrust(
     val selection: ProxySelection,
@@ -113,7 +129,6 @@ private data class PendingCertTrust(
 )
 
 @OptIn(
-    ExperimentalMaterial3Api::class,
     ExperimentalMaterial3ExpressiveApi::class,
     ExperimentalFoundationApi::class,
 )
@@ -136,7 +151,8 @@ fun ProxyScreen(
 
     var directCheck by remember { mutableStateOf<ProxyCheckResult>(ProxyCheckResult.Checking) }
     var systemCheck by remember { mutableStateOf<ProxyCheckResult?>(null) }
-    val customChecks = remember { mutableStateMapOf<String, ProxyCheckResult>() }
+    val customCheckDisplay = remember { mutableStateMapOf<String, ProxyCheckResult>() }
+    val customCheckSort = remember { mutableStateMapOf<String, ProxyCheckResult>() }
 
     var pendingCertTrust by remember { mutableStateOf<PendingCertTrust?>(null) }
     var pendingDeleteProxyId by remember { mutableStateOf<String?>(null) }
@@ -148,7 +164,7 @@ fun ProxyScreen(
             if (showSystemProxyRow) {
                 systemCheck = ProxyCheckResult.Checking
             }
-            savedProxies.forEach { customChecks[it.id] = ProxyCheckResult.Checking }
+            savedProxies.forEach { customCheckDisplay[it.id] = ProxyCheckResult.Checking }
         }
 
         withContext(Dispatchers.Default) {
@@ -173,7 +189,8 @@ fun ProxyScreen(
                         systemCheck = system
                     }
                     custom.forEach { (id, result) ->
-                        customChecks[id] = result
+                        customCheckDisplay[id] = result
+                        applySettledProxyCheck(customCheckSort, id, result)
                     }
                 }
             }
@@ -199,7 +216,7 @@ fun ProxyScreen(
                 ProxySelection.Direct -> directCheck = ProxyCheckResult.Checking
                 ProxySelection.System -> systemCheck = ProxyCheckResult.Checking
                 is ProxySelection.Custom -> {
-                    customChecks[selection.id] = ProxyCheckResult.Checking
+                    customCheckDisplay[selection.id] = ProxyCheckResult.Checking
                 }
             }
         }
@@ -216,7 +233,10 @@ fun ProxyScreen(
             when (selection) {
                 ProxySelection.Direct -> directCheck = result
                 ProxySelection.System -> systemCheck = result
-                is ProxySelection.Custom -> customChecks[selection.id] = result
+                is ProxySelection.Custom -> {
+                    customCheckDisplay[selection.id] = result
+                    applySettledProxyCheck(customCheckSort, selection.id, result)
+                }
             }
         }
     }
@@ -235,23 +255,20 @@ fun ProxyScreen(
 
     LaunchedEffect(savedProxies) {
         savedProxies.forEach { proxy ->
-            if (proxy.id !in customChecks) {
-                customChecks[proxy.id] = ProxyCheckResult.Checking
+            if (proxy.id !in customCheckDisplay) {
+                customCheckDisplay[proxy.id] = ProxyCheckResult.Checking
             }
         }
-        customChecks.keys.retainAll(savedProxies.map { it.id }.toSet())
+        val ids = savedProxies.map { it.id }.toSet()
+        customCheckDisplay.keys.retainAll(ids)
+        customCheckSort.keys.retainAll(ids)
     }
 
     val editLabel = stringResource(Res.string.action_edit)
     val deleteLabel = stringResource(Res.string.proxy_delete)
 
-    val sortedProxies = remember(savedProxies, customChecks.toMap()) {
-        savedProxies.sortedBy { proxy ->
-            when (val result = customChecks[proxy.id]) {
-                is ProxyCheckResult.Success -> result.pingMs
-                else -> Int.MAX_VALUE
-            }
-        }
+    val sortedProxies = remember(savedProxies, customCheckSort.toMap()) {
+        proxyListDisplayOrder(savedProxies, customCheckSort)
     }
 
     val listState = rememberLazyListState()
@@ -259,6 +276,7 @@ fun ProxyScreen(
     Box(Modifier.fillMaxSize()) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
+            contentWindowInsets = settingsDetailScaffoldContentWindowInsets(),
             containerColor = Color.Transparent,
             contentColor = scheme.onSurface,
             topBar = {
@@ -362,57 +380,64 @@ fun ProxyScreen(
                 }
             }
 
-            item {
-                Category(
-                    margin = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp),
-                ) {
-                    if (sortedProxies.isEmpty()) {
-                        Text(
-                            text = stringResource(Res.string.proxy_no_proxies),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = scheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier
+            if (sortedProxies.isEmpty()) {
+                item(key = "saved-proxies-empty") {
+                    Category(
+                        margin = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp),
+                    ) {
+                        Box(
+                            Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 28.dp),
-                        )
-                    } else {
-                        sortedProxies.forEachIndexed { index, proxy ->
-                            val check = customChecks[proxy.id] ?: ProxyCheckResult.Checking
-                            val position = when {
-                                sortedProxies.size == 1 -> ListItemPosition.START
-                                index == 0 -> ListItemPosition.START
-                                index == sortedProxies.lastIndex -> ListItemPosition.END
-                                else -> ListItemPosition.MIDDLE
-                            }
-                            ProxySelectionRow(
-                                headline = proxy.label,
-                                supportingText = proxyTypeLabel(proxy.type),
-                                selected = selection == ProxySelection.Custom(proxy.id),
-                                checkResult = check,
-                                icon = proxyTypeIcon(proxy.type),
-                                iconPreset = proxyTypeIconPreset(proxy.type),
-                                position = position,
-                                groupItemCount = sortedProxies.size,
-                                divider = index < sortedProxies.lastIndex,
-                                onSelect = {
-                                    requestSelection(
-                                        ProxySelection.Custom(proxy.id),
-                                        check,
-                                        proxy.label,
-                                    )
-                                },
-                                contextMenu = {
-                                    menuItem(Icons.Rounded.Edit, editLabel) {
-                                        onEditProxy(proxy.id)
-                                    }
-                                    menuItem(Icons.Rounded.Delete, deleteLabel, destructive = true) {
-                                        pendingDeleteProxyId = proxy.id
-                                    }
-                                },
+                                .background(
+                                    CategoryDefaults.containerColor,
+                                    CategoryDefaults.shape,
+                                ),
+                        ) {
+                            Text(
+                                text = stringResource(Res.string.proxy_no_proxies),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = scheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 28.dp),
                             )
                         }
                     }
+                }
+            } else {
+                ReorderingCategory(
+                    items = sortedProxies,
+                    key = { it.id },
+                    keyPrefix = "saved-proxies",
+                    margin = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp),
+                ) { index, proxy, position, itemCount ->
+                    val check = customCheckDisplay[proxy.id] ?: ProxyCheckResult.Checking
+                    ProxySelectionRow(
+                        headline = proxy.listHeadline(),
+                        selected = selection == ProxySelection.Custom(proxy.id),
+                        checkResult = check,
+                        icon = proxyTypeIcon(proxy.type),
+                        iconPreset = proxyTypeIconPreset(proxy.type),
+                        position = position,
+                        groupItemCount = itemCount,
+                        divider = index < itemCount - 1,
+                        onSelect = {
+                            requestSelection(
+                                ProxySelection.Custom(proxy.id),
+                                check,
+                                proxy.listHeadline(),
+                            )
+                        },
+                        contextMenu = {
+                            menuItem(Icons.Rounded.Edit, editLabel) {
+                                onEditProxy(proxy.id)
+                            }
+                            menuItem(Icons.Rounded.Delete, deleteLabel, destructive = true) {
+                                pendingDeleteProxyId = proxy.id
+                            }
+                        },
+                    )
                 }
             }
             }
@@ -462,13 +487,6 @@ fun ProxyScreen(
             }
         },
     )
-}
-
-@Composable
-private fun proxyTypeLabel(type: ProxyType): String = when (type) {
-    ProxyType.HTTP -> stringResource(Res.string.proxy_type_http)
-    ProxyType.SOCKS5 -> stringResource(Res.string.proxy_type_socks)
-    ProxyType.SSH -> stringResource(Res.string.proxy_type_ssh)
 }
 
 private fun proxyTypeIcon(type: ProxyType) = when (type) {

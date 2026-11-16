@@ -16,6 +16,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.navigation.NavController
 import ru.fromchat.ui.LocalNavController
+import ru.fromchat.ui.main.settings.LocalSettingsDetailInDialog
 import ru.fromchat.ui.main.settings.SettingsRoutes
 import ru.fromchat.utils.WindowWidthSizeClass
 import ru.fromchat.utils.currentWindowAdaptiveInfo
@@ -61,7 +62,10 @@ fun AboutDialogHost(
                 .widthIn(max = 440.dp)
                 .heightIn(max = 720.dp),
         ) {
-            CompositionLocalProvider(LocalNavController provides documentNavController) {
+            CompositionLocalProvider(
+                LocalNavController provides documentNavController,
+                LocalSettingsDetailInDialog provides true,
+            ) {
                 AboutScreenLayout(
                     onNavigateUp = onDismiss,
                     useCloseButton = true,

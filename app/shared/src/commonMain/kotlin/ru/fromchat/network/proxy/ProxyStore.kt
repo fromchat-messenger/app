@@ -1,13 +1,15 @@
 package ru.fromchat.network.proxy
 
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.modules.SerializersModule
+import kotlinx.serialization.modules.polymorphic
+import kotlinx.serialization.modules.subclass
+import kotlinx.serialization.serializer
 import ru.fromchat.utils.settings.Settings as PlatformSettings
 import ru.fromchat.utils.settings.secureSettings
 
@@ -23,35 +25,41 @@ object ProxyStore {
     private fun privateKeyKey(id: String) = "proxy_secret_private_key_$id"
 
     private val settings = PlatformSettings()
+    private val proxyListSerializer = ListSerializer(serializer<Proxy>())
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
-    }
-
-    private fun runIo(block: suspend CoroutineScope.() -> Unit) {
-        CoroutineScope(Dispatchers.IO).launch(block = block)
-    }
-
-    fun loadProxies(): List<SavedProxy> = runBlocking { readProxies() }
-
-    suspend fun readProxies(): List<SavedProxy> = withContext(Dispatchers.IO) {
-        val raw = settings.getString(SAVED_PROXIES_KEY, "")
-        if (raw.isEmpty()) return@withContext emptyList()
-        runCatching {
-            json.decodeFromString(ListSerializer(SavedProxy.serializer()), raw)
-        }.getOrDefault(emptyList())
-    }
-
-    fun saveProxies(proxies: List<SavedProxy>) {
-        runIo {
-            val enc = json.encodeToString(ListSerializer(SavedProxy.serializer()), proxies)
-            settings.putString(SAVED_PROXIES_KEY, enc)
+        serializersModule = SerializersModule {
+            polymorphic(Proxy::class) {
+                subclass(HttpProxy::class)
+                subclass(Socks5Proxy::class)
+                subclass(SshProxy::class)
+            }
+            polymorphic(Auth::class) {
+                subclass(PasswordAuth::class)
+                subclass(SshKeyAuth::class)
+            }
         }
     }
 
-    suspend fun setProxies(proxies: List<SavedProxy>) {
+    fun loadProxies(): List<Proxy> = runBlocking { readProxies() }
+
+    suspend fun readProxies(): List<Proxy> = withContext(Dispatchers.IO) {
+        val raw = settings.getString(SAVED_PROXIES_KEY, "")
+        if (raw.isEmpty()) return@withContext emptyList()
+        runCatching {
+            json.decodeFromString(proxyListSerializer, raw)
+        }.getOrElse {
+            runCatching {
+                json.decodeFromString(ListSerializer(LegacySavedProxy.serializer()), raw)
+                    .map { it.toProxy() }
+            }.getOrDefault(emptyList())
+        }
+    }
+
+    suspend fun setProxies(proxies: List<Proxy>) {
         withContext(Dispatchers.IO) {
-            val enc = json.encodeToString(ListSerializer(SavedProxy.serializer()), proxies)
+            val enc = json.encodeToString(proxyListSerializer, proxies)
             settings.putString(SAVED_PROXIES_KEY, enc)
         }
     }
@@ -77,16 +85,6 @@ object ProxyStore {
             ProxySelection.System
         } else {
             decoded
-        }
-    }
-
-    fun saveSelection(selection: ProxySelection) {
-        runIo {
-            settings.putString(PROXY_SELECTION_KEY, json.encodeToString(ProxySelection.serializer(), selection))
-            settings.putBoolean(
-                PROXY_DIRECT_EXPLICIT_KEY,
-                selection == ProxySelection.Direct,
-            )
         }
     }
 

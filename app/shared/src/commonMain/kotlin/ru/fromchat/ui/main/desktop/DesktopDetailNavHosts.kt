@@ -1,14 +1,6 @@
 package ru.fromchat.ui.main.desktop
 
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,32 +17,12 @@ import ru.fromchat.ui.main.EmptyConversationPlaceholder
 import ru.fromchat.ui.main.EmptyContactsPlaceholder
 import ru.fromchat.ui.main.EmptySettingsPlaceholder
 import ru.fromchat.ui.main.nav.conversationDetailDestinations
-import ru.fromchat.ui.main.nav.mutedEnterTransition
-import ru.fromchat.ui.main.nav.mutedExitTransition
+import ru.fromchat.ui.main.nav.detailNavEnterTransition
+import ru.fromchat.ui.main.nav.detailNavExitTransition
+import ru.fromchat.ui.main.nav.detailNavPopEnterTransition
+import ru.fromchat.ui.main.nav.detailNavPopExitTransition
 import ru.fromchat.ui.main.nav.profileDetailDestinations
 import ru.fromchat.ui.main.nav.settingsDetailDestinations
-
-private val detailNavTween = tween<Float>(durationMillis = 250, easing = FastOutSlowInEasing)
-
-private fun detailNavEnter(): EnterTransition = mutedEnterTransition(
-    scaleIn(initialScale = 0.9f, animationSpec = detailNavTween) +
-        fadeIn(animationSpec = detailNavTween),
-)
-
-private fun detailNavExit(): ExitTransition = mutedExitTransition(
-    scaleOut(targetScale = 1.1f, animationSpec = detailNavTween) +
-        fadeOut(animationSpec = detailNavTween),
-)
-
-private fun detailNavPopEnter(): EnterTransition = mutedEnterTransition(
-    scaleIn(initialScale = 1.1f, animationSpec = detailNavTween) +
-        fadeIn(animationSpec = detailNavTween),
-)
-
-private fun detailNavPopExit(): ExitTransition = mutedExitTransition(
-    scaleOut(targetScale = 0.9f, animationSpec = detailNavTween) +
-        fadeOut(animationSpec = detailNavTween),
-)
 
 /**
  * Independent Chats-tab detail [NavHost] for desktop list–detail.
@@ -67,10 +39,10 @@ fun DesktopChatsDetailNavHost(
             navController = navController,
             startDestination = DesktopDetailNav.CHATS_ROOT,
             modifier = modifier.fillMaxSize(),
-            enterTransition = { detailNavEnter() },
-            exitTransition = { detailNavExit() },
-            popEnterTransition = { detailNavPopEnter() },
-            popExitTransition = { detailNavPopExit() },
+            enterTransition = { detailNavEnterTransition() },
+            exitTransition = { detailNavExitTransition() },
+            popEnterTransition = { detailNavPopEnterTransition() },
+            popExitTransition = { detailNavPopExitTransition() },
         ) {
             composable(DesktopDetailNav.CHATS_ROOT) {
                 EmptyConversationPlaceholder()
@@ -120,10 +92,10 @@ fun DesktopSettingsDetailNavHost(
                 navController = navController,
                 startDestination = DesktopDetailNav.SETTINGS_ROOT,
                 modifier = Modifier.fillMaxSize(),
-                enterTransition = { detailNavEnter() },
-                exitTransition = { detailNavExit() },
-                popEnterTransition = { detailNavPopEnter() },
-                popExitTransition = { detailNavPopExit() },
+                enterTransition = { detailNavEnterTransition() },
+                exitTransition = { detailNavExitTransition() },
+                popEnterTransition = { detailNavPopEnterTransition() },
+                popExitTransition = { detailNavPopExitTransition() },
             ) {
                 composable(DesktopDetailNav.SETTINGS_ROOT) {
                     EmptySettingsPlaceholder()

@@ -10,9 +10,9 @@ actual fun systemProxyIsHttp(): Boolean = false
 
 actual class SshDynamicSocksForwarder actual constructor(
     host: String,
-    sshPort: Int,
+    port: Int,
     username: String,
-    authType: SshAuthType,
+    auth: Auth,
     password: String?,
     privateKeyPem: String?,
     privateKeyPassphrase: String?,

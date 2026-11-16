@@ -21,7 +21,9 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.blur.HazeBlurStyle
 import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.blur.materials.HazeMaterials
+import ru.fromchat.ui.main.settings.LocalSettingsDetailInDialog
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
+import ru.fromchat.utils.conditional
 
 @Composable
 fun HazeBottomBar(
@@ -42,6 +44,7 @@ fun HazeBottomBar(
             )
         },
     )
+    val inSettingsDialog = LocalSettingsDetailInDialog.current
     Column(
         modifier = Modifier
             .windowInsetsPadding(WindowInsets.ime)
@@ -64,7 +67,7 @@ fun HazeBottomBar(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .navigationBarsPadding()
+                    .conditional(!inSettingsDialog) { navigationBarsPadding() }
                     .padding(horizontal = SettingsStepHorizontalPadding)
                     .padding(top = 2.dp, bottom = 16.dp),
             ) {
