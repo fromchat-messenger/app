@@ -33,7 +33,7 @@ internal fun httpsGetOverTlsStreams(
     val netSize = engine.session.packetBufferSize
     val appSize = engine.session.applicationBufferSize
     val peerBuffer = ByteBuffer.allocate(netSize * 4)
-    runTlsHandshake(engine, plainIn, plainOut, netSize, appSize, host, peerBuffer)
+    runTlsHandshake(engine, plainIn, plainOut, netSize, appSize, peerBuffer)
     val request = buildString {
         append("GET ").append(pathAndQuery).append(" HTTP/1.1\r\n")
         append("Host: ").append(host).append("\r\n")
@@ -75,7 +75,7 @@ internal fun openTlsEngineClientOverSocket(
     val peerBuffer = ByteBuffer.allocate(netSize * 4)
     val plainIn = plain.getInputStream()
     val plainOut = plain.getOutputStream()
-    runTlsHandshake(engine, plainIn, plainOut, netSize, appSize, host, peerBuffer)
+    runTlsHandshake(engine, plainIn, plainOut, netSize, appSize, peerBuffer)
     return TlsEngineIoContext(engine, plainIn, plainOut, peerBuffer, netSize, appSize)
 }
 
@@ -139,11 +139,9 @@ private fun runTlsHandshake(
     plainOut: OutputStream,
     netSize: Int,
     appSize: Int,
-    tlsHost: String,
     peerBuffer: ByteBuffer,
 ) {
     engine.beginHandshake()
-    loggedFirstTlsInbound = false
     peerBuffer.clear()
     var netBuffer = ByteBuffer.allocate(netSize * 2)
     var appBuffer = ByteBuffer.allocate(appSize)
@@ -160,16 +158,8 @@ private fun runTlsHandshake(
                 peerBuffer.flip()
                 if (!peerBuffer.hasRemaining()) continue
                 appBuffer.clear()
-                val unwrap = engine.unwrap(peerBuffer, appBuffer)
+                engine.unwrap(peerBuffer, appBuffer)
                 peerBuffer.compact()
-                // #region agent log
-                sshProbeAgentLog(
-                    "H14",
-                    "JvmTlsStreamHttp.jvm.kt:null-cipher-recovery",
-                    "NOT_HANDSHAKING with NULL cipher",
-                    """{"unwrapStatus":"${unwrap.status}","bytesProduced":${unwrap.bytesProduced()}}""",
-                )
-                // #endregion
                 continue
             }
             SSLEngineResult.HandshakeStatus.NEED_WRAP -> {
@@ -236,38 +226,15 @@ private fun runTlsHandshake(
         }
     }
     val cipher = engine.session.cipherSuite
-    // #region agent log
-    sshProbeAgentLog(
-        "H2",
-        "JvmTlsStreamHttp.jvm.kt:tls-handshake",
-        "TLS handshake finished",
-        """{"cipherSuite":"$cipher","hs":"$hs","host":"$tlsHost","peerRemainder":${peerBuffer.position()},"runId":"post-fix-sslengine-v7"}""",
-    )
-    // #endregion
     if (cipher.contains("NULL", ignoreCase = true)) {
         throw IOException("TLS not negotiated ($cipher)")
     }
     drainPeerCiphertext(engine, plainIn, peerBuffer, appBuffer, netSize, untilHandshakeComplete = true)
 }
 
-private var loggedFirstTlsInbound = false
-
 private fun appendTlsInbound(peerBuffer: ByteBuffer, plainIn: InputStream, maxChunk: Int) {
     if (!appendInboundCiphertext(peerBuffer, plainIn, maxChunk, allowEof = false)) {
         throw EOFException("EOF during TLS handshake")
-    }
-    if (!loggedFirstTlsInbound && peerBuffer.position() > 0) {
-        loggedFirstTlsInbound = true
-        val snap = ByteArray(peerBuffer.position().coerceAtMost(12))
-        peerBuffer.duplicate().apply { flip(); get(snap) }
-        // #region agent log
-        sshProbeAgentLog(
-            "H3",
-            "JvmTlsStreamHttp.jvm.kt:first-tls-inbound",
-            "first ciphertext from socket",
-            """{"bytes":${peerBuffer.position()},"hex":"${hexPrefix(snap)}"}""",
-        )
-        // #endregion
     }
 }
 

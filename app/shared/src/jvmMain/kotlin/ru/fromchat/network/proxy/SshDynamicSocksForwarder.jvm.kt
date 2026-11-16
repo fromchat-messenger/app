@@ -118,34 +118,10 @@ actual class SshDynamicSocksForwarder actual constructor(
             direct.setAutoExpand(true)
             client.tcpNoDelay = true
             writeSocksReply(output, 0x00)
-            // #region agent log
-            sshProbeAgentLog(
-                "H1",
-                "SshDynamicSocksForwarder.jvm.kt:relay-start",
-                "SOCKS CONNECT ok, relay starting",
-                """{"remoteHost":"$remoteHost","remotePort":$remotePort,"atyp":$addressType}""",
-            )
-            // #endregion
             relayBidirectional(client, direct, isLoopbackSocksClient(client))
-            // #region agent log
-            sshProbeAgentLog(
-                "H3",
-                "SshDynamicSocksForwarder.jvm.kt:relay-end",
-                "relay finished",
-                """{"remoteHost":"$remoteHost","remotePort":$remotePort,"clientClosed":${client.isClosed}}""",
-            )
-            // #endregion
         } catch (_: IOException) {
             // Client closed or handshake failed.
         } finally {
-            // #region agent log
-            sshProbeAgentLog(
-                "H3",
-                "SshDynamicSocksForwarder.jvm.kt:client-finally-close",
-                "closing SOCKS client in finally",
-                """{"clientClosedBefore":${client.isClosed},"hadDirect":${direct != null}}""",
-            )
-            // #endregion
             runCatching { direct?.close() }
             runCatching { client.close() }
         }
@@ -204,20 +180,6 @@ actual class SshDynamicSocksForwarder actual constructor(
             }
         }
 
-    /**
-     * Opens a `direct-tcpip` tunnel on the live SSH session (same path SOCKS5 CONNECT uses after the
-     * greeting on [localPort]). In-process loopback SOCKS + TLS competes for socket reads with the
-     * relay threads, so the health probe uses this tunnel after verifying the listener.
-     */
-    internal fun openRemoteDnsTunnelForProbe(remoteHost: String, remotePort: Int): Socket {
-        val ssh = sshClient ?: error("SSH forwarder not running")
-        val host = remoteHost.trim()
-        require(host.isNotEmpty()) { "empty remote host" }
-        require(remotePort in 1..65_535) { "bad remote port" }
-        val direct = openDirectConnection(ssh, host, remotePort)
-        return SshDirectTcpSocket(direct)
-    }
-
     private fun isLoopbackSocksClient(client: Socket): Boolean {
         client.inetAddress?.takeIf { it.isLoopbackAddress }?.let { return true }
         val remote = client.remoteSocketAddress as? InetSocketAddress ?: return false
@@ -229,55 +191,28 @@ actual class SshDynamicSocksForwarder actual constructor(
         direct: net.schmizz.sshj.connection.channel.direct.DirectConnection,
         loopback: Boolean,
     ) {
-        val sshIn = CountingInputStream(direct.inputStream)
-        val clientIn =
-            if (loopback) {
+        if (loopback) {
             val clientSentLatch = CountDownLatch(1)
-            val gatedClientIn = CountingInputStream(client.getInputStream()) {
+            val gatedClientIn = GatedOnFirstReadInputStream(client.getInputStream()) {
                 clientSentLatch.countDown()
             }
-            val clientOut = FlushingOutputStream(client.getOutputStream()) { n, hex ->
-                // #region agent log
-                sshProbeAgentLog(
-                    "H13",
-                    "SshDynamicSocksForwarder.jvm.kt:first-ssh-to-client",
-                    "first ssh bytes pushed to SOCKS client",
-                    """{"bytes":$n,"hex":"$hex","runId":"flush-relay-v6"}""",
-                )
-                // #endregion
-            }
+            val clientOut = FlushingOutputStream(client.getOutputStream())
             val executor = workers ?: error("forwarder workers missing")
             val soc2chan = executor.submit {
                 copyStreamFlush(gatedClientIn, direct.outputStream)
             }
             val chan2soc = executor.submit {
-                if (!clientSentLatch.await(25, TimeUnit.SECONDS)) {
-                    sshProbeAgentLog(
-                        "H20",
-                        "SshDynamicSocksForwarder.jvm.kt:chan2soc-gate-timeout",
-                        "no client bytes before chan2soc",
-                        "{}",
-                    )
-                } else {
-                    sshProbeAgentLog(
-                        "H20",
-                        "SshDynamicSocksForwarder.jvm.kt:chan2soc-gate-open",
-                        "client sent bytes, starting chan2soc",
-                        """{"clientToSshFirstHex":"${hexPrefix(gatedClientIn.firstBytes)}"}""",
-                    )
-                }
-                copyStreamFlush(sshIn, clientOut)
+                clientSentLatch.await(25, TimeUnit.SECONDS)
+                copyStreamFlush(direct.inputStream, clientOut)
             }
             runCatching { soc2chan.get() }
             runCatching { chan2soc.get() }
-            gatedClientIn
         } else {
-            CountingInputStream(client.getInputStream()).also { clientIn ->
-            val soc2chan = StreamCopier(clientIn, direct.outputStream, direct.loggerFactory)
+            val soc2chan = StreamCopier(client.getInputStream(), direct.outputStream, direct.loggerFactory)
                 .bufSize(direct.remoteMaxPacketSize.toInt())
                 .spawnDaemon("soc2chan")
             val chan2soc = StreamCopier(
-                sshIn,
+                direct.inputStream,
                 client.getOutputStream(),
                 direct.loggerFactory,
             )
@@ -285,18 +220,7 @@ actual class SshDynamicSocksForwarder actual constructor(
                 .spawnDaemon("chan2soc")
             runCatching { soc2chan.await() }
             runCatching { chan2soc.await() }
-            }
         }
-        // #region agent log
-        val clientToSsh = clientIn.bytesRead
-        val sshToClient = sshIn.bytesRead
-        sshProbeAgentLog(
-            "H6",
-            "SshDynamicSocksForwarder.jvm.kt:relay-bytes",
-            "relay byte counts",
-            """{"clientToSsh":$clientToSsh,"sshToClient":$sshToClient,"clientHex":"${hexPrefix(clientIn.firstBytes)}","loopback":$loopback}""",
-        )
-        // #endregion
     }
 }
 
@@ -314,10 +238,7 @@ private fun copyStreamFlush(input: java.io.InputStream, output: java.io.OutputSt
 
 private class FlushingOutputStream(
     private val delegate: java.io.OutputStream,
-    private val onFirstWrite: (Int, String) -> Unit,
 ) : java.io.OutputStream() {
-    private var loggedFirst = false
-
     override fun write(b: Int) {
         write(byteArrayOf(b.toByte()), 0, 1)
     }
@@ -326,11 +247,6 @@ private class FlushingOutputStream(
         if (len <= 0) return
         delegate.write(b, off, len)
         delegate.flush()
-        if (!loggedFirst) {
-            loggedFirst = true
-            val snap = b.copyOfRange(off, off + minOf(len, 12))
-            onFirstWrite(len, hexPrefix(snap))
-        }
     }
 
     override fun flush() {
@@ -342,38 +258,28 @@ private class FlushingOutputStream(
     }
 }
 
-private class CountingInputStream(
+private class GatedOnFirstReadInputStream(
     private val delegate: java.io.InputStream,
-    private val onFirstBytes: (() -> Unit)? = null,
+    private val onFirstBytes: () -> Unit,
 ) : java.io.InputStream() {
     private var signaledFirst = false
-    var bytesRead: Long = 0
-        private set
-    val firstBytes = ByteArray(16)
-    private var firstFilled = 0
 
     override fun read(): Int {
         val b = delegate.read()
-        if (b >= 0) record(byteArrayOf(b.toByte()), 0, 1)
+        if (b >= 0) signalOnce()
         return b
     }
 
     override fun read(b: ByteArray, off: Int, len: Int): Int {
         val n = delegate.read(b, off, len)
-        if (n > 0) record(b, off, n)
+        if (n > 0) signalOnce()
         return n
     }
 
-    private fun record(buf: ByteArray, off: Int, len: Int) {
-        bytesRead += len
-        if (!signaledFirst && len > 0) {
+    private fun signalOnce() {
+        if (!signaledFirst) {
             signaledFirst = true
-            onFirstBytes?.invoke()
-        }
-        if (firstFilled < firstBytes.size) {
-            val copy = minOf(len, firstBytes.size - firstFilled)
-            buf.copyInto(firstBytes, firstFilled, off, off + copy)
-            firstFilled += copy
+            onFirstBytes()
         }
     }
 }

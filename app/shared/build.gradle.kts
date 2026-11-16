@@ -323,24 +323,6 @@ tasks.matching { it.name == "compileAndroidMain" || it.name == "compileKotlinIos
     dependsOn(generateAppBuildInfo)
 }
 
-tasks.register<JavaExec>("loopbackSocksTlsSmoke") {
-    group = "verification"
-    description = "In-process loopback SOCKS + TLS smoke (debug)"
-    dependsOn("compileKotlinJvm")
-    val jvmCompilation = kotlin.targets.getByName("jvm").compilations.getByName("main")
-    classpath = files(jvmCompilation.output.allOutputs, jvmCompilation.runtimeDependencyFiles)
-    mainClass.set("ru.fromchat.network.proxy.LoopbackSocksTlsSmokeKt")
-}
-
-tasks.register<JavaExec>("sshSocksProbeSmoke") {
-    group = "verification"
-    description = "SSH dynamic SOCKS + in-app loopback TLS probe smoke (debug)"
-    dependsOn("compileKotlinJvm")
-    val jvmCompilation = kotlin.targets.getByName("jvm").compilations.getByName("main")
-    classpath = files(jvmCompilation.output.allOutputs, jvmCompilation.runtimeDependencyFiles)
-    mainClass.set("ru.fromchat.network.proxy.SshSocksProbeSmokeKt")
-}
-
 tasks.register("generateResourceAccessors") {
     dependsOn(
         *(

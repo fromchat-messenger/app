@@ -33,14 +33,6 @@ internal actual suspend fun probeSshLocalSocksCheck(
         }
         var plain: java.net.Socket? = null
         try {
-            // #region agent log
-            sshProbeAgentLog(
-                "H0",
-                "ProxyLoopbackSocksProbe.jvm.kt:probe-start",
-                "ssh loopback probe start",
-                """{"localPort":$localPort,"tlsHost":"$tlsHost","runId":"post-fix-sslengine-v7"}""",
-            )
-            // #endregion
             val proxy = InetSocketAddress("127.0.0.1", localPort)
             plain = socks5TcpConnect(proxy, tlsHost, targetPort, connectTimeoutMs = 15_000, readTimeoutMs = 25_000)
                 .apply { soTimeout = 25_000; tcpNoDelay = true }
@@ -65,28 +57,12 @@ internal actual suspend fun probeSshLocalSocksCheck(
             if (instanceId.isEmpty()) {
                 ProxyCheckResult.Failed("Empty instance id")
             } else {
-                // #region agent log
-                sshProbeAgentLog(
-                    "H0",
-                    "ProxyLoopbackSocksProbe.jvm.kt:success",
-                    "probe success",
-                    """{"pingMs":${mark.elapsedNow().inWholeMilliseconds}}""",
-                )
-                // #endregion
                 ProxyCheckResult.Success(
                     pingMs = mark.elapsedNow().inWholeMilliseconds.toInt(),
                     instanceId = instanceId,
                 )
             }
         } catch (e: Exception) {
-            // #region agent log
-            sshProbeAgentLog(
-                "H1",
-                "ProxyLoopbackSocksProbe.jvm.kt:probe-failed",
-                e.message ?: e.javaClass.name,
-                """{"exception":"${e.javaClass.name}","plainClosed":${plain?.isClosed}}""",
-            )
-            // #endregion
             Logger.w("ProxyChecker", "loopback SOCKS probe failed: ${e.message}", e)
             if (e.isCertificateError()) {
                 ProxyCheckResult.CertificateIssue(pem = "", detail = e.message)
