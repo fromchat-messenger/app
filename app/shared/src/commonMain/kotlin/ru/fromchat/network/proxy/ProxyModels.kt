@@ -31,6 +31,16 @@ enum class ProxyType {
     SSH,
 }
 
+enum class SavedProxyScope {
+    Global,
+    IncognitoSession,
+}
+
+data class SavedProxyListing(
+    val proxy: Proxy,
+    val scope: SavedProxyScope,
+)
+
 /** Credential shape for a [Proxy]. Secrets are stored in [ProxyStore], not in persisted JSON. */
 interface Auth
 
@@ -201,6 +211,8 @@ sealed class ProxyRoute {
         val password: String? = null,
     ) : ProxyRoute()
 }
+
+class ProxyRouteNotReadyException(message: String) : Exception(message)
 
 sealed class ProxyTunnelState {
     data object Idle : ProxyTunnelState()

@@ -36,6 +36,9 @@ actual suspend fun fetchPeerCertificatePem(route: ProxyRoute): String? {
         if (url.port > 0) url.port else url.defaultPort
     }.getOrDefault(443)
     return runCatching {
+        if (route is ProxyRoute.Custom && route.endpointType == ProxyType.SOCKS5) {
+            return@runCatching fetchLeafCertificateViaSocks5(route, host, port)
+        }
         val connection = URL("https://$host:$port/").openConnection(resolveJavaProxy(route)) as HttpsURLConnection
         connection.connectTimeout = 5_000
         connection.readTimeout = 5_000
@@ -47,6 +50,21 @@ actual suspend fun fetchPeerCertificatePem(route: ProxyRoute): String? {
         val leaf = certs.firstOrNull() as? X509Certificate ?: return@runCatching null
         certificateToPem(leaf)
     }.getOrNull()
+}
+
+private fun fetchLeafCertificateViaSocks5(
+    route: ProxyRoute.Custom,
+    host: String,
+    port: Int,
+): String? {
+    val proxy = InetSocketAddress(route.host, route.port)
+    val plain = socks5TcpConnect(proxy, host, port, connectTimeoutMs = 8_000, readTimeoutMs = 8_000)
+    val ssl = trustAllSslContext().socketFactory.createSocket(plain, host, port, true) as javax.net.ssl.SSLSocket
+    ssl.soTimeout = 8_000
+    ssl.startHandshake()
+    val leaf = ssl.session.peerCertificates.firstOrNull() as? X509Certificate ?: return null
+    ssl.close()
+    return certificateToPem(leaf)
 }
 
 private fun resolveJavaProxy(route: ProxyRoute): Proxy = when (route) {
@@ -102,7 +120,7 @@ internal class ProxyPinningTrustManager : X509TrustManager {
 }
 
 internal fun certificateToPem(certificate: X509Certificate): String {
-  val encoded = Base64.getMimeEncoder(64, "\n".toByteArray()).encodeToString(certificate.encoded)
+    val encoded = Base64.getMimeEncoder(64, "\n".toByteArray()).encodeToString(certificate.encoded)
     return "-----BEGIN CERTIFICATE-----\n$encoded\n-----END CERTIFICATE-----"
 }
 

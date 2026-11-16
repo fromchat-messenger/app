@@ -1,14 +1,19 @@
 package ru.fromchat.ui.main.settings.proxy
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -52,6 +57,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -63,7 +69,10 @@ import ru.fromchat.config.ServerConfig
 import ru.fromchat.network.proxy.ProxyCheckResult
 import ru.fromchat.network.proxy.ProxyChecker
 import ru.fromchat.network.proxy.ProxyCheckTarget
+import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.network.proxy.ProxyRuntime
+import ru.fromchat.network.proxy.SavedProxyListing
+import ru.fromchat.network.proxy.SavedProxyScope
 import ru.fromchat.network.proxy.ProxySelection
 import ru.fromchat.network.proxy.ProxyTlsTrust
 import ru.fromchat.network.proxy.ProxyType
@@ -78,7 +87,8 @@ import ru.fromchat.proxy_ssh_auth_failed
 import ru.fromchat.proxy_checking
 import ru.fromchat.proxy_delete
 import ru.fromchat.proxy_direct_connection
-import ru.fromchat.proxy_no_proxies
+import ru.fromchat.proxy_scope_global
+import ru.fromchat.proxy_scope_incognito
 import ru.fromchat.proxy_ping_ms
 import ru.fromchat.proxy_screen_subtitle
 import ru.fromchat.proxy_system_proxy
@@ -95,10 +105,8 @@ import ru.fromchat.ui.main.settings.settingsDetailHazeSource
 import ru.fromchat.ui.main.settings.settingsDetailScaffoldContentWindowInsets
 import ru.fromchat.ui.main.settings.settingsDetailUseCollapsingTopBar
 import ru.fromchat.utils.components.Category
-import ru.fromchat.utils.components.CategoryDefaults
 import ru.fromchat.utils.components.ListItemContextMenuScope
 import ru.fromchat.utils.components.ListItemPosition
-import ru.fromchat.utils.components.ReorderingCategory
 import ru.fromchat.utils.conditional
 
 private val ProxyPingSuccessColor = Color(0xFF2E7D32)
@@ -112,6 +120,15 @@ private fun proxyListDisplayOrder(
         .filter { sortChecks[it.id] is ProxyCheckResult.Success }
         .sortedBy { (sortChecks[it.id] as ProxyCheckResult.Success).pingMs }
     return ranked + savedProxies.filter { sortChecks[it.id] !is ProxyCheckResult.Success }
+}
+
+private fun proxyListingDisplayOrder(
+    listings: List<SavedProxyListing>,
+    sortChecks: Map<String, ProxyCheckResult>,
+): List<SavedProxyListing> {
+    val order = proxyListDisplayOrder(listings.map { it.proxy }, sortChecks)
+    val byId = listings.associateBy { it.proxy.id }
+    return order.mapNotNull { byId[it.id] }
 }
 
 private fun applySettledProxyCheck(
@@ -145,7 +162,9 @@ fun ProxyScreen(
     val scheme = MaterialTheme.colorScheme
 
     val selection by ProxyRuntime.selection.collectAsState()
-    val savedProxies by ProxyRuntime.savedProxies.collectAsState()
+    val savedProxyListings by ProxyRuntime.savedProxyListings.collectAsState()
+    val savedProxies = remember(savedProxyListings) { savedProxyListings.map { it.proxy } }
+    val showProxyScopeMarks = IncognitoMode.active
     var systemProxyConfigured by remember { mutableStateOf(systemProxyAvailable()) }
     val showSystemProxyRow = systemProxyConfigured || selection is ProxySelection.System
 
@@ -169,30 +188,40 @@ fun ProxyScreen(
 
         withContext(Dispatchers.Default) {
             coroutineScope {
-                val directDeferred = async { ProxyChecker.checkDirect() }
-                val systemDeferred = if (showSystemProxyRow) {
-                    async { ProxyChecker.checkSystem() }
-                } else {
-                    null
-                }
-                val customDeferred = savedProxies.map { proxy ->
-                    proxy.id to async {
-                        ProxyChecker.checkProxy(ProxyCheckTarget.SavedProxyById(proxy.id))
-                    }
-                }
-                val direct = directDeferred.await()
-                val system = systemDeferred?.await()
-                val custom = customDeferred.map { (id, deferred) -> id to deferred.await() }
-                withContext(Dispatchers.Main.immediate) {
-                    directCheck = direct
+                val jobs = buildList {
+                    add(
+                        async {
+                            val result = ProxyChecker.checkDirect()
+                            withContext(Dispatchers.Main.immediate) {
+                                directCheck = result
+                            }
+                        },
+                    )
                     if (showSystemProxyRow) {
-                        systemCheck = system
+                        add(
+                            async {
+                                val result = ProxyChecker.checkSystem()
+                                withContext(Dispatchers.Main.immediate) {
+                                    systemCheck = result
+                                }
+                            },
+                        )
                     }
-                    custom.forEach { (id, result) ->
-                        customCheckDisplay[id] = result
-                        applySettledProxyCheck(customCheckSort, id, result)
+                    savedProxies.forEach { proxy ->
+                        add(
+                            async {
+                                val result = ProxyChecker.checkProxy(
+                                    ProxyCheckTarget.SavedProxyById(proxy.id),
+                                )
+                                withContext(Dispatchers.Main.immediate) {
+                                    customCheckDisplay[proxy.id] = result
+                                    applySettledProxyCheck(customCheckSort, proxy.id, result)
+                                }
+                            },
+                        )
                     }
                 }
+                jobs.awaitAll()
             }
         }
     }
@@ -202,7 +231,11 @@ fun ProxyScreen(
         withContext(Dispatchers.Default) { ProxyRuntime.refreshSavedProxies() }
     }
 
-    LaunchedEffect(savedProxies, systemProxyConfigured) {
+    val savedProxyIdsKey = remember(savedProxyListings) {
+        savedProxyListings.joinToString { it.proxy.id }
+    }
+
+    LaunchedEffect(savedProxyIdsKey, systemProxyConfigured) {
         yield()
         runConnectivityChecks()
     }
@@ -267,8 +300,8 @@ fun ProxyScreen(
     val editLabel = stringResource(Res.string.action_edit)
     val deleteLabel = stringResource(Res.string.proxy_delete)
 
-    val sortedProxies = remember(savedProxies, customCheckSort.toMap()) {
-        proxyListDisplayOrder(savedProxies, customCheckSort)
+    val sortedListings = remember(savedProxyListings, customCheckSort.toMap()) {
+        proxyListingDisplayOrder(savedProxyListings, customCheckSort)
     }
 
     val listState = rememberLazyListState()
@@ -380,64 +413,61 @@ fun ProxyScreen(
                 }
             }
 
-            if (sortedProxies.isEmpty()) {
-                item(key = "saved-proxies-empty") {
+            item(key = "saved-proxies-section") {
+                AnimatedVisibility(
+                    visible = sortedListings.isNotEmpty(),
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically(),
+                ) {
                     Category(
                         margin = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp),
                     ) {
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .background(
-                                    CategoryDefaults.containerColor,
-                                    CategoryDefaults.shape,
-                                ),
-                        ) {
-                            Text(
-                                text = stringResource(Res.string.proxy_no_proxies),
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = scheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 28.dp),
+                        sortedListings.forEachIndexed { index, listing ->
+                            val proxy = listing.proxy
+                            val check = customCheckDisplay[proxy.id] ?: ProxyCheckResult.Checking
+                            val itemCount = sortedListings.size
+                            val position = when {
+                                itemCount == 1 -> ListItemPosition.START
+                                index == 0 -> ListItemPosition.START
+                                index == itemCount - 1 -> ListItemPosition.END
+                                else -> ListItemPosition.MIDDLE
+                            }
+                            ProxySelectionRow(
+                                headline = proxy.listHeadline(),
+                                selected = selection == ProxySelection.Custom(proxy.id),
+                                checkResult = check,
+                                icon = when (proxy.type) {
+                                    ProxyType.HTTP -> Icons.Rounded.Http
+                                    ProxyType.SOCKS5 -> Icons.Rounded.Hub
+                                    ProxyType.SSH -> Icons.Rounded.Terminal
+                                },
+                                iconPreset = when (proxy.type) {
+                                    ProxyType.HTTP -> ExpressiveTints.Cyan
+                                    ProxyType.SOCKS5 -> ExpressiveTints.Purple
+                                    ProxyType.SSH -> ExpressiveTints.Orange
+                                },
+                                position = position,
+                                groupItemCount = itemCount,
+                                divider = index < itemCount - 1,
+                                scopeMark = listing.scope.takeIf { showProxyScopeMarks },
+                                onSelect = {
+                                    requestSelection(
+                                        ProxySelection.Custom(proxy.id),
+                                        check,
+                                        proxy.listHeadline(),
+                                    )
+                                },
+                                contextMenu = {
+                                    menuItem(Icons.Rounded.Edit, editLabel) {
+                                        onEditProxy(proxy.id)
+                                    }
+                                    menuItem(Icons.Rounded.Delete, deleteLabel, destructive = true) {
+                                        pendingDeleteProxyId = proxy.id
+                                    }
+                                },
                             )
                         }
                     }
-                }
-            } else {
-                ReorderingCategory(
-                    items = sortedProxies,
-                    key = { it.id },
-                    keyPrefix = "saved-proxies",
-                    margin = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp),
-                ) { index, proxy, position, itemCount ->
-                    val check = customCheckDisplay[proxy.id] ?: ProxyCheckResult.Checking
-                    ProxySelectionRow(
-                        headline = proxy.listHeadline(),
-                        selected = selection == ProxySelection.Custom(proxy.id),
-                        checkResult = check,
-                        icon = proxyTypeIcon(proxy.type),
-                        iconPreset = proxyTypeIconPreset(proxy.type),
-                        position = position,
-                        groupItemCount = itemCount,
-                        divider = index < itemCount - 1,
-                        onSelect = {
-                            requestSelection(
-                                ProxySelection.Custom(proxy.id),
-                                check,
-                                proxy.listHeadline(),
-                            )
-                        },
-                        contextMenu = {
-                            menuItem(Icons.Rounded.Edit, editLabel) {
-                                onEditProxy(proxy.id)
-                            }
-                            menuItem(Icons.Rounded.Delete, deleteLabel, destructive = true) {
-                                pendingDeleteProxyId = proxy.id
-                            }
-                        },
-                    )
                 }
             }
             }
@@ -489,18 +519,6 @@ fun ProxyScreen(
     )
 }
 
-private fun proxyTypeIcon(type: ProxyType) = when (type) {
-    ProxyType.HTTP -> Icons.Rounded.Http
-    ProxyType.SOCKS5 -> Icons.Rounded.Hub
-    ProxyType.SSH -> Icons.Rounded.Terminal
-}
-
-private fun proxyTypeIconPreset(type: ProxyType): IconPreset = when (type) {
-    ProxyType.HTTP -> ExpressiveTints.Cyan
-    ProxyType.SOCKS5 -> ExpressiveTints.Purple
-    ProxyType.SSH -> ExpressiveTints.Orange
-}
-
 @Composable
 private fun ProxySelectionRow(
     headline: String,
@@ -512,6 +530,7 @@ private fun ProxySelectionRow(
     position: ListItemPosition,
     groupItemCount: Int,
     divider: Boolean,
+    scopeMark: SavedProxyScope? = null,
     onSelect: () -> Unit,
     contextMenu: (ListItemContextMenuScope.() -> Unit)? = null,
 ) {
@@ -531,8 +550,16 @@ private fun ProxySelectionRow(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (checkResult != null) {
-                    ProxyCheckStatusText(checkResult)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (scopeMark != null) {
+                        ProxyScopeMark(scopeMark)
+                    }
+                    if (checkResult != null) {
+                        ProxyCheckStatusText(checkResult)
+                    }
                 }
             }
         },
@@ -541,6 +568,27 @@ private fun ProxySelectionRow(
         groupItemCount = groupItemCount,
         onClick = onSelect,
         contextMenu = contextMenu,
+    )
+}
+
+@Composable
+private fun ProxyScopeMark(scope: SavedProxyScope) {
+    val scheme = MaterialTheme.colorScheme
+    val label = when (scope) {
+        SavedProxyScope.Global -> stringResource(Res.string.proxy_scope_global)
+        SavedProxyScope.IncognitoSession -> stringResource(Res.string.proxy_scope_incognito)
+    }
+    val (container, content) = when (scope) {
+        SavedProxyScope.Global -> scheme.secondaryContainer to scheme.onSecondaryContainer
+        SavedProxyScope.IncognitoSession -> scheme.tertiaryContainer to scheme.onTertiaryContainer
+    }
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelSmall,
+        color = content,
+        modifier = Modifier
+            .background(container, RoundedCornerShape(6.dp))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
     )
 }
 

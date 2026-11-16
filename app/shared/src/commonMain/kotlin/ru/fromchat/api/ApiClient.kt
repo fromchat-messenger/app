@@ -156,8 +156,15 @@ import ru.fromchat.config.Settings
 import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.network.proxy.ProxyRoute
 import ru.fromchat.network.proxy.ProxyRuntime
+import ru.fromchat.network.proxy.installProxyTrafficGate
 import kotlin.concurrent.Volatile
 import kotlin.time.Duration.Companion.milliseconds
+
+/** TLS policy for [createPlatformHttpClient] (probe vs normal app traffic). */
+enum class HttpClientTlsProfile {
+    App,
+    ProxyProbe,
+}
 
 /**
  * Creates a platform-specific HTTP client that supports WebSockets
@@ -165,6 +172,7 @@ import kotlin.time.Duration.Companion.milliseconds
  */
 expect fun createPlatformHttpClient(
     proxyRoute: ProxyRoute? = null,
+    tlsProfile: HttpClientTlsProfile = HttpClientTlsProfile.App,
     block: io.ktor.client.HttpClientConfig<*>.() -> Unit = {},
 ): HttpClient
 
@@ -256,7 +264,10 @@ object ApiClient {
     }
 
     /** GET-only client: no global 401 handler (used when probing a not-yet-saved server URL). */
-    internal fun HttpClientConfig<*>.configureHttpProbeClient() {
+    internal fun HttpClientConfig<*>.configureHttpProbeClient(
+        recordInstanceId: Boolean = true,
+    ) {
+        installProxyTrafficGate()
         install(ContentNegotiation) {
             json(json)
         }
@@ -264,28 +275,30 @@ object ApiClient {
             logger = Logger.SIMPLE
             level = LogLevel.INFO
         }
-        val currentDevice = currentDeviceInfo()
-        val userAgent = buildLoginUserAgent(
-            osName = currentDevice.osName?.takeIfNotBlank(),
-            osVersion = currentDevice.osVersion?.takeIfNotBlank(),
-            model = currentDevice.model?.takeIfNotBlank(),
-            brand = currentDevice.brand?.takeIfNotBlank(),
-        )
         defaultRequest {
-            header("User-Agent", userAgent)
+            currentDeviceInfo().let { device ->
+                header(
+                    "User-Agent",
+                    buildLoginUserAgent(
+                        osName = device.osName?.takeIfNotBlank(),
+                        osVersion = device.osVersion?.takeIfNotBlank(),
+                        model = device.model?.takeIfNotBlank(),
+                        brand = device.brand?.takeIfNotBlank(),
+                    ),
+                )
+            }
             header(HttpHeaders.Connection, "close")
             if (IncognitoMode.active) {
                 header(INCOGNITO_REQUEST_HEADER, "1")
             }
         }
-        engine {
-            pipelining = false
-        }
         HttpResponseValidator {
             validateResponse { response ->
-                val instanceHeader = response.headers[InstanceIdGuard.INSTANCE_ID_HEADER]
-                runCatching {
-                    InstanceIdGuard.onResponseHeader(instanceHeader)
+                if (recordInstanceId) {
+                    val instanceHeader = response.headers[InstanceIdGuard.INSTANCE_ID_HEADER]
+                    runCatching {
+                        InstanceIdGuard.onResponseHeader(instanceHeader)
+                    }
                 }
                 if (response.status.value !in (200..299) + 101) {
                     throw ClientRequestException(
@@ -318,8 +331,9 @@ object ApiClient {
     /** Minimal TCP/HTTP check: true if a GET succeeds without throwing (any HTTP status). */
     suspend fun probeHttpGet(url: String, bypassProxy: Boolean = false): Boolean =
         runCatching {
-            val client = if (bypassProxy) HttpClients.callDirectHttp else httpProbe
-            client.get(url.trim())
+            (
+                if (bypassProxy && !ProxyRuntime.selectionUsesProxy()) HttpClients.callDirectHttp else httpProbe
+            ).get(url.trim())
         }.isSuccess
 
     sealed interface CheckAuthResult {

@@ -2,12 +2,13 @@ package ru.fromchat.utils.settings
 
 import ru.fromchat.incognito.IncognitoMode
 
-/**
- * Keys that must stay on the durable (normal) profile even while incognito is active —
- * server endpoint and instance binding are not session secrets and must not reset in the
- * ephemeral incognito KV store.
- */
+/** Persisted on the durable profile while incognito is active (global proxy list). */
 internal val settingsKeysStoredInNormalProfile = setOf(
+    "saved_proxies_v1",
+)
+
+/** Copied from normal → incognito when a session starts; session edits use incognito store only. */
+internal val serverProfileSettingsKeys = setOf(
     "server_url",
     "server_ip",
     "api_port",
@@ -16,6 +17,10 @@ internal val settingsKeysStoredInNormalProfile = setOf(
     "https_enabled",
     "last_server_instance_id",
 )
+
+internal val serverProfileIntKeys = setOf("api_port", "calls_port")
+
+internal val serverProfileBooleanKeys = setOf("calls_enabled", "https_enabled")
 
 internal class IncognitoRoutingSettings(
     private val normal: Settings,

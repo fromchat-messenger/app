@@ -6,11 +6,17 @@ import ru.fromchat.api.ApiClient
 import ru.fromchat.api.createProbeHttpClient
 import ru.fromchat.api.schema.server.ServerInstanceIdResponse
 import ru.fromchat.config.ServerConfig
+import ru.fromchat.logging.Logger
 import ru.fromchat.network.proxy.ssh.KeyPassphraseSessionCache
 import ru.fromchat.network.proxy.ssh.proxyCheckFailKindForError
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import kotlin.time.TimeSource
 
 object ProxyChecker {
+    private const val TAG = "ProxyChecker"
+    private const val CHECK_TIMEOUT_MS = 12_000L
+    private const val SSH_CHECK_TIMEOUT_MS = 30_000L
     suspend fun checkProxy(endpoint: ProxyCheckTarget): ProxyCheckResult {
         if (endpoint is ProxyCheckTarget.SavedProxyById) {
             val proxy = ProxyStore.readProxies().firstOrNull { it.id == endpoint.id }
@@ -45,34 +51,53 @@ object ProxyChecker {
             privateKeyPem = ProxyStore.readPrivateKey(proxy.id),
             privateKeyPassphrase = KeyPassphraseSessionCache.get(proxy.id),
         )
-        val localPort = runCatching { forwarder.start() }.getOrElse { error ->
+        val localPort = try {
+            withTimeout(CHECK_TIMEOUT_MS) {
+                forwarder.start()
+            }
+        } catch (e: TimeoutCancellationException) {
+            return ProxyCheckResult.Failed("Timeout")
+        } catch (error: Throwable) {
             return ProxyCheckResult.Failed(
                 reason = error.message,
                 kind = proxyCheckFailKindForError(error),
             )
         }
-        return try {
-            checkWithRoute(
-                ProxyRoute.Custom(
-                    endpointType = ProxyType.SOCKS5,
-                    host = "127.0.0.1",
-                    port = localPort,
-                ),
-            )
-        } finally {
-            forwarder.stop()
+        val result = try {
+            withTimeout(SSH_CHECK_TIMEOUT_MS) {
+                ProxyRuntime.withProbeIsolation {
+                    probeSshLocalSocksCheck(forwarder, localPort)
+                }
+            }
+        } catch (_: TimeoutCancellationException) {
+            ProxyCheckResult.Failed("Timeout")
         }
+        forwarder.stop()
+        return result
     }
 
+    internal suspend fun probeInstanceIdViaRoute(route: ProxyRoute): ProxyCheckResult =
+        performCheckWithRoute(route)
+
     private suspend fun checkWithRoute(route: ProxyRoute): ProxyCheckResult =
-        ProxyRuntime.withProbeIsolation {
-            performCheckWithRoute(route)
+        try {
+            withTimeout(CHECK_TIMEOUT_MS) {
+                ProxyRuntime.withProbeIsolation {
+                    performCheckWithRoute(route)
+                }
+            }
+        } catch (_: TimeoutCancellationException) {
+            ProxyCheckResult.Failed("Timeout")
         }
 
     private suspend fun performCheckWithRoute(route: ProxyRoute): ProxyCheckResult {
+        proxyProbeRouteMisconfigured(route)?.let { return it }
         val mark = TimeSource.Monotonic.markNow()
         val base = ServerConfig.apiBaseUrl.trimEnd('/')
-        val client = createProbeHttpClient(proxyRoute = route, bypassHttpProxyForCalls = false)
+        if (useJvmSocksProbe(route) && route is ProxyRoute.Custom) {
+            return probeInstanceIdViaJvmSocks(route, base, mark)
+        }
+        val client = createProbeHttpClient(proxyRoute = route)
         return try {
             val instanceId = client.get("$base/instance_id").body<ServerInstanceIdResponse>().instanceId.trim()
             if (instanceId.isEmpty()) {
@@ -89,7 +114,7 @@ object ProxyChecker {
                 val pem = fetchPeerCertificatePem(route).orEmpty()
                 if (pem.isNotEmpty() && ProxyTlsTrust.hasTrustForPem(host, pem)) {
                     client.close()
-                    val retryClient = createProbeHttpClient(proxyRoute = route, bypassHttpProxyForCalls = false)
+                    val retryClient = createProbeHttpClient(proxyRoute = route)
                     return try {
                         val instanceId = retryClient.get("$base/instance_id").body<ServerInstanceIdResponse>()
                             .instanceId.trim()
@@ -116,6 +141,7 @@ object ProxyChecker {
                 }
                 ProxyCheckResult.CertificateIssue(pem = pem, detail = e.message)
             } else {
+                Logger.w(TAG, "check failed route=$route url=$base: ${e.message}", e)
                 ProxyCheckResult.Failed(e.message)
             }
         } finally {

@@ -2,8 +2,11 @@ package ru.fromchat.network.proxy
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -35,8 +38,16 @@ object ProxyRuntime {
 
     private val _tunnelState = MutableStateFlow<ProxyTunnelState>(ProxyTunnelState.Idle)
 
+    private val _savedProxyListings = MutableStateFlow<List<SavedProxyListing>>(emptyList())
+    val savedProxyListings: StateFlow<List<SavedProxyListing>> = _savedProxyListings.asStateFlow()
+
     private val _savedProxies = MutableStateFlow<List<Proxy>>(emptyList())
     val savedProxies: StateFlow<List<Proxy>> = _savedProxies.asStateFlow()
+
+    private fun publishProxyListings(listings: List<SavedProxyListing>) {
+        _savedProxyListings.value = listings
+        _savedProxies.value = listings.map { it.proxy }
+    }
 
     private val _currentRoute = MutableStateFlow<ProxyRoute>(ProxyRoute.Direct)
     val currentRoute: ProxyRoute
@@ -49,15 +60,33 @@ object ProxyRuntime {
 
     private var sshForwarder: SshDynamicSocksForwarder? = null
 
+    private var lastHttpClientSshLocalPort: Int = -1
+
+    private suspend fun proxyById(id: String, cached: List<Proxy>): Proxy? =
+        cached.firstOrNull { it.id == id }
+            ?: ProxyStore.readProxies().firstOrNull { it.id == id }
+
+    fun selectionUsesProxy(): Boolean =
+        when (_selection.value) {
+            ProxySelection.Direct -> false
+            ProxySelection.System,
+            is ProxySelection.Custom,
+            -> true
+        }
+
     fun initialize() {
-        _savedProxies.value = ProxyStore.loadProxies()
+        onIncognitoSessionBoundary()
+        kotlinx.coroutines.runBlocking {
+            refreshEffectiveRoute(startTunnel = true)
+        }
+    }
+
+    fun onIncognitoSessionBoundary() {
+        publishProxyListings(ProxyStore.loadListedProxies())
         val loaded = ProxyStore.loadSelection()
         _selection.value = loaded
         if (loaded == ProxySelection.System && !systemProxyAvailable()) {
             _selection.value = ProxySelection.Direct
-        }
-        kotlinx.coroutines.runBlocking {
-            refreshEffectiveRoute(startTunnel = true)
         }
     }
 
@@ -67,6 +96,92 @@ object ProxyRuntime {
             is ProxyRoute.System -> systemProxyIsHttp()
             is ProxyRoute.Custom -> route.endpointType == ProxyType.HTTP
         }
+
+    /**
+     * When a proxy is selected, wait until it is routable (SSH tunnel listening). Never falls back to direct.
+     * Faulty proxies still use the proxy path; only [ProxyTunnelState.Connecting] blocks here.
+     */
+    suspend fun awaitTrafficRouteReady(timeoutMs: Long = 60_000L) {
+        if (probeIsolation || !selectionUsesProxy()) return
+        try {
+            withTimeout(timeoutMs) {
+                awaitTrafficRouteReadyLoop()
+            }
+        } catch (_: TimeoutCancellationException) {
+            throw ProxyRouteNotReadyException("Proxy route not ready in ${timeoutMs}ms")
+        }
+    }
+
+    private suspend fun awaitTrafficRouteReadyLoop() {
+        while (true) {
+            when (val selection = _selection.value) {
+                ProxySelection.Direct -> return
+                ProxySelection.System -> {
+                    publishEffectiveRoute()
+                    return
+                }
+                is ProxySelection.Custom -> {
+                    val proxy = proxyById(
+                        selection.id,
+                        _savedProxies.value.ifEmpty { ProxyStore.readProxies() },
+                    )
+                    if (proxy == null) {
+                        publishEffectiveRoute()
+                        return
+                    }
+                    when (proxy.type) {
+                        ProxyType.HTTP,
+                        ProxyType.SOCKS5,
+                        -> {
+                            publishEffectiveRoute()
+                            return
+                        }
+                        ProxyType.SSH -> when (_tunnelState.value) {
+                            is ProxyTunnelState.Active,
+                            is ProxyTunnelState.Error,
+                            -> {
+                                publishEffectiveRoute()
+                                return
+                            }
+                            ProxyTunnelState.Idle,
+                            ProxyTunnelState.Connecting,
+                            -> {
+                                refreshEffectiveRoute(startTunnel = true)
+                                delay(50)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun publishEffectiveRoute() {
+        val next = buildRoute(_selection.value, _savedProxies.value)
+        val sshPort = sshLocalPortFromRoute(next)
+        if (next == _currentRoute.value && (sshPort < 0 || sshPort == lastHttpClientSshLocalPort)) return
+        _currentRoute.value = next
+        if (sshPort >= 0) lastHttpClientSshLocalPort = sshPort
+        ApiClient.rebuildHttpClients()
+    }
+
+    private fun sshLocalPortFromRoute(route: ProxyRoute): Int =
+        if (
+            route is ProxyRoute.Custom &&
+            route.endpointType == ProxyType.SOCKS5 &&
+            route.host == "127.0.0.1"
+        ) {
+            route.port
+        } else {
+            -1
+        }
+
+    private fun failClosedCustomRoute(): ProxyRoute.Custom =
+        ProxyRoute.Custom(
+            endpointType = ProxyType.SOCKS5,
+            host = "127.0.0.1",
+            port = 1,
+        )
 
     suspend fun applySelection(selection: ProxySelection) {
         withContext(Dispatchers.Default) {
@@ -94,47 +209,38 @@ object ProxyRuntime {
     }
 
     suspend fun refreshSavedProxies() {
-        _savedProxies.value = ProxyStore.readProxies()
+        publishProxyListings(ProxyStore.readListedProxies())
         refreshEffectiveRoute(startTunnel = false)
     }
 
     suspend fun upsertProxy(proxy: Proxy, password: String?, privateKey: String?) {
-        val list = ProxyStore.readProxies().toMutableList().also { proxies ->
-            val idx = proxies.indexOfFirst { it.id == proxy.id }
-            if (idx >= 0) {
-                proxies[idx] = proxy
-            } else {
-                proxies.add(proxy)
-            }
-        }
-        ProxyStore.setProxies(list)
+        val scope = ProxyStore.scopeForProxyId(proxy.id) ?: ProxyStore.defaultScopeForNewProxy()
+        ProxyStore.upsertListedProxy(SavedProxyListing(proxy, scope))
         when {
             proxy is SshProxy && proxy.auth is SshKeyAuth -> {
                 if (!privateKey.isNullOrEmpty()) {
-                    ProxyStore.writePrivateKey(proxy.id, privateKey)
+                    ProxyStore.writePrivateKeyForScope(scope, proxy.id, privateKey)
                 }
-                ProxyStore.writePassword(proxy.id, null)
+                ProxyStore.writePasswordForScope(scope, proxy.id, null)
             }
             proxy is SshProxy -> {
                 if (!password.isNullOrEmpty()) {
-                    ProxyStore.writePassword(proxy.id, password)
+                    ProxyStore.writePasswordForScope(scope, proxy.id, password)
                 }
-                ProxyStore.writePrivateKey(proxy.id, null)
+                ProxyStore.writePrivateKeyForScope(scope, proxy.id, null)
             }
-            !password.isNullOrEmpty() -> ProxyStore.writePassword(proxy.id, password)
+            !password.isNullOrEmpty() -> ProxyStore.writePasswordForScope(scope, proxy.id, password)
         }
-        _savedProxies.value = list
+        publishProxyListings(ProxyStore.readListedProxies())
         if (_selection.value == ProxySelection.Custom(proxy.id)) {
             applySelection(_selection.value)
         }
     }
 
     suspend fun removeProxy(id: String) {
-        val list = ProxyStore.readProxies().filterNot { it.id == id }
-        ProxyStore.setProxies(list)
-        ProxyStore.removeSecrets(id)
+        ProxyStore.removeProxy(id)
         KeyPassphraseSessionCache.remove(id)
-        _savedProxies.value = list
+        publishProxyListings(ProxyStore.readListedProxies())
         if (_selection.value == ProxySelection.Custom(id)) {
             applySelection(defaultProxySelection())
         }
@@ -144,7 +250,7 @@ object ProxyRuntime {
         if (startTunnel) {
             prepareTunnelForSelection(_selection.value)
         }
-        _currentRoute.value = buildRoute(_selection.value, _savedProxies.value)
+        publishEffectiveRoute()
     }
 
     private suspend fun awaitSshKeyPassphrase(prompt: KeyPassphrasePrompt): KeyPassphraseSubmit? {
@@ -161,9 +267,7 @@ object ProxyRuntime {
 
     private suspend fun prepareTunnelForSelection(selection: ProxySelection) {
         val customId = (selection as? ProxySelection.Custom)?.id ?: return
-        val proxy = _savedProxies.value.firstOrNull { it.id == customId }
-            ?: ProxyStore.readProxies().firstOrNull { it.id == customId }
-            ?: return
+        val proxy = proxyById(customId, _savedProxies.value) ?: return
         if (proxy !is SshProxy) return
 
         _tunnelState.value = ProxyTunnelState.Connecting
@@ -259,6 +363,7 @@ object ProxyRuntime {
         runCatching { sshForwarder?.stop() }
         sshForwarder = null
         _tunnelState.value = ProxyTunnelState.Idle
+        lastHttpClientSshLocalPort = -1
     }
 
     private suspend fun buildRoute(
@@ -269,7 +374,7 @@ object ProxyRuntime {
             ProxySelection.Direct -> ProxyRoute.Direct
             ProxySelection.System -> ProxyRoute.System
             is ProxySelection.Custom -> {
-                val proxy = proxies.firstOrNull { it.id == selection.id } ?: return ProxyRoute.Direct
+                val proxy = proxyById(selection.id, proxies) ?: return failClosedCustomRoute()
                 val password = ProxyStore.readPassword(proxy.id)
                 when (proxy.type) {
                     ProxyType.HTTP -> ProxyRoute.Custom(
@@ -287,12 +392,11 @@ object ProxyRuntime {
                         password = password,
                     )
                     ProxyType.SSH -> {
-                        val tunnel = _tunnelState.value as? ProxyTunnelState.Active
-                            ?: return ProxyRoute.Direct
+                        val port = (_tunnelState.value as? ProxyTunnelState.Active)?.localSocksPort ?: 1
                         ProxyRoute.Custom(
                             endpointType = ProxyType.SOCKS5,
                             host = "127.0.0.1",
-                            port = tunnel.localSocksPort,
+                            port = port,
                         )
                     }
                 }

@@ -28,7 +28,7 @@
     <string name="legal_document_load_error">Couldn\'t load the document. Check your connection and try again.</string>
     <string name="auth_legal_notice_prefix">By creating an account you agree to the </string>
     <string name="auth_legal_notice_and"> and </string>
-    <string name="app_desc">100%% free and open messenger. Supports self-hosted installation on your own server.</string>
+    <string name="app_desc">100% free and open messenger. Supports self-hosted installation on your own server.</string>
 
     <!-- Desktop menu / tray -->
     <string name="desktop_menu_file">File</string>
@@ -73,7 +73,7 @@
     <string name="password_length_error">Password must be 5 to 50 characters</string>
     <string name="passwords_dont_match">The two passwords don’t match</string>
     <string name="auth_welcome_title">Welcome to FromChat</string>
-    <string name="auth_welcome_tagline">The 100%% free and open source messenger.</string>
+    <string name="auth_welcome_tagline">The 100% free and open source messenger.</string>
     <string name="auth_get_started">Get started</string>
     <string name="auth_server_connect_failed">Failed to connect to the server</string>
     <string name="auth_wrong_password">Wrong password</string>
@@ -395,6 +395,8 @@
     <string name="proxy_system_proxy">System proxy</string>
     <string name="proxy_custom_proxies">Custom proxies</string>
     <string name="proxy_no_proxies">No proxies added</string>
+    <string name="proxy_scope_global">Global</string>
+    <string name="proxy_scope_incognito">Incognito</string>
     <string name="proxy_checking">Checking…</string>
     <string name="proxy_add">Add proxy</string>
     <string name="proxy_type_http">HTTP</string>
@@ -417,7 +419,7 @@
     <string name="proxy_delete_confirm_title">Delete proxy?</string>
     <string name="proxy_delete_confirm_body">This proxy will be removed from the list.</string>
     <string name="proxy_ping_ms">%1$d ms</string>
-    <string name="proxy_check_failed">Unreachable</string>
+    <string name="proxy_check_failed">Proxy connection failed</string>
     <string name="proxy_ssh_auth_failed">Wrong password or key</string>
     <string name="proxy_certificate_issue">Certificate issue</string>
     <string name="proxy_trust_cert_title">Trust this certificate?</string>

@@ -1,10 +1,13 @@
 package ru.fromchat.security.tls
 
 import io.ktor.client.HttpClientConfig
+import ru.fromchat.api.HttpClientTlsProfile
 import java.security.SecureRandom
 import javax.net.ssl.SSLContext
 
-fun HttpClientConfig<*>.installFromChatKtorTls() {
+fun HttpClientConfig<*>.installFromChatKtorTls(
+    tlsProfile: HttpClientTlsProfile = HttpClientTlsProfile.App,
+) {
     val trustManager = createFromChatTrustManager()
     val ssl = SSLContext.getInstance("TLS").apply {
         init(null, arrayOf(trustManager), SecureRandom())

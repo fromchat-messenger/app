@@ -259,6 +259,7 @@ kotlin {
             implementation(libs.jetbrains.kotlinx.io.bytestring)
             implementation(libs.jetbrains.kotlinx.coroutines.core)
             implementation(libs.ktor.client.cio)
+            implementation(libs.ktor.client.okhttp)
             implementation(libs.multiplatform.crypto.libsodium.bindings)
             implementation(libs.sqldelight.driver.sqlite)
             implementation(libs.sqlite.jdbc.crypt)
@@ -320,6 +321,24 @@ compose.resources {
 tasks.matching { it.name == "compileAndroidMain" || it.name == "compileKotlinIosArm64" }.configureEach {
     dependsOn("generateResourceAccessorsForCommonMain")
     dependsOn(generateAppBuildInfo)
+}
+
+tasks.register<JavaExec>("loopbackSocksTlsSmoke") {
+    group = "verification"
+    description = "In-process loopback SOCKS + TLS smoke (debug)"
+    dependsOn("compileKotlinJvm")
+    val jvmCompilation = kotlin.targets.getByName("jvm").compilations.getByName("main")
+    classpath = files(jvmCompilation.output.allOutputs, jvmCompilation.runtimeDependencyFiles)
+    mainClass.set("ru.fromchat.network.proxy.LoopbackSocksTlsSmokeKt")
+}
+
+tasks.register<JavaExec>("sshSocksProbeSmoke") {
+    group = "verification"
+    description = "SSH dynamic SOCKS + in-app loopback TLS probe smoke (debug)"
+    dependsOn("compileKotlinJvm")
+    val jvmCompilation = kotlin.targets.getByName("jvm").compilations.getByName("main")
+    classpath = files(jvmCompilation.output.allOutputs, jvmCompilation.runtimeDependencyFiles)
+    mainClass.set("ru.fromchat.network.proxy.SshSocksProbeSmokeKt")
 }
 
 tasks.register("generateResourceAccessors") {

@@ -25,7 +25,7 @@
     <string name="legal_document_load_error">Не удалось загрузить документ. Проверьте подключение к интернету и попробуйте снова.</string>
     <string name="auth_legal_notice_prefix">Регистрируясь, вы соглашаетесь с </string>
     <string name="auth_legal_notice_and"> и </string>
-    <string name="app_desc">100%% бесплатный и открытый мессенджер. Поддерживает self-hosted установку на своём сервере.</string>
+    <string name="app_desc">100% бесплатный и открытый мессенджер. Поддерживает self-hosted установку на своём сервере.</string>
     <string name="desktop_menu_file">Файл</string>
     <string name="desktop_menu_edit">Правка</string>
     <string name="desktop_menu_window">Окно</string>
@@ -64,7 +64,7 @@
     <string name="password_length_error">Пароль — от 5 до 50 символов</string>
     <string name="passwords_dont_match">Пароли не совпадают</string>
     <string name="auth_welcome_title">Добро пожаловать в FromChat</string>
-    <string name="auth_welcome_tagline">100%% бесплатный мессенджер с открытым исходным кодом.</string>
+    <string name="auth_welcome_tagline">100% бесплатный мессенджер с открытым исходным кодом.</string>
     <string name="auth_get_started">Начать</string>
     <string name="auth_server_connect_failed">Не удалось подключиться к серверу</string>
     <string name="auth_wrong_password">Неверный пароль</string>
@@ -362,6 +362,8 @@
     <string name="proxy_system_proxy">Системный прокси</string>
     <string name="proxy_custom_proxies">Свои прокси</string>
     <string name="proxy_no_proxies">Прокси не добавлены</string>
+    <string name="proxy_scope_global">Глобальный</string>
+    <string name="proxy_scope_incognito">Инкогнито</string>
     <string name="proxy_checking">Проверка…</string>
     <string name="proxy_add">Добавить прокси</string>
     <string name="proxy_type_http">HTTP</string>
@@ -384,7 +386,7 @@
     <string name="proxy_delete_confirm_title">Удалить прокси?</string>
     <string name="proxy_delete_confirm_body">Прокси будет удалён из списка.</string>
     <string name="proxy_ping_ms">%1$d мс</string>
-    <string name="proxy_check_failed">Недоступно</string>
+    <string name="proxy_check_failed">Сбой подключения через прокси</string>
     <string name="proxy_ssh_auth_failed">Неверный пароль или ключ</string>
     <string name="proxy_certificate_issue">Проблема с сертификатом</string>
     <string name="proxy_trust_cert_title">Доверять этому сертификату?</string>

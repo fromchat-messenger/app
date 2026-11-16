@@ -2,6 +2,7 @@ package ru.fromchat.api
 
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.ClientRequestException
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.HttpResponseValidator
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.defaultRequest
@@ -23,6 +24,7 @@ import ru.fromchat.config.ServerConfig
 import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.network.proxy.ProxyRoute
 import ru.fromchat.network.proxy.ProxyRuntime
+import ru.fromchat.network.proxy.installProxyTrafficGate
 import ru.fromchat.utils.currentDeviceInfo
 import kotlin.concurrent.Volatile
 import kotlin.time.Duration.Companion.milliseconds
@@ -75,6 +77,7 @@ internal object HttpClients {
 
     private fun buildMainClient(): HttpClient =
         createPlatformHttpClient(proxyRoute = ProxyRuntime.currentRoute) {
+            installProxyTrafficGate()
             install(ContentNegotiation) {
                 json(ApiClient.json)
             }
@@ -85,18 +88,21 @@ internal object HttpClients {
             install(WebSockets) {
                 pingInterval = 5000.milliseconds
             }
-            val currentDevice = currentDeviceInfo()
-            val userAgent = ApiClient.buildLoginUserAgent(
-                osName = currentDevice.osName?.takeIf { it.isNotBlank() },
-                osVersion = currentDevice.osVersion?.takeIf { it.isNotBlank() },
-                model = currentDevice.model?.takeIf { it.isNotBlank() },
-                brand = currentDevice.brand?.takeIf { it.isNotBlank() },
-            )
             defaultRequest {
                 ApiClient.token?.let { authToken ->
                     bearerAuth(authToken)
                 }
-                header("User-Agent", userAgent)
+                currentDeviceInfo().let { device ->
+                    header(
+                        "User-Agent",
+                        ApiClient.buildLoginUserAgent(
+                            osName = device.osName?.takeIf { it.isNotBlank() },
+                            osVersion = device.osVersion?.takeIf { it.isNotBlank() },
+                            model = device.model?.takeIf { it.isNotBlank() },
+                            brand = device.brand?.takeIf { it.isNotBlank() },
+                        ),
+                    )
+                }
                 if (IncognitoMode.active) {
                     header(INCOGNITO_REQUEST_HEADER, "1")
                 }
@@ -113,8 +119,19 @@ internal object HttpClients {
                     val isLogoutCall = path.endsWith("/logout")
                     if (response.status.value == 401) {
                         val isCredentialCheck = path.endsWith("/auth/steps/password") ||
-                            path.endsWith("/auth/steps/register/confirm")
-                        if (!isCredentialCheck && !isLogoutCall && !ApiClient.logoutInProgress) {
+                            path.endsWith("/auth/steps/register/confirm") ||
+                            path.endsWith("/auth/steps/username")
+                        val isPreAuthProbe = path.endsWith("/instance_id") ||
+                            path.endsWith("/instance/info") ||
+                            path.endsWith("/livekit-health")
+                        val hadSession = !ApiClient.token.isNullOrBlank()
+                        if (
+                            hadSession &&
+                            !isCredentialCheck &&
+                            !isPreAuthProbe &&
+                            !isLogoutCall &&
+                            !ApiClient.logoutInProgress
+                        ) {
                             MainScope().launch {
                                 runCatching { WebSocketManager.disconnect() }
                                 runCatching { ApiClient.clearLocalSession() }
@@ -152,18 +169,21 @@ internal object HttpClients {
                 logger = Logger.SIMPLE
                 level = LogLevel.INFO
             }
-            val currentDevice = currentDeviceInfo()
-            val userAgent = ApiClient.buildLoginUserAgent(
-                osName = currentDevice.osName?.takeIf { it.isNotBlank() },
-                osVersion = currentDevice.osVersion?.takeIf { it.isNotBlank() },
-                model = currentDevice.model?.takeIf { it.isNotBlank() },
-                brand = currentDevice.brand?.takeIf { it.isNotBlank() },
-            )
             defaultRequest {
                 ApiClient.token?.let { authToken ->
                     bearerAuth(authToken)
                 }
-                header("User-Agent", userAgent)
+                currentDeviceInfo().let { device ->
+                    header(
+                        "User-Agent",
+                        ApiClient.buildLoginUserAgent(
+                            osName = device.osName?.takeIf { it.isNotBlank() },
+                            osVersion = device.osVersion?.takeIf { it.isNotBlank() },
+                            model = device.model?.takeIf { it.isNotBlank() },
+                            brand = device.brand?.takeIf { it.isNotBlank() },
+                        ),
+                    )
+                }
                 if (IncognitoMode.active) {
                     header(INCOGNITO_REQUEST_HEADER, "1")
                 }
@@ -182,28 +202,17 @@ internal object HttpClients {
 }
 
 /** One-off probe client (e.g. proxy checker); caller must [HttpClient.close]. */
-fun createProbeHttpClient(
-    proxyRoute: ProxyRoute,
-    bypassHttpProxyForCalls: Boolean = false,
-): HttpClient {
-    val route = if (bypassHttpProxyForCalls) ProxyRoute.Direct else proxyRoute
-    return createPlatformHttpClient(proxyRoute = route) {
-        install(ContentNegotiation) {
-            json(ApiClient.json)
+fun createProbeHttpClient(proxyRoute: ProxyRoute): HttpClient =
+    createPlatformHttpClient(
+        proxyRoute = proxyRoute,
+        tlsProfile = HttpClientTlsProfile.ProxyProbe,
+    ) {
+        install(HttpTimeout) {
+            requestTimeoutMillis = 25_000
+            connectTimeoutMillis = 15_000
+            socketTimeoutMillis = 25_000
         }
-        install(Logging) {
-            logger = Logger.SIMPLE
-            level = LogLevel.INFO
-        }
-        HttpResponseValidator {
-            validateResponse { response ->
-                if (response.status.value !in (200..299) + 101) {
-                    throw ClientRequestException(
-                        response,
-                        response.status.description,
-                    )
-                }
-            }
+        with(ApiClient) {
+            configureHttpProbeClient(recordInstanceId = false)
         }
     }
-}

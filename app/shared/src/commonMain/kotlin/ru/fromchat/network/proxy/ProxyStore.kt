@@ -10,21 +10,28 @@ import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
 import kotlinx.serialization.modules.subclass
 import kotlinx.serialization.serializer
+import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.utils.settings.Settings
 import ru.fromchat.utils.settings.Settings as PlatformSettings
-import ru.fromchat.utils.settings.secureSettings
+import ru.fromchat.utils.settings.incognitoProfileSecureSettings
+import ru.fromchat.utils.settings.incognitoProfileSettings
+import ru.fromchat.utils.settings.normalProfileSecureSettings
+import ru.fromchat.utils.settings.normalProfileSettings
 
 fun defaultProxySelection(): ProxySelection =
     if (systemProxyAvailable()) ProxySelection.System else ProxySelection.Direct
 
 object ProxyStore {
-    private const val SAVED_PROXIES_KEY = "saved_proxies_v1"
-    private const val PROXY_SELECTION_KEY = "proxy_selection_v1"
-    private const val PROXY_DIRECT_EXPLICIT_KEY = "proxy_direct_explicit_v1"
+    const val SAVED_PROXIES_KEY = "saved_proxies_v1"
+    const val SAVED_PROXIES_SESSION_KEY = "saved_proxies_session_v1"
+    const val PROXY_SELECTION_KEY = "proxy_selection_v1"
+    const val PROXY_DIRECT_EXPLICIT_KEY = "proxy_direct_explicit_v1"
+    const val INCOGNITO_TRUSTED_CERTS_KEY = "proxy_trusted_certs_v1"
 
     private fun passwordKey(id: String) = "proxy_secret_password_$id"
     private fun privateKeyKey(id: String) = "proxy_secret_private_key_$id"
 
-    private val settings = PlatformSettings()
+    private val routedSettings = PlatformSettings()
     private val proxyListSerializer = ListSerializer(serializer<Proxy>())
     private val json = Json {
         ignoreUnknownKeys = true
@@ -44,10 +51,50 @@ object ProxyStore {
 
     fun loadProxies(): List<Proxy> = runBlocking { readProxies() }
 
-    suspend fun readProxies(): List<Proxy> = withContext(Dispatchers.IO) {
-        val raw = settings.getString(SAVED_PROXIES_KEY, "")
-        if (raw.isEmpty()) return@withContext emptyList()
-        runCatching {
+    fun loadListedProxies(): List<SavedProxyListing> = runBlocking { readListedProxies() }
+
+    suspend fun readListedProxies(): List<SavedProxyListing> = withContext(Dispatchers.IO) {
+        buildList {
+            readGlobalProxies().forEach { add(SavedProxyListing(it, SavedProxyScope.Global)) }
+            if (IncognitoMode.active) {
+                readSessionProxies().forEach { add(SavedProxyListing(it, SavedProxyScope.IncognitoSession)) }
+            }
+        }
+    }
+
+    suspend fun readProxies(): List<Proxy> =
+        readListedProxies().map { it.proxy }
+
+    suspend fun scopeForProxyId(id: String): SavedProxyScope? {
+        if (readGlobalProxies().any { it.id == id }) return SavedProxyScope.Global
+        if (IncognitoMode.active && readSessionProxies().any { it.id == id }) {
+            return SavedProxyScope.IncognitoSession
+        }
+        return null
+    }
+
+    suspend fun seedIncognitoProxyStateFromNormal(normal: Settings, incognito: Settings) {
+        if (normal.contains(PROXY_SELECTION_KEY)) {
+            incognito.putString(PROXY_SELECTION_KEY, normal.getString(PROXY_SELECTION_KEY, ""))
+        }
+        if (normal.contains(PROXY_DIRECT_EXPLICIT_KEY)) {
+            incognito.putBoolean(
+                PROXY_DIRECT_EXPLICIT_KEY,
+                normal.getBoolean(PROXY_DIRECT_EXPLICIT_KEY, false),
+            )
+        }
+        incognito.remove(SAVED_PROXIES_SESSION_KEY)
+    }
+
+    private suspend fun readGlobalProxies(): List<Proxy> =
+        decodeProxyList(normalProfileSettings().getString(SAVED_PROXIES_KEY, ""))
+
+    private suspend fun readSessionProxies(): List<Proxy> =
+        decodeProxyList(incognitoProfileSettings().getString(SAVED_PROXIES_SESSION_KEY, ""))
+
+    private fun decodeProxyList(raw: String): List<Proxy> {
+        if (raw.isEmpty()) return emptyList()
+        return runCatching {
             json.decodeFromString(proxyListSerializer, raw)
         }.getOrElse {
             runCatching {
@@ -57,17 +104,66 @@ object ProxyStore {
         }
     }
 
-    suspend fun setProxies(proxies: List<Proxy>) {
+    private suspend fun writeGlobalProxies(proxies: List<Proxy>) {
+        val enc = json.encodeToString(proxyListSerializer, proxies)
+        normalProfileSettings().putString(SAVED_PROXIES_KEY, enc)
+    }
+
+    private suspend fun writeSessionProxies(proxies: List<Proxy>) {
+        val enc = json.encodeToString(proxyListSerializer, proxies)
+        incognitoProfileSettings().putString(SAVED_PROXIES_SESSION_KEY, enc)
+    }
+
+    suspend fun setProxies(scope: SavedProxyScope, proxies: List<Proxy>) {
         withContext(Dispatchers.IO) {
-            val enc = json.encodeToString(proxyListSerializer, proxies)
-            settings.putString(SAVED_PROXIES_KEY, enc)
+            when (scope) {
+                SavedProxyScope.Global -> writeGlobalProxies(proxies)
+                SavedProxyScope.IncognitoSession -> writeSessionProxies(proxies)
+            }
+        }
+    }
+
+    suspend fun upsertListedProxy(listing: SavedProxyListing) {
+        val scope = listing.scope
+        val proxy = listing.proxy
+        withContext(Dispatchers.IO) {
+            val list = when (scope) {
+                SavedProxyScope.Global -> readGlobalProxies().toMutableList()
+                SavedProxyScope.IncognitoSession -> readSessionProxies().toMutableList()
+            }
+            val idx = list.indexOfFirst { it.id == proxy.id }
+            if (idx >= 0) {
+                list[idx] = proxy
+            } else {
+                list.add(proxy)
+            }
+            when (scope) {
+                SavedProxyScope.Global -> writeGlobalProxies(list)
+                SavedProxyScope.IncognitoSession -> writeSessionProxies(list)
+            }
+        }
+    }
+
+    suspend fun removeProxy(id: String) {
+        withContext(Dispatchers.IO) {
+            when (scopeForProxyId(id)) {
+                SavedProxyScope.Global -> {
+                    writeGlobalProxies(readGlobalProxies().filterNot { it.id == id })
+                    removeSecrets(SavedProxyScope.Global, id)
+                }
+                SavedProxyScope.IncognitoSession -> {
+                    writeSessionProxies(readSessionProxies().filterNot { it.id == id })
+                    removeSecrets(SavedProxyScope.IncognitoSession, id)
+                }
+                null -> Unit
+            }
         }
     }
 
     fun loadSelection(): ProxySelection = runBlocking { readSelection() }
 
     suspend fun readSelection(): ProxySelection = withContext(Dispatchers.IO) {
-        val raw = settings.getString(PROXY_SELECTION_KEY, "")
+        val raw = routedSettings.getString(PROXY_SELECTION_KEY, "")
         if (raw.isEmpty()) return@withContext defaultProxySelection()
         val decoded = runCatching {
             json.decodeFromString(ProxySelection.serializer(), raw)
@@ -75,13 +171,13 @@ object ProxyStore {
         if (
             decoded == ProxySelection.Direct &&
             systemProxyAvailable() &&
-            !settings.getBoolean(PROXY_DIRECT_EXPLICIT_KEY, false)
+            !routedSettings.getBoolean(PROXY_DIRECT_EXPLICIT_KEY, false)
         ) {
-            settings.putString(
+            routedSettings.putString(
                 PROXY_SELECTION_KEY,
                 json.encodeToString(ProxySelection.serializer(), ProxySelection.System),
             )
-            settings.putBoolean(PROXY_DIRECT_EXPLICIT_KEY, false)
+            routedSettings.putBoolean(PROXY_DIRECT_EXPLICIT_KEY, false)
             ProxySelection.System
         } else {
             decoded
@@ -90,48 +186,86 @@ object ProxyStore {
 
     suspend fun setSelection(selection: ProxySelection) {
         withContext(Dispatchers.IO) {
-            settings.putString(PROXY_SELECTION_KEY, json.encodeToString(ProxySelection.serializer(), selection))
-            settings.putBoolean(
+            routedSettings.putString(PROXY_SELECTION_KEY, json.encodeToString(ProxySelection.serializer(), selection))
+            routedSettings.putBoolean(
                 PROXY_DIRECT_EXPLICIT_KEY,
                 selection == ProxySelection.Direct,
             )
         }
     }
 
+    private fun secureStoreForScope(scope: SavedProxyScope): Settings = when (scope) {
+        SavedProxyScope.Global -> normalProfileSecureSettings()
+        SavedProxyScope.IncognitoSession -> incognitoProfileSecureSettings()
+    }
+
     suspend fun readPassword(id: String): String? = withContext(Dispatchers.IO) {
-        val v = secureSettings.getString(passwordKey(id), "")
+        val scope = scopeForProxyId(id) ?: return@withContext null
+        val v = secureStoreForScope(scope).getString(passwordKey(id), "")
         v.takeIf { it.isNotEmpty() }
     }
 
     suspend fun writePassword(id: String, password: String?) {
         withContext(Dispatchers.IO) {
+            val scope = scopeForProxyId(id) ?: return@withContext
+            val store = secureStoreForScope(scope)
             if (password.isNullOrEmpty()) {
-                secureSettings.remove(passwordKey(id))
+                store.remove(passwordKey(id))
             } else {
-                secureSettings.putString(passwordKey(id), password)
+                store.putString(passwordKey(id), password)
+            }
+        }
+    }
+
+    suspend fun writePasswordForScope(scope: SavedProxyScope, id: String, password: String?) {
+        withContext(Dispatchers.IO) {
+            val store = secureStoreForScope(scope)
+            if (password.isNullOrEmpty()) {
+                store.remove(passwordKey(id))
+            } else {
+                store.putString(passwordKey(id), password)
             }
         }
     }
 
     suspend fun readPrivateKey(id: String): String? = withContext(Dispatchers.IO) {
-        val v = secureSettings.getString(privateKeyKey(id), "")
+        val scope = scopeForProxyId(id) ?: return@withContext null
+        val v = secureStoreForScope(scope).getString(privateKeyKey(id), "")
         v.takeIf { it.isNotEmpty() }
     }
 
     suspend fun writePrivateKey(id: String, privateKey: String?) {
         withContext(Dispatchers.IO) {
+            val scope = scopeForProxyId(id) ?: return@withContext
+            val store = secureStoreForScope(scope)
             if (privateKey.isNullOrEmpty()) {
-                secureSettings.remove(privateKeyKey(id))
+                store.remove(privateKeyKey(id))
             } else {
-                secureSettings.putString(privateKeyKey(id), privateKey)
+                store.putString(privateKeyKey(id), privateKey)
             }
         }
     }
 
-    suspend fun removeSecrets(id: String) {
+    suspend fun writePrivateKeyForScope(scope: SavedProxyScope, id: String, privateKey: String?) {
         withContext(Dispatchers.IO) {
-            secureSettings.remove(passwordKey(id))
-            secureSettings.remove(privateKeyKey(id))
+            val store = secureStoreForScope(scope)
+            if (privateKey.isNullOrEmpty()) {
+                store.remove(privateKeyKey(id))
+            } else {
+                store.putString(privateKeyKey(id), privateKey)
+            }
         }
     }
+
+    suspend fun removeSecrets(scope: SavedProxyScope, id: String) {
+        withContext(Dispatchers.IO) {
+            val store = secureStoreForScope(scope)
+            store.remove(passwordKey(id))
+            store.remove(privateKeyKey(id))
+        }
+    }
+
+    /** New proxy while incognito is off → global; while on → session-only. */
+    fun defaultScopeForNewProxy(): SavedProxyScope =
+        if (IncognitoMode.active) SavedProxyScope.IncognitoSession else SavedProxyScope.Global
 }

@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import ru.fromchat.api.local.db.store.closeMessageDatabaseForIncognitoSession
 import ru.fromchat.config.ServerConfig
+import ru.fromchat.network.proxy.ProxyRuntime
 import ru.fromchat.logging.AppLogStore
 import ru.fromchat.logging.FromChatLogDirs
 import ru.fromchat.logging.Logger
@@ -34,12 +35,14 @@ object IncognitoMode {
             volumeRootPath = root
             IncognitoContainer.open(key, root)
             registerIncognitoLifecycleHooks()
+            seedIncognitoSettingsFromNormalProfile()
             purgePlaintextLogsUnderAppData()
             AppLogStore.onIncognitoSessionBoundary()
             closeMessageDatabaseForIncognitoSession()
             active = true
             FromChatLogDirs.logsDirectoryPath()
             ServerConfig.reloadFromSettings()
+            ProxyRuntime.onIncognitoSessionBoundary()
             Logger.i(TAG, "activated incognito encrypted session")
         }
     }
@@ -65,6 +68,7 @@ object IncognitoMode {
         active = false
         FromChatTlsHostBypass.clear()
         ServerConfig.reloadFromSettings()
+        ProxyRuntime.onIncognitoSessionBoundary()
         AppLogStore.onIncognitoSessionBoundary()
         Logger.i(TAG, "destroyed incognito volume")
     }

@@ -9,7 +9,8 @@ import java.net.Proxy
 actual fun configureEngineProxy(config: HttpClientConfig<*>, route: ProxyRoute) {
     configureEngineTls(config)
     val javaProxy = when (route) {
-        ProxyRoute.Direct, ProxyRoute.System -> return
+        ProxyRoute.Direct -> return
+        ProxyRoute.System -> return
         is ProxyRoute.Custom -> when (route.endpointType) {
             ProxyType.HTTP -> Proxy(Proxy.Type.HTTP, InetSocketAddress(route.host, route.port))
             ProxyType.SOCKS5, ProxyType.SSH ->
@@ -19,13 +20,13 @@ actual fun configureEngineProxy(config: HttpClientConfig<*>, route: ProxyRoute) 
     config.engine {
         proxy = javaProxy
         if (route is ProxyRoute.Custom && !route.user.isNullOrBlank()) {
-            val user = route.user
-            val password = route.password.orEmpty()
             (this as OkHttpConfig).config {
                 proxyAuthenticator { _, response ->
-                    val credential = Credentials.basic(user, password)
                     response.request.newBuilder()
-                        .header("Proxy-Authorization", credential)
+                        .header(
+                            "Proxy-Authorization",
+                            Credentials.basic(route.user, route.password.orEmpty()),
+                        )
                         .build()
                 }
             }

@@ -179,7 +179,7 @@ private suspend fun probeServerEndpointInner(
     val schemeAttempts = when {
         schemeExplicit -> listOf(httpsPreferred)
         localDevHost -> listOf(false)
-        httpsPreferred -> listOf(true, false)
+        httpsPreferred -> if (port == 443) listOf(true) else listOf(true, false)
         else -> listOf(false)
     }
     schemeAttempts.apply {

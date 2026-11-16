@@ -12,3 +12,8 @@ actual val settings: Settings
     get() = settingsValue
 actual val secureSettings: Settings
     get() = secureSettingsValue
+
+actual fun normalProfileSettings(): Settings = normalSettingsStore
+actual fun incognitoProfileSettings(): Settings = incognitoSettingsStore
+actual fun normalProfileSecureSettings(): Settings = normalSecureStore
+actual fun incognitoProfileSecureSettings(): Settings = incognitoSecureStore

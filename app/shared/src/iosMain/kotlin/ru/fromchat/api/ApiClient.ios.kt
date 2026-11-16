@@ -14,6 +14,7 @@ import ru.fromchat.security.tls.installFromChatKtorTls
 
 actual fun createPlatformHttpClient(
     proxyRoute: ProxyRoute?,
+    tlsProfile: HttpClientTlsProfile,
     block: HttpClientConfig<*>.() -> Unit,
 ): HttpClient {
     val route = when {
@@ -47,6 +48,6 @@ actual fun createPlatformHttpClient(
 
         configureEngineProxy(this, route)
         block(this)
-        installFromChatKtorTls()
+        installFromChatKtorTls(tlsProfile)
     }
 }

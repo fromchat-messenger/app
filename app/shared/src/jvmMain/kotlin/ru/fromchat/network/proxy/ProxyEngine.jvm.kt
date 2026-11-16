@@ -1,6 +1,10 @@
 package ru.fromchat.network.proxy
 
 import io.ktor.client.HttpClientConfig
+import io.ktor.client.engine.cio.CIOEngineConfig
+import io.ktor.client.engine.okhttp.OkHttpConfig
+import okhttp3.Credentials
+import okhttp3.Protocol
 import ru.fromchat.config.ServerConfig
 import java.net.InetSocketAddress
 import java.net.Proxy
@@ -8,18 +12,58 @@ import java.net.ProxySelector
 import java.net.URI
 
 actual fun configureEngineProxy(config: HttpClientConfig<*>, route: ProxyRoute) {
-    configureEngineTls(config)
-    val javaProxy = when (route) {
-        ProxyRoute.Direct -> return
-        ProxyRoute.System -> resolveSystemProxy() ?: return
+    if (route == ProxyRoute.Direct) {
+        config.engine {
+            when (this) {
+                is OkHttpConfig -> config { proxy(Proxy.NO_PROXY) }
+                is CIOEngineConfig -> proxy = null
+            }
+        }
+        return
+    }
+    val resolvedProxy = when (route) {
+        ProxyRoute.System -> resolveSystemProxy() ?: Proxy.NO_PROXY
         is ProxyRoute.Custom -> when (route.endpointType) {
             ProxyType.HTTP -> Proxy(Proxy.Type.HTTP, InetSocketAddress(route.host, route.port))
             ProxyType.SOCKS5, ProxyType.SSH ->
                 Proxy(Proxy.Type.SOCKS, InetSocketAddress(route.host, route.port))
         }
+        ProxyRoute.Direct -> Proxy.NO_PROXY
     }
     config.engine {
-        proxy = javaProxy
+        when (this) {
+            is CIOEngineConfig -> {
+                if (resolvedProxy.type() == Proxy.Type.HTTP) {
+                    proxy = resolvedProxy
+                }
+            }
+            is OkHttpConfig -> {
+                config {
+                    protocols(listOf(Protocol.HTTP_1_1))
+                    when (resolvedProxy.type()) {
+                        Proxy.Type.SOCKS -> {
+                            val socksAddress = resolvedProxy.address() as InetSocketAddress
+                            proxy(Proxy.NO_PROXY)
+                            socketFactory(RemoteDnsSocksSocketFactory(socksAddress))
+                            dns(SocksPreservingDns)
+                        }
+                        else -> proxy(resolvedProxy)
+                    }
+                }
+                if (route is ProxyRoute.Custom && !route.user.isNullOrBlank()) {
+                    config {
+                        proxyAuthenticator { _, response ->
+                            response.request.newBuilder()
+                                .header(
+                                    "Proxy-Authorization",
+                                    Credentials.basic(route.user, route.password.orEmpty()),
+                                )
+                                .build()
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

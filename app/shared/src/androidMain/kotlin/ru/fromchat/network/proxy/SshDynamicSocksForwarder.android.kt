@@ -1,6 +1,8 @@
 package ru.fromchat.network.proxy
 
 import net.schmizz.sshj.SSHClient
+import net.schmizz.sshj.common.StreamCopier
+import ru.fromchat.logging.Logger
 import ru.fromchat.network.proxy.ssh.keyProviderFromPem
 import net.schmizz.sshj.transport.verification.PromiscuousVerifier
 import java.io.IOException
@@ -28,6 +30,7 @@ actual class SshDynamicSocksForwarder actual constructor(
     private var serverSocket: ServerSocket? = null
     private var workers: ExecutorService? = null
     private val running = AtomicBoolean(false)
+    private val channelLock = Any()
 
     actual fun start(): Int {
         if (!running.compareAndSet(false, true)) {
@@ -80,6 +83,7 @@ actual class SshDynamicSocksForwarder actual constructor(
 
     private fun handleSocksClient(ssh: SSHClient, client: Socket) {
         client.soTimeout = 30_000
+        var direct: net.schmizz.sshj.connection.channel.direct.DirectConnection? = null
         try {
             val input = client.getInputStream()
             val output = client.getOutputStream()
@@ -99,15 +103,25 @@ actual class SshDynamicSocksForwarder actual constructor(
                 0x01 -> readIpv4Target(input)
                 0x03 -> readDomainTarget(input)
                 0x04 -> readIpv6Target(input)
-                else -> return
+                else -> {
+                    writeSocksReply(output, 0x08)
+                    return
+                }
             }
-            val direct = ssh.newDirectConnection(remoteHost, remotePort)
-            output.write(byteArrayOf(0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0))
-            output.flush()
-            relayBidirectional(client, direct.inputStream, direct.outputStream)
+            direct = try {
+                openDirectConnection(ssh, remoteHost, remotePort)
+            } catch (_: Exception) {
+                writeSocksReply(output, 0x05)
+                return
+            }
+            direct.setAutoExpand(true)
+            client.tcpNoDelay = true
+            writeSocksReply(output, 0x00)
+            relayBidirectional(client, direct)
         } catch (_: IOException) {
             // Client closed or handshake failed.
         } finally {
+            runCatching { direct?.close() }
             runCatching { client.close() }
         }
     }
@@ -143,26 +157,43 @@ actual class SshDynamicSocksForwarder actual constructor(
         return host to port
     }
 
+    private fun writeSocksReply(output: java.io.OutputStream, status: Int) {
+        output.write(byteArrayOf(0x05, status.toByte(), 0x00, 0x01, 0, 0, 0, 0, 0, 0))
+        output.flush()
+    }
+
+    private fun openDirectConnection(
+        ssh: SSHClient,
+        remoteHost: String,
+        remotePort: Int,
+    ): net.schmizz.sshj.connection.channel.direct.DirectConnection =
+        synchronized(channelLock) {
+            try {
+                ssh.newDirectConnection(remoteHost, remotePort)
+            } catch (e: Exception) {
+                Logger.w(
+                    "SshDynamicSocksForwarder",
+                    "direct-tcpip failed for $remoteHost:$remotePort: ${e.message}",
+                )
+                throw e
+            }
+        }
+
     private fun relayBidirectional(
         client: Socket,
-        remoteIn: java.io.InputStream,
-        remoteOut: java.io.OutputStream,
+        direct: net.schmizz.sshj.connection.channel.direct.DirectConnection,
     ) {
-        val clientIn = client.getInputStream()
-        val clientOut = client.getOutputStream()
-        val t1 = Thread {
-            runCatching { clientIn.copyTo(remoteOut) }
-            runCatching { remoteOut.flush() }
-            runCatching { client.shutdownOutput() }
-        }
-        val t2 = Thread {
-            runCatching { remoteIn.copyTo(clientOut) }
-            runCatching { clientOut.flush() }
-            runCatching { client.close() }
-        }
-        t1.start()
-        t2.start()
-        t1.join()
-        t2.join()
+        val soc2chan = StreamCopier(client.getInputStream(), direct.outputStream, direct.loggerFactory)
+            .bufSize(direct.remoteMaxPacketSize.toInt())
+            .spawnDaemon("soc2chan")
+        val chan2soc = StreamCopier(
+            direct.inputStream,
+            client.getOutputStream(),
+            direct.loggerFactory,
+        )
+            .bufSize(direct.localMaxPacketSize)
+            .spawnDaemon("chan2soc")
+        runCatching { soc2chan.await() }
+        runCatching { chan2soc.await() }
     }
 }

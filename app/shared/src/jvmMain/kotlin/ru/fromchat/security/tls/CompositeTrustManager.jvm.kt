@@ -1,5 +1,7 @@
 package ru.fromchat.security.tls
 
+import ru.fromchat.config.ServerConfig
+import ru.fromchat.network.proxy.tlsHostFromUrl
 import java.security.KeyStore
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
@@ -123,9 +125,14 @@ private class FromChatCompositeTrustManager(
     private fun tlsPeerHostFromSocket(socket: java.net.Socket?): String {
         val fromSocket = (socket as? SSLSocket)?.session?.peerHost?.takeIf { it.isNotBlank() }
             ?: socket?.inetAddress?.hostName?.takeIf { it.isNotBlank() }
-        if (fromSocket != null) return fromSocket
-        return resolveTlsPeerHost(null).takeIf { it != "unknown" }
-            ?: throw CertificateException("Missing TLS host")
+        if (fromSocket != null) {
+            val normalized = normalizeTlsHost(fromSocket)
+            if (!normalized.matches(Regex("""^\d{1,3}(\.\d{1,3}){3}$"""))) {
+                return normalized
+            }
+        }
+        resolveTlsPeerHost(fromSocket).takeIf { it != "unknown" }?.let { return it }
+        return tlsHostFromUrl(ServerConfig.apiBaseUrl)
     }
 }
 
