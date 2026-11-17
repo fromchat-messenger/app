@@ -90,16 +90,9 @@ internal fun writeTlsApplicationData(
 
 internal fun readTlsApplicationData(ctx: TlsEngineIoContext, buf: ByteArray, off: Int, len: Int): Int {
     var appBuffer = ByteBuffer.allocate(ctx.appSize)
-    var inboundEof = false
     while (true) {
-        if (ctx.peerBuffer.position() == 0) {
-            if (inboundEof) return -1
-            val added = appendInboundCiphertext(ctx.peerBuffer, ctx.plainIn, ctx.netSize, allowEof = true)
-            if (!added) inboundEof = true
-            if (ctx.peerBuffer.position() == 0) {
-                if (inboundEof) return -1
-                continue
-            }
+        if (ctx.peerBuffer.position() == 0 && !readInboundCiphertext(ctx.peerBuffer, ctx.plainIn, ctx.netSize)) {
+            return -1
         }
         ctx.peerBuffer.flip()
         if (!ctx.peerBuffer.hasRemaining()) {
@@ -125,9 +118,15 @@ internal fun readTlsApplicationData(ctx: TlsEngineIoContext, buf: ByteArray, off
         }
         when (result.status) {
             SSLEngineResult.Status.CLOSED -> return -1
-            SSLEngineResult.Status.BUFFER_UNDERFLOW -> continue
+            SSLEngineResult.Status.BUFFER_UNDERFLOW -> {
+                if (!readInboundCiphertext(ctx.peerBuffer, ctx.plainIn, ctx.netSize) && ctx.peerBuffer.position() == 0) {
+                    return -1
+                }
+            }
             else -> {
-                if (inboundEof && ctx.peerBuffer.position() == 0) return -1
+                if (ctx.peerBuffer.position() == 0 && !readInboundCiphertext(ctx.peerBuffer, ctx.plainIn, ctx.netSize)) {
+                    return -1
+                }
             }
         }
     }
@@ -238,6 +237,10 @@ private fun appendTlsInbound(peerBuffer: ByteBuffer, plainIn: InputStream, maxCh
     }
 }
 
+/**
+ * Reads more TLS ciphertext into [peerBuffer] when the engine needs input.
+ * @return `false` if EOF before any byte was buffered; `true` if the buffer holds ciphertext.
+ */
 private fun appendInboundCiphertext(
     peerBuffer: ByteBuffer,
     plainIn: InputStream,
@@ -253,9 +256,22 @@ private fun appendInboundCiphertext(
     val before = peerBuffer.position()
     val read = fillFromSocketBlocking(plainIn, peerBuffer, maxChunk)
     if (!read && peerBuffer.position() == before) {
-        return allowEof
+        return false
     }
     return peerBuffer.position() > before
+}
+
+/** Blocks until more TLS ciphertext is buffered or the socket hits EOF. */
+private fun readInboundCiphertext(
+    peerBuffer: ByteBuffer,
+    plainIn: InputStream,
+    maxChunk: Int,
+    allowEof: Boolean = false,
+): Boolean {
+    if (appendInboundCiphertext(peerBuffer, plainIn, maxChunk, allowEof = allowEof)) {
+        return true
+    }
+    return if (allowEof) peerBuffer.position() > 0 else false
 }
 
 private fun drainPeerCiphertext(
@@ -337,16 +353,9 @@ private fun readPlaintextUntilClosed(
 ): ByteArray {
     var appBuffer = ByteBuffer.allocate(appSize)
     val collected = ArrayList<Byte>(8192)
-    var inboundEof = false
     while (true) {
-        if (peerBuffer.position() == 0) {
-            if (inboundEof) break
-            val added = appendInboundCiphertext(peerBuffer, plainIn, netSize, allowEof = true)
-            if (!added) inboundEof = true
-            if (peerBuffer.position() == 0) {
-                if (inboundEof) break
-                continue
-            }
+        if (peerBuffer.position() == 0 && !readInboundCiphertext(peerBuffer, plainIn, netSize, allowEof = true)) {
+            break
         }
         peerBuffer.flip()
         if (!peerBuffer.hasRemaining()) {
@@ -370,9 +379,15 @@ private fun readPlaintextUntilClosed(
         }
         when (result.status) {
             SSLEngineResult.Status.CLOSED -> break
-            SSLEngineResult.Status.BUFFER_UNDERFLOW -> continue
+            SSLEngineResult.Status.BUFFER_UNDERFLOW -> {
+                if (!readInboundCiphertext(peerBuffer, plainIn, netSize, allowEof = true) && peerBuffer.position() == 0) {
+                    break
+                }
+            }
             else -> {
-                if (inboundEof && peerBuffer.position() == 0) break
+                if (peerBuffer.position() == 0 && !readInboundCiphertext(peerBuffer, plainIn, netSize, allowEof = true)) {
+                    break
+                }
             }
         }
     }

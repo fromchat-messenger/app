@@ -28,6 +28,10 @@ object ProxyStore {
     const val PROXY_DIRECT_EXPLICIT_KEY = "proxy_direct_explicit_v1"
     const val INCOGNITO_TRUSTED_CERTS_KEY = "proxy_trusted_certs_v1"
 
+    private const val PROXY_SELECTION_BEFORE_INCOGNITO_KEY = "proxy_selection_before_incognito_v1"
+    private const val PROXY_DIRECT_EXPLICIT_BEFORE_INCOGNITO_KEY =
+        "proxy_direct_explicit_before_incognito_v1"
+
     private fun passwordKey(id: String) = "proxy_secret_password_$id"
     private fun privateKeyKey(id: String) = "proxy_secret_private_key_$id"
 
@@ -73,17 +77,66 @@ object ProxyStore {
         return null
     }
 
+    private suspend fun isGlobalProxyId(id: String): Boolean =
+        readGlobalProxies().any { it.id == id }
+
+    /** Where to persist proxy mutations (global list wins over incognito session copy). */
+    suspend fun effectiveStorageScopeForProxy(id: String): SavedProxyScope =
+        when {
+            isGlobalProxyId(id) -> SavedProxyScope.Global
+            IncognitoMode.active && readSessionProxies().any { it.id == id } ->
+                SavedProxyScope.IncognitoSession
+            else -> defaultScopeForNewProxy()
+        }
+
+    private suspend fun dropSessionProxyIfGlobal(id: String) {
+        if (!IncognitoMode.active) return
+        val session = readSessionProxies()
+        if (session.none { it.id == id }) return
+        writeSessionProxies(session.filterNot { it.id == id })
+        removeSecrets(SavedProxyScope.IncognitoSession, id)
+    }
+
     suspend fun seedIncognitoProxyStateFromNormal(normal: Settings, incognito: Settings) {
-        if (normal.contains(PROXY_SELECTION_KEY)) {
-            incognito.putString(PROXY_SELECTION_KEY, normal.getString(PROXY_SELECTION_KEY, ""))
-        }
-        if (normal.contains(PROXY_DIRECT_EXPLICIT_KEY)) {
-            incognito.putBoolean(
-                PROXY_DIRECT_EXPLICIT_KEY,
-                normal.getBoolean(PROXY_DIRECT_EXPLICIT_KEY, false),
-            )
-        }
+        incognito.putString(PROXY_SELECTION_KEY, normal.getString(PROXY_SELECTION_KEY, ""))
+        incognito.putBoolean(
+            PROXY_DIRECT_EXPLICIT_KEY,
+            normal.getBoolean(PROXY_DIRECT_EXPLICIT_KEY, false),
+        )
         incognito.remove(SAVED_PROXIES_SESSION_KEY)
+    }
+
+    /**
+     * Snapshots normal-mode proxy choice for restore on exit, and seeds the incognito volume
+     * so the same route stays active for the session.
+     */
+    suspend fun beginIncognitoProxySession(selection: ProxySelection) {
+        withContext(Dispatchers.IO) {
+            val enc = json.encodeToString(ProxySelection.serializer(), selection)
+            val directExplicit = selection == ProxySelection.Direct
+            val normal = normalProfileSettings()
+            normal.putString(PROXY_SELECTION_BEFORE_INCOGNITO_KEY, enc)
+            normal.putBoolean(PROXY_DIRECT_EXPLICIT_BEFORE_INCOGNITO_KEY, directExplicit)
+            val incognito = incognitoProfileSettings()
+            incognito.putString(PROXY_SELECTION_KEY, enc)
+            incognito.putBoolean(PROXY_DIRECT_EXPLICIT_KEY, directExplicit)
+        }
+    }
+
+    /** Restores normal-mode proxy selection captured when incognito started. */
+    suspend fun restoreNormalProxySelectionAfterIncognito() {
+        withContext(Dispatchers.IO) {
+            val normal = normalProfileSettings()
+            val raw = normal.getString(PROXY_SELECTION_BEFORE_INCOGNITO_KEY, "")
+            if (raw.isEmpty()) return@withContext
+            normal.putString(PROXY_SELECTION_KEY, raw)
+            normal.putBoolean(
+                PROXY_DIRECT_EXPLICIT_KEY,
+                normal.getBoolean(PROXY_DIRECT_EXPLICIT_BEFORE_INCOGNITO_KEY, false),
+            )
+            normal.remove(PROXY_SELECTION_BEFORE_INCOGNITO_KEY)
+            normal.remove(PROXY_DIRECT_EXPLICIT_BEFORE_INCOGNITO_KEY)
+        }
     }
 
     private suspend fun readGlobalProxies(): List<Proxy> =
@@ -124,8 +177,14 @@ object ProxyStore {
     }
 
     suspend fun upsertListedProxy(listing: SavedProxyListing) {
-        val scope = listing.scope
         val proxy = listing.proxy
+        val scope =
+            when {
+                listing.scope == SavedProxyScope.Global || isGlobalProxyId(proxy.id) ->
+                    SavedProxyScope.Global
+                listing.scope == SavedProxyScope.IncognitoSession -> SavedProxyScope.IncognitoSession
+                else -> effectiveStorageScopeForProxy(proxy.id)
+            }
         withContext(Dispatchers.IO) {
             val list = when (scope) {
                 SavedProxyScope.Global -> readGlobalProxies().toMutableList()
@@ -138,7 +197,10 @@ object ProxyStore {
                 list.add(proxy)
             }
             when (scope) {
-                SavedProxyScope.Global -> writeGlobalProxies(list)
+                SavedProxyScope.Global -> {
+                    writeGlobalProxies(list)
+                    dropSessionProxyIfGlobal(proxy.id)
+                }
                 SavedProxyScope.IncognitoSession -> writeSessionProxies(list)
             }
         }
@@ -146,16 +208,16 @@ object ProxyStore {
 
     suspend fun removeProxy(id: String) {
         withContext(Dispatchers.IO) {
-            when (scopeForProxyId(id)) {
-                SavedProxyScope.Global -> {
+            when {
+                isGlobalProxyId(id) -> {
                     writeGlobalProxies(readGlobalProxies().filterNot { it.id == id })
                     removeSecrets(SavedProxyScope.Global, id)
+                    dropSessionProxyIfGlobal(id)
                 }
-                SavedProxyScope.IncognitoSession -> {
+                IncognitoMode.active && readSessionProxies().any { it.id == id } -> {
                     writeSessionProxies(readSessionProxies().filterNot { it.id == id })
                     removeSecrets(SavedProxyScope.IncognitoSession, id)
                 }
-                null -> Unit
             }
         }
     }

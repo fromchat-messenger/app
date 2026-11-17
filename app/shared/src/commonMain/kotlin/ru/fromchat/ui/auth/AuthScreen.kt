@@ -321,6 +321,13 @@ fun AuthScreen(
 
     LaunchedEffect(incognitoFlow) {
         AuthRegisterDraft.incognitoEnabled = incognitoFlow
+        if (incognitoFlow) {
+            if (!IncognitoMode.active) {
+                runCatching { IncognitoMode.activate() }
+            }
+        } else if (!incognitoOverlayFromChat && IncognitoMode.active) {
+            IncognitoMode.destroy()
+        }
     }
 
     LaunchedEffect(incognitoOverlayFromChat) {

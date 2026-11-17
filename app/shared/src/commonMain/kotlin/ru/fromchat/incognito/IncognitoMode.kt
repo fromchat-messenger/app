@@ -1,10 +1,12 @@
 package ru.fromchat.incognito
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import ru.fromchat.api.local.db.store.closeMessageDatabaseForIncognitoSession
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.network.proxy.ProxyRuntime
+import ru.fromchat.network.proxy.ProxyStore
 import ru.fromchat.logging.AppLogStore
 import ru.fromchat.logging.FromChatLogDirs
 import ru.fromchat.logging.Logger
@@ -36,6 +38,7 @@ object IncognitoMode {
             IncognitoContainer.open(key, root)
             registerIncognitoLifecycleHooks()
             seedIncognitoSettingsFromNormalProfile()
+            ProxyStore.beginIncognitoProxySession(ProxyRuntime.selection.value)
             purgePlaintextLogsUnderAppData()
             AppLogStore.onIncognitoSessionBoundary()
             closeMessageDatabaseForIncognitoSession()
@@ -65,6 +68,9 @@ object IncognitoMode {
         volumeKey?.fill(0)
         volumeKey = null
         volumeRootPath = null
+        runBlocking {
+            ProxyStore.restoreNormalProxySelectionAfterIncognito()
+        }
         active = false
         FromChatTlsHostBypass.clear()
         ServerConfig.reloadFromSettings()

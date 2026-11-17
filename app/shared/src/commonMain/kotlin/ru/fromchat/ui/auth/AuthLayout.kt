@@ -28,7 +28,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
+import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.logging.Logger
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -141,6 +145,7 @@ internal fun AuthStepListFooter(
     hideAuthRouteSwitch: Boolean = false,
 ) {
     val navController = LocalNavController.current
+    val scope = rememberCoroutineScope()
     if (hideAuthRouteSwitch) return
     Row(
         Modifier
@@ -156,9 +161,14 @@ internal fun AuthStepListFooter(
         if (incognitoFlow) {
             TextCta(
                 onClick = {
-                    navController.navigate(AUTH_ROUTE) {
-                        popUpTo(AUTH_INCOGNITO_ROUTE) { inclusive = true }
-                        launchSingleTop = true
+                    scope.launch {
+                        if (IncognitoMode.active) {
+                            IncognitoMode.destroy()
+                        }
+                        navController.navigate(AUTH_ROUTE) {
+                            popUpTo(AUTH_INCOGNITO_ROUTE) { inclusive = true }
+                            launchSingleTop = true
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -170,9 +180,17 @@ internal fun AuthStepListFooter(
         } else {
             TextCta(
                 onClick = {
-                    navController.navigate(AUTH_INCOGNITO_ROUTE) {
-                        popUpTo(AUTH_ROUTE) { inclusive = true }
-                        launchSingleTop = true
+                    scope.launch {
+                        if (!IncognitoMode.active) {
+                            runCatching { IncognitoMode.activate() }
+                                .onFailure { error ->
+                                    Logger.e("AuthStepListFooter", "incognito activate failed", error)
+                                }
+                        }
+                        navController.navigate(AUTH_INCOGNITO_ROUTE) {
+                            popUpTo(AUTH_ROUTE) { inclusive = true }
+                            launchSingleTop = true
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),

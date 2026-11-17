@@ -114,12 +114,14 @@ internal fun usernameStepPage(
             )
             try {
                 if (incognitoEnabled) {
-                    try {
-                        IncognitoMode.activate()
-                    } catch (e: IllegalArgumentException) {
-                        Logger.e(USERNAME_STEP_TAG, "incognito activate failed username=$trimmed", e)
-                        onSnackbar(unexpected, e)
-                        return@launch
+                    if (!IncognitoMode.active) {
+                        try {
+                            IncognitoMode.activate()
+                        } catch (e: IllegalArgumentException) {
+                            Logger.e(USERNAME_STEP_TAG, "incognito activate failed username=$trimmed", e)
+                            onSnackbar(unexpected, e)
+                            return@launch
+                        }
                     }
                 } else if (IncognitoMode.active) {
                     IncognitoMode.destroy()

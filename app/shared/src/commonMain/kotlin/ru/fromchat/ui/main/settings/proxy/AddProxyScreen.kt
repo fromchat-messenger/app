@@ -56,6 +56,7 @@ import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.network.proxy.ProxyRuntime
 import ru.fromchat.network.proxy.ProxyStore
+import ru.fromchat.network.proxy.SavedProxyScope
 import ru.fromchat.network.proxy.ProxyType
 import ru.fromchat.network.proxy.HttpProxy
 import ru.fromchat.network.proxy.PasswordAuth
@@ -165,6 +166,7 @@ fun AddProxyScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
     val savedProxies by ProxyRuntime.savedProxies.collectAsState()
+    val savedProxyListings by ProxyRuntime.savedProxyListings.collectAsState()
 
     LaunchedEffect(editingProxyId, savedProxies) {
         val id = editingProxyId ?: return@LaunchedEffect
@@ -340,10 +342,14 @@ fun AddProxyScreen(
                         }
                     }
                     scope.launch {
+                        val listingScope = editingProxyId?.let { editId ->
+                            savedProxyListings.firstOrNull { it.proxy.id == editId }?.scope
+                        }
                         ProxyRuntime.upsertProxy(
                             proxy = proxy,
                             password = password.takeIf { it.isNotEmpty() },
                             privateKey = privateKey.takeIf { it.isNotEmpty() },
+                            listingScope = listingScope,
                         )
                         onDone()
                     }
