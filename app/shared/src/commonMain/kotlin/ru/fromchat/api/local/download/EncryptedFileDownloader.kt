@@ -1,7 +1,6 @@
 package ru.fromchat.api.local.download
 
 import ru.fromchat.utils.files.PlatformFileSystem
-import io.ktor.client.HttpClient
 import io.ktor.client.request.header
 import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.HttpResponse
@@ -13,14 +12,10 @@ import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import ru.fromchat.api.HttpClients
 import ru.fromchat.api.local.cache.FileWriteSink
 
 private const val DOWNLOAD_CHUNK_BYTES = 256 * 1024
-
-/** Platform HTTP client for large encrypted downloads (must stream without buffering the full body). */
-internal expect fun encryptedDownloadHttpClient(): HttpClient
-
-private val encryptedDownloadHttp: HttpClient by lazy { encryptedDownloadHttpClient() }
 
 /**
  * Streams an encrypted attachment HTTP response to [outputPath] without buffering the full body in RAM.
@@ -32,7 +27,7 @@ internal suspend fun streamEncryptedFileToDisk(
     bearerToken: String?,
     userAgent: String?,
     onChunkReceived: (receivedBytes: Long, totalBytes: Long?) -> Unit,
-): Long = encryptedDownloadHttp.prepareGet(url) {
+): Long = HttpClients.httpDownload.prepareGet(url) {
     bearerToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
     userAgent?.let { header(HttpHeaders.UserAgent, it) }
     if (rangeOffset > 0L) {

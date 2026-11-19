@@ -3,6 +3,7 @@ package ru.fromchat.api
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.HttpTimeoutConfig
 import io.ktor.client.plugins.HttpResponseValidator
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.defaultRequest
@@ -33,6 +34,16 @@ private const val INCOGNITO_REQUEST_HEADER = "X-FromChat-Incognito"
 
 /**
  * Holds [HttpClient] instances that must be recreated when the active proxy route changes.
+ *
+ * **All outbound HTTPS must go through [createPlatformHttpClient]** (proxy engine + [installFromChatKtorTls]).
+ * Do not construct standalone Ktor [HttpClient] engines elsewhere.
+ *
+ * | Client | Route | Proxy gate | Use |
+ * |--------|-------|------------|-----|
+ * | [http] | [ProxyRuntime.currentRoute] | yes | API, WebSocket, uploads, Coil |
+ * | [httpDownload] | current | yes | Large attachment streaming |
+ * | [httpProbe] | current | yes | Server/auth probes |
+ * | [callDirectHttp] | [ProxyRoute.Direct] | no | LiveKit health only when HTTP proxy breaks `/livekit-health` |
  */
 internal object HttpClients {
     @Volatile
@@ -44,11 +55,21 @@ internal object HttpClients {
     @Volatile
     private var directBypassClient: HttpClient? = null
 
+    @Volatile
+    private var downloadClient: HttpClient? = null
+
     val http: HttpClient
         get() = mainClient ?: buildMainClient().also { mainClient = it }
 
     val httpProbe: HttpClient
         get() = probeClient ?: buildProbeClient().also { probeClient = it }
+
+    /**
+     * Long-running attachment downloads (Range resumes). Same proxy route and TLS as [http],
+     * without the main client's JSON/WebSocket stack or response validators.
+     */
+    val httpDownload: HttpClient
+        get() = downloadClient ?: buildDownloadClient().also { downloadClient = it }
 
     /** Direct (no proxy) client for LiveKit token and health when an HTTP proxy is active. */
     val callDirectHttp: HttpClient
@@ -63,8 +84,10 @@ internal object HttpClients {
         val oldMain = mainClient
         val oldProbe = probeClient
         val oldDirect = directBypassClient
+        val oldDownload = downloadClient
         mainClient = buildMainClient()
         probeClient = buildProbeClient()
+        downloadClient = buildDownloadClient()
         directBypassClient = if (ProxyRuntime.needsDirectBypassForCalls) {
             buildDirectBypassClient()
         } else {
@@ -73,7 +96,18 @@ internal object HttpClients {
         oldMain?.close()
         oldProbe?.close()
         oldDirect?.close()
+        oldDownload?.close()
     }
+
+    private fun buildDownloadClient(): HttpClient =
+        createPlatformHttpClient(proxyRoute = ProxyRuntime.currentRoute) {
+            installProxyTrafficGate()
+            install(HttpTimeout) {
+                connectTimeoutMillis = 15_000
+                requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS
+                socketTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS
+            }
+        }
 
     private fun buildMainClient(): HttpClient =
         createPlatformHttpClient(proxyRoute = ProxyRuntime.currentRoute) {
@@ -203,10 +237,7 @@ internal object HttpClients {
 
 /** One-off probe client (e.g. proxy checker); caller must [HttpClient.close]. */
 fun createProbeHttpClient(proxyRoute: ProxyRoute): HttpClient =
-    createPlatformHttpClient(
-        proxyRoute = proxyRoute,
-        tlsProfile = HttpClientTlsProfile.ProxyProbe,
-    ) {
+    createPlatformHttpClient(proxyRoute = proxyRoute) {
         install(HttpTimeout) {
             requestTimeoutMillis = 25_000
             connectTimeoutMillis = 15_000

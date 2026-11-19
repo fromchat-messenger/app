@@ -35,6 +35,7 @@ import ru.fromchat.auth_step_username_title
 import ru.fromchat.error_unexpected
 import ru.fromchat.fill_all_fields
 import ru.fromchat.incognito.findIncognitoMitmCertificateException
+import ru.fromchat.security.tls.findMitmCertificateException
 import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.incognito.isIncognitoTlsCertificateError
 import ru.fromchat.logging.Logger
@@ -164,6 +165,10 @@ internal fun usernameStepPage(
                             }
                             onSnackbar(detail ?: unexpected, e)
                         } catch (e: Exception) {
+                            findMitmCertificateException(e)?.let { mitm ->
+                                onMitmCertificateDetected(mitm.matchedMarker)
+                                return@launch
+                            }
                             findIncognitoMitmCertificateException(e)?.let { mitm ->
                                 onMitmCertificateDetected(mitm.matchedMarker)
                                 return@launch

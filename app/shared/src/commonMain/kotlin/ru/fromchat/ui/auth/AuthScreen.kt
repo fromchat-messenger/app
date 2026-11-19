@@ -37,9 +37,12 @@ import ru.fromchat.api.schema.user.auth.YandexOAuthParams
 import ru.fromchat.cancel
 import ru.fromchat.config.ServerConfigData
 import ru.fromchat.config.Settings
+import ru.fromchat.config.isPrivateOrLocalServerHost
 import ru.fromchat.config.shouldWarnPublicCleartextHttp
 import ru.fromchat.incognito.findIncognitoMitmCertificateException
 import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.security.tls.findMitmCertificateException
+import ru.fromchat.security.tls.isFromChatTlsCertificateError
 import ru.fromchat.incognito.IncognitoOverlaySession
 import ru.fromchat.logging.Logger
 import ru.fromchat.Res
@@ -103,6 +106,26 @@ private fun authProbeNeedsPublicHttpWarning(config: ServerConfigData): Boolean =
     shouldWarnPublicCleartextHttp(config) &&
         !PublicHttpConnectionBypass.isAllowed(config.serverIp)
 
+private fun authProbeOutcomeFromTlsFailure(
+    tlsFailure: Throwable,
+    config: ServerConfigData,
+): AuthServerProbeOutcome? {
+    findMitmCertificateException(tlsFailure)?.let { mitm ->
+        return AuthServerProbeOutcome.MitmCertificateDetected(mitm.matchedMarker)
+    }
+    findIncognitoMitmCertificateException(tlsFailure)?.let { mitm ->
+        return AuthServerProbeOutcome.MitmCertificateDetected(mitm.matchedMarker)
+    }
+    if (
+        config.httpsEnabled &&
+        !isPrivateOrLocalServerHost(config.serverIp) &&
+        isFromChatTlsCertificateError(tlsFailure)
+    ) {
+        return AuthServerProbeOutcome.TlsCertificateRejected
+    }
+    return null
+}
+
 internal suspend fun probeCurrentServer(): Boolean =
     probeCurrentServerForAuth() is AuthServerProbeOutcome.Ok
 
@@ -139,13 +162,8 @@ internal suspend fun probeCurrentServerForAuth(): AuthServerProbeOutcome {
                 }
                 else -> {
                     val tlsFailure = takeLastIncognitoTlsProbeFailure()
-                    when {
-                        tlsFailure != null ->
-                            findIncognitoMitmCertificateException(tlsFailure)?.let { mitm ->
-                                AuthServerProbeOutcome.MitmCertificateDetected(mitm.matchedMarker)
-                            } ?: AuthServerProbeOutcome.Failed
-                        else -> AuthServerProbeOutcome.Failed
-                    }
+                    tlsFailure?.let { authProbeOutcomeFromTlsFailure(it, config) }
+                        ?: AuthServerProbeOutcome.Failed
                 }
             }
             probeOutcome
@@ -156,9 +174,7 @@ internal suspend fun probeCurrentServerForAuth(): AuthServerProbeOutcome {
             "probe failed within ${AUTH_SERVER_PROBE_TIMEOUT_MS}ms url=$apiBase",
             e,
         )
-        findIncognitoMitmCertificateException(e)?.let { mitm ->
-            return AuthServerProbeOutcome.MitmCertificateDetected(mitm.matchedMarker)
-        }
+        authProbeOutcomeFromTlsFailure(e, config)?.let { return it }
         AuthServerProbeOutcome.Failed
     }
 }

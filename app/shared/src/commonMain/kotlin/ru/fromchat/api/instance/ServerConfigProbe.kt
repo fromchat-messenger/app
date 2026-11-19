@@ -19,8 +19,9 @@ import ru.fromchat.incognito.findIncognitoMitmCertificateException
 import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.logging.Logger
 import ru.fromchat.ui.incognito.handleIncognitoHttpsTlsFailure
-import ru.fromchat.ui.security.ConnectionSecurityDialogController
 import ru.fromchat.ui.incognito.isIncognitoHttpsTlsFailure
+import ru.fromchat.ui.security.ConnectionSecurityDialogController
+import ru.fromchat.ui.security.shouldNoteFromChatHttpsProbeTlsFailure
 import ru.fromchat.ui.main.settings.about.legal.DocumentRepository
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
@@ -53,8 +54,15 @@ private var lastIncognitoTlsProbeFailure: Throwable? = null
 fun takeLastIncognitoTlsProbeFailure(): Throwable? =
     lastIncognitoTlsProbeFailure.also { lastIncognitoTlsProbeFailure = null }
 
-internal fun noteIncognitoTlsProbeFailure(error: Throwable?, httpsEnabled: Boolean) {
-    if (isIncognitoHttpsTlsFailure(error, httpsEnabled)) {
+internal fun noteIncognitoTlsProbeFailure(
+    error: Throwable?,
+    httpsEnabled: Boolean,
+    host: String = "",
+) {
+    if (
+        shouldNoteFromChatHttpsProbeTlsFailure(error, httpsEnabled, host) ||
+        isIncognitoHttpsTlsFailure(error, httpsEnabled)
+    ) {
         lastIncognitoTlsProbeFailure = error
     }
 }
@@ -263,11 +271,10 @@ private suspend fun probeServerOnce(
                 persistBinding = persistBinding,
             )
         }.getOrElse { e ->
-            if (
-                recordIncognitoTlsFailure &&
-                handleIncognitoHttpsTlsFailure(e, config.httpsEnabled, config.serverIp)
-            ) {
-                noteIncognitoTlsProbeFailure(e, config.httpsEnabled)
+            if (recordIncognitoTlsFailure) {
+                noteIncognitoTlsProbeFailure(e, config.httpsEnabled, config.serverIp)
+            }
+            if (handleIncognitoHttpsTlsFailure(e, config.httpsEnabled, config.serverIp)) {
                 return ServerProbeResult.Unreachable to e
             }
             Logger.e(PROBE_LOG_TAG, "resolveInstanceId threw url=$apiBase", e)
@@ -311,11 +318,10 @@ private suspend fun probeServerOnce(
                 val failure = runCatching {
                     ApiClient.fetchServerInstanceId(apiBase)
                 }.exceptionOrNull()
-                if (
-                    recordIncognitoTlsFailure &&
-                    handleIncognitoHttpsTlsFailure(failure, config.httpsEnabled, config.serverIp)
-                ) {
-                    noteIncognitoTlsProbeFailure(failure, config.httpsEnabled)
+                if (recordIncognitoTlsFailure) {
+                    noteIncognitoTlsProbeFailure(failure, config.httpsEnabled, config.serverIp)
+                }
+                if (handleIncognitoHttpsTlsFailure(failure, config.httpsEnabled, config.serverIp)) {
                     return ServerProbeResult.Unreachable to failure
                 }
                 ServerProbeResult.Unreachable to failure
