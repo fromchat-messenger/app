@@ -29,6 +29,7 @@
 # BouncyCastle security providers (ServiceLoader java.security.Provider).
 -keep class org.bouncycastle.jce.provider.BouncyCastleProvider { *; }
 -keep class org.bouncycastle.pqc.jcajce.provider.BouncyCastlePQCProvider { *; }
+-dontwarn org.bouncycastle.**
 
 # Cryptography provider (ServiceLoader).
 -keep class dev.whyoleg.cryptography.providers.jdk.JdkCryptographyProviderContainer { *; }
@@ -44,6 +45,12 @@
 -keep class ru.fromchat.ActualResourceCollectorsKt { *; }
 -keep class ru.fromchat.Res { *; }
 -keep class ru.fromchat.Res$* { *; }
+
+# Proxy credentials: [Auth] is not @Serializable (only PasswordAuth / SshKeyAuth are); ProGuard
+# must keep the interface or HttpProxy/Socks5Proxy/SshProxy ctor descriptors fail initialization.
+-keep interface ru.fromchat.network.proxy.Auth { *; }
+-keep class ru.fromchat.network.proxy.PasswordAuth { *; }
+-keep class ru.fromchat.network.proxy.SshKeyAuth { *; }
 
 # App JSON models.
 -keep @kotlinx.serialization.Serializable class ru.fromchat.** { *; }

@@ -42,7 +42,8 @@ data class SavedProxyListing(
 )
 
 /** Credential shape for a [Proxy]. Secrets are stored in [ProxyStore], not in persisted JSON. */
-interface Auth
+@Serializable
+sealed interface Auth
 
 @Serializable
 @SerialName("password")
