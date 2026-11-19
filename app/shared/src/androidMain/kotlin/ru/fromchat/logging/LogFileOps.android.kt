@@ -9,18 +9,17 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import ru.fromchat.utils.files.PlatformFileSystem
 
 internal actual object LogFileOps {
     actual fun readText(path: String): String {
-        val file = File(path)
-        if (!file.isFile) return ""
-        return runCatching { file.readText() }.getOrDefault("")
+        if (!File(path).isFile) return ""
+        return runCatching { PlatformFileSystem.readBytes(path).decodeToString() }.getOrDefault("")
     }
 
     actual fun readBytes(path: String): ByteArray {
-        val file = File(path)
-        if (!file.isFile) return ByteArray(0)
-        return runCatching { file.readBytes() }.getOrDefault(ByteArray(0))
+        if (!File(path).isFile) return ByteArray(0)
+        return runCatching { PlatformFileSystem.readBytes(path) }.getOrDefault(ByteArray(0))
     }
 
     actual suspend fun gzipFile(sourcePath: String, destinationPath: String) = withContext(Dispatchers.IO) {
@@ -46,10 +45,9 @@ internal actual object LogFileOps {
         destinationPath: String,
         onProgress: (Float) -> Unit,
     ) = withContext(Dispatchers.IO) {
-        val bytes = gunzipToByteArray(sourcePath, onProgress)
         val dest = File(destinationPath)
         dest.parentFile?.mkdirs()
-        dest.writeBytes(bytes)
+        dest.writeBytes(gunzipToByteArray(sourcePath, onProgress))
     }
 
     actual suspend fun zipFiles(

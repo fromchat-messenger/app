@@ -38,4 +38,10 @@ expect object DmCrypto {
         mek: ByteArray,
         outputPath: String,
     ): Long
+
+    /** Wrap [mek] with AES-GCM; returns base64(nonce || ciphertext||tag). */
+    suspend fun wrapMek(mek: ByteArray, wrappingKey: ByteArray): String
+
+    /** Encrypt [plaintext] with [mek]; returns iv and ciphertext base64. */
+    suspend fun encryptEnvelopePlaintext(plaintext: ByteArray, mek: ByteArray): Pair<String, String>
 }

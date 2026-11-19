@@ -68,6 +68,30 @@ object MacNotificationCenter {
         runCatching { nativeResignActive() }
     }
 
+    /** Use AppKit document-window presentation so show/hide use the system animation behavior. */
+    fun applySystemWindowAnimationBehavior() {
+        if (!available) return
+        runCatching { nativeApplySystemWindowAnimationBehavior() }
+    }
+
+    /** After the main window was hidden (close-to-tray), present with native makeKeyAndOrderFront. */
+    fun presentMainWindows() {
+        if (!available) return
+        runCatching { nativePresentMainWindows() }
+    }
+
+    /** Dock click while a window is already on screen — activate without toggling visibility. */
+    fun activateApplication() {
+        if (!available) return
+        runCatching { nativeActivateApplication() }
+    }
+
+    /** Re-attach AppKit first responder so Skiko/Compose text fields accept keys after presentation. */
+    fun repairMainWindowKeyboardFocus() {
+        if (!available) return
+        runCatching { nativeRepairMainWindowKeyboardFocus() }
+    }
+
     /** Lets the real frontmost app own activation so Notification Center uses banners. */
     fun yieldActivationIfNotFrontmost() {
         if (!available) return
@@ -269,4 +293,16 @@ object MacNotificationCenter {
 
     @JvmStatic
     private external fun nativeDebugInfo(): String
+
+    @JvmStatic
+    private external fun nativeApplySystemWindowAnimationBehavior()
+
+    @JvmStatic
+    private external fun nativePresentMainWindows()
+
+    @JvmStatic
+    private external fun nativeActivateApplication()
+
+    @JvmStatic
+    private external fun nativeRepairMainWindowKeyboardFocus()
 }

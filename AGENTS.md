@@ -41,7 +41,7 @@ Conventions:
 | `adapt-to-style` | `.agents/skills/adapt-to-style/` | Style pass without behavior changes |
 | `material-3-skill` | `.agents/skills/material-3-skill/` | Material 3 Compose UI (vendor submodule) |
 | `pre-mortem` | `.agents/skills/pre-mortem/` | Stress-test plans (see skill triggers) |
-| `run-linux-prl` | `.agents/skills/run-linux-prl/` | Build/debug Linux desktop in Parallels VM |
+| `run-linux-prl` | `.agents/skills/run-linux-prl/` | Run `run-linux-prl.sh` — build/install Linux dev deb in Parallels VM |
 | `run-windows-prl` | `.agents/skills/run-windows-prl/` | Build Windows desktop in Parallels VM |
 | `run-macos-app` | `.agents/skills/run-macos-app/` | Install/run native macOS `.app` after desktop UI changes |
 | `release` | `.agents/skills/release/` | Ship via CI — follow the **`release`** skill |
@@ -54,7 +54,7 @@ Also: **Material 3 skill** for M3 components/theming. Add or change agent skills
 
 ```bash
 export JAVA_HOME="<JDK 21+; on macOS with Android Studio, often /Applications/Android Studio.app/Contents/jbr/Contents/Home>"
-./gradlew :app:shared:compileAndroidMain :app:shared:compileKotlinIosArm64 :app:desktop:compileKotlin
+./gradlew :app:shared:compileAndroidMain :app:desktop:compileKotlin
 ```
 
 Set `JAVA_HOME` to a JDK 21+ on your OS (the path above is a **macOS** example only).
@@ -110,3 +110,9 @@ When using Mobile MCP, run **all** `mobile_install_app` and `mobile_launch_app` 
 - **Canonical release:** [`.github/workflows/release.yml`](./.github/workflows/release.yml) (`workflow_dispatch`, `version` input). Use the **`release`** skill — fork-safe `gh workflow run` on `origin`.
 - **Preflight (mandatory):** do **not** dispatch CI until the **`release`** skill checks pass: local compile gate (section 4), version bump in root [`build.gradle.kts`](./build.gradle.kts) vs latest tag, and release tag on the correct commit. If a check fails, fix what you can without behavior changes; otherwise stop and ask the user.
 - **Kept VM/CI scripts:** see `scripts/` (Windows VM chain, `ensure-windows-arm64-jdk.cmd`, etc.) — used by `run-*-prl` skills and CI.
+
+## 7. Cursor Cloud — GUI demos and manual tests
+
+On Cloud Agent VMs, drive the desktop UI only through the **computerUse** subagent (mouse/keyboard in the session) and **RecordScreen** for walkthrough video. Do **not** automate the GUI from the shell with **xdotool**, **wmctrl**, **ydotool**, **xte**, or similar. Terminal commands for build, logs, and read-only inspection (e.g. `file`, `hexdump` on paths the demo already opened) are fine when the computerUse agent runs them on screen or when no UI driving is involved.
+
+**Incognito disk / MITM QA** is **external** only: [`scripts/incognito-security/README.md`](./scripts/incognito-security/README.md) (`inotifywait` / PowerShell watchers + `mitm_probe_server.py`). Do not add `--verify-*` incognito flags to the app.

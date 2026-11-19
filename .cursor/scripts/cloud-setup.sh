@@ -28,6 +28,7 @@ missing_pkgs=()
 for tool in curl unzip git; do
   command -v "$tool" >/dev/null 2>&1 || missing_pkgs+=("$tool")
 done
+command -v inotifywait >/dev/null 2>&1 || missing_pkgs+=("inotify-tools")
 if ! command -v java >/dev/null 2>&1; then
   missing_pkgs+=("openjdk-21-jdk")
 else

@@ -1,5 +1,8 @@
 package ru.fromchat.desktop
 
+import androidx.compose.ui.awt.ComposeWindow
+import androidx.compose.ui.unit.dp
+import javax.swing.SwingUtilities
 import ru.fromchat.config.Settings
 import ru.fromchat.ui.theme.Theme
 import ru.fromchat.ui.theme.jvmPlatformSystemDarkTheme
@@ -44,10 +47,30 @@ internal fun desktopAppDarkTheme(): Boolean =
 
 internal fun desktopSystemDarkTheme(): Boolean = jvmPlatformSystemDarkTheme()
 
+/** Default top inset for macOS edge-to-edge window content (list/chat chrome). */
+val MacOsDefaultTitleBarTopInset = 28.dp
+
+/**
+ * Extra top clearance for fullscreen overlays on macOS (traffic lights in content area).
+ * Used only by fullscreen image preview — not [LocalExtraStatusBarTop].
+ */
+val MacOsFullscreenOverlayTitleBarTopInset = 52.dp
+
 /** Enables drawing under the system title bar on macOS. */
 internal fun applyDesktopEdgeToEdgeChrome(rootPane: JRootPane) {
     if (!isMacOs()) return
     rootPane.putClientProperty("apple.awt.fullWindowContent", true)
     rootPane.putClientProperty("apple.awt.transparentTitleBar", true)
     rootPane.putClientProperty("apple.awt.windowTitleVisible", false)
+}
+
+/** Re-apply edge-to-edge client props once the Cocoa peer exists (cold open). */
+internal fun installMacDesktopEdgeToEdgeChromeAfterOpen(window: ComposeWindow) {
+    if (!isMacOs()) return
+    applyDesktopEdgeToEdgeChrome(window.rootPane)
+    MacDesktopWindowPresentation.applySystemAnimationBehavior()
+    SwingUtilities.invokeLater {
+        applyDesktopEdgeToEdgeChrome(window.rootPane)
+        MacDesktopWindowPresentation.applySystemAnimationBehavior()
+    }
 }

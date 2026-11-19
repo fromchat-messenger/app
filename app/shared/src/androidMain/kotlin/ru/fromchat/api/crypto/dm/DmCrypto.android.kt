@@ -71,5 +71,21 @@ actual object DmCrypto {
             throw DmCiphertextCorruptedException(cause = e)
         }
     }
+
+    actual suspend fun wrapMek(mek: ByteArray, wrappingKey: ByteArray): String = withContext(Dispatchers.Default) {
+        require(mek.size == AES_KEY_SIZE) { "MEK must be 32 bytes" }
+        require(wrappingKey.size == AES_KEY_SIZE) { "Wrapping key must be 32 bytes" }
+        val (iv, ciphertext) = BackupCryptoPlatform.aesGcmEncrypt(wrappingKey, mek)
+        Base64.encode(iv + ciphertext)
+    }
+
+    actual suspend fun encryptEnvelopePlaintext(
+        plaintext: ByteArray,
+        mek: ByteArray,
+    ): Pair<String, String> = withContext(Dispatchers.Default) {
+        require(mek.size == AES_KEY_SIZE) { "MEK must be 32 bytes" }
+        val (iv, ciphertext) = BackupCryptoPlatform.aesGcmEncrypt(mek, plaintext)
+        Base64.encode(iv) to Base64.encode(ciphertext)
+    }
 }
 

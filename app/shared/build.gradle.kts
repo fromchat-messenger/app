@@ -214,6 +214,7 @@ kotlin {
             implementation(libs.androidx.core.ktx)
             implementation(libs.markdown.renderer.m3)
             implementation(libs.bouncycastle.bcprov)
+            implementation(libs.bouncycastle.bcpkix)
             implementation(libs.androidx.exifinterface)
             implementation(libs.ktor.client.okhttp)
             implementation(libs.firebase.messaging)
@@ -222,9 +223,12 @@ kotlin {
             implementation(libs.multiplatform.crypto.libsodium.bindings)
             implementation(libs.tweetnacl.java)
             implementation(libs.sqldelight.driver.android)
+            implementation(libs.sqlcipher.android)
+            implementation(libs.androidx.sqlite)
             implementation(libs.livekit.android)
             implementation(libs.livekit.android.compose.components)
             implementation(libs.androidx.webkit)
+            implementation(libs.sshj)
         }
 
         iosMain.dependencies {
@@ -255,9 +259,12 @@ kotlin {
             implementation(libs.jetbrains.kotlinx.io.bytestring)
             implementation(libs.jetbrains.kotlinx.coroutines.core)
             implementation(libs.ktor.client.cio)
+            implementation(libs.ktor.client.okhttp)
             implementation(libs.multiplatform.crypto.libsodium.bindings)
             implementation(libs.sqldelight.driver.sqlite)
+            implementation(libs.sqlite.jdbc.crypt)
             implementation(libs.bouncycastle.bcprov)
+            implementation(libs.bouncycastle.bcpkix)
             // OpenJFX publishes empty jars without a classifier; declare every module
             // with the host classifier and exclude transitive stubs.
             val javafxVersion = libs.versions.openjfx.get()
@@ -268,6 +275,7 @@ kotlin {
                 }
             }
             implementation(libs.jna.platform)
+            implementation(libs.sshj)
         }
     }
 }

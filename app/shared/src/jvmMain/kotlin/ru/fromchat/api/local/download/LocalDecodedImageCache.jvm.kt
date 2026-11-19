@@ -5,6 +5,9 @@ import androidx.compose.ui.graphics.toComposeImageBitmap
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.incognito.IncognitoVolumeFileSystem
+import ru.fromchat.utils.files.PlatformFileSystem
 import javax.imageio.ImageIO
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Image
@@ -77,6 +80,13 @@ private class DecodedBitmapByteLruCache(private val maxBytes: Int) {
 }
 
 actual fun decodeLocalImageFile(absolutePath: String, reqWidthPx: Int, reqHeightPx: Int): ImageBitmap? {
+    if (IncognitoMode.active && IncognitoVolumeFileSystem.relativeKeyForAppPath(absolutePath) != null) {
+        if (!PlatformFileSystem.exists(absolutePath)) return null
+        val bytes = runCatching { PlatformFileSystem.readBytes(absolutePath) }.getOrNull() ?: return null
+        if (bytes.isEmpty()) return null
+        return decodeWithSkia(bytes, reqWidthPx, reqHeightPx)
+            ?: decodeWithImageIo(bytes, reqWidthPx, reqHeightPx)
+    }
     if (!File(absolutePath).isFile) return null
     decodeWithSkiaFromFile(absolutePath, reqWidthPx, reqHeightPx)?.let { return it }
     return decodeWithImageIoFromFile(absolutePath, reqWidthPx, reqHeightPx)

@@ -72,8 +72,8 @@ import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import ru.fromchat.ui.components.SpringDropdownMenuItem
+import ru.fromchat.ui.components.SpringExpandingOverflowMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
@@ -835,66 +835,56 @@ fun LogsScreen() {
                                             )
                                         }
                                     }
-                                    LogsTopBarChromeIconButton(
-                                        onClick = { menuExpanded = true },
-                                        enabled = searchProgress < 1f,
-                                        contentDescription = stringResource(Res.string.more),
+                                    SpringExpandingOverflowMenu(
+                                        expanded = menuExpanded,
+                                        onExpandedChange = { menuExpanded = it },
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Rounded.MoreVert,
-                                            contentDescription = stringResource(Res.string.more),
-                                        )
-                                    }
-                                }
-                                DropdownMenu(
-                                    expanded = menuExpanded,
-                                    onDismissRequest = { menuExpanded = false },
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text(logsSearchLabel) },
-                                        leadingIcon = {
-                                            Icon(Icons.Rounded.Search, contentDescription = null)
-                                        },
-                                        onClick = {
-                                            menuExpanded = false
-                                            enterSearchMode()
-                                        },
-                                    )
-                                    if (isViewingCurrent) {
-                                        DropdownMenuItem(
-                                            text = { Text(stringResource(Res.string.logs_rotate)) },
+                                        SpringDropdownMenuItem(
+                                            text = { Text(logsSearchLabel) },
                                             leadingIcon = {
-                                                Icon(Icons.Rounded.Sync, contentDescription = null)
+                                                Icon(Icons.Rounded.Search, contentDescription = null)
                                             },
                                             onClick = {
                                                 menuExpanded = false
-                                                showRotateConfirm = true
+                                                enterSearchMode()
                                             },
                                         )
-                                        DropdownMenuItem(
-                                            text = { Text(stringResource(Res.string.logs_clean)) },
-                                            leadingIcon = {
-                                                Icon(Icons.Rounded.CleaningServices, contentDescription = null)
-                                            },
-                                            onClick = {
-                                                menuExpanded = false
-                                                showCleanSheet = true
-                                            },
-                                        )
-                                    } else {
-                                        DropdownMenuItem(
-                                            text = { Text(deleteLabel) },
-                                            leadingIcon = {
-                                                Icon(Icons.Rounded.Delete, contentDescription = null)
-                                            },
-                                            onClick = {
-                                                menuExpanded = false
-                                                viewingFilePath?.let { path ->
-                                                    pendingDeletePaths = setOf(path)
-                                                    showDeleteFileConfirm = true
-                                                }
-                                            },
-                                        )
+                                        if (isViewingCurrent) {
+                                            SpringDropdownMenuItem(
+                                                text = { Text(stringResource(Res.string.logs_rotate)) },
+                                                leadingIcon = {
+                                                    Icon(Icons.Rounded.Sync, contentDescription = null)
+                                                },
+                                                onClick = {
+                                                    menuExpanded = false
+                                                    showRotateConfirm = true
+                                                },
+                                            )
+                                            SpringDropdownMenuItem(
+                                                text = { Text(stringResource(Res.string.logs_clean)) },
+                                                leadingIcon = {
+                                                    Icon(Icons.Rounded.CleaningServices, contentDescription = null)
+                                                },
+                                                onClick = {
+                                                    menuExpanded = false
+                                                    showCleanSheet = true
+                                                },
+                                            )
+                                        } else {
+                                            SpringDropdownMenuItem(
+                                                text = { Text(deleteLabel) },
+                                                leadingIcon = {
+                                                    Icon(Icons.Rounded.Delete, contentDescription = null)
+                                                },
+                                                onClick = {
+                                                    menuExpanded = false
+                                                    viewingFilePath?.let { path ->
+                                                        pendingDeletePaths = setOf(path)
+                                                        showDeleteFileConfirm = true
+                                                    }
+                                                },
+                                            )
+                                        }
                                     }
                                 }
                             }

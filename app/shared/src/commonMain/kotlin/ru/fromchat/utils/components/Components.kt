@@ -3,6 +3,8 @@
 package ru.fromchat.utils.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
@@ -14,6 +16,8 @@ import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
@@ -75,13 +79,14 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -176,17 +181,22 @@ fun listItemPositionInGroup(index: Int, count: Int): ListItemPosition {
     }
 }
 
+@DslMarker
+annotation class ListItemContextMenuDsl
+
+@ListItemContextMenuDsl
 class ListItemContextMenuScope internal constructor(
     private val dismiss: () -> Unit,
 ) {
     internal val items = mutableListOf<ListItemContextMenuEntry>()
 
-    fun item(
+    fun menuItem(
         icon: ImageVector,
         label: String,
+        destructive: Boolean = false,
         onClick: () -> Unit,
     ) {
-        items.add(ListItemContextMenuEntry(icon, label, onClick))
+        items.add(ListItemContextMenuEntry(icon, label, onClick, destructive))
     }
 
     fun close() {
@@ -194,14 +204,61 @@ class ListItemContextMenuScope internal constructor(
     }
 }
 
-internal data class ListItemContextMenuEntry(
+data class ListItemContextMenuEntry(
     val icon: ImageVector,
     val label: String,
     val onClick: () -> Unit,
+    val destructive: Boolean = false,
 )
 
 private val listItemContextMenuShape = RoundedCornerShape(16.dp)
 private val listItemContextMenuItemShape = RoundedCornerShape(12.dp)
+
+private const val ListItemContextMenuPressScale = 0.96f
+
+private val ListItemPressSpring = spring<Float>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = Spring.StiffnessMediumLow,
+)
+
+@Composable
+private fun ListItemContextMenuPressScaleEffect(
+    menuOpen: Boolean,
+    touchPressing: Boolean,
+    mousePressAnimating: Boolean,
+    pressScale: Animatable<Float, AnimationVector1D>,
+    pressScaleTarget: Float = ListItemContextMenuPressScale,
+) {
+    LaunchedEffect(menuOpen, touchPressing, mousePressAnimating) {
+        if (mousePressAnimating) return@LaunchedEffect
+        when {
+            touchPressing && !menuOpen ->
+                pressScale.animateTo(pressScaleTarget, ListItemPressSpring)
+            menuOpen && touchPressing ->
+                pressScale.animateTo(1f, ListItemPressSpring)
+            !touchPressing ->
+                pressScale.animateTo(1f, ListItemPressSpring)
+        }
+    }
+}
+
+private fun CoroutineScope.launchMouseContextMenuPressPulse(
+    pressScaleAnim: Animatable<Float, AnimationVector1D>,
+    pressScaleTarget: Float,
+    onAnimatingChanged: (Boolean) -> Unit,
+    openMenu: () -> Unit,
+) {
+    launch {
+        onAnimatingChanged(true)
+        try {
+            pressScaleAnim.animateTo(pressScaleTarget, ListItemPressSpring)
+            openMenu()
+            pressScaleAnim.animateTo(1f, ListItemPressSpring)
+        } finally {
+            onAnimatingChanged(false)
+        }
+    }
+}
 
 @Composable
 private fun ListItemContextMenuPopup(
@@ -366,7 +423,7 @@ private fun ListItemContextMenuPopup(
 }
 
 @Composable
-private fun ListItemContextMenuContent(
+internal fun ListItemContextMenuContent(
     items: List<ListItemContextMenuEntry>,
     animated: Boolean,
     modifier: Modifier = Modifier,
@@ -410,6 +467,7 @@ private fun ListItemContextMenuContent(
                     ListItemContextMenuRow(
                         icon = entry.icon,
                         label = entry.label,
+                        destructive = entry.destructive,
                         onClick = { onItemClick(entry) },
                     )
                 }
@@ -422,9 +480,15 @@ private fun ListItemContextMenuContent(
 private fun ListItemContextMenuRow(
     icon: ImageVector,
     label: String,
+    destructive: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val contentColor = if (destructive) {
+        MaterialTheme.colorScheme.error
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -449,13 +513,13 @@ private fun ListItemContextMenuRow(
             Icon(
                 imageVector = icon,
                 contentDescription = label,
-                tint = MaterialTheme.colorScheme.onSurface,
+                tint = contentColor,
                 modifier = Modifier.size(20.dp),
             )
             Text(
                 text = label,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = contentColor,
             )
         }
     }
@@ -476,21 +540,35 @@ fun ContextMenuPressable(
         return
     }
 
-    var isPressed by remember { mutableStateOf(false) }
+    var touchPressing by remember { mutableStateOf(false) }
+    var mousePressAnimating by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var menuPosition by remember { mutableStateOf(IntOffset.Zero) }
     var anchorPositionInRoot by remember { mutableStateOf(Offset.Zero) }
     val latestContextMenu by rememberUpdatedState(contextMenu)
-    val scaleTarget = if (isPressed && !menuOpen) pressScale else 1f
-    val scale by animateFloatAsState(
-        targetValue = scaleTarget,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMediumLow,
-        ),
-        visibilityThreshold = 0.001f,
-        label = "contextMenuPressableScale",
+    val gestureScope = rememberCoroutineScope()
+    val pressScaleAnim = remember { Animatable(1f) }
+    ListItemContextMenuPressScaleEffect(
+        menuOpen = menuOpen,
+        touchPressing = touchPressing,
+        mousePressAnimating = mousePressAnimating,
+        pressScale = pressScaleAnim,
+        pressScaleTarget = pressScale,
     )
+    val openContextMenuAt: (Offset) -> Unit = { localOffset ->
+        onContextMenuOpen?.invoke()
+        menuPosition = IntOffset(localOffset.x.toInt(), localOffset.y.toInt())
+        menuOpen = true
+    }
+    val mouseSecondaryContextMenu: (Offset) -> Unit = { localOffset ->
+        gestureScope.launchMouseContextMenuPressPulse(
+            pressScaleAnim = pressScaleAnim,
+            pressScaleTarget = pressScale,
+            onAnimatingChanged = { mousePressAnimating = it },
+            openMenu = { openContextMenuAt(localOffset) },
+        )
+    }
+    val rowInteractionSource = remember { MutableInteractionSource() }
 
     Column(
         modifier = Modifier.onGloballyPositioned { coordinates ->
@@ -499,38 +577,21 @@ fun ContextMenuPressable(
     ) {
         Box(
             modifier = modifier
-                .graphicsLayer(
-                    scaleX = scale,
-                    scaleY = scale,
-                    transformOrigin = TransformOrigin.Center,
-                )
-                .pointerInput(latestContextMenu, openMenuOnTap) {
-                    detectTapGestures(
-                        onPress = {
-                            isPressed = true
-                            try {
-                                awaitRelease()
-                            } finally {
-                                isPressed = false
-                            }
-                        },
-                        onTap = {
-                            if (openMenuOnTap) {
-                                onContextMenuOpen?.invoke()
-                                menuPosition = IntOffset.Zero
-                                menuOpen = true
-                            }
-                        },
-                        onLongPress = { localOffset ->
-                            onContextMenuOpen?.invoke()
-                            menuPosition = IntOffset(
-                                localOffset.x.toInt(),
-                                localOffset.y.toInt(),
-                            )
-                            menuOpen = true
-                        },
-                    )
-                },
+                .hoverable(rowInteractionSource, enabled = enabled)
+                .indication(rowInteractionSource, LocalIndication.current)
+                .graphicsLayer {
+                    scaleX = pressScaleAnim.value
+                    scaleY = pressScaleAnim.value
+                    transformOrigin = TransformOrigin.Center
+                }
+                .listItemContextMenuGestures(
+                    openMenuOnPrimaryTap = openMenuOnTap,
+                    onTouchPressStart = { touchPressing = true },
+                    onTouchPressEnd = { touchPressing = false },
+                    onPrimaryActivate = {},
+                    onOpenContextMenuAt = openContextMenuAt,
+                    onMouseSecondaryContextMenu = mouseSecondaryContextMenu,
+                ),
         ) {
             content()
         }
@@ -578,22 +639,35 @@ fun ListItem(
         groupItemCount = groupItemCount,
         beforeDividerRadius = beforeDividerRadius,
     )
-    var isPressed by remember { mutableStateOf(false) }
+    var touchPressing by remember { mutableStateOf(false) }
+    var mousePressAnimating by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var menuPosition by remember { mutableStateOf(IntOffset.Zero) }
     var anchorPositionInRoot by remember { mutableStateOf(Offset.Zero) }
     val latestContextMenu by rememberUpdatedState(contextMenu)
     val hasContextMenu = contextMenu != null
-    val scaleTarget = if (isPressed && !menuOpen) 0.96f else 1f
-    val scale by animateFloatAsState(
-        targetValue = scaleTarget,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMediumLow,
-        ),
-        visibilityThreshold = 0.001f,
-        label = "listItemScale",
+    val gestureScope = rememberCoroutineScope()
+    val pressScaleAnim = remember { Animatable(1f) }
+    ListItemContextMenuPressScaleEffect(
+        menuOpen = menuOpen,
+        touchPressing = touchPressing,
+        mousePressAnimating = mousePressAnimating,
+        pressScale = pressScaleAnim,
     )
+    val openContextMenuAt: (Offset) -> Unit = { localOffset ->
+        onContextMenuOpen?.invoke()
+        menuPosition = IntOffset(localOffset.x.toInt(), localOffset.y.toInt())
+        menuOpen = true
+    }
+    val mouseSecondaryContextMenu: (Offset) -> Unit = { localOffset ->
+        gestureScope.launchMouseContextMenuPressPulse(
+            pressScaleAnim = pressScaleAnim,
+            pressScaleTarget = ListItemContextMenuPressScale,
+            onAnimatingChanged = { mousePressAnimating = it },
+            openMenu = { openContextMenuAt(localOffset) },
+        )
+    }
+    val rowInteractionSource = remember { MutableInteractionSource() }
 
     Column(
         modifier = Modifier.onGloballyPositioned { coordinates ->
@@ -622,39 +696,31 @@ fun ListItem(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .graphicsLayer(
-                        scaleX = scale,
-                        scaleY = scale,
-                        transformOrigin = TransformOrigin.Center,
-                    )
+                    .graphicsLayer {
+                        scaleX = pressScaleAnim.value
+                        scaleY = pressScaleAnim.value
+                        transformOrigin = TransformOrigin.Center
+                    }
                     .conditional(hasContextMenu) {
-                        pointerInput(latestContextMenu, onClick) {
-                            detectTapGestures(
-                                onPress = {
-                                    isPressed = true
-                                    try {
-                                        awaitRelease()
-                                    } finally {
-                                        isPressed = false
-                                    }
-                                },
-                                onTap = { onClick?.invoke() },
-                                onLongPress = { localOffset ->
-                                    onContextMenuOpen?.invoke()
-                                    menuPosition = IntOffset(
-                                        localOffset.x.toInt(),
-                                        localOffset.y.toInt(),
-                                    )
-                                    menuOpen = true
-                                },
-                            )
-                        }
+                        listItemContextMenuGestures(
+                            openMenuOnPrimaryTap = false,
+                            onTouchPressStart = { touchPressing = true },
+                            onTouchPressEnd = { touchPressing = false },
+                            onPrimaryActivate = { onClick?.invoke() },
+                            onOpenContextMenuAt = openContextMenuAt,
+                            onMouseSecondaryContextMenu = mouseSecondaryContextMenu,
+                        )
                     },
             ) {
             ConstraintLayout(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(clipShape)
+                    .conditional(hasContextMenu && enabled) {
+                        Modifier
+                            .hoverable(rowInteractionSource)
+                            .indication(rowInteractionSource, LocalIndication.current)
+                    }
                     .background(containerColor)
                     .conditional(onClick != null && !hasContextMenu) {
                         clickable(onClick = onClick!!)

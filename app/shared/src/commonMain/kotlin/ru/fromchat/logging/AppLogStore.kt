@@ -1,6 +1,5 @@
 package ru.fromchat.logging
 
-import ru.fromchat.utils.files.PlatformFileSystem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,9 +11,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
-import kotlinx.coroutines.runBlocking
 import kotlin.time.Clock
 import kotlin.time.Instant
+import ru.fromchat.utils.files.PlatformFileSystem
 
 enum class LogCleanMode {
     Size,
@@ -73,32 +72,38 @@ object AppLogStore {
             } finally {
                 mutex.unlock()
             }
-        } else {
-            runBlocking { mutex.withLock { appendEntry(entry) } }
         }
+        // Never runBlocking here: auth/incognito runs on IO and can deadlock with other log writers.
     }
 
     private fun appendEntry(entry: AppLogEntry) {
-        val lineBytes = (entry.formattedLine() + "\n").encodeToByteArray()
-        PlatformFileSystem.appendBytes(FromChatLogDirs.currentLogPath(), lineBytes)
         val updated = (_entries.value + entry).let { list ->
             if (list.size <= MAX_MEMORY_ENTRIES) list else list.takeLast(MAX_MEMORY_ENTRIES)
         }
         _entries.value = updated
+        val lineBytes = (entry.formattedLine() + "\n").encodeToByteArray()
+        PlatformFileSystem.appendBytes(FromChatLogDirs.currentLogPath(), lineBytes)
+    }
+
+    /** Drops in-memory log cache when entering or leaving an incognito session. */
+    fun onIncognitoSessionBoundary() {
+        if (!mutex.tryLock()) return
+        try {
+            resetIncognitoLogMemoryLocked()
+        } finally {
+            mutex.unlock()
+        }
+    }
+
+    private fun resetIncognitoLogMemoryLocked() {
+        _entries.value = emptyList()
+        nextEntryId = 0L
+        loadedFromDisk = true
     }
 
     suspend fun ensureLoaded() = withContext(Dispatchers.IO) {
         mutex.withLock {
             if (loadedFromDisk) return@withContext
-            val text = runCatching { LogFileOps.readText(FromChatLogDirs.currentLogPath()) }
-                .getOrDefault("")
-            setEntriesFromParsed(parseLogText(text))
-            loadedFromDisk = true
-        }
-    }
-
-    suspend fun refreshFromDisk() = withContext(Dispatchers.IO) {
-        mutex.withLock {
             val text = runCatching { LogFileOps.readText(FromChatLogDirs.currentLogPath()) }
                 .getOrDefault("")
             setEntriesFromParsed(parseLogText(text))
@@ -130,18 +135,6 @@ object AppLogStore {
                 LogCleanMode.Date -> cleanByDate(request.deleteBefore)
             }
             refreshEntriesLocked()
-        }
-    }
-
-    suspend fun exportAllText(): String = withContext(Dispatchers.IO) {
-        mutex.withLock { buildExportTextLocked() }
-    }
-
-    suspend fun writeExportFile(): String = withContext(Dispatchers.IO) {
-        mutex.withLock {
-            val exportPath = FromChatLogDirs.exportFilePath()
-            PlatformFileSystem.writeBytes(exportPath, buildExportTextLocked().encodeToByteArray())
-            exportPath
         }
     }
 
@@ -268,10 +261,10 @@ object AppLogStore {
         val current = files.firstOrNull { it.name == FromChatLogDirs.CURRENT_LOG_FILE }
         val archives = files.filter { it.name != FromChatLogDirs.CURRENT_LOG_FILE && it.name != FromChatLogDirs.EXPORT_FILE }
 
-        for (archive in archives) {
+        for ((path, size) in archives.map { it.path to it.size }) {
             if (total <= maxTotalBytes) break
-            PlatformFileSystem.delete(archive.path)
-            total -= archive.size
+            PlatformFileSystem.delete(path)
+            total -= size
         }
 
         current?.let { live ->
@@ -342,18 +335,6 @@ object AppLogStore {
     private fun setEntriesFromParsed(parsed: List<AppLogEntry>) {
         _entries.value = parsed.takeLast(MAX_MEMORY_ENTRIES)
         nextEntryId = (_entries.value.maxOfOrNull { it.id } ?: -1L) + 1L
-    }
-
-    private fun buildExportTextLocked(): String = buildString {
-        val dir = FromChatLogDirs.logsDirectoryPath()
-        PlatformFileSystem.listFileNamesInDirectory(dir)
-            .filter { it.endsWith(".gz") }
-            .sorted()
-            .forEach { name ->
-                appendLine("===== $name (gzip archive) =====")
-            }
-        appendLine("===== ${FromChatLogDirs.CURRENT_LOG_FILE} =====")
-        append(runCatching { LogFileOps.readText(FromChatLogDirs.currentLogPath()) }.getOrDefault(""))
     }
 
     internal fun parseLogText(text: String): List<AppLogEntry> {

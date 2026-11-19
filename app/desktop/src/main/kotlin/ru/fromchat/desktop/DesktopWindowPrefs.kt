@@ -28,11 +28,18 @@ internal object DesktopWindowPrefs {
     fun loadSize(): DpSize {
         val width = prefs.getFloat(WIDTH_KEY, 0f)
         val height = prefs.getFloat(HEIGHT_KEY, 0f)
-        return if (width <= 0f || height <= 0f) {
-            DpSize(800.dp, 600.dp)
-        } else {
-            DpSize(width.dp, height.dp)
+        if (width <= 0f || height <= 0f) {
+            return DpSize(800.dp, 600.dp)
         }
+        var w = width
+        var h = height
+        // Earlier sizeRatio bugs persisted shrunken dp sizes; unscale once here so a relaunch
+        // opens a frame that matches mutter without hand-editing prefs on every VM.
+        if (isLinuxOs()) {
+            w = w.coerceAtLeast(960f)
+            h = h.coerceAtLeast(640f)
+        }
+        return DpSize(w.dp, h.dp)
     }
 
     fun loadPosition(): WindowPosition {

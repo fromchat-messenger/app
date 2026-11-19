@@ -1,13 +1,17 @@
 package ru.fromchat.api.crypto.dm
 
+import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.incognito.IncognitoVolumeFileSystem
 import ru.fromchat.utils.files.PlatformFileSystem
 import dev.whyoleg.cryptography.BinarySize.Companion.bits
 import dev.whyoleg.cryptography.CryptographyProvider
 import dev.whyoleg.cryptography.DelicateCryptographyApi
 import dev.whyoleg.cryptography.algorithms.AES
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.InputStream
 import kotlinx.io.Buffer
 import kotlinx.io.RawSink
 import kotlinx.io.RawSource
@@ -45,7 +49,7 @@ internal actual suspend fun platformAesGcmStreamDecryptMekFile(
     val cipher = aesKey.cipher(tagSize = 128.bits)
 
     FileEncryptedRawSource(encryptedPath).buffered().use { encryptedSource ->
-        FileRawSink(outputPath).buffered().use { plainSink ->
+        AppFileRawSink(outputPath).buffered().use { plainSink ->
             cipher.decryptingSinkWithIv(iv, plainSink).buffered().use { decryptSink ->
                 pumpRawSourceToSink(encryptedSource, decryptSink)
             }
@@ -71,7 +75,13 @@ private fun pumpRawSourceToSink(source: RawSource, sink: RawSink) {
 private class FileEncryptedRawSource(
     path: String,
 ) : RawSource {
-    private val input = FileInputStream(File(path))
+    private val volumeBacked =
+        IncognitoMode.active && IncognitoVolumeFileSystem.relativeKeyForAppPath(path) != null
+    private val input: InputStream = if (volumeBacked) {
+        ByteArrayInputStream(PlatformFileSystem.readBytes(path))
+    } else {
+        FileInputStream(File(path))
+    }
 
     override fun readAtMostTo(sink: Buffer, byteCount: Long): Long {
         if (byteCount <= 0L) return 0L
@@ -88,10 +98,12 @@ private class FileEncryptedRawSource(
     }
 }
 
-private class FileRawSink(
-    path: String,
+private class AppFileRawSink(
+    private val path: String,
 ) : RawSink {
-    private val output = FileOutputStream(File(path))
+    private val volumeBacked =
+        IncognitoMode.active && IncognitoVolumeFileSystem.relativeKeyForAppPath(path) != null
+    private val fileOut = if (volumeBacked) null else FileOutputStream(File(path))
 
     override fun write(source: Buffer, byteCount: Long) {
         if (byteCount <= 0L) return
@@ -101,17 +113,27 @@ private class FileRawSink(
             val array = ByteArray(toRead)
             val read = source.readAtMostTo(array, startIndex = 0, endIndex = toRead)
             if (read <= 0) break
-            output.write(array, 0, read)
+            if (volumeBacked) {
+                if (PlatformFileSystem.exists(path) && PlatformFileSystem.fileSize(path) > 0L) {
+                    PlatformFileSystem.appendBytes(path, array.copyOf(read))
+                } else {
+                    PlatformFileSystem.writeBytes(path, array.copyOf(read))
+                }
+            } else {
+                fileOut!!.write(array, 0, read)
+            }
             remaining -= read
         }
     }
 
     override fun flush() {
-        output.flush()
+        fileOut?.flush()
     }
 
     override fun close() {
-        output.flush()
-        output.close()
+        fileOut?.run {
+            flush()
+            close()
+        }
     }
 }

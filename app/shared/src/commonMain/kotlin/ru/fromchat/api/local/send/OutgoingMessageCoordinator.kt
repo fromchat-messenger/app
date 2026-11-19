@@ -29,6 +29,10 @@ import ru.fromchat.api.local.cache.clearUploadArtifacts
 import ru.fromchat.api.local.cache.clearUploadSecretsOnly
 import ru.fromchat.api.local.AttachmentMediaLog
 import ru.fromchat.logging.Logger
+import ru.fromchat.api.ENCRYPTION_MODE_VERSION_STALE
+import ru.fromchat.api.WRONG_ENCRYPTION_MODE
+import ru.fromchat.api.encryptionPolicyConflictOrNull
+import ru.fromchat.api.instance.InstanceEncryptionStore
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
@@ -142,6 +146,31 @@ object OutgoingMessageCoordinator {
         instanceId: String,
         row: ru.fromchat.db.Outbox,
     ): Boolean {
+        if (isOutboundPaused(row.clientMessageId) || isOutboundCancelled(row.clientMessageId)) {
+            return true
+        }
+        if (InstanceEncryptionStore.isWithinModeChangeSendCooldown()) {
+            Logger.i(
+                "OutgoingMessageCoordinator",
+                "DM send blocked: mode-change cool-down " +
+                    "(${InstanceEncryptionStore.modeChangeCooldownRemainingMs()}ms left)",
+            )
+            failOutboundForModeChange(row.conversationId, row.clientMessageId)
+            return true
+        }
+        val delayMs = InstanceEncryptionStore.debugOutboundDelayMs
+        // Freeze policy before the demo delay so a silent mid-flight mode switch still 409s.
+        val frozenPolicy = if (delayMs > 0L) {
+            InstanceEncryptionStore.ensureActivePolicy().also {
+                delay(delayMs.milliseconds)
+            }
+        } else {
+            null
+        }
+        if (InstanceEncryptionStore.isWithinModeChangeSendCooldown()) {
+            failOutboundForModeChange(row.conversationId, row.clientMessageId)
+            return true
+        }
         val sendResult = runCatching {
             val payload = json.decodeFromString<DmOutboxPayload>(row.payloadJson)
             ApiClient.sendDm(
@@ -151,15 +180,30 @@ object OutgoingMessageCoordinator {
                 replyToId = payload.replyToId,
                 transportFiles = payload.transportFiles,
                 uploadedFileIds = payload.uploadedFileIds,
+                policyOverride = frozenPolicy,
             )
         }
         var ok = true
         sendResult.onSuccess {
+            if (InstanceEncryptionStore.isWithinModeChangeSendCooldown()) {
+                // Best-effort client refusal after a race with a mid-flight mode change.
+                failOutboundForModeChange(row.conversationId, row.clientMessageId)
+                return true
+            }
             withContext(Dispatchers.Default) {
                 MessageDatabaseProvider.database.messageDatabaseQueries
                     .deleteOutboxItem(instanceId, row.clientMessageId)
             }
         }.onFailure { error ->
+            val conflict = error.encryptionPolicyConflictOrNull()
+            if (conflict != null &&
+                (conflict.code == WRONG_ENCRYPTION_MODE || conflict.code == ENCRYPTION_MODE_VERSION_STALE)
+            ) {
+                val fresh = InstanceEncryptionStore.refreshActiveFromNetwork()
+                if (fresh != null) {
+                    InstanceEncryptionStore.onSendPolicyMismatch(fresh)
+                }
+            }
             when {
                 error.isOutboundPermanentFailure() -> {
                     val errorKey = outboundFailureErrorKey(error)
@@ -177,6 +221,37 @@ object OutgoingMessageCoordinator {
             }
         }
         return ok
+    }
+
+    private suspend fun failOutboundForModeChange(conversationId: String, clientMessageId: String) {
+        markOutboundPaused(clientMessageId)
+        withContext(Dispatchers.Default) {
+            MessageCacheStore.markSendFailed(conversationId, clientMessageId)
+        }
+        OutboundSendNotifier.emit(
+            OutboundSendProgress.Failed(clientMessageId, SEND_ERROR_ENCRYPTION_MODE_CHANGED),
+        )
+    }
+
+    /** Mark queued DM outbox rows failed after a local mode-change detection (outbox kept for retry). */
+    fun failPendingDmSendsForModeChange(instanceId: String) {
+        val id = instanceId.trim()
+        if (id.isEmpty()) return
+        drainScope.launch {
+            val rows = withContext(Dispatchers.Default) {
+                MessageDatabaseProvider.database.messageDatabaseQueries
+                    .selectPendingOutboxForInstance(id)
+                    .executeAsList()
+                    .filter {
+                        it.kind == KIND_SEND_DM ||
+                            it.kind == KIND_SEND_DM_ATTACHMENT ||
+                            it.kind == KIND_SEND_DM_ATTACHMENT_AWAITING_ACK
+                    }
+            }
+            for (row in rows) {
+                failOutboundForModeChange(row.conversationId, row.clientMessageId)
+            }
+        }
     }
 
     private fun kickOutboxDrain(instanceId: String) {
@@ -254,6 +329,15 @@ object OutgoingMessageCoordinator {
                 nextAttemptAt = null,
                 bytesUploaded = 0L,
             )
+        }
+        if (InstanceEncryptionStore.isWithinModeChangeSendCooldown()) {
+            Logger.i(
+                "OutgoingMessageCoordinator",
+                "DM enqueue rejected: within mode-change cool-down " +
+                    "(${InstanceEncryptionStore.modeChangeCooldownRemainingMs()}ms left)",
+            )
+            failOutboundForModeChange(conversationId, clientMessageId)
+            return
         }
         kickOutboxDrain(instanceId)
     }
@@ -408,6 +492,11 @@ object OutgoingMessageCoordinator {
         clearOutboundPaused(cid)
         clearOutboundCancelled(cid)
         drainScope.launch {
+            runCatching { InstanceEncryptionStore.refreshActiveFromNetwork() }
+            if (InstanceEncryptionStore.isWithinModeChangeSendCooldown()) {
+                failOutboundForModeChange(conversationId, cid)
+                return@launch
+            }
             withContext(Dispatchers.Default) {
                 MessageCacheStore.clearSendFailed(conversationId, cid)
             }

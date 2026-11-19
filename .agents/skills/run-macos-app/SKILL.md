@@ -7,37 +7,19 @@ description: "Build and install the FromChat macOS desktop app locally (native, 
 
 **Gate:** macOS only (native host, not Parallels). If the host is not `darwin`, tell the user this skill is Mac-only and stop — do not run the workflow.
 
-From the app repo root, after UI or desktop changes:
+## Mode (user attached this skill)
 
-1. Set `JAVA_HOME` to Android Studio JBR:
+When this skill is active as the turn **mode**, you **must** end every turn by running the installation chain below (after any code changes in that turn), unless the user explicitly says not to install/run. Fix build failures and retry; if the disk is full, free safe space under the repo (e.g. `app/desktop/build/compose`) and retry — never skip the installation without telling the user why.
 
-   ```bash
-   export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-   ```
+## Workflow
 
-2. Build the app bundle (debug distributable — no ProGuard; much faster for local UI checks):
+From the **app repo root** (where `./gradlew` lives), run (debug distributable — no ProGuard; faster for local UI checks):
 
-   ```bash
-   ./gradlew :app:desktop:createDistributable
-   ```
+```bash
+./.agents/skills/run-macos-app/run-macos-app.sh
+```
 
-3. Bundle path: `app/desktop/build/compose/binaries/main/app/FromChat.app`
+The script sets `JAVA_HOME` to Android Studio JBR when unset, builds, quits a running FromChat, copies the bundle to `/Applications/FromChat.app`, and launches the app.
 
-4. Quit any running instance:
-
-   ```bash
-   osascript -e 'tell application "FromChat" to quit'
-   sleep 2
-   ```
-
-5. Install to Applications:
-
-   ```bash
-   ditto "app/desktop/build/compose/binaries/main/app/FromChat.app" /Applications/FromChat.app
-   ```
-
-6. Launch:
-
-   ```bash
-   open -a FromChat
-   ```
+- **Script:** `.agents/skills/run-macos-app/run-macos-app.sh`
+- **Bundle path** (for manual copy or troubleshooting): `app/desktop/build/compose/binaries/main/app/FromChat.app`

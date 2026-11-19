@@ -31,6 +31,15 @@ import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexConfirmScre
 import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexDoneScreen
 import ru.fromchat.ui.main.settings.account.changeyandex.ChangeYandexOAuthScreen
 import ru.fromchat.ui.main.settings.account.delete.DeleteAccountScreen
+import ru.fromchat.network.proxy.ProxyRuntime
+import ru.fromchat.network.proxy.ProxyType
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import ru.fromchat.ui.main.settings.proxy.AddProxyScreen
+import ru.fromchat.ui.main.settings.ConnectionSettingsScreen
+import ru.fromchat.ui.main.settings.proxy.ProxyScreen
+import ru.fromchat.ui.main.settings.proxy.TrustedCertificatesScreen
 import ru.fromchat.ui.main.settings.server.ServerConfigScreen
 import ru.fromchat.ui.main.desktop.detailPaneShowBackButton
 import ru.fromchat.ui.profile.EditProfileFocusField
@@ -289,9 +298,91 @@ fun NavGraphBuilder.settingsDetailDestinations(
         )
     }
 
-    // Same route string as pre-auth server config on the root graph; fine on a nested graph.
+    connectionDetailDestinations(
+        navController = navController,
+        rootNavController = rootNavController,
+    )
+}
+
+/** Connection hub + server / proxy / trusted-certificates (settings pane + auth dialog). */
+fun NavGraphBuilder.connectionDetailDestinations(
+    navController: NavController,
+    rootNavController: NavController,
+) {
+    composable(SettingsRoutes.Connection) {
+        ConnectionSettingsScreen()
+    }
+
     composable(SettingsRoutes.ServerConfig) {
         ServerConfigScreen(rootNavController = rootNavController)
+    }
+
+    composable(SettingsRoutes.Proxy) {
+        ProxyScreen(
+            onBack = { navController.navigateUp() },
+            onAddProxy = { proxyType ->
+                navController.navigate(SettingsRoutes.proxyAdd(proxyType)) {
+                    launchSingleTop = true
+                }
+            },
+            onEditProxy = { proxyId ->
+                navController.navigate(SettingsRoutes.proxyEdit(proxyId)) {
+                    launchSingleTop = true
+                }
+            },
+        )
+    }
+
+    composable(SettingsRoutes.TrustedCertificates) {
+        TrustedCertificatesScreen(
+            onBack = { navController.navigateUp() },
+        )
+    }
+
+    composable(
+        route = SettingsRoutes.ProxyAdd,
+        arguments = listOf(
+            navArgument("proxyType") { type = NavType.StringType },
+        ),
+    ) { entry ->
+        val proxyTypeName = entry.savedStateHandle.get<String>("proxyType")
+        val proxyType = ProxyType.entries.firstOrNull { it.name == proxyTypeName } ?: ProxyType.HTTP
+        AddProxyScreen(
+            proxyType = proxyType,
+            onBack = { navController.navigateUp() },
+            onDone = {
+                if (!navController.popBackStack(SettingsRoutes.Proxy, false)) {
+                    navController.navigateUp()
+                }
+            },
+        )
+    }
+
+    composable(
+        route = SettingsRoutes.ProxyEdit,
+        arguments = listOf(
+            navArgument("proxyId") { type = NavType.StringType },
+        ),
+    ) { entry ->
+        val proxyId = entry.savedStateHandle.get<String>("proxyId")?.trim().orEmpty()
+        val savedProxies by ProxyRuntime.savedProxies.collectAsState()
+        val editingProxy = savedProxies.firstOrNull { it.id == proxyId }
+        if (proxyId.isEmpty() || editingProxy == null) {
+            LaunchedEffect(proxyId) {
+                navController.navigateUp()
+            }
+            return@composable
+        }
+        AddProxyScreen(
+            proxyType = editingProxy.type,
+            editingProxyId = proxyId,
+            onBack = { navController.navigateUp() },
+            onDone = {
+                if (!navController.popBackStack(SettingsRoutes.Proxy, false)) {
+                    navController.navigateUp()
+                }
+            },
+        )
     }
 }
 

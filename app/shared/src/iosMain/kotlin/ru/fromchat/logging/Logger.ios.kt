@@ -28,4 +28,3 @@ actual object Logger {
         NSLog("FATAL: [%s] %s %s", tag, message, throwable?.message ?: "")
     }
 }
-

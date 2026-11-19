@@ -7,11 +7,53 @@ description: "Build, install and debug the FromChat Linux desktop app inside a P
 
 **Gate:** macOS with Parallels only. If the host is not `darwin`, tell the user this skill is Mac-only and stop — do not run the workflow.
 
+## Mode (user attached this skill)
+
+When this skill is active as the turn **mode**, you **must** end every turn by running the installation chain below (after any code changes in that turn), unless the user explicitly says not to install/run. Fix build failures and retry; if the disk is full, free safe space under the repo (e.g. `app/desktop/build/compose`) and retry — never skip the installation without telling the user why.
+
+**Do not run a Mac `./gradlew` compile before `run-linux-prl.sh` unless a change is outside
+`:app:desktop` / linux packaging** — the VM build is the real gate; doubling compile wastes
+~15 s per iteration.
+
+### NEVER use `tail` (agents and host commands)
+
+**Forbidden:** `tail`, including `… | tail -N` on build output, launch logs, or `prlctl exec`
+one-liners.
+
+- **`prlctl exec` word-splits** the command string; patterns like `| tail -20` or
+  `grep foo | tail` often break or run the wrong program (you get empty diagnostics and burn
+  time re-running the loop).
+- Prefer **streamed `tee`** during builds, **`grep Tag file`** (whole file or a saved path),
+  **guest scripts under `/home/parallels/tools/*.sh`**, or **`sed -n '$p'`** when you truly need
+  the last line of a file — not a pipe to `tail`.
+
+Same rule in **SKILL.md examples, orchestrate, and helper scripts** — no exceptions.
+
 Building a Linux desktop release through CI takes ~20+ minutes per iteration. This
 skill builds and installs a real, installable `.deb` inside the Ubuntu VM in a few
 minutes, so changes can be verified by launching the app and reading its own logs.
 
 Use this **for verification only**. Release artifacts still come from CI.
+
+## Workflow
+
+From the **app repo root**, run:
+
+```bash
+export FROMCHAT_PRL_SUDO_PASSWORD='…'
+./.agents/skills/run-linux-prl/run-linux-prl.sh
+```
+
+Optional flags:
+
+- `--no-launch` — install deb only
+- `--clean` — delete `app/desktop/build` on the guest and pass `--rerun-tasks` (slow;
+  default is **incremental**, ~1–2 min with warm Gradle)
+
+- **Script:** `.agents/skills/run-linux-prl/run-linux-prl.sh`
+- **Guest:** `vm/orchestrate.sh` (sync → build → install → launch)
+
+**Agents:** run the script — not manual `prlctl` chains.
 
 ## Why this exists
 
@@ -183,11 +225,10 @@ export GRADLE_USER_HOME=/home/parallels/.gradle
     -PversionName=1.2.0-beta17 2>&1 | tee /home/parallels/build.log
 ```
 
-`tee` (not `>` and **never** a `| grep`) — it keeps the log *and* streams it live.
-Piping build output through `grep`/`tail` is the same class of mistake as
-redirecting it to a file: Gradle buffers when not attached to a TTY, so filtering
-the output kills progress reporting and hides exactly the lines you needed. When a
-build is slow, you want to watch it, not read about it afterwards.
+`tee` (not `>` and **never** `| grep` or `| tail` on the live stream) — it keeps the log
+*and* streams it live. Filtering the Gradle stream kills progress reporting and hides
+failures. Read tags afterwards with `grep DesktopScale /home/parallels/tools/builddeb.log`
+or a prepared guest script — never `tail` on `prlctl exec`.
 
 The deb lands in the project's `desktopDistDir` as
 `FromChat-dev-linux-<arch>.deb`; the task logs the absolute path.
@@ -199,8 +240,8 @@ The deb lands in the project's `desktopDistDir` as
 After the first full setup, iterating should take ~2 minutes per cycle. The battle-tested
 loop, in this exact order:
 
-1. **Sanity-compile on the Mac first** (~15 s): `./gradlew :app:shared:compileKotlinJvm :app:desktop:compileKotlin`.
-   Do not upload to the VM until this is green.
+1. **Mac compile (optional):** only when you edited shared non-desktop code and want a fast
+   fail before upload. Otherwise go straight to `run-linux-prl.sh`.
 2. **Tar and serve once**: `COPYFILE_DISABLE=1 tar -czf /tmp/src.tar.gz …` from the host.
    Keep a detached `python3 -m http.server 18080/18081` running on the host; the guest
    `wget`s from `10.211.55.2` (Parallels gateway).
@@ -350,10 +391,35 @@ compose density=?  awt uiScale=?  detected=?
 Ignore candidates at or below 1.0 when selecting a scale — an unscaled desktop
 also reports exactly 1.0, so they carry no information.
 
+**HiDPI is Compose `LocalDensity` from `monitors.xml` only** — do **not** set
+`GDK_SCALE`, `GDK_DPI_SCALE`, or `sun.java2d.uiScale` (double-scales pixels + dp).
+`fromchat-gnome-scale.sh` is Mesa-on-ARM64 only.
+
+**Menu / dock launches must use `fromchat-gnome-scale.sh`.** jpackage's
+`Exec=/opt/fromchat/bin/FromChat` skips Mesa on ARM64. The deb injects
+`packaging/linux/fromchat-gnome-scale.sh` and patches system `.desktop` files;
+`orchestrate.sh` also fixes `/usr/share/applications/fromchat*.desktop` (jpackage
+postinst copies the launcher **before** the patch) and
+`~/.local/share/applications/fromchat.desktop` (the app rewrites that file on
+startup — `desktopExec()` must point at the wrapper, not a double-`env` bare binary).
+Verify menu path:
+
+```sh
+prlctl exec "$VM" --current-user /home/parallels/tools/menu-launch-test.sh
+```
+
+(`vm/menu-launch-test.sh` — uses `gtk-launch fromchat` when available.)
+
 ---
 
 ## Gotchas that cost real time
 
+- **`rm -rf app/desktop/build` every cycle** — orchestrate only does this with `--clean`.
+  Default incremental `packageDevLinuxDeb` is ~1–2 min on a warm VM.
+- **Deb inject OOM on the guest** — `injectLinuxGnomeScaleLauncher` loads the whole `.deb`
+  in the Gradle JVM; orchestrate sets `GRADLE_OPTS=-Xmx2048m`. If inject still fails,
+  post-install still copies `fromchat-gnome-scale.sh` and patches `.desktop` files.
+- **`tail` in `prlctl exec` or on Gradle output** — see [NEVER use `tail`](#never-use-tail-agents-and-host-commands).
 - `Dimension.densityDpi` does not resolve on this project's classpath, and
   `Toolkit.getScreenResolution()` resolves to `Int`, not `Dimension`. Avoid that
   API; prefer reading `monitors.xml` directly.

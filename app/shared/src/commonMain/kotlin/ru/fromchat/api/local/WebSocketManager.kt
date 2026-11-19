@@ -74,6 +74,14 @@ object WebSocketManager {
         globalHandlers = globalHandlers - handler
     }
 
+    fun handleGlobalMessage(message: WebSocketMessage) {
+        globalHandlers.forEach { handler ->
+            runCatching { handler(message) }.onFailure {
+                logW("Global handler failed for \${message.type}: \${it.message}", it)
+            }
+        }
+    }
+
     fun addSessionReadyHandler(handler: suspend () -> Unit) {
         sessionReadyHandlers = sessionReadyHandlers + handler
     }

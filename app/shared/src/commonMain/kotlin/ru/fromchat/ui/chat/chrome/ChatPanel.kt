@@ -15,6 +15,8 @@ import ru.fromchat.api.local.messages.generateClientMessageId
 import ru.fromchat.api.local.messages.nowMessageTimestampIso
 import ru.fromchat.api.local.messages.optimisticMessageIdForClientMessageId
 import ru.fromchat.api.local.messages.sortMessagesForChatDisplay
+import ru.fromchat.api.instance.EncryptionModeNoticeStore
+import ru.fromchat.api.instance.isCenteredServiceNotice
 import ru.fromchat.api.local.send.OutgoingMessageCoordinator
 import ru.fromchat.api.schema.messages.Message
 import ru.fromchat.api.schema.messages.publicchat.resolvePublicAttachmentLayout
@@ -98,17 +100,19 @@ abstract class ChatPanel(
         addMessageMutex.withLock {
             batchStateUpdates {
                 updateState { current ->
+                    EncryptionModeNoticeStore.registerPersistedNotices(current.id, messages)
                     val panelSnap = panelMessagesForDbMerge()
                     val merged = mergeDatabaseMessagesWithPanelState(
                         panelSnap,
                         messages,
                     )
                     val withReplies = attachPublicReplyReferences(merged)
-                    if (current.messages.size != withReplies.size ||
-                        current.messages.map { it.id }.toSet() != withReplies.map { it.id }.toSet()
+                    val withNotices = EncryptionModeNoticeStore.mergeIntoTimeline(current.id, withReplies)
+                    if (current.messages.size != withNotices.size ||
+                        current.messages.map { it.id }.toSet() != withNotices.map { it.id }.toSet()
                     ) {
                         val panelIds = panelSnap.map { it.id }.toSet()
-                        val mergedIds = withReplies.map { it.id }.toSet()
+                        val mergedIds = withNotices.map { it.id }.toSet()
                         val dbIds = messages.map { it.id }.toSet()
                         Logger.d(
                             "ChatPanel",
@@ -118,10 +122,18 @@ abstract class ChatPanel(
                                 "dbOnlyIds=${(dbIds - mergedIds).take(8)}",
                         )
                     }
-                    if (current.messages == withReplies) current
-                    else current.copy(messages = withReplies)
+                    if (current.messages == withNotices) current
+                    else current.copy(messages = sortMessagesForChatDisplay(withNotices))
                 }
             }
+        }
+    }
+
+    fun refreshEncryptionNotices() {
+        updateState { current ->
+            val withoutOld = current.messages.filterNot { it.isCenteredServiceNotice() }
+            val merged = EncryptionModeNoticeStore.mergeIntoTimeline(current.id, withoutOld)
+            current.copy(messages = sortMessagesForChatDisplay(merged))
         }
     }
 

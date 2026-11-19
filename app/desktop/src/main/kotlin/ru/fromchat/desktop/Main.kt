@@ -13,9 +13,12 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
@@ -48,9 +51,11 @@ import ru.fromchat.utils.files.configurePortableLayoutFromInstallDir
 import ru.fromchat.utils.files.desktopSingleInstanceScopeKey
 import ru.fromchat.utils.files.isPortableDesktop
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.swing.Swing
 import com.sun.jna.Library
 import com.sun.jna.Native
 import org.jetbrains.compose.resources.stringResource
@@ -62,6 +67,8 @@ import ru.fromchat.action_copy
 import ru.fromchat.action_select
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.WebSocketManager
+import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.ui.auth.resetPreAuthDraft
 import ru.fromchat.api.local.db.MessageDatabaseConcurrency
 import ru.fromchat.api.local.db.isSqliteBusy
 import ru.fromchat.api.local.db.store.ConnectionStateStore
@@ -288,7 +295,11 @@ private object DesktopProtocolRegistration {
 }
 
 fun main(args: Array<String>) {
-    LinuxArm64MesaEnvironment.applyIfNeeded()
+    LinuxDesktopSessionEnvironment.applyIfNeeded()
+    abortIfRunningAsRoot()
+    System.getenv("FROMCHAT_DEBUG_OUTBOUND_DELAY_MS")?.toLongOrNull()?.let { delayMs ->
+        ru.fromchat.api.instance.InstanceEncryptionStore.debugOutboundDelayMs = delayMs
+    }
     applyFromChatLauncherEnvironment()
     configurePortableLayoutFromInstallDir()
     applyWindowsPortableShellDisplayNameEarly()
@@ -361,6 +372,7 @@ fun main(args: Array<String>) {
     DesktopScale.startWatching()
 
     application {
+        ProvideDesktopWindowExceptionHandler {
         UtilsLibrary.init()
         var bootstrapStarted by remember { mutableStateOf(false) }
         val databaseBlocked by DatabaseLockGate.blocked.collectAsState()
@@ -412,8 +424,7 @@ fun main(args: Array<String>) {
                 onKillProcess = { DatabaseLockGate.killProcess(it) },
                 onQuit = { exitApplication() },
             )
-            return@application
-        }
+        } else {
 
         // Compose sizes the AWT window from GraphicsConfiguration.defaultTransform.scaleX, which on X11
         // is an int (1.0 here) and is NOT affected by the LocalDensity override inside Window.
@@ -421,14 +432,39 @@ fun main(args: Array<String>) {
         // reads as "ignores scaling" (CMP-6857, still open: JetBrains declined to change this).
         // Pre-multiplying the dp size keeps the window's pixel size consistent with the content.
         val forcedScale by DesktopScale.forcedScale.collectAsState()
-        val sizeRatio = remember(forcedScale) { DesktopScale.sizeRatio }
+        val sizeRatio = DesktopScale.sizeRatio
+        val storedWindowSize = remember { DesktopWindowPrefs.loadSize() }
+        val initialWindowSize = remember(storedWindowSize) { storedWindowSize }
         val windowState = rememberWindowState(
-            size = remember { DesktopWindowPrefs.loadSize() * sizeRatio },
+            size = initialWindowSize,
             position = remember { DesktopWindowPrefs.loadPosition() },
         )
+        LaunchedEffect(forcedScale) {
+            val forced = forcedScale ?: return@LaunchedEffect
+            fun logApply() {
+                Logger.i(
+                    "WindowPrefs",
+                    "apply desktop scale size=${windowState.size} sizeRatio=${DesktopScale.sizeRatio} " +
+                        "awtScale=${DesktopScale.awtScale} forced=$forced",
+                )
+            }
+            if (isLinuxOs()) {
+                Logger.i(
+                    "WindowPrefs",
+                    "linux density-only forced=$forced size=${windowState.size} " +
+                        "awtScale=${DesktopScale.awtScale}",
+                )
+                return@LaunchedEffect
+            }
+            windowState.size = storedWindowSize * DesktopScale.sizeRatio
+            logApply()
+        }
         // Hide until App bootstrap sets startDestination (avoids ~2s empty/white window).
         var contentReady by remember { mutableStateOf(false) }
         var windowVisible by remember { mutableStateOf(true) }
+        // Bumped on next show after incognito wipe so App remounts at welcome.
+        var appSessionKey by remember { mutableIntStateOf(0) }
+        var pendingWelcomeRemount by remember { mutableStateOf(false) }
         val trayState = rememberTrayState()
         // Which resource and which post-processing apply is decided per platform inside
         // loadAppIconBufferedImage, so the call sites only have to say "this one goes to the tray".
@@ -567,9 +603,27 @@ fun main(args: Array<String>) {
         }
 
         fun showMainWindow(notificationIdentifier: String? = null) {
-            windowVisible = true
+            // Compose Desktop can show a hidden Window's last frame without recomposing.
+            // Always remount when logged out / after incognito wipe so reopen is not frozen.
+            Snapshot.withMutableSnapshot {
+                if (pendingWelcomeRemount || ApiClient.token.isNullOrBlank()) {
+                    pendingWelcomeRemount = false
+                    appSessionKey += 1
+                }
+                contentReady = true
+                windowVisible = true
+            }
             AppForeground.setForeground(true)
             DesktopNotifier.deliverPendingLaunch(notificationIdentifier)
+        }
+
+        fun handleMacDockReopen() {
+            if (!mac) return
+            if (windowVisible && MacDesktopWindowHost.isMainWindowShowing()) {
+                MacNotificationCenter.activateApplication()
+                return
+            }
+            showMainWindow()
         }
 
         LaunchedEffect(mac, windowVisible) {
@@ -591,21 +645,68 @@ fun main(args: Array<String>) {
         }
 
         fun openAbout() {
-            showMainWindow()
+            if (!windowVisible) {
+                showMainWindow()
+            }
             DesktopMenuCommands.emit(DesktopMenuCommand.OpenAbout)
+        }
+
+        /**
+         * Incognito window close: drop in-memory auth now, wipe disk off the EDT, remount on show.
+         */
+        fun endIncognitoSessionImmediatelyThen(block: () -> Unit = {}) {
+            val authToken = ApiClient.token
+            pendingWelcomeRemount = true
+            // So a fast reopen cannot remount still-authenticated into the old chat.
+            ApiClient.invalidateSessionForUi()
+            resetPreAuthDraft()
+            CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
+                runCatching { WebSocketManager.disconnect() }
+                runCatching { ApiClient.clearLocalSession() }
+                runCatching { ApiClient.remoteLogoutBestEffortOnly(authToken) }
+                withContext(Dispatchers.Swing) {
+                    block()
+                }
+            }
+        }
+
+        /**
+         * Exit the desktop app. Incognito always wipes local auth; standard sessions stay on disk
+         * so the next launch is still signed in (same as close-to-tray).
+         */
+        fun quitDesktopApplication(block: () -> Unit = {}) {
+            if (IncognitoMode.active) {
+                endIncognitoSessionImmediatelyThen(block)
+                return
+            }
+            resetPreAuthDraft()
+            CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
+                runCatching { WebSocketManager.disconnect() }
+            }
+            block()
         }
 
         /** Hide window, keep process + tray (close-to-background). Else quit. */
         fun requestCloseToBackgroundOrQuit() {
             if (traySupported) {
-                windowVisible = false
-                // Desktop keeps sockets alive while the process runs (see keepWebSocketAliveInBackground).
                 AppForeground.setForeground(true)
-                if (mac) {
-                    Logger.i(MacBackgroundLifecycle.LOG_TAG, "Window closed → background (tray kept, process alive)")
+                if (mac && IncognitoMode.active) {
+                    Logger.i(
+                        MacBackgroundLifecycle.LOG_TAG,
+                        "Window closed with incognito → hide, wipe in background, welcome on show",
+                    )
+                    windowVisible = false
+                    endIncognitoSessionImmediatelyThen()
+                } else {
+                    windowVisible = false
+                    if (mac) {
+                        Logger.i(MacBackgroundLifecycle.LOG_TAG, "Window closed → background (tray kept, process alive)")
+                    }
                 }
+            } else if (IncognitoMode.active) {
+                endIncognitoSessionImmediatelyThen { exitApplication() }
             } else {
-                exitApplication()
+                quitDesktopApplication { exitApplication() }
             }
         }
 
@@ -620,16 +721,19 @@ fun main(args: Array<String>) {
             // ⌘Q / system Quit must fully exit (not close-to-tray).
             if (desktop.isSupported(Desktop.Action.APP_QUIT_HANDLER)) {
                 desktop.setQuitHandler { _, response ->
+                    windowVisible = false
                     DesktopSingleInstance.release()
-                    response.performQuit()
-                    exitApplication()
+                    quitDesktopApplication {
+                        response.performQuit()
+                        exitApplication()
+                    }
                 }
             }
-            // Dock click while window is hidden → show again (macOS AppReopened).
+            // Dock click: show when hidden; if already on screen, only activate (no visibility flash).
             if (mac) {
                 desktop.addAppEventListener(
                     AppReopenedListener {
-                        SwingUtilities.invokeLater { showMainWindow() }
+                        SwingUtilities.invokeLater { handleMacDockReopen() }
                     },
                 )
             }
@@ -648,7 +752,10 @@ fun main(args: Array<String>) {
                         Item(trayShow) { showMainWindow() }
                         Item(aboutApp) { openAbout() }
                         Separator()
-                        Item(quit) { exitApplication() }
+                        Item(quit) {
+                            windowVisible = false
+                            quitDesktopApplication { exitApplication() }
+                        }
                     },
                 )
             } else if (trayIconImage != null) {
@@ -662,12 +769,16 @@ fun main(args: Array<String>) {
                     quitLabel = quit,
                     onShow = { showMainWindow() },
                     onAbout = { openAbout() },
-                    onQuit = { exitApplication() },
+                    onQuit = {
+                        windowVisible = false
+                        quitDesktopApplication { exitApplication() }
+                    },
                 )
             }
         }
 
-        key(nativeFrame) {
+        // appSessionKey recreates the Window so reopen after wipe cannot keep a frozen surface.
+        key(nativeFrame, appSessionKey) {
                 Window(
                     onCloseRequest = { requestCloseToBackgroundOrQuit() },
                     title = appName,
@@ -696,15 +807,38 @@ fun main(args: Array<String>) {
                                 true
                             }
                             event.key == Key.Q -> {
-                                exitApplication()
+                                windowVisible = false
+                                quitDesktopApplication { exitApplication() }
                                 true
                             }
                             else -> false
                         }
                     },
                 ) {
+                    val composeWindowShouldShow = contentReady && (windowVisible || !traySupported)
+                    var hadComposeWindowShown by remember { mutableStateOf(false) }
+                    var previousComposeWindowShouldShow by remember { mutableStateOf(false) }
+                    LaunchedEffect(composeWindowShouldShow) {
+                        if (!mac) {
+                            previousComposeWindowShouldShow = composeWindowShouldShow
+                            return@LaunchedEffect
+                        }
+                        val becameVisible = composeWindowShouldShow && !previousComposeWindowShouldShow
+                        when {
+                            becameVisible && !hadComposeWindowShown -> {
+                                hadComposeWindowShown = true
+                                MacDesktopWindowPresentation.onFirstComposeShow()
+                            }
+                            becameVisible && hadComposeWindowShown -> {
+                                MacDesktopWindowPresentation.presentAfterHidden()
+                            }
+                        }
+                        previousComposeWindowShouldShow = composeWindowShouldShow
+                    }
+
                     LaunchedEffect(window, appName, windowChrome) {
                         window.title = appName
+                        installMacDesktopEdgeToEdgeChromeAfterOpen(window)
                         windowChrome.toAwtColor().also {
                             window.background = it
                             window.contentPane.background = it
@@ -717,14 +851,18 @@ fun main(args: Array<String>) {
                             installWindowsNativeCaptionChrome(window)
                             applyWindowsRoundedCorners(window)
                         }
-                        applyDesktopEdgeToEdgeChrome(window.rootPane)
-                        dockIconImage?.let { image ->
-                            window.iconImages = listOf(image)
-                            applyDockIcon(image)
+                        if (!mac) {
+                            dockIconImage?.let { image ->
+                                window.iconImages = listOf(image)
+                                applyDockIcon(image)
+                            }
                         }
                     }
         
                     DisposableEffect(window) {
+                        if (mac) {
+                            MacDesktopWindowHost.mainWindow = window
+                        }
                         installDesktopWindowExceptionHandler(window)
                         AppForeground.setForeground(true)
                         fun syncWindowFocus(focused: Boolean) {
@@ -739,6 +877,9 @@ fun main(args: Array<String>) {
                         val listener = object : java.awt.event.WindowAdapter() {
                             override fun windowActivated(e: java.awt.event.WindowEvent?) {
                                 syncWindowFocus(true)
+                                if (mac) {
+                                    MacDesktopWindowPresentation.repairMainWindowKeyboardFocus()
+                                }
                             }
         
                             override fun windowDeactivated(e: java.awt.event.WindowEvent?) {
@@ -747,6 +888,9 @@ fun main(args: Array<String>) {
         
                             override fun windowGainedFocus(e: java.awt.event.WindowEvent?) {
                                 syncWindowFocus(true)
+                                if (mac) {
+                                    MacDesktopWindowPresentation.repairMainWindowKeyboardFocus()
+                                }
                             }
         
                             override fun windowLostFocus(e: java.awt.event.WindowEvent?) {
@@ -761,6 +905,9 @@ fun main(args: Array<String>) {
                         window.addWindowListener(listener)
                         window.addWindowFocusListener(listener)
                         onDispose {
+                            if (mac && MacDesktopWindowHost.mainWindow === window) {
+                                MacDesktopWindowHost.mainWindow = null
+                            }
                             window.removeWindowListener(listener)
                             window.removeWindowFocusListener(listener)
                         }
@@ -791,7 +938,10 @@ fun main(args: Array<String>) {
                                         WindowPlacement.Maximized
                                     }
                             },
-                            onQuit = { exitApplication() },
+                            onQuit = {
+                                windowVisible = false
+                                quitDesktopApplication { exitApplication() }
+                            },
                         )
                     }
         
@@ -799,16 +949,18 @@ fun main(args: Array<String>) {
                     // value there would override a correct native density (a 1.0 fallback would
                     // flatten every Retina display).
                     val forcedScale by DesktopScale.forcedScale.collectAsState()
+                    val layoutRevision by DesktopScale.layoutRevision.collectAsState()
+                    val gnomeCommitted by DesktopScale.gnomeDisplayScaleCommitted.collectAsState()
+                    val legacyNative by DesktopScale.mutterNativeLegacyScaling.collectAsState()
+                    @Suppress("UNUSED_VARIABLE")
+                    val layoutRevisionKey = layoutRevision +
+                        (if (gnomeCommitted) 2 else 0) +
+                        (if (legacyNative) 4 else 0)
                     CompositionLocalProvider(
-                            // AWT and Compose disagree on Linux (AWT read Xft.dpi=192 -> 2.0 while
-                            // Compose sat at 1.0), so the value that drives layout and text is
-                            // Compose's density. null = keep whatever Compose decided.
-                            LocalDensity provides Density(
-                                forcedScale ?: LocalDensity.current.density,
-                                forcedScale?.let { LocalDensity.current.fontScale } ?: 1f,
-                            ),
+                            // GNOME legacy-scaling on/off + display preview vs commit (see [DesktopScale]).
+                            LocalDensity provides DesktopScale.layoutDensity(LocalDensity.current),
                             LocalExtraStatusBarTop provides when {
-                            mac -> 28.dp
+                            mac -> MacOsDefaultTitleBarTopInset
                             customFrame -> WindowsTitleBarHeight
                             else -> 0.dp
                         },
@@ -844,6 +996,8 @@ fun main(args: Array<String>) {
                     }
                 }
         }
+        } // else !databaseBlocked
+        } // ProvideDesktopWindowExceptionHandler
     }
 }
 
@@ -967,29 +1121,30 @@ private fun configureDesktopAppDataName() {
     }
 }
 
-/**
- * Skia for linux/arm64 is GLES-only, so against Mesa-run GL it must see version 3.0
- * (see the skiko-virgl patch in app/desktop/build.gradle.kts). Set before Skiko loads
- * (here and in the AppImage AppRun) and in generated desktop entries via
- * [mesaGlVersionOverridePrefix].
- */
-private object LinuxArm64MesaEnvironment {
+/** Process environment for Linux before AWT/Skiko (Mesa GL on ARM64 only; scale is Compose density). */
+private object LinuxDesktopSessionEnvironment {
     private interface LibC : Library {
         fun setenv(name: String, value: String, overwrite: Int): Int
     }
 
     private val libc: LibC? =
-        if (isLinuxOs() && System.getProperty("os.arch") == "aarch64") {
+        if (isLinuxOs()) {
             runCatching { Native.load("c", LibC::class.java) }.getOrNull()
         } else {
             null
         }
 
     fun applyIfNeeded() {
-        if (!isLinuxOs() || System.getProperty("os.arch") != "aarch64") return
+        if (!isLinuxOs()) return
+        applyMesaGlOverrideIfNeeded()
+    }
+
+    private fun applyMesaGlOverrideIfNeeded() {
+        if (System.getProperty("os.arch") != "aarch64") return
         if (!System.getenv("MESA_GL_VERSION_OVERRIDE").isNullOrBlank()) return
         libc?.setenv("MESA_GL_VERSION_OVERRIDE", "3.0", 1)
     }
+
 }
 
 private fun mesaGlVersionOverridePrefix(): String =
@@ -998,6 +1153,9 @@ private fun mesaGlVersionOverridePrefix(): String =
     } else {
         ""
     }
+
+/** Linux HiDPI uses Compose density only; desktop Exec prefixes must not set GDK or uiScale. */
+private fun linuxDisplayScaleExecPrefix(): String = ""
 
 /**
  * GNOME/Wayland app identity for Linux.
@@ -1014,7 +1172,7 @@ private object LinuxAppIdentity {
     fun register(dockIcon: BufferedImage?) {
         if (!isLinuxOs() || dockIcon == null) return
         runCatching {
-            val dataHome = env("XDG_DATA_HOME")
+            val dataHome = System.getenv("XDG_DATA_HOME")
                 ?.takeIf { it.isNotBlank() }
                 ?: File(System.getProperty("user.home"), ".local/share").absolutePath
 
@@ -1054,11 +1212,20 @@ private object LinuxAppIdentity {
      * Current invocation as an Exec= value. Under a jpackage app-image this is the launcher
      * binary; a dev run re-launches through the same java/classpath wrapper main.
      */
+    private fun linuxJpackageScaleWrapper(launcherPath: String): String? {
+        if (!isLinuxOs()) return null
+        val launcher = File(launcherPath)
+        if (!launcher.isFile) return null
+        val wrapper = File(launcher.parentFile, "fromchat-gnome-scale.sh")
+        return wrapper.takeIf { it.isFile }?.absolutePath
+    }
+
     private fun desktopExec(): String {
         val launcher = ProcessHandle.current().info().command().orElse("").takeIf { it.isNotBlank() }
-        val mesaEnvPrefix = mesaGlVersionOverridePrefix()
+        val linuxEnvPrefix = linuxDisplayScaleExecPrefix() + mesaGlVersionOverridePrefix()
         if (launcher != null && launcher.endsWith("bin/java").not()) {
-            return mesaEnvPrefix + desktopQuote(launcher)
+            linuxJpackageScaleWrapper(launcher)?.let { return desktopQuote(it) }
+            return linuxEnvPrefix + desktopQuote(launcher)
         }
         val javaBin = File(
             System.getProperty("java.home"),
@@ -1071,7 +1238,7 @@ private object LinuxAppIdentity {
             } else {
                 java
             }
-        }.let { exec -> mesaEnvPrefix + exec }
+        }.let { exec -> linuxEnvPrefix + exec }
     }
 
     /** Desktop spec Exec quoting: wrap in double quotes and escape backslash/quote. */
@@ -1081,8 +1248,6 @@ private object LinuxAppIdentity {
         } else {
             value
         }
-
-    private fun env(key: String): String? = System.getenv(key)
 
     private fun BufferedImage.scaleToAppIconMaxEdge(): BufferedImage {
         val maxEdge = 128
@@ -1112,18 +1277,21 @@ private object LinuxAppIdentity {
 private fun applyDesktopWindowChromeBackground() {
     UIManager.put(
         "control",
-        ColorUIResource(desktopThemeBackgroundCompose(desktopAppDarkTheme()).toAwtColor()),
+        ColorUIResource(desktopThemeBackgroundCompose(desktopSystemDarkTheme()).toAwtColor()),
     )
 }
 
 private fun Color.toAwtColor() =
     java.awt.Color(red, green, blue, alpha)
 
-private fun isSystemAppearanceDark() = desktopSystemDarkTheme()
-
 internal fun applyDockIcon(image: BufferedImage?) {
     if (image == null) {
         Logger.w("DesktopIcon", "applyDockIcon skipped — image is null")
+        return
+    }
+    // Bundled apps use CFBundleIconFile / -Xdock:icon (liquid-glass .icns). Raster override flattens the Dock.
+    if (isMacOs()) {
+        Logger.i("DesktopIcon", "macOS: leaving native dock icon (not overriding with classpath raster)")
         return
     }
 

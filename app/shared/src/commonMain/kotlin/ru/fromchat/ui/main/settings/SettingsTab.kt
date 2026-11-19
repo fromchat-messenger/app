@@ -14,8 +14,8 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Person
-import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.SettingsEthernet
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TopAppBar
@@ -33,8 +33,6 @@ import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.about
 import ru.fromchat.api.ApiClient
-import ru.fromchat.change_server
-import ru.fromchat.change_server_d
 import ru.fromchat.logs_title
 import ru.fromchat.profile
 import ru.fromchat.settings
@@ -46,6 +44,8 @@ import ru.fromchat.settings_category_devices
 import ru.fromchat.settings_category_devices_d
 import ru.fromchat.settings_category_notifications
 import ru.fromchat.settings_category_notifications_d
+import ru.fromchat.settings_connection_settings
+import ru.fromchat.settings_connection_settings_d
 import ru.fromchat.settings_hub_about_sub
 import ru.fromchat.settings_hub_logs_sub
 import ru.fromchat.settings_hub_profile_sub
@@ -164,19 +164,21 @@ fun SettingsTab() {
                     headline = stringResource(Res.string.settings_category_notifications),
                     supportingText = stringResource(Res.string.settings_category_notifications_d),
                     onClick = { openDetail(SettingsRoutes.Notifications) },
+                    divider = true,
+                )
+
+                ExpressiveListItem(
+                    icon = Icons.Rounded.SettingsEthernet,
+                    iconPreset = ExpressiveTints.Cyan,
+                    headline = stringResource(Res.string.settings_connection_settings),
+                    supportingText = stringResource(Res.string.settings_connection_settings_d),
+                    onClick = { openDetail(SettingsRoutes.Connection) },
                 )
             }
 
-            Category(Modifier.padding(top = 8.dp)) {
-                ExpressiveListItem(
-                    icon = Icons.Rounded.Storage,
-                    iconPreset = ExpressiveTints.Cyan,
-                    headline = stringResource(Res.string.change_server),
-                    supportingText = stringResource(Res.string.change_server_d),
-                    onClick = { openDetail(SettingsRoutes.ServerConfig) },
-                    divider = true
-                )
-
+            Category(
+                Modifier.padding(top = 8.dp),
+            ) {
                 ExpressiveListItem(
                     icon = Icons.Rounded.Info,
                     iconPreset = ExpressiveTints.Purple,

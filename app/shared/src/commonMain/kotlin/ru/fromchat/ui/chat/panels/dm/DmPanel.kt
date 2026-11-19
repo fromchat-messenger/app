@@ -58,7 +58,7 @@ class DmPanel(
     coroutineScope: CoroutineScope,
     currentUserId: Int?
 ) : ChatPanel(
-    id = "dm-$otherUserId",
+    id = conversationIdForDm(otherUserId),
     currentUserId = currentUserId,
     scope = coroutineScope
 ) {

@@ -7,8 +7,10 @@ import io.ktor.client.plugins.HttpRequestTimeoutException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 import ru.fromchat.api.ApiClient
+import ru.fromchat.api.local.db.clearAccountCacheOnLogout
 import ru.fromchat.api.local.db.store.InstanceRegistryStore
 import ru.fromchat.config.ServerConfigData
+import ru.fromchat.ui.incognito.handleIncognitoHttpsTlsFailure
 import kotlin.time.Duration.Companion.milliseconds
 
 private val UUID_REGEX =
@@ -36,6 +38,8 @@ suspend fun resolveInstanceId(
     apiBaseUrl: String,
     forceNetwork: Boolean,
     allowCachedOnFailure: Boolean = true,
+    recordIncognitoTlsFailure: Boolean = true,
+    persistBinding: Boolean = true,
 ): InstanceIdResolveResult {
     val cached = InstanceRegistryStore.getActiveInstanceIdForConfig(config)?.trim().orEmpty()
     if (!forceNetwork && cached.isNotEmpty() && isValidInstanceUuid(cached)) {
@@ -48,8 +52,16 @@ suspend fun resolveInstanceId(
         }
     }
     if (fetchResult.isFailure) {
+        val error = fetchResult.exceptionOrNull()
+        if (
+            recordIncognitoTlsFailure &&
+            handleIncognitoHttpsTlsFailure(error, config.httpsEnabled, config.serverIp)
+        ) {
+            noteIncognitoTlsProbeFailure(error, config.httpsEnabled)
+            return InstanceIdResolveResult.Unreachable
+        }
         return networkFailureToResolveResult(
-            e = fetchResult.exceptionOrNull(),
+            e = error,
             cached = cached,
             allowCachedOnFailure = allowCachedOnFailure,
         )
@@ -61,14 +73,21 @@ suspend fun resolveInstanceId(
     }
 
     if (cached.isEmpty()) {
-        InstanceRegistryStore.rebindServerInstance(config, fetched)
+        if (persistBinding) {
+            InstanceRegistryStore.rebindServerInstance(config, fetched)
+        }
         return InstanceIdResolveResult.Fetched(fetched)
     }
     if (cached.equals(fetched, ignoreCase = true)) {
-        InstanceRegistryStore.registerInstanceEncountered(fetched)
+        if (persistBinding) {
+            InstanceRegistryStore.registerInstanceEncountered(fetched)
+        }
         return InstanceIdResolveResult.Fetched(fetched)
     }
-    InstanceRegistryStore.rebindServerInstanceOnMismatch(config, cached, fetched)
+    if (persistBinding) {
+        runCatching { clearAccountCacheOnLogout(cached) }
+        InstanceRegistryStore.rebindServerInstanceOnMismatch(config, cached, fetched)
+    }
     return InstanceIdResolveResult.InstanceIdChanged(cached, fetched)
 }
 

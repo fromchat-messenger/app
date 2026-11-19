@@ -1,5 +1,7 @@
 package ru.fromchat.ui.main.settings.server
 
+import ru.fromchat.config.isLoopbackServerHost
+
 /**
  * Parsed server endpoint from a single text field: `[scheme://]host[:port]`.
  * Default port is 443 when omitted; scheme may be locked when typed explicitly.
@@ -38,6 +40,9 @@ fun parseServerEndpoint(raw: String): ParsedServerEndpoint? {
 
     val (host, port) = parseHostAndPort(t) ?: return null
     if (!isValidIpOrHostname(host)) return null
+    if (!schemeExplicit && isLoopbackServerHost(host)) {
+        httpsPreferred = false
+    }
     return ParsedServerEndpoint(
         host = host,
         port = port,

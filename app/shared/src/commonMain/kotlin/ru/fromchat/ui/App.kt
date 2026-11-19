@@ -1,5 +1,6 @@
 package ru.fromchat.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.SharedTransitionLayout
@@ -37,13 +38,13 @@ import coil3.memory.MemoryCache
 import coil3.network.ktor3.KtorNetworkFetcherFactory
 import coil3.svg.SvgDecoder
 import ru.fromchat.api.ApiClient
-import ru.fromchat.utils.PlatformInteractiveKeyboardDismissEffect
-import ru.fromchat.utils.LocalSystemBarsVisibility
-import ru.fromchat.utils.WindowWidthSizeClass
 import ru.fromchat.utils.currentWindowAdaptiveInfo
+import ru.fromchat.utils.LocalSystemBarsVisibility
 import ru.fromchat.utils.navigateAndWipeBackStack
+import ru.fromchat.utils.PlatformInteractiveKeyboardDismissEffect
 import ru.fromchat.utils.rememberSystemBarsController
 import ru.fromchat.utils.widthSizeClass
+import ru.fromchat.utils.WindowWidthSizeClass
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
@@ -57,53 +58,70 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import ru.fromchat.AppForeground
-import ru.fromchat.logging.Logger
-import ru.fromchat.api.local.keepWebSocketAliveInBackground
-import ru.fromchat.api.sync.DeferredStartupNetwork
-import ru.fromchat.api.sync.ProfileUpdateSync
-import ru.fromchat.api.sync.PublicChatProfileSync
-import ru.fromchat.api.sync.StatusSubscriptionCoordinator
-import ru.fromchat.api.sync.UpdateSyncManager
 import ru.fromchat.api.calls.CallStore
 import ru.fromchat.api.instance.bootstrapSessionInstance
 import ru.fromchat.api.instance.bootstrapSessionOnStartup
 import ru.fromchat.api.instance.logoutIfInstanceUnsupported
 import ru.fromchat.api.instance.scheduleSessionInstanceNetworkRefresh
-import ru.fromchat.api.local.WebSocketManager
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.cache.ensureFromChatCacheGeneration
 import ru.fromchat.api.local.db.store.messageDatabaseDispatcher
 import ru.fromchat.api.local.db.store.ProfileCache
 import ru.fromchat.api.local.db.store.UserStatusStore
+import ru.fromchat.api.local.keepWebSocketAliveInBackground
 import ru.fromchat.api.local.messages.DmInboxCoordinator
+import ru.fromchat.api.instance.InstanceEncryptionCoordinator
 import ru.fromchat.api.local.send.OutgoingMessageCoordinator
-import ru.fromchat.api.schema.websocket.WebSocketMessage
+import ru.fromchat.api.local.WebSocketManager
 import ru.fromchat.api.schema.websocket.types.WebSocketUpdatesData
+import ru.fromchat.api.schema.websocket.WebSocketMessage
+import ru.fromchat.api.sync.DeferredStartupNetwork
+import ru.fromchat.api.sync.ProfileUpdateSync
+import ru.fromchat.api.sync.PublicChatProfileSync
+import ru.fromchat.api.sync.StatusSubscriptionCoordinator
+import ru.fromchat.api.sync.UpdateSyncManager
+import ru.fromchat.AppForeground
 import ru.fromchat.config.ServerConfig
-import ru.fromchat.ui.release.ReleaseNotesDialog
-import ru.fromchat.ui.release.ReleaseNotesPrompt
 import ru.fromchat.desktop.DesktopMenuCommand
 import ru.fromchat.desktop.DesktopMenuCommands
+import ru.fromchat.logging.Logger
 import ru.fromchat.notifications.NotificationLaunchCoordinator
+import ru.fromchat.ui.auth.AUTH_INCOGNITO_ROUTE
+import ru.fromchat.ui.auth.AUTH_ROUTE
+import ru.fromchat.incognito.IncognitoOverlaySession
 import ru.fromchat.ui.auth.AuthScreen
+import ru.fromchat.ui.auth.resetPreAuthDraft
 import ru.fromchat.ui.auth.captcha.SmartCaptchaNav
 import ru.fromchat.ui.auth.captcha.SmartCaptchaScreen
 import ru.fromchat.ui.auth.yandex.YandexOAuthNav
 import ru.fromchat.ui.auth.yandex.YandexOAuthScreen
+import ru.fromchat.ui.calls.overlay.CallOverlay
 import ru.fromchat.ui.chat.media.ChatFullscreenImageController
 import ru.fromchat.ui.chat.media.ChatFullscreenImageHost
 import ru.fromchat.ui.chat.media.LocalChatFullscreenImageController
-import ru.fromchat.ui.calls.overlay.CallOverlay
 import ru.fromchat.ui.chat.panels.dm.currentDmChatUserId
 import ru.fromchat.ui.chat.panels.dm.isCurrentDmChat
 import ru.fromchat.ui.chat.panels.dm.navigateToDmChat
 import ru.fromchat.ui.chat.panels.publicchat.navigateToPublicChat
 import ru.fromchat.ui.chat.utils.appRootAttachmentDropTarget
+import ru.fromchat.ui.components.HoverInfoOverlayController
+import ru.fromchat.ui.components.HoverInfoOverlayHost
+import ru.fromchat.ui.components.LocalHoverInfoOverlayController
+import ru.fromchat.ui.components.LocalSpringOverflowMenuOverlayController
+import ru.fromchat.ui.components.SpringOverflowMenuOverlayController
+import ru.fromchat.ui.components.SpringOverflowMenuOverlayHost
+import ru.fromchat.ui.components.provideSwitchHaptics
+import ru.fromchat.ui.main.settings.proxy.ProxySshPassphraseDialogHost
+import ru.fromchat.ui.security.ConnectionSecurityDialogHost
 import ru.fromchat.ui.main.ConversationListDetailShell
 import ru.fromchat.ui.main.handleAppMenuShortcutKeyEvent
-import ru.fromchat.ui.components.provideSwitchHaptics
+import ru.fromchat.ui.release.ReleaseNotesDialog
+import ru.fromchat.ui.release.ReleaseNotesPrompt
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import ru.fromchat.ui.components.LocalPaneHazeState
+import ru.fromchat.ui.components.ScreenSurface
+import dev.chrisbanes.haze.hazeSource
+import ru.fromchat.ui.main.chats.ChatsSearchScreen
 import ru.fromchat.ui.main.desktop.DesktopChatsDetailNavHost
 import ru.fromchat.ui.main.desktop.DesktopContactsDetailNavHost
 import ru.fromchat.ui.main.desktop.DesktopSettingsDetailNavHost
@@ -114,23 +132,23 @@ import ru.fromchat.ui.main.desktop.LocalDesktopSettingsNavController
 import ru.fromchat.ui.main.MAIN_PAGE_CHATS
 import ru.fromchat.ui.main.MAIN_PAGE_PROFILE
 import ru.fromchat.ui.main.MAIN_PAGE_SETTINGS
-import ru.fromchat.ui.main.nav.isCurrentMainDetailRoute
 import ru.fromchat.ui.main.MainScreen
-import ru.fromchat.ui.main.nav.NavTransitionMuting
-import ru.fromchat.ui.main.chats.ChatsSearchScreen
 import ru.fromchat.ui.main.nav.conversationDetailDestinations
+import ru.fromchat.ui.main.nav.isCurrentMainDetailRoute
 import ru.fromchat.ui.main.nav.mutedEnterTransition
 import ru.fromchat.ui.main.nav.mutedExitTransition
 import ru.fromchat.ui.main.nav.navigateReplacingMainDetail
+import ru.fromchat.ui.main.nav.NavTransitionMuting
 import ru.fromchat.ui.main.nav.profileDetailDestinations
-import ru.fromchat.ui.main.settings.SettingsRoutes
-import ru.fromchat.ui.main.settings.about.AboutDialogHost
-import ru.fromchat.ui.main.settings.about.LocalOpenAbout
-import ru.fromchat.ui.main.settings.about.isShowingAboutRoute
-import ru.fromchat.ui.main.settings.about.popAboutRouteIfShowing
 import ru.fromchat.ui.main.nav.settingsDetailDestinations
-import ru.fromchat.ui.components.LocalPaneHazeState
-import ru.fromchat.ui.components.ScreenSurface
+import ru.fromchat.ui.main.settings.ConnectionFlowHost
+import ru.fromchat.ui.main.settings.LocalOpenConnection
+import ru.fromchat.ui.main.settings.about.AboutDialogHost
+import ru.fromchat.ui.main.settings.about.isShowingAboutRoute
+import ru.fromchat.ui.main.settings.about.LocalOpenAbout
+import ru.fromchat.ui.main.settings.about.popAboutRouteIfShowing
+import ru.fromchat.ui.main.settings.resetConnectionFlowToRoot
+import ru.fromchat.ui.main.settings.SettingsRoutes
 import ru.fromchat.ui.theme.FromChatTheme
 import ru.fromchat.ui.welcome.WelcomeScreen
 import dev.chrisbanes.haze.rememberHazeState
@@ -185,9 +203,8 @@ private fun handlePresenceTyping(type: String, data: JsonObject?) {
     }
 }
 
-private fun extractReason(data: JsonElement?): String? {
-    return data?.jsonObject?.get("reason")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
-}
+private fun extractReason(data: JsonElement?): String? =
+    data?.jsonObject?.get("reason")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
 
 private fun handleAccountLifecycleEvent(message: WebSocketMessage) {
     when (message.type) {
@@ -200,15 +217,25 @@ private fun handleAccountLifecycleEvent(message: WebSocketMessage) {
         }
         "account_deleted" -> {
             MainScope().launch {
-                ApiClient.logout()
+                ApiClient.logoutBestEffort()
+                resetPreAuthDraft()
+                ApiClient.onAuthError?.invoke()
             }
+        }
+        "session_ended" -> {
+            val sessionId = message.data?.jsonObject
+                ?.get("session_id")
+                ?.jsonPrimitive
+                ?.contentOrNull
+            ApiClient.onSessionEndedFromServer(sessionId)
+            resetPreAuthDraft()
         }
     }
 }
 
 private fun handlePresenceEvent(message: WebSocketMessage) {
     when (message.type) {
-        "suspended", "unsuspended", "account_deleted" -> handleAccountLifecycleEvent(message)
+        "suspended", "unsuspended", "account_deleted", "session_ended" -> handleAccountLifecycleEvent(message)
         "statusUpdate" -> message.data?.jsonObject?.let(::handlePresenceStatus)
         "dmTyping", "stopDmTyping" -> message.data?.jsonObject?.let { handlePresenceTyping(message.type, it) }
         "dmNew", "dmDeleted", "dmEdited" -> DmInboxCoordinator.handleMessage(message)
@@ -234,7 +261,7 @@ fun App(
     startAtAppearance: Boolean = false,
     profileLookupErrorMessage: String? = null,
     onProfileLookupErrorMessageConsumed: () -> Unit = {},
-    /** Desktop: fired once [startDestination] is known so the window can show after bootstrap. */
+    /** Desktop: fired once `startDestination` is known so the window can show after bootstrap. */
     onContentReady: () -> Unit = {},
     /** Android: first pre-draw of main UI once status-bar insets are available. */
     onUiDisplayed: () -> Unit = {},
@@ -258,6 +285,8 @@ fun App(
 
     LaunchedEffect(Unit) {
         runCatching { ServerConfig.initialize() }
+        runCatching { ru.fromchat.network.proxy.ProxyRuntime.initialize() }
+        runCatching { ApiClient.rebuildHttpClients() }
         withContext(messageDatabaseDispatcher) {
             runCatching { ensureFromChatCacheGeneration() }
             runCatching { ApiClient.loadPersistedData() }
@@ -265,6 +294,7 @@ fun App(
         withContext(Dispatchers.Default) {
             runCatching { NetworkConnectivity.ensureStarted() }
             runCatching { UpdateSyncManager.initializeFromStorage(ApiClient.user?.id) }
+            runCatching { InstanceEncryptionCoordinator.ensureStarted() }
             Logger.i("App", "FromChat started")
         }
 
@@ -273,12 +303,6 @@ fun App(
         startDestination = when {
             hasToken -> "chat"
             else -> "welcome"
-        }
-
-        withContext(Dispatchers.Default) {
-            runCatching { NetworkConnectivity.ensureStarted() }
-            runCatching { UpdateSyncManager.initializeFromStorage(ApiClient.user?.id) }
-            Logger.i("App", "FromChat started")
         }
 
         if (hasToken) {
@@ -374,12 +398,14 @@ fun App(
 
     FromChatTheme {
         PlatformInteractiveKeyboardDismissEffect()
+        ProxySshPassphraseDialogHost()
         provideSwitchHaptics {
         SharedTransitionLayout {
             val navController = rememberNavController()
             val chatsDetailNavController = rememberNavController()
             val settingsDetailNavController = rememberNavController()
             val contactsDetailNavController = rememberNavController()
+            val connectionFlowNavController = rememberNavController()
             val profileLookupSnackbarHostState = remember { SnackbarHostState() }
             LaunchedEffect(profileLookupErrorMessage) {
                 profileLookupErrorMessage?.let { message ->
@@ -397,7 +423,13 @@ fun App(
             val isDesktopListDetail = widthSizeClass != WindowWidthSizeClass.COMPACT
             var pendingMainTab by remember { mutableIntStateOf(MAIN_PAGE_CHATS) }
             var aboutDialogVisible by remember { mutableStateOf(false) }
+            var connectionFlowActive by remember { mutableStateOf(false) }
             var carryAboutFullScreenAfterShrink by remember { mutableStateOf(false) }
+
+            fun dismissConnectionFlow() {
+                connectionFlowNavController.resetConnectionFlowToRoot()
+                connectionFlowActive = false
+            }
 
             fun openAboutPresentation() {
                 if (isDesktopListDetail) {
@@ -414,10 +446,17 @@ fun App(
                 }
             }
 
+            fun openConnectionPresentation() {
+                if (!ApiClient.token.isNullOrBlank()) return
+                connectionFlowActive = true
+            }
+
             // Handle startup/deep-link navigation targets (profile links)
             LaunchedEffect(
                 startAtProfileUserId,
                 startAtProfileUsername,
+                startAtDmConversationUserId,
+                scrollToMessageId,
                 startDestination,
                 isDesktopListDetail,
             ) {
@@ -427,6 +466,29 @@ fun App(
                         "startAtProfileUsername=$startAtProfileUsername"
                 )
                 if (startDestination == null || startDestination == "welcome") {
+                    return@LaunchedEffect
+                }
+
+                if (startAtDmConversationUserId != null && startAtDmConversationUserId > 0) {
+                    Logger.d(
+                        "DmDeepLink",
+                        "startup nav to dm user=$startAtDmConversationUserId messageId=$scrollToMessageId",
+                    )
+                    if (isDesktopListDetail) {
+                        pendingMainTab = MAIN_PAGE_CHATS
+                        if (navController.currentBackStackEntry?.destination?.route != "chat") {
+                            navController.popBackStack("chat", inclusive = false)
+                        }
+                        chatsDetailNavController.navigateToDmChat(
+                            otherUserId = startAtDmConversationUserId,
+                            sourceMessageId = scrollToMessageId,
+                        )
+                    } else {
+                        navController.navigateToDmChat(
+                            otherUserId = startAtDmConversationUserId,
+                            sourceMessageId = scrollToMessageId,
+                        )
+                    }
                     return@LaunchedEffect
                 }
 
@@ -693,6 +755,9 @@ fun App(
             }
 
             val fullscreenImageController = remember { ChatFullscreenImageController() }
+            val hoverInfoOverlayController = remember { HoverInfoOverlayController() }
+            val springOverflowMenuOverlayController = remember { SpringOverflowMenuOverlayController() }
+            val hoverInfoHazeState = rememberHazeState()
             var showReleaseNotesPrompt by remember { mutableStateOf(false) }
             LaunchedEffect(startDestination) {
                 if (startDestination != null && ReleaseNotesPrompt.shouldShowAutomatically()) {
@@ -702,12 +767,15 @@ fun App(
             CompositionLocalProvider(
                 LocalNavController provides navController,
                 LocalOpenAbout provides { openAboutPresentation() },
+                LocalOpenConnection provides { openConnectionPresentation() },
                 LocalDesktopChatsNavController provides
                     if (isDesktopListDetail) chatsDetailNavController else null,
                 LocalDesktopSettingsNavController provides
                     if (isDesktopListDetail) settingsDetailNavController else null,
                 LocalSystemBarsVisibility provides rememberSystemBarsController(),
                 LocalChatFullscreenImageController provides fullscreenImageController,
+                LocalHoverInfoOverlayController provides hoverInfoOverlayController,
+                LocalSpringOverflowMenuOverlayController provides springOverflowMenuOverlayController,
             ) {
                 if (startDestination != null) {
                     UiDisplayedEffect(onDisplayed = onUiDisplayed)
@@ -750,8 +818,8 @@ fun App(
                                     composable("welcome") {
                                         WelcomeScreen(
                                             onGetStarted = {
-                                                navController.navigate("auth") {
-                                                    popUpTo("auth") { inclusive = true }
+                                                navController.navigate(AUTH_ROUTE) {
+                                                    popUpTo(AUTH_ROUTE) { inclusive = true }
                                                     launchSingleTop = true
                                                 }
                                             },
@@ -762,7 +830,7 @@ fun App(
                                         )
                                     }
 
-                                    composable("auth") {
+                                    composable(AUTH_ROUTE) {
                                         AuthScreen(
                                             onAuthSuccess = {
                                                 MainScope().launch {
@@ -781,6 +849,38 @@ fun App(
                                                 navController.navigateAndWipeBackStack("chat")
                                             },
                                             onBackToWelcome = { navController.navigateUp() },
+                                            incognitoFlow = false,
+                                        )
+                                    }
+
+                                    composable(AUTH_INCOGNITO_ROUTE) {
+                                        val openedFromChats =
+                                            navController.previousBackStackEntry
+                                                ?.destination
+                                                ?.route == "chat"
+                                        AuthScreen(
+                                            onAuthSuccess = {
+                                                if (openedFromChats) {
+                                                    IncognitoOverlaySession.onOverlayIncognitoLoginSuccess()
+                                                }
+                                                MainScope().launch {
+                                                    runCatching {
+                                                        bootstrapSessionInstance(
+                                                            hasToken = true,
+                                                            forceNetwork = false,
+                                                        )
+                                                    }
+                                                    PublicChatProfileSync.ensureStarted()
+                                                    ProfileUpdateSync.ensureStarted()
+                                                    StatusSubscriptionCoordinator.ensureStarted()
+                                                    scheduleSessionInstanceNetworkRefresh()
+                                                }
+                                                WebSocketManager.connect(forceRestart = true)
+                                                navController.navigateAndWipeBackStack("chat")
+                                            },
+                                            onBackToWelcome = { navController.navigateUp() },
+                                            incognitoFlow = true,
+                                            incognitoOverlayFromChat = openedFromChats,
                                         )
                                     }
 
@@ -879,70 +979,84 @@ fun App(
                                 }
                             }
 
-                            AppNavHost(Modifier.fillMaxSize())
+                            Box(
+                                Modifier
+                                    .fillMaxSize()
+                                    .hazeSource(hoverInfoHazeState),
+                            ) {
+                                AppNavHost(Modifier.fillMaxSize())
 
-                            // Observe back stack only after [AppNavHost] has set the graph.
-                            val currentEntry by navController.currentBackStackEntryAsState()
-                            val currentRoute = currentEntry?.destination?.route
-                            val showConversationListDetail =
-                                isDesktopListDetail && currentRoute == "chat"
+                                val currentEntry by navController.currentBackStackEntryAsState()
+                                val currentRoute = currentEntry?.destination?.route
+                                val showConversationListDetail =
+                                    isDesktopListDetail && currentRoute == "chat"
 
-                            if (showConversationListDetail) {
-                                val listPaneHazeState = rememberHazeState()
-                                CompositionLocalProvider(
-                                    LocalPaneHazeState provides listPaneHazeState,
-                                    LocalDesktopMainTab provides pendingMainTab,
+                                AnimatedVisibility(
+                                    visible = showConversationListDetail,
+                                    enter = mutedEnterTransition(rootNavPopEnterTransition()),
+                                    exit = mutedExitTransition(rootNavExitTransition()),
                                 ) {
-                                    ConversationListDetailShell(
-                                        detailInPanel = false,
-                                        detailEdgeToEdge = true,
-                                        listPane = {
-                                            MainScreen(
-                                                sharedTransitionScope = this@SharedTransitionLayout,
-                                                snackbarHostState = profileLookupSnackbarHostState,
-                                                embeddedInListDetail = true,
-                                                initialPage = pendingMainTab,
-                                                onPageChanged = { pendingMainTab = it },
-                                            )
-                                        },
-                                        detailPane = {
-                                            DesktopTabDetailHosts(
-                                                selectedTab = pendingMainTab,
-                                                chatsDetail = {
-                                                    DesktopChatsDetailNavHost(
-                                                        navController = chatsDetailNavController,
-                                                        sharedTransitionScope =
-                                                            this@SharedTransitionLayout,
-                                                        scrollToMessageId = scrollToMessageId,
-                                                    )
-                                                },
-                                                settingsDetail = {
-                                                    DesktopSettingsDetailNavHost(
-                                                        navController = settingsDetailNavController,
-                                                        rootNavController = navController,
-                                                        sharedTransitionScope =
-                                                            this@SharedTransitionLayout,
-                                                        onOpenChatFromProfile = { userId ->
-                                                            if (userId > 0) {
-                                                                pendingMainTab = MAIN_PAGE_CHATS
-                                                                chatsDetailNavController.navigateToDmChat(
-                                                                    userId,
-                                                                )
-                                                            }
-                                                        },
-                                                    )
-                                                },
-                                                contactsDetail = {
-                                                    DesktopContactsDetailNavHost(
-                                                        navController = contactsDetailNavController,
-                                                    )
-                                                },
-                                            )
-                                        },
-                                    )
+                                    val listPaneHazeState = rememberHazeState()
+                                    CompositionLocalProvider(
+                                        LocalPaneHazeState provides listPaneHazeState,
+                                        LocalDesktopMainTab provides pendingMainTab,
+                                    ) {
+                                        ConversationListDetailShell(
+                                            detailInPanel = false,
+                                            detailEdgeToEdge = true,
+                                            listPane = {
+                                                MainScreen(
+                                                    sharedTransitionScope = this@SharedTransitionLayout,
+                                                    snackbarHostState = profileLookupSnackbarHostState,
+                                                    embeddedInListDetail = true,
+                                                    initialPage = pendingMainTab,
+                                                    onPageChanged = { pendingMainTab = it },
+                                                )
+                                            },
+                                            detailPane = {
+                                                DesktopTabDetailHosts(
+                                                    selectedTab = pendingMainTab,
+                                                    chatsDetail = {
+                                                        DesktopChatsDetailNavHost(
+                                                            navController = chatsDetailNavController,
+                                                            sharedTransitionScope =
+                                                                this@SharedTransitionLayout,
+                                                            scrollToMessageId = scrollToMessageId,
+                                                        )
+                                                    },
+                                                    settingsDetail = {
+                                                        DesktopSettingsDetailNavHost(
+                                                            navController = settingsDetailNavController,
+                                                            rootNavController = navController,
+                                                            sharedTransitionScope =
+                                                                this@SharedTransitionLayout,
+                                                            onOpenChatFromProfile = { userId ->
+                                                                if (userId > 0) {
+                                                                    pendingMainTab = MAIN_PAGE_CHATS
+                                                                    chatsDetailNavController.navigateToDmChat(
+                                                                        userId,
+                                                                    )
+                                                                }
+                                                            },
+                                                        )
+                                                    },
+                                                    contactsDetail = {
+                                                        DesktopContactsDetailNavHost(
+                                                            navController = contactsDetailNavController,
+                                                        )
+                                                    },
+                                                )
+                                            },
+                                        )
+                                    }
                                 }
                             }
 
+                            HoverInfoOverlayHost(
+                                hazeState = hoverInfoHazeState,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                            SpringOverflowMenuOverlayHost(Modifier.fillMaxSize())
                             ChatFullscreenImageHost(Modifier.fillMaxSize())
                             CallOverlay(Modifier.fillMaxSize())
                             val aboutDocumentNavController =
@@ -956,9 +1070,17 @@ fun App(
                                 onDismiss = { aboutDialogVisible = false },
                                 documentNavController = aboutDocumentNavController,
                             )
+                            ConnectionFlowHost(
+                                active = connectionFlowActive,
+                                useDialog = isDesktopListDetail,
+                                navController = connectionFlowNavController,
+                                onDismiss = { dismissConnectionFlow() },
+                                rootNavController = navController,
+                            )
                             if (showReleaseNotesPrompt) {
                                 ReleaseNotesDialog(onDismiss = { showReleaseNotesPrompt = false })
                             }
+                            ConnectionSecurityDialogHost()
                         }
                     }
                 }

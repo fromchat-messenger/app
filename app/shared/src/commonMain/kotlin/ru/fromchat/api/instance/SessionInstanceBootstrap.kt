@@ -48,6 +48,7 @@ private suspend fun activateInstance(instanceId: String) {
             MessageDatabaseProvider.rebindUnboundPartition(instanceId)
         }
     }
+    InstanceEncryptionCoordinator.ensureStarted()
     PublicChatProfileSync.ensureStarted()
     ProfileUpdateSync.ensureStarted()
     StatusSubscriptionCoordinator.ensureStarted()

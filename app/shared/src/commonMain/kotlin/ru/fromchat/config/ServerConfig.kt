@@ -19,6 +19,11 @@ object ServerConfig {
      * Initialize configuration by loading from storage
      */
     fun initialize() {
+        reloadFromSettings()
+    }
+
+    /** Reload in-memory config after incognito toggles settings routing. */
+    fun reloadFromSettings() {
         _serverConfig.value = Settings.serverConfig
     }
 
@@ -34,24 +39,12 @@ object ServerConfig {
     val callsEnabled: Boolean
         get() = config.callsEnabled
 
-    /** Port used for LiveKit WS (same as API; TLS reverse-proxy fronts the SFU). */
-    val callsPort: Int
-        get() = config.apiPort
-
     /**
      * LiveKit WS URL: same host/port as the API (Caddy proxies `/rtc*` to the SFU over TLS).
      */
     fun liveKitWsUrl(): String {
         val scheme = if (config.httpsEnabled) "wss" else "ws"
         return "$scheme://${config.serverIp}:${config.apiPort}"
-    }
-
-    /**
-     * LiveKit signaling WebSocket URL via the API reverse proxy (`/livekit/rtc`).
-     */
-    fun liveKitSignalingWsUrl(): String {
-        val scheme = if (config.httpsEnabled) "wss" else "ws"
-        return "$scheme://${config.serverIp}:${config.apiPort}/livekit/rtc"
     }
 
     /**

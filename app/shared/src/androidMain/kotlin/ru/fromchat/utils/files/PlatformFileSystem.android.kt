@@ -12,6 +12,12 @@ internal actual fun expectWriteBytes(path: String, bytes: ByteArray) {
     file.writeBytes(bytes)
 }
 
+internal actual fun expectReadBytes(path: String): ByteArray {
+    val file = File(path)
+    if (!file.isFile) return ByteArray(0)
+    return file.readBytes()
+}
+
 internal actual fun expectAppendBytes(path: String, bytes: ByteArray) {
     val file = File(path)
     file.parentFile?.mkdirs()
@@ -44,7 +50,10 @@ internal actual fun expectListFileNamesInDirectory(dirPath: String): List<String
 }
 
 internal actual fun expectGetAppCacheDirectory(): String =
-    UtilsLibrary.context.cacheDir.absolutePath
+    UtilsLibrary.context.noBackupFilesDir.absolutePath
+
+internal actual fun defaultAppDataRootForPlatform(): String =
+    UtilsLibrary.context.noBackupFilesDir.absolutePath
 
 internal actual fun expectEnsureDirectory(path: String) {
     File(path).mkdirs()

@@ -11,65 +11,62 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import ru.fromchat.logging.Logger
 import java.io.File
+import java.nio.file.FileSystems
+import java.nio.file.StandardWatchEventKinds
+import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Desktop scale factor for Linux desktops whose X11/Wayland handoff does not carry one.
  *
- * AWT infers its device scale from the X server's reported DPI. That is unreliable here: virtual
- * displays (VMs, remote sessions, most docking stations) advertise `0mm x 0mm`, so the DPI
- * collapses to the 96 default. On those, mutter renders its own UI at the monitor's scale while
- * handing XWayland clients the full physical resolution and no scale — so a Compose window drawn at
- * 1x sits next to a correctly scaled desktop looking tiny.
+ * **Crisp fractional UI** on GNOME Wayland needs the client to render at mutter's logical scale,
+ * not a 1× Skiko buffer upscaled by mutter (blurry). With Mutter's `xwayland-native-scaling`
+ * (GNOME 47+), XWayland updates `Xft.dpi` / Skiko's scene density after "Keep Changes"; we then
+ * pass through [androidx.compose.ui.platform.LocalDensity] unchanged. While XWayland still
+ * reports 1.0 (live preview), we inflate layout to mutter's `<scale>` from `monitors.xml` so the
+ * app matches GTK clients — vector layout, not compositor framebuffer scaling.
  *
- * Observed on Ubuntu/GNOME at 166%: AWT reported 2.0 (it had read `Xft.dpi=192`) while Compose
- * reported 1.0. `sun.java2d.uiScale` is not a usable lever here: on X11
- * `GraphicsConfiguration.defaultTransform` is an `int`, so a fractional value truncates to 1 —
- * and setting it also short-circuits native detection, breaking displays that would otherwise be
- * detected correctly. The value that drives layout and text is Compose's `LocalDensity`, applied
- * inside `Window` and paired with a pre-multiplied `WindowState.size` (CMP-6857).
- *
- * Sources, most authoritative first:
- *  1. `GDK_SCALE` x `GDK_DPI_SCALE` — what GTK clients are handed, so we agree with the rest of
- *     the desktop. Static for the process lifetime, so it is only a starting value.
- *  2. mutter's `monitors.xml` — re-read on every poll, which is what makes a scale change apply
- *     without a restart.
- *  3. Nothing usable: leave Compose's own density alone rather than forcing 1.0.
- *
- * Only Linux needs this. macOS and Windows already report HiDPI correctly, and forcing a value
- * there would override a correct native density.
+ * **Both GNOME modes** (Settings → "Built-in Scaling for Legacy Apps" / `xwayland-native-scaling`):
+ * - **On:** XWayland reports fractional DPI; pass through scene density when it matches mutter.
+ * - **Off:** mutter framebuffer-scales XWayland; use Compose inflation only during display preview,
+ *   then `1.0×` layout on commit so mutter applies scale exactly once.
  */
 internal object DesktopScale {
+    /** Baked into the dev deb for run-linux-prl payload verification. */
+    const val LINUX_SCALE_PAYLOAD_MARKER = "fromchat-linux-scale-dual-gnome-v3"
+
     private const val MIN_SCALE = 0.5f
     private const val MAX_SCALE = 5f
     private const val POLL_INTERVAL_MS = 2_000L
+    private const val DEVICE_MATCH_EPSILON = 0.04f
 
-    /**
-     * Scale to force, or `null` to keep whatever Compose chose. `null` is the honest default: a
-     * missing signal means "unknown", not "unscaled", and treating it as 1.0 is what made an
-     * earlier version of this file wrong.
-     */
     private val forced = MutableStateFlow<Float?>(null)
 
     val forcedScale: StateFlow<Float?> = forced.asStateFlow()
 
-    /** Process-lifetime scope: the watcher must outlive whatever composition started it. */
+    private val layoutRevisionState = MutableStateFlow(0)
+
+    val layoutRevision: StateFlow<Int> = layoutRevisionState.asStateFlow()
+
+    /** GNOME applied scale (Keep Changes), not live display-settings preview. */
+    private val gnomeDisplayScaleCommittedState = MutableStateFlow(true)
+
+    val gnomeDisplayScaleCommitted: StateFlow<Boolean> = gnomeDisplayScaleCommittedState.asStateFlow()
+
+    private val mutterNativeLegacyScalingState = MutableStateFlow(false)
+
+    val mutterNativeLegacyScaling: StateFlow<Boolean> = mutterNativeLegacyScalingState.asStateFlow()
+
     private val watcherScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    /** Scale in effect, for logging and for sizing decisions outside composition. */
+    private var lastPolledAwtScale = -1f
+    private var lastMonitorsScale: Float? = null
+    private var lastMonitorsMtime: Long = 0L
+
     val factor: Float? get() = forced.value
 
-    /**
-     * Scale AWT applies to every coordinate it is given: `window.setSize(w)` covers `w * awtScale`
-     * device pixels, and Compose sizes windows from the very same transform.
-     *
-     * This is the other half of [contentDensity] and the reason a forced scale needs a
-     * pre-multiplied window size at all. It is 1.0 on the X11 setups this file exists for, but it
-     * is read from the live `GraphicsConfiguration` rather than assumed, so a display that *does*
-     * report a transform is not double-scaled.
-     */
-    val awtScale: Float by lazy {
-        runCatching {
+    val awtScale: Float
+        get() = runCatching {
             java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment()
                 .defaultScreenDevice
                 .defaultConfiguration
@@ -77,79 +74,229 @@ internal object DesktopScale {
                 .scaleX
                 .toFloat()
         }.getOrDefault(1f).takeIf { it.isFinite() && it > 0f } ?: 1f
-    }
 
-    /**
-     * Density the app's content is laid out and measured at: the detected desktop scale where there
-     * is one, otherwise whatever Compose derived from [awtScale].
-     *
-     * Every place that has to turn a measured or `dp` size into an AWT call must divide by
-     * [awtScale], never by this — the two only differ on exactly the setups that need fixing.
-     */
     val contentDensity: Float get() = factor ?: awtScale
 
-    /**
-     * How much larger a window must be than its `dp` size for the content to fit, i.e.
-     * [contentDensity] / [awtScale]. Compose sizes the AWT window from `WindowState.size` using
-     * [awtScale] while the content is laid out at [contentDensity], so this factor reconciles them.
-     */
-    val sizeRatio: Float get() = contentDensity / awtScale
+    fun awtInflatedBeyondMutter(): Boolean {
+        val forced = factor ?: return false
+        return awtScale > forced + 0.05f
+    }
+
+    enum class GnomeLayoutMode {
+        /** Skiko/AWT already at mutter logical density (legacy scaling on). */
+        NativeScene,
+        /** Display preview or waiting for XWayland DPI — Compose carries mutter scale. */
+        ComposeInflate,
+        /** Legacy scaling off — mutter framebuffer owns scale after commit. */
+        GnomeFramebuffer,
+    }
+
+    fun gnomeLayoutMode(ambient: androidx.compose.ui.unit.Density): GnomeLayoutMode {
+        val forced = factor ?: return GnomeLayoutMode.NativeScene
+        val device = maxOf(ambient.density, awtScale)
+        if (mutterNativeLegacyScalingState.value && device + DEVICE_MATCH_EPSILON >= forced) {
+            return GnomeLayoutMode.NativeScene
+        }
+        if (!mutterNativeLegacyScalingState.value &&
+            gnomeDisplayScaleCommittedState.value &&
+            device + DEVICE_MATCH_EPSILON < forced
+        ) {
+            return GnomeLayoutMode.GnomeFramebuffer
+        }
+        return GnomeLayoutMode.ComposeInflate
+    }
+
+    fun layoutDensity(ambient: androidx.compose.ui.unit.Density): androidx.compose.ui.unit.Density {
+        val forced = factor ?: return ambient
+        return when (gnomeLayoutMode(ambient)) {
+            GnomeLayoutMode.NativeScene -> ambient
+            GnomeLayoutMode.GnomeFramebuffer -> androidx.compose.ui.unit.Density(1f, 1f)
+            GnomeLayoutMode.ComposeInflate ->
+                androidx.compose.ui.unit.Density(forced.coerceIn(MIN_SCALE, MAX_SCALE), 1f)
+        }
+    }
+
+    val sizeRatio: Float
+        get() {
+            if (isLinuxOs()) return 1f
+            val content = contentDensity
+            val awt = awtScale
+            if (awt <= 0f) return 1f
+            return content / awt
+        }
 
     fun isSupportedPlatform(): Boolean = isLinuxOs()
 
-    /**
-     * Watch the desktop's scale so a change takes effect without a restart. Cheap: the only real
-     * work is a stat plus a small read of a config file, and it stops when the process exits.
-     *
-     * Deliberately callable *before* the first composition rather than from a `LaunchedEffect`.
-     * The first composition is where the main window reads its remembered size, and doing the
-     * first detection one frame later meant that size was computed against a null scale — the
-     * window then opened at the wrong size and nothing corrected it, because a remembered
-     * `WindowState` keeps whatever it was constructed with.
-     */
+    fun logLinuxScalingEnvironmentOnce() {
+        if (!isLinuxOs()) return
+        val native = readMutterExperimentalFeatures()
+        Logger.i(
+            "DesktopScale",
+            "$LINUX_SCALE_PAYLOAD_MARKER wayland=${!System.getenv("WAYLAND_DISPLAY").isNullOrBlank()} " +
+                "mutter.experimental-features=${native ?: "n/a"} " +
+                "xwaylandNativeScaling=${native?.contains("xwayland-native-scaling") == true}",
+        )
+    }
+
+    fun notifyAwtScaleReady() {
+        if (!isLinuxOs()) return
+        val next = detect()
+        val previous = forced.value
+        forced.value = next
+        if (previous == null && next == null) return
+        if (next != null && (previous == null || abs(next - previous) > 0.01f)) {
+            Logger.i("DesktopScale", "desktop scale after AWT init -> $next (was $previous)")
+        }
+        Logger.i(
+            "DesktopScale",
+            "startup awtScale=$awtScale contentDensity=$contentDensity sizeRatio=$sizeRatio factor=$factor",
+        )
+    }
+
     fun startWatching(scope: CoroutineScope = watcherScope) {
         if (!isLinuxOs()) return
-        forced.value = detect()
+        logLinuxScalingEnvironmentOnce()
+        tickScale()
+        scope.launch(Dispatchers.IO) {
+            val home = System.getProperty("user.home")
+            val configDir = home?.let { File(it, ".config") }
+            if (configDir != null && configDir.isDirectory) {
+                runCatching {
+                    val watchService = FileSystems.getDefault().newWatchService()
+                    configDir.toPath().register(
+                        watchService,
+                        StandardWatchEventKinds.ENTRY_MODIFY,
+                        StandardWatchEventKinds.ENTRY_CREATE,
+                    )
+                    while (isActive) {
+                        val key = watchService.poll(500, TimeUnit.MILLISECONDS) ?: continue
+                        key.pollEvents().forEach { event ->
+                            val name = event.context()?.toString() ?: return@forEach
+                            if (name != "monitors.xml" && name != "gsd-monitors.xml") return@forEach
+                            tickScale()
+                        }
+                        if (!key.reset()) break
+                    }
+                }.onFailure {
+                    Logger.w("DesktopScale", "monitors.xml watch failed: ${it.message}")
+                }
+            }
+        }
         scope.launch(Dispatchers.IO) {
             while (isActive) {
                 delay(POLL_INTERVAL_MS.milliseconds)
-                val next = detect()
-                val previous = forced.value
-                // Only react to real changes: a desktop that legitimately sits at 1.0 must not be
-                // overridden by the platform default, and log spam on every poll helps nobody.
-                if (previous == null && next == null) continue
-                if (next == null) {
-                    Logger.i("DesktopScale", "scale signal lost; reverting to Compose default")
-                    forced.value = null
-                } else if (previous == null || abs(next - previous) > 0.01f) {
-                    Logger.i("DesktopScale", "desktop scale changed -> $next")
-                    forced.value = next
+                val awt = awtScale
+                if (lastPolledAwtScale < 0f || abs(awt - lastPolledAwtScale) > 0.01f) {
+                    lastPolledAwtScale = awt
+                    layoutRevisionState.value++
+                    Logger.d(
+                        "DesktopScale",
+                        "awt device scale -> $awt (layout revision ${layoutRevisionState.value})",
+                    )
                 }
+                tickScale()
             }
         }
     }
 
+    private fun tickScale() {
+        val policyBefore = mutterNativeLegacyScalingState.value to gnomeDisplayScaleCommittedState.value
+        val next = detect()
+        applyScaleSignal(next, policyBefore)
+    }
+
+    private fun applyScaleSignal(
+        next: Float?,
+        policyBefore: Pair<Boolean, Boolean>,
+    ) {
+        val previous = forced.value
+        when {
+            previous == null && next == null -> {
+                if (policyBefore != mutterNativeLegacyScalingState.value to gnomeDisplayScaleCommittedState.value) {
+                    layoutRevisionState.value++
+                }
+                return
+            }
+            next == null -> {
+                Logger.i("DesktopScale", "scale signal lost; reverting to Compose default")
+                forced.value = null
+                layoutRevisionState.value++
+            }
+            previous == null || abs(next - previous) > 0.01f -> {
+                Logger.i("DesktopScale", "desktop scale changed -> $next")
+                forced.value = next
+                layoutRevisionState.value++
+            }
+        }
+        if (policyBefore != mutterNativeLegacyScalingState.value to gnomeDisplayScaleCommittedState.value) {
+            layoutRevisionState.value++
+            Logger.i(
+                "DesktopScale",
+                "gnome policy legacyNativeScaling=${mutterNativeLegacyScalingState.value} " +
+                    "committed=${gnomeDisplayScaleCommittedState.value} factor=$next",
+            )
+        }
+    }
+
+    private fun noteMonitorsXmlWrite(scale: Float?, mtime: Long) {
+        if (scale == null || !scale.isFinite() || scale <= 0f) return
+        val sameScale = lastMonitorsScale != null && abs(scale - lastMonitorsScale!!) < 0.01f
+        val rewritten = lastMonitorsMtime > 0L && mtime > lastMonitorsMtime
+        val committedBefore = gnomeDisplayScaleCommittedState.value
+        when {
+            lastMonitorsScale == null -> gnomeDisplayScaleCommittedState.value = true
+            sameScale && rewritten -> gnomeDisplayScaleCommittedState.value = true
+            !sameScale -> gnomeDisplayScaleCommittedState.value = false
+        }
+        if (gnomeDisplayScaleCommittedState.value != committedBefore) {
+            Logger.i(
+                "DesktopScale",
+                "monitors.xml write scale=$scale preview=${!gnomeDisplayScaleCommittedState.value} " +
+                    "commit=$rewritten",
+            )
+        }
+        lastMonitorsMtime = mtime
+        lastMonitorsScale = scale
+    }
+
+    private fun refreshMutterNativeLegacyScalingFlag() {
+        val enabled = readMutterExperimentalFeatures()?.contains("xwayland-native-scaling") == true
+        if (mutterNativeLegacyScalingState.value != enabled) {
+            mutterNativeLegacyScalingState.value = enabled
+        }
+    }
+
     private fun detect(): Float? {
-        val candidates = listOf(
-            "env" to envScale(),
-            "monitors.xml" to monitorsXmlScale(),
+        refreshMutterNativeLegacyScalingFlag()
+        val monitorsFile = primaryMonitorsXmlFile()
+        val monitors = monitorsXmlScale()
+        if (monitorsFile != null && monitors != null) {
+            noteMonitorsXmlWrite(monitors, monitorsFile.lastModified())
+        }
+        val env = envScale()
+        val rendered = "env=${env?.let { trim(it) } ?: "n/a"}, monitors.xml=${monitors?.let { trim(it) } ?: "n/a"}"
+        val signal = when {
+            monitors != null && monitors.isFinite() && monitors in MIN_SCALE..MAX_SCALE -> monitors
+            env != null && env.isFinite() && env in MIN_SCALE..MAX_SCALE -> env
+            else -> {
+                Logger.d("DesktopScale", "no usable scale signal ($rendered)")
+                return null
+            }
+        }
+        Logger.d(
+            "DesktopScale",
+            "scale=${trim(signal)} (candidates: $rendered, awt=$awtScale)",
         )
-        // First usable value wins, in declaration order. Values within [MIN_SCALE, MAX_SCALE] are
-        // considered; anything else means the file was rewritten by something we do not understand.
-        val best = candidates.firstOrNull { (_, value) ->
-            value != null && value.isFinite() && value in MIN_SCALE..MAX_SCALE
-        }
-        val rendered = candidates.joinToString(", ") { (source, value) ->
-            "$source=${value?.let { trim(it) } ?: "n/a"}"
-        }
-        if (best == null) {
-            Logger.d("DesktopScale", "no usable scale signal ($rendered)")
-            return null
-        }
-        val value = best.second ?: return null
-        // This runs on every poll, so keep it at debug; the watch loop logs only real changes.
-        Logger.d("DesktopScale", "scale=${trim(value)} from ${best.first} (candidates: $rendered)")
-        return value
+        return signal
+    }
+
+    private fun readMutterExperimentalFeatures(): String? {
+        return runCatching {
+            val process = ProcessBuilder("gsettings", "get", "org.gnome.mutter", "experimental-features")
+                .redirectErrorStream(true)
+                .start()
+            process.inputStream.bufferedReader().readText().trim().takeIf { it.isNotEmpty() }
+        }.getOrNull()
     }
 
     private fun trim(value: Float): String =
@@ -166,10 +313,32 @@ internal object DesktopScale {
         return product.takeIf { it > 0f }
     }
 
-    /**
-     * `<scale>` of the primary logical monitor in mutter's monitors.xml, which it rewrites whenever
-     * the user changes scaling — that rewrite is the signal the poll keys off.
-     */
+    data class GdkScaleEnv(val gdkScale: Int, val dpiScale: Float) {
+        val product: Float get() = gdkScale * dpiScale
+    }
+
+    fun gdkEnvFor(product: Float): GdkScaleEnv? {
+        if (!product.isFinite() || product <= 1f) return null
+        val gdkScale = kotlin.math.ceil(product.toDouble()).toInt().coerceAtLeast(2)
+        val dpiScale = product / gdkScale
+        return GdkScaleEnv(gdkScale, dpiScale)
+    }
+
+    fun java2dUiScaleProperty(product: Float): String? {
+        if (!product.isFinite() || product <= 1f) return null
+        if (kotlin.math.abs(product - kotlin.math.round(product)) >= 0.01f) return null
+        return kotlin.math.round(product).toInt().toString()
+    }
+
+    internal fun readMonitorsXmlScale(): Float? = monitorsXmlScale()
+
+    private fun primaryMonitorsXmlFile(): File? {
+        val home = System.getProperty("user.home") ?: return null
+        val preferred = File(home, ".config/monitors.xml")
+        if (preferred.isFile) return preferred
+        return File(home, ".config/gsd-monitors.xml").takeIf { it.isFile }
+    }
+
     private fun monitorsXmlScale(): Float? {
         val home = System.getProperty("user.home") ?: return null
         val candidates = listOf(
@@ -181,8 +350,6 @@ internal object DesktopScale {
         for (file in candidates) {
             val scale = runCatching {
                 val text = file.takeIf { it.isFile }?.readText() ?: return@runCatching null
-                // <scale> is written *before* <primary>, so extract from the whole
-                // <logicalmonitor> block rather than assuming a tag order.
                 val blocks = block.findAll(text).map { it.groupValues[1] }.toList()
                 val primary = blocks.firstOrNull { it.contains("<primary>yes</primary>") }
                 scaleTag.find(primary ?: blocks.firstOrNull() ?: return@runCatching null)

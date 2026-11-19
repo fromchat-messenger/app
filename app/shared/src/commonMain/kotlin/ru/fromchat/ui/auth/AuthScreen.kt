@@ -2,8 +2,6 @@ package ru.fromchat.ui.auth
 
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
@@ -22,13 +20,13 @@ import io.ktor.client.plugins.ClientRequestException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import org.jetbrains.compose.resources.stringResource
-import ru.fromchat.logging.Logger
-import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.crypto.IdentityKeyManager
-import ru.fromchat.api.instance.ServerProbeResult
 import ru.fromchat.api.instance.apiBaseUrlFor
+import ru.fromchat.api.instance.isSslProtocolError
 import ru.fromchat.api.instance.probeServer
+import ru.fromchat.api.instance.ServerProbeResult
+import ru.fromchat.api.instance.takeLastIncognitoTlsProbeFailure
 import ru.fromchat.api.local.cache.CacheContext
 import ru.fromchat.api.local.db.clearAccountCacheOnLogout
 import ru.fromchat.api.schema.core.ErrorResponse
@@ -36,21 +34,33 @@ import ru.fromchat.api.schema.user.auth.LoginResponse
 import ru.fromchat.api.schema.user.auth.RegisterConfirmRequest
 import ru.fromchat.api.schema.user.auth.SmartCaptchaParams
 import ru.fromchat.api.schema.user.auth.YandexOAuthParams
-import ru.fromchat.change_server
+import ru.fromchat.cancel
+import ru.fromchat.config.ServerConfigData
 import ru.fromchat.config.Settings
-import ru.fromchat.ui.LocalNavController
+import ru.fromchat.config.isPrivateOrLocalServerHost
+import ru.fromchat.config.shouldWarnPublicCleartextHttp
+import ru.fromchat.incognito.findIncognitoMitmCertificateException
+import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.security.tls.findMitmCertificateException
+import ru.fromchat.security.tls.isFromChatTlsCertificateError
+import ru.fromchat.incognito.IncognitoOverlaySession
+import ru.fromchat.logging.Logger
+import ru.fromchat.Res
 import ru.fromchat.ui.auth.captcha.SmartCaptchaLog
 import ru.fromchat.ui.auth.captcha.SmartCaptchaNav
 import ru.fromchat.ui.auth.register.confirmPasswordStepPage
 import ru.fromchat.ui.auth.register.profileStepPage
 import ru.fromchat.ui.auth.yandex.yandexIdStepPage
 import ru.fromchat.ui.components.ExpressiveStepFlowScaffold
-import ru.fromchat.ui.components.Text
-import ru.fromchat.ui.components.TextCta
 import ru.fromchat.ui.components.rememberExpressiveStepFlow
 import ru.fromchat.ui.components.showLoggedSnackbar
-import ru.fromchat.ui.theme.extraStatusBars
+import ru.fromchat.ui.components.Text
+import ru.fromchat.ui.incognito.PublicHttpConnectionBypass
+import ru.fromchat.ui.main.settings.server.formatServerEndpointForInput
+import ru.fromchat.ui.security.ConnectionSecurityDialogController
+import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
+import ru.fromchat.ui.theme.extraStatusBars
 import kotlin.time.Duration.Companion.milliseconds
 
 private enum class AuthFlowStep {
@@ -84,13 +94,49 @@ private const val AUTH_SERVER_PROBE_TAG = "AuthServerProbe"
 /** Must cover HTTPS→HTTP fallback plus `/instance_id` (up to 10s per attempt). */
 private const val AUTH_SERVER_PROBE_TIMEOUT_MS = 25_000L
 
-internal suspend fun probeCurrentServer(): Boolean {
+internal sealed interface AuthServerProbeOutcome {
+    data object Ok : AuthServerProbeOutcome
+    data object Failed : AuthServerProbeOutcome
+    data object TlsCertificateRejected : AuthServerProbeOutcome
+    data object PublicHttpUnencrypted : AuthServerProbeOutcome
+    data class MitmCertificateDetected(val marker: String) : AuthServerProbeOutcome
+}
+
+private fun authProbeNeedsPublicHttpWarning(config: ServerConfigData): Boolean =
+    shouldWarnPublicCleartextHttp(config) &&
+        !PublicHttpConnectionBypass.isAllowed(config.serverIp)
+
+private fun authProbeOutcomeFromTlsFailure(
+    tlsFailure: Throwable,
+    config: ServerConfigData,
+): AuthServerProbeOutcome? {
+    findMitmCertificateException(tlsFailure)?.let { mitm ->
+        return AuthServerProbeOutcome.MitmCertificateDetected(mitm.matchedMarker)
+    }
+    findIncognitoMitmCertificateException(tlsFailure)?.let { mitm ->
+        return AuthServerProbeOutcome.MitmCertificateDetected(mitm.matchedMarker)
+    }
+    if (
+        config.httpsEnabled &&
+        !isPrivateOrLocalServerHost(config.serverIp) &&
+        isFromChatTlsCertificateError(tlsFailure)
+    ) {
+        return AuthServerProbeOutcome.TlsCertificateRejected
+    }
+    return null
+}
+
+internal suspend fun probeCurrentServer(): Boolean =
+    probeCurrentServerForAuth() is AuthServerProbeOutcome.Ok
+
+internal suspend fun probeCurrentServerForAuth(): AuthServerProbeOutcome {
     val config = Settings.readServerConfig()
     val apiBase = apiBaseUrlFor(config)
+    takeLastIncognitoTlsProbeFailure()
     Logger.i(
         AUTH_SERVER_PROBE_TAG,
         "probe start storedHost=${config.serverIp} apiPort=${config.apiPort} " +
-            "https=${config.httpsEnabled} url=$apiBase",
+            "https=${config.httpsEnabled} incognito=${IncognitoMode.active} url=$apiBase",
     )
     return runCatching {
         withTimeout(AUTH_SERVER_PROBE_TIMEOUT_MS.milliseconds) {
@@ -105,7 +151,22 @@ internal suspend fun probeCurrentServer(): Boolean {
                 else ->
                     Logger.w(AUTH_SERVER_PROBE_TAG, "probe not supported: $result url=$apiBase")
             }
-            result is ServerProbeResult.Supported
+            val probeOutcome = when {
+                result is ServerProbeResult.Supported -> {
+                    val effective = Settings.readServerConfig()
+                    when {
+                        authProbeNeedsPublicHttpWarning(effective) ->
+                            AuthServerProbeOutcome.PublicHttpUnencrypted
+                        else -> AuthServerProbeOutcome.Ok
+                    }
+                }
+                else -> {
+                    val tlsFailure = takeLastIncognitoTlsProbeFailure()
+                    tlsFailure?.let { authProbeOutcomeFromTlsFailure(it, config) }
+                        ?: AuthServerProbeOutcome.Failed
+                }
+            }
+            probeOutcome
         }
     }.getOrElse { e ->
         Logger.w(
@@ -113,7 +174,8 @@ internal suspend fun probeCurrentServer(): Boolean {
             "probe failed within ${AUTH_SERVER_PROBE_TIMEOUT_MS}ms url=$apiBase",
             e,
         )
-        false
+        authProbeOutcomeFromTlsFailure(e, config)?.let { return it }
+        AuthServerProbeOutcome.Failed
     }
 }
 
@@ -131,11 +193,7 @@ private suspend fun fullLogin(
     ApiClient.bindSession(response)
 
     try {
-        IdentityKeyManager.ensureKeysOnLogin(
-            username = username,
-            password = password,
-            token = response.token,
-        )
+        IdentityKeyManager.ensureKeysOnLogin(password)
     } catch (e: Exception) {
         ApiClient.clearMemorySession()
         throw e
@@ -252,22 +310,11 @@ private suspend fun parseClientError(e: ClientRequestException, fallback: String
 }
 
 @Composable
-internal fun ChangeServerButton(modifier: Modifier = Modifier) {
-    val navController = LocalNavController.current
-
-    TextCta(
-        onClick = { navController.navigate("serverConfig") },
-        modifier = Modifier.padding(horizontal = SettingsStepHorizontalPadding).then(modifier),
-        leadingIcon = Icons.Rounded.Storage,
-    ) {
-        Text(stringResource(Res.string.change_server))
-    }
-}
-
-@Composable
 fun AuthScreen(
     onAuthSuccess: () -> Unit,
     onBackToWelcome: () -> Unit,
+    incognitoFlow: Boolean = false,
+    incognitoOverlayFromChat: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -284,7 +331,39 @@ fun AuthScreen(
     var captchaParams by remember { mutableStateOf(AuthRegisterDraft.captchaParams) }
     var registrationProof by remember { mutableStateOf(AuthRegisterDraft.registrationProof) }
     var captchaToken by remember { mutableStateOf(AuthRegisterDraft.captchaToken) }
+    var incognitoTlsBypassRetryNonce by remember { mutableStateOf(0) }
+    var publicHttpBypassRetryNonce by remember { mutableStateOf(0) }
     val navController = LocalNavController.current
+
+    LaunchedEffect(incognitoFlow) {
+        AuthRegisterDraft.incognitoEnabled = incognitoFlow
+        if (incognitoFlow) {
+            if (!IncognitoMode.active) {
+                runCatching { IncognitoMode.activate() }
+            }
+        } else if (!incognitoOverlayFromChat && IncognitoMode.active) {
+            IncognitoMode.destroy()
+        }
+    }
+
+    LaunchedEffect(incognitoOverlayFromChat) {
+        if (incognitoOverlayFromChat) {
+            IncognitoOverlaySession.beginFromChats()
+        }
+    }
+
+    DisposableEffect(Unit) {
+        ConnectionSecurityDialogController.onBypassConfirmed = {
+            incognitoTlsBypassRetryNonce++
+        }
+        ConnectionSecurityDialogController.onPublicHttpBypassConfirmed = {
+            publicHttpBypassRetryNonce++
+        }
+        onDispose {
+            ConnectionSecurityDialogController.onBypassConfirmed = null
+            ConnectionSecurityDialogController.onPublicHttpBypassConfirmed = null
+        }
+    }
 
     fun persistDraft() {
         AuthRegisterDraft.username = username
@@ -317,7 +396,15 @@ fun AuthScreen(
 
     val wrappedBackToWelcome: () -> Unit = {
         AuthRegisterDraft.clear()
-        onBackToWelcome()
+        if (incognitoOverlayFromChat) {
+            scope.launch {
+                IncognitoOverlaySession.restoreNormalSessionAfterOverlayCancel()
+                onBackToWelcome()
+            }
+        } else {
+            IncognitoMode.destroy()
+            onBackToWelcome()
+        }
     }
 
     val resetToUsername: () -> Unit = {
@@ -473,15 +560,41 @@ fun AuthScreen(
                 usernameStepPage(
                     username = username,
                     onUsernameChange = { username = it },
+                    incognitoEnabled = incognitoFlow,
+                    incognitoFlow = incognitoFlow,
+                    hideAuthRouteSwitch = incognitoOverlayFromChat,
+                    mitmBypassRetryNonce = incognitoTlsBypassRetryNonce,
+                    publicHttpBypassRetryNonce = publicHttpBypassRetryNonce,
                     onContinue = {
                         flowState.pagerState.animateScrollToPage(AuthFlowStep.Password.ordinal)
                     },
                     onSnackbar = ::snackbar,
+                    onTlsCertificateRejected = {
+                        val cfg = Settings.serverConfig
+                        ConnectionSecurityDialogController.presentTlsCertificateRejected(
+                            formatServerEndpointForInput(cfg.serverIp, cfg.apiPort),
+                        )
+                    },
+                    onMitmCertificateDetected = { marker ->
+                        val cfg = Settings.serverConfig
+                        ConnectionSecurityDialogController.presentMitm(
+                            marker,
+                            formatServerEndpointForInput(cfg.serverIp, cfg.apiPort),
+                        )
+                    },
+                    onPublicHttpWarning = {
+                        val cfg = Settings.serverConfig
+                        ConnectionSecurityDialogController.presentPublicHttpWarning(
+                            formatServerEndpointForInput(cfg.serverIp, cfg.apiPort),
+                        )
+                    },
                 ),
                 passwordStepPage(
                     username = username,
                     password = password,
                     onPasswordChange = { password = it },
+                    incognitoFlow = incognitoFlow,
+                    hideAuthRouteSwitch = incognitoOverlayFromChat,
                     onLoginSuccess = wrappedAuthSuccess,
                     onNeedsRegister = { required, params, captchaReq, captcha ->
                         Logger.i(

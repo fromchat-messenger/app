@@ -28,4 +28,3 @@ actual object Logger {
         Log.wtf(tag, message, throwable)
     }
 }
-

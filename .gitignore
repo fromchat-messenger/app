@@ -11,6 +11,7 @@
 .idea/deviceManager.xml
 .idea/deviceHardwareInput.xml
 .kotlin
+.cache/run-linux-prl
 
 .DS_Store
 build

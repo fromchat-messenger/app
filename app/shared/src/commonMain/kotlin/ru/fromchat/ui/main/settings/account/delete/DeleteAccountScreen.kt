@@ -13,6 +13,7 @@ import io.ktor.client.plugins.ClientRequestException
 import kotlinx.coroutines.launch
 import ru.fromchat.api.ApiClient
 import ru.fromchat.api.local.WebSocketManager
+import ru.fromchat.ui.auth.resetPreAuthDraft
 import ru.fromchat.ui.components.ExpressiveStepFlowScaffold
 import ru.fromchat.ui.components.rememberExpressiveStepFlow
 import ru.fromchat.ui.components.showReplacingSnackbar
@@ -112,6 +113,7 @@ fun DeleteAccountScreen(onBack: () -> Unit, onDeleted: () -> Unit) {
                         WebSocketManager.disconnect()
                         ApiClient.clearLocalSession()
                         DeleteAccountDraft.clear()
+                        resetPreAuthDraft()
                         onDeleted()
                     }
                 },

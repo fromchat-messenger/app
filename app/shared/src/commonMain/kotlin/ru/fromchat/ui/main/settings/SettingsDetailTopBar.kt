@@ -3,6 +3,7 @@ package ru.fromchat.ui.main.settings
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.animate
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
 import ru.fromchat.ui.components.ChromeBackIconButton
 import ru.fromchat.ui.components.ChromeCloseIconButton
 import androidx.compose.material3.MediumTopAppBar
@@ -15,7 +16,11 @@ import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -31,12 +36,14 @@ import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import ru.fromchat.utils.WindowWidthSizeClass
 import ru.fromchat.utils.currentWindowAdaptiveInfo
+import ru.fromchat.utils.toDp
 import ru.fromchat.utils.widthSizeClass
 import kotlin.math.abs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.theme.extraStatusBars
 import ru.fromchat.ui.main.desktop.detailPaneShowBackButton
 import kotlin.time.Duration.Companion.milliseconds
@@ -44,16 +51,39 @@ import kotlin.time.Duration.Companion.milliseconds
 /** Idle gap after mouse-wheel / trackpad deltas before snapping the collapsing bar. */
 private const val AppBarWheelSettleDelayMs = 64L
 
+private val ZeroWindowInsets = WindowInsets(0, 0, 0, 0)
+
+/** Settings routes embedded in a floating dialog (pre-auth connection / about). */
+internal val LocalSettingsDetailInDialog = staticCompositionLocalOf { false }
+
 /** @see detailPaneShowBackButton */
 @Composable
-fun settingsDetailShowBackButton(): Boolean = detailPaneShowBackButton()
+fun settingsDetailShowBackButton(): Boolean {
+    if (LocalSettingsDetailInDialog.current) {
+        return LocalNavController.current.previousBackStackEntry != null
+    }
+    return detailPaneShowBackButton()
+}
 
 @Composable
-fun settingsDetailWindowInsets(): WindowInsets = WindowInsets.extraStatusBars
+fun settingsDetailWindowInsets(): WindowInsets =
+    if (LocalSettingsDetailInDialog.current) ZeroWindowInsets else WindowInsets.extraStatusBars
+
+@Composable
+fun settingsDetailScaffoldContentWindowInsets(): WindowInsets =
+    if (LocalSettingsDetailInDialog.current) ZeroWindowInsets else WindowInsets.navigationBars
+
+@Composable
+fun settingsDetailOverlayTopClearance(topBarBodyHeight: Dp = 68.dp): Dp {
+    if (LocalSettingsDetailInDialog.current) return topBarBodyHeight
+    val density = LocalDensity.current
+    return WindowInsets.extraStatusBars.getTop(density).toDp(density) + topBarBodyHeight
+}
 
 @Composable
 fun settingsDetailUseCollapsingTopBar(): Boolean =
-    currentWindowAdaptiveInfo().widthSizeClass == WindowWidthSizeClass.COMPACT
+  !LocalSettingsDetailInDialog.current &&
+        currentWindowAdaptiveInfo().widthSizeClass == WindowWidthSizeClass.COMPACT
 
 @Composable
 fun rememberSettingsDetailHazeState(): HazeState = rememberHazeState()

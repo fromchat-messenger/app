@@ -168,6 +168,9 @@ operator fun PaddingValues.plus(other: PaddingValues) = PaddingValues(
 
 expect val materialYouAvailable: Boolean
 
+/** Desktop JVM skips the expressive-step pager focus gate (no touch-IME race). */
+expect val expressiveStepFieldsFocusableDuringPagerMotion: Boolean
+
 inline fun <T> T.require( message: String, condition: (T) -> Boolean): T {
     require(condition(this)) { message }
     return this

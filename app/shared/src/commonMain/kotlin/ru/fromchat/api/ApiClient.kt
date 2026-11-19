@@ -6,6 +6,7 @@ import ru.fromchat.utils.files.PlatformFileSystem
 import ru.fromchat.utils.settings.secureSettings
 import ru.fromchat.utils.settings.settings
 import io.ktor.client.HttpClient
+import io.ktor.client.HttpClientConfig
 import io.ktor.client.call.body
 import io.ktor.client.network.sockets.ConnectTimeoutException
 import io.ktor.client.network.sockets.SocketTimeoutException
@@ -38,57 +39,68 @@ import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import ru.fromchat.api.crypto.IdentityKeyManager
 import ru.fromchat.api.crypto.transport.TransportCiphertext
 import ru.fromchat.api.crypto.transport.TransportCrypto
+import ru.fromchat.api.instance.apiBaseUrlFor
 import ru.fromchat.api.instance.InstanceIdGuard
 import ru.fromchat.api.instance.InstanceIdResolveResult
 import ru.fromchat.api.instance.resolveInstanceId
-import ru.fromchat.api.push.uploadPendingFcmTokenIfAvailable
-import ru.fromchat.api.push.unregisterFcmTokenFromServer
-import ru.fromchat.api.sync.PublicChatProfileSync
-import ru.fromchat.api.sync.UpdateSyncManager
-import ru.fromchat.api.local.WebSocketManager
 import ru.fromchat.api.local.cache.CacheContext
+import ru.fromchat.api.local.cache.readOutboundFileBytes
 import ru.fromchat.api.local.cache.readOutboundFileBytes
 import ru.fromchat.api.local.db.clearAccountCacheOnLogout
 import ru.fromchat.api.local.db.store.ProfileCache
 import ru.fromchat.api.local.download.streamEncryptedFileToDisk
 import ru.fromchat.api.local.send.scheduleOutboxProcessing
+import ru.fromchat.api.local.WebSocketManager
+import ru.fromchat.api.push.unregisterFcmTokenFromServer
+import ru.fromchat.api.push.uploadPendingFcmTokenIfAvailable
 import ru.fromchat.api.schema.calls.CallSignalingLiveKitControl
 import ru.fromchat.api.schema.calls.CallSignalingLiveKitPayload
 import ru.fromchat.api.schema.calls.LiveKitTokenRequest
 import ru.fromchat.api.schema.calls.LiveKitTokenResponse
+import ru.fromchat.api.schema.chats.publicchat.PublicChatProfile
 import ru.fromchat.api.schema.core.SimpleStatusResponse
-import ru.fromchat.api.schema.messages.MarkReadRequest
-import ru.fromchat.api.schema.messages.MessagesResponse
 import ru.fromchat.api.schema.messages.dm.DmArchiveRequest
 import ru.fromchat.api.schema.messages.dm.DmConversation
 import ru.fromchat.api.schema.messages.dm.DmConversationsResponse
 import ru.fromchat.api.schema.messages.dm.DmHistoryResponse
-import ru.fromchat.api.schema.messages.dm.EditDmRequest
 import ru.fromchat.api.schema.messages.dm.DmMarkReadRequest
+import ru.fromchat.api.crypto.buildE2eeDmEnvelope
+import ru.fromchat.api.instance.InstanceEncryptionMode
+import ru.fromchat.api.instance.InstanceEncryptionStore
+import ru.fromchat.api.schema.messages.dm.EditDmRequest
+import ru.fromchat.api.schema.messages.dm.SendDmEnvelopeRequest
 import ru.fromchat.api.schema.messages.dm.SendDmFile
 import ru.fromchat.api.schema.messages.dm.SendDmRequest
+import ru.fromchat.api.schema.instance.InstanceInfoResponse
 import ru.fromchat.api.schema.messages.dm.upload.DmUploadChunkRequest
 import ru.fromchat.api.schema.messages.dm.upload.DmUploadChunkResponse
 import ru.fromchat.api.schema.messages.dm.upload.DmUploadCompleteResponse
 import ru.fromchat.api.schema.messages.dm.upload.DmUploadInitRequest
 import ru.fromchat.api.schema.messages.dm.upload.DmUploadInitResponse
 import ru.fromchat.api.schema.messages.dm.upload.DmUploadStatusResponse
-import ru.fromchat.api.schema.chats.publicchat.PublicChatProfile
+import ru.fromchat.api.schema.messages.MarkReadRequest
+import ru.fromchat.api.schema.messages.MessagesResponse
 import ru.fromchat.api.schema.messages.publicchat.SendMessageRequest
 import ru.fromchat.api.schema.messages.publicchat.upload.PublicUploadChunkRequest
 import ru.fromchat.api.schema.messages.publicchat.upload.PublicUploadChunkResponse
@@ -99,16 +111,10 @@ import ru.fromchat.api.schema.messages.publicchat.upload.PublicUploadStatusRespo
 import ru.fromchat.api.schema.server.RegisteredUserCountResponse
 import ru.fromchat.api.schema.server.ServerInstanceIdResponse
 import ru.fromchat.api.schema.server.TransportKeyResponse
-import ru.fromchat.api.schema.user.ChangePasswordApiRequest
-import ru.fromchat.api.schema.user.DeleteAccountRequest
-import ru.fromchat.api.schema.user.FcmTokenRequest
-import ru.fromchat.api.schema.user.User
-import ru.fromchat.api.schema.user.UsersSearchResponse
-import ru.fromchat.api.schema.user.VerifyPasswordRequest
+import ru.fromchat.api.schema.user.auth.AccountYandexResponse
 import ru.fromchat.api.schema.user.auth.AuthPasswordStepRequest
 import ru.fromchat.api.schema.user.auth.AuthUsernameStepRequest
 import ru.fromchat.api.schema.user.auth.AuthUsernameStepResponse
-import ru.fromchat.api.schema.user.auth.AccountYandexResponse
 import ru.fromchat.api.schema.user.auth.ChangeYandexRequest
 import ru.fromchat.api.schema.user.auth.ChangeYandexResponse
 import ru.fromchat.api.schema.user.auth.CheckAuthResponse
@@ -119,8 +125,11 @@ import ru.fromchat.api.schema.user.auth.SmartCaptchaParams
 import ru.fromchat.api.schema.user.auth.YandexExchangeRequest
 import ru.fromchat.api.schema.user.auth.YandexExchangeResponse
 import ru.fromchat.api.schema.user.auth.YandexOAuthParams
+import ru.fromchat.api.schema.user.ChangePasswordApiRequest
+import ru.fromchat.api.schema.user.DeleteAccountRequest
 import ru.fromchat.api.schema.user.devices.DeviceSessionInfo
 import ru.fromchat.api.schema.user.devices.DevicesListResponse
+import ru.fromchat.api.schema.user.FcmTokenRequest
 import ru.fromchat.api.schema.user.keys.BackupBlobRequest
 import ru.fromchat.api.schema.user.keys.BackupBlobResponse
 import ru.fromchat.api.schema.user.keys.PublicKeyResponse
@@ -129,25 +138,42 @@ import ru.fromchat.api.schema.user.profile.UpdateProfileRequest
 import ru.fromchat.api.schema.user.profile.UpdateProfileResponse
 import ru.fromchat.api.schema.user.profile.UserProfile
 import ru.fromchat.api.schema.user.profile.VerifyResponse
-import ru.fromchat.api.schema.websocket.WebSocketCredentials
-import ru.fromchat.api.schema.websocket.WebSocketMessage
+import ru.fromchat.api.schema.user.User
+import ru.fromchat.api.schema.user.UsersSearchResponse
+import ru.fromchat.api.schema.user.VerifyPasswordRequest
 import ru.fromchat.api.schema.websocket.requests.WebSocketDeleteDmRequest
 import ru.fromchat.api.schema.websocket.requests.WebSocketDeleteMessageRequest
 import ru.fromchat.api.schema.websocket.requests.WebSocketEditMessageRequest
 import ru.fromchat.api.schema.websocket.requests.WebSocketSendMessageRequest
 import ru.fromchat.api.schema.websocket.types.DmTypingData
 import ru.fromchat.api.schema.websocket.types.SubscribeStatusData
+import ru.fromchat.api.schema.websocket.WebSocketCredentials
+import ru.fromchat.api.schema.websocket.WebSocketMessage
+import ru.fromchat.api.sync.PublicChatProfileSync
+import ru.fromchat.api.sync.UpdateSyncManager
 import ru.fromchat.config.ServerConfig
 import ru.fromchat.config.Settings
+import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.network.proxy.ProxyRoute
+import ru.fromchat.network.proxy.ProxyRuntime
+import ru.fromchat.network.proxy.installProxyTrafficGate
 import kotlin.concurrent.Volatile
 import kotlin.time.Duration.Companion.milliseconds
+
+/** TLS policy for [createPlatformHttpClient] (probe vs normal app traffic). */
+enum class HttpClientTlsProfile {
+    App,
+    ProxyProbe,
+}
 
 /**
  * Creates a platform-specific HTTP client that supports WebSockets
  * The config block is applied to configure plugins like WebSockets, JSON, etc.
  */
 expect fun createPlatformHttpClient(
-    block: io.ktor.client.HttpClientConfig<*>.() -> Unit = {}
+    proxyRoute: ProxyRoute? = null,
+    tlsProfile: HttpClientTlsProfile = HttpClientTlsProfile.App,
+    block: io.ktor.client.HttpClientConfig<*>.() -> Unit = {},
 ): HttpClient
 
 object ApiClient {
@@ -227,113 +253,71 @@ object ApiClient {
 
     // --- HTTP clients ---
 
-    val http = createPlatformHttpClient {
+    val http: HttpClient
+        get() = HttpClients.http
+
+    private val httpProbe: HttpClient
+        get() = HttpClients.httpProbe
+
+    fun rebuildHttpClients() {
+        HttpClients.rebuildHttpClients()
+    }
+
+    /** GET-only client: no global 401 handler (used when probing a not-yet-saved server URL). */
+    internal fun HttpClientConfig<*>.configureHttpProbeClient(
+        recordInstanceId: Boolean = true,
+    ) {
+        installProxyTrafficGate()
         install(ContentNegotiation) {
             json(json)
         }
-
         install(Logging) {
             logger = Logger.SIMPLE
             level = LogLevel.INFO
         }
-
-        install(WebSockets) {
-            pingInterval = 5000.milliseconds
-        }
-
-        val currentDevice = currentDeviceInfo()
-        val osName = currentDevice.osName?.takeIfNotBlank()
-        val osVersion = currentDevice.osVersion?.takeIfNotBlank()
-        val brand = currentDevice.brand?.takeIfNotBlank()
-        val model = currentDevice.model?.takeIfNotBlank()
-        val userAgent = buildLoginUserAgent(
-            osName = osName,
-            osVersion = osVersion,
-            model = model,
-            brand = brand
-        )
-
         defaultRequest {
-            token?.let { authToken ->
-                bearerAuth(authToken)
+            currentDeviceInfo().let { device ->
+                header(
+                    "User-Agent",
+                    buildLoginUserAgent(
+                        osName = device.osName?.takeIfNotBlank(),
+                        osVersion = device.osVersion?.takeIfNotBlank(),
+                        model = device.model?.takeIfNotBlank(),
+                        brand = device.brand?.takeIfNotBlank(),
+                    ),
+                )
             }
-            header("User-Agent", userAgent)
+            header(HttpHeaders.Connection, "close")
+            if (IncognitoMode.active) {
+                header(INCOGNITO_REQUEST_HEADER, "1")
+            }
         }
-
-        // Handle HTTP auth errors globally.
-        // - 401 => token/session invalid, clear auth state and trigger auth recovery flow.
-        // - 403 => forbidden, keep session intact (used for read-only/suspension workflows).
         HttpResponseValidator {
             validateResponse { response ->
-                val instanceHeader = response.headers[InstanceIdGuard.INSTANCE_ID_HEADER]
-                runCatching {
-                    ServerConfig.serverConfig.value?.let { cfg ->
-                        InstanceIdGuard.onResponseHeader(instanceHeader, cfg)
+                if (recordInstanceId) {
+                    val instanceHeader = response.headers[InstanceIdGuard.INSTANCE_ID_HEADER]
+                    runCatching {
+                        InstanceIdGuard.onResponseHeader(instanceHeader)
                     }
                 }
-                if (response.status.value == 401) {
-                    val path = response.call.request.url.encodedPath
-                    val isCredentialCheck = path.endsWith("/auth/steps/password") || path.endsWith("/auth/steps/register/confirm")
-                    if (!isCredentialCheck && !logoutInProgress) {
-                        MainScope().launch {
-                            runCatching { WebSocketManager.disconnect() }
-                            runCatching { clearLocalSession() }
-                            onAuthError?.invoke()
-                        }
-                    }
-                }
-                if (response.status.value == 403) {
-                    handleForbiddenAsPotentialSuspension(response)
-                }
-
-                if (response.status.value in 200..299 && token != null) {
-                    WebSocketManager.onServerLikelyReachable()
-                }
-
                 if (response.status.value !in (200..299) + 101) {
                     throw ClientRequestException(
                         response,
-                        response.status.description
+                        response.status.description,
                     )
                 }
             }
         }
     }
 
-    /** GET-only client: no global 401 handler (used when probing a not-yet-saved server URL). */
-    private val httpProbe by lazy {
-        createPlatformHttpClient {
-            install(ContentNegotiation) {
-                json(json)
-            }
-            install(Logging) {
-                logger = Logger.SIMPLE
-                level = LogLevel.INFO
-            }
-            val currentDevice = currentDeviceInfo()
-            val userAgent = buildLoginUserAgent(
-                osName = currentDevice.osName?.takeIfNotBlank(),
-                osVersion = currentDevice.osVersion?.takeIfNotBlank(),
-                model = currentDevice.model?.takeIfNotBlank(),
-                brand = currentDevice.brand?.takeIfNotBlank(),
-            )
-            defaultRequest {
-                header("User-Agent", userAgent)
-            }
-            HttpResponseValidator {
-                validateResponse { response ->
-                    val instanceHeader = response.headers[InstanceIdGuard.INSTANCE_ID_HEADER]
-                    runCatching {
-                        InstanceIdGuard.onResponseHeader(instanceHeader)
-                    }
-                    if (response.status.value !in (200..299) + 101) {
-                        throw ClientRequestException(
-                            response,
-                            response.status.description,
-                        )
-                    }
-                }
-            }
+    private suspend inline fun <T> withEphemeralHttpProbe(crossinline request: suspend HttpClient.() -> T): T {
+        val client = createPlatformHttpClient(proxyRoute = ProxyRuntime.currentRoute) {
+            configureHttpProbeClient()
+        }
+        return try {
+            client.request()
+        } finally {
+            client.close()
         }
     }
 
@@ -345,9 +329,11 @@ object ApiClient {
     }
 
     /** Minimal TCP/HTTP check: true if a GET succeeds without throwing (any HTTP status). */
-    suspend fun probeHttpGet(url: String): Boolean =
+    suspend fun probeHttpGet(url: String, bypassProxy: Boolean = false): Boolean =
         runCatching {
-            httpProbe.get(url.trim())
+            (
+                if (bypassProxy && !ProxyRuntime.selectionUsesProxy()) HttpClients.callDirectHttp else httpProbe
+            ).get(url.trim())
         }.isSuccess
 
     sealed interface CheckAuthResult {
@@ -424,7 +410,7 @@ object ApiClient {
             .replace(".", "_")
             .trim('_')
 
-    private fun buildLoginUserAgent(
+    internal fun buildLoginUserAgent(
         osName: String?,
         osVersion: String?,
         model: String?,
@@ -450,15 +436,23 @@ object ApiClient {
     @Volatile
     var user: User? = null
 
+    /** Device session id from login / JWT; used to match [session_ended] updates. */
     @Volatile
-    private var logoutInProgress = false
+    var currentSessionId: String? = null
+        private set
+
+    @Volatile
+    internal var logoutInProgress = false
 
     var onAuthError: (() -> Unit)? = null
+
+    private const val SETTINGS_SESSION_ID = "device_session_id"
+    private const val INCOGNITO_REQUEST_HEADER = "X-FromChat-Incognito"
 
     private fun getSuspensionReasonFromForbiddenResponse(response: HttpResponse): String? =
         response.headers["suspension_reason"]?.trim()?.takeIf { it.isNotBlank() }
 
-    private fun handleForbiddenAsPotentialSuspension(response: HttpResponse) {
+    internal fun handleForbiddenAsPotentialSuspension(response: HttpResponse) {
         if (response.status.value != 403) return
         getSuspensionReasonFromForbiddenResponse(response)?.let { reason ->
             setSuspended(reason)
@@ -477,20 +471,36 @@ object ApiClient {
                     user = json.decodeFromString(userInfo)
                     syncSuspensionStateFromUser(user)
                 }
+                currentSessionId = settings.getString(SETTINGS_SESSION_ID, "")
+                    .ifBlank { null }
+                    ?: sessionIdFromJwt(savedToken)
             }
         } catch (e: Exception) {
             ru.fromchat.logging.Logger.e("ApiClient", "Error loading persisted data", e)
         }
     }
 
+    private fun sessionIdFromJwt(token: String): String? {
+        val payload = token.split('.').getOrNull(1) ?: return null
+        return runCatching {
+            val padded = payload + "=".repeat((4 - payload.length % 4) % 4)
+            val jsonText = Base64.decode(padded.replace('-', '+').replace('_', '/'))
+                .decodeToString()
+            json.parseToJsonElement(jsonText).jsonObject["session_id"]?.jsonPrimitive?.contentOrNull
+        }.getOrNull()
+    }
+
+
+    /** Auth uses the active server config (scheme chosen by probe / server settings). */
+    private fun authHttpBaseUrl(): String = ServerConfig.apiBaseUrl.trimEnd('/')
 
     suspend fun authUsernameStep(username: String): AuthUsernameStepResponse =
-        httpProbe
-            .post("${ServerConfig.apiBaseUrl}/auth/steps/username") {
+        withEphemeralHttpProbe {
+            post("${authHttpBaseUrl()}/auth/steps/username") {
                 contentType(ContentType.Application.Json)
                 setBody(AuthUsernameStepRequest(username = username.trim()))
-            }
-            .body()
+            }.body()
+        }
 
     sealed interface AuthPasswordStepOutcome {
         data class LoggedIn(val response: LoginResponse) : AuthPasswordStepOutcome
@@ -503,8 +513,8 @@ object ApiClient {
     }
 
     suspend fun authPasswordStep(username: String, passwordDerived: String): AuthPasswordStepOutcome {
-        val raw = httpProbe
-            .post("${ServerConfig.apiBaseUrl}/auth/steps/password") {
+        val raw = withEphemeralHttpProbe {
+            post("${authHttpBaseUrl()}/auth/steps/password") {
                 contentType(ContentType.Application.Json)
                 setBody(
                     AuthPasswordStepRequest(
@@ -512,8 +522,8 @@ object ApiClient {
                         password = passwordDerived,
                     ),
                 )
-            }
-            .body<JsonObject>()
+            }.body<JsonObject>()
+        }
         val status = raw["status"]?.jsonPrimitive?.contentOrNull
         return when (status) {
             "needs_register" -> {
@@ -572,12 +582,15 @@ object ApiClient {
     fun bindSession(loginResponse: LoginResponse) {
         token = loginResponse.token
         user = loginResponse.user
+        currentSessionId = loginResponse.sessionId?.takeIf { it.isNotBlank() }
+            ?: sessionIdFromJwt(loginResponse.token)
         syncSuspensionStateFromUser(user)
     }
 
     fun clearMemorySession() {
         token = null
         user = null
+        currentSessionId = null
         clearSuspensionState()
     }
 
@@ -585,6 +598,14 @@ object ApiClient {
         secureSettings.putString("auth_token", loginResponse.token)
         settings.putString("user_info", json.encodeToString(loginResponse.user))
         settings.putInt("current_user_id", loginResponse.user.id)
+        val sid = loginResponse.sessionId?.takeIf { it.isNotBlank() }
+            ?: sessionIdFromJwt(loginResponse.token)
+        if (sid != null) {
+            settings.putString(SETTINGS_SESSION_ID, sid)
+            currentSessionId = sid
+        } else {
+            settings.remove(SETTINGS_SESSION_ID)
+        }
         MainScope().launch {
             runCatching {
                 uploadPendingFcmTokenIfAvailable()
@@ -825,8 +846,13 @@ object ApiClient {
             }
             .body()
 
+    suspend fun fetchInstanceInfo(apiBaseUrl: String = ServerConfig.apiBaseUrl): InstanceInfoResponse =
+        httpProbe.get("$apiBaseUrl/instance/info") {
+            contentType(ContentType.Application.Json)
+        }.body()
+
     /**
-     * Send a direct message with transport-layer encryption, mirroring the Web client's /dm/send flow.
+     * Send a direct message using compliance transport or E2EE envelope depending on instance policy.
      */
     suspend fun sendDm(
         recipientId: Int,
@@ -835,7 +861,41 @@ object ApiClient {
         replyToId: Int? = null,
         transportFiles: List<SendDmFile> = emptyList(),
         uploadedFileIds: List<String> = emptyList(),
-        preparedTransport: TransportCiphertext? = null
+        preparedTransport: TransportCiphertext? = null,
+        /** Demo/debug: force the wire mode/version even if the live store moved. */
+        policyOverride: ru.fromchat.api.instance.InstanceEncryptionSnapshot? = null,
+    ) {
+        val policy = policyOverride ?: InstanceEncryptionStore.ensureActivePolicy()
+        when (policy.mode) {
+            InstanceEncryptionMode.Compliance -> sendDmComplianceTransport(
+                recipientId = recipientId,
+                plaintext = plaintext,
+                clientMessageId = clientMessageId,
+                replyToId = replyToId,
+                transportFiles = transportFiles,
+                uploadedFileIds = uploadedFileIds,
+                preparedTransport = preparedTransport,
+                policy = policy,
+            )
+            InstanceEncryptionMode.E2ee -> sendDmE2eeEnvelope(
+                recipientId = recipientId,
+                plaintext = plaintext,
+                clientMessageId = clientMessageId,
+                replyToId = replyToId,
+                policy = policy,
+            )
+        }
+    }
+
+    private suspend fun sendDmComplianceTransport(
+        recipientId: Int,
+        plaintext: String,
+        clientMessageId: String?,
+        replyToId: Int?,
+        transportFiles: List<SendDmFile>,
+        uploadedFileIds: List<String>,
+        preparedTransport: TransportCiphertext?,
+        policy: ru.fromchat.api.instance.InstanceEncryptionSnapshot,
     ) {
         val keys = IdentityKeyManager.getCurrentKeys()
             ?: IdentityKeyManager.restoreFromLocal()
@@ -861,6 +921,8 @@ object ApiClient {
             transportCiphertextB64 = transportCipher.ciphertextB64,
             senderPublicKeyB64 = senderPublicKeyB64,
             recipientPublicKeyB64 = recipientPublicKey,
+            encryptionMode = policy.mode.wireValue,
+            encryptionModeVersion = policy.version,
             clientMessageId = clientMessageId,
             replyToId = replyToId,
             transportFiles = transportFiles,
@@ -868,6 +930,36 @@ object ApiClient {
         )
 
         http.post("${ServerConfig.apiBaseUrl}/dm/send") {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+    }
+
+    private suspend fun sendDmE2eeEnvelope(
+        recipientId: Int,
+        plaintext: String,
+        clientMessageId: String?,
+        replyToId: Int?,
+        policy: ru.fromchat.api.instance.InstanceEncryptionSnapshot,
+    ) {
+        val keys = IdentityKeyManager.getCurrentKeys()
+            ?: IdentityKeyManager.restoreFromLocal()
+            ?: error("Identity keys not initialized. Please log in again.")
+        val recipientPublicKey = getUserPublicKey(recipientId).publicKey
+            ?: error("Recipient public key not found")
+        val built = buildE2eeDmEnvelope(plaintext, keys.publicKey, recipientPublicKey)
+        val body = SendDmEnvelopeRequest(
+            recipientId = recipientId,
+            ivB64 = built.ivB64,
+            ciphertextB64 = built.ciphertextB64,
+            senderWrappedMekB64 = built.senderWrappedMekB64,
+            recipientWrappedMekB64 = built.recipientWrappedMekB64,
+            encryptionMode = policy.mode.wireValue,
+            encryptionModeVersion = policy.version,
+            clientMessageId = clientMessageId,
+            replyToId = replyToId,
+        )
+        http.post("${ServerConfig.apiBaseUrl}/dm/send-envelope") {
             contentType(ContentType.Application.Json)
             setBody(body)
         }
@@ -1619,37 +1711,137 @@ object ApiClient {
      * or together with [logout] after remote logout).
      */
     suspend fun clearLocalSession() {
-        val instanceId = runCatching { CacheContext.activeInstanceId.value.trim() }.getOrDefault("")
-        runCatching { clearAccountCacheOnLogout(instanceId) }
-        val uid = user?.id
-        secureSettings.remove("auth_token")
-        settings.remove("user_info")
-        settings.remove("current_user_id")
-        settings.remove("pending_fcm_token")
-        settings.remove("current_fcm_token")
+        try {
+            val instanceId = runCatching { CacheContext.activeInstanceId.value.trim() }.getOrDefault("")
+            runCatching { clearAccountCacheOnLogout(instanceId) }
+            val uid = user?.id
+            secureSettings.remove("auth_token")
+            settings.remove("user_info")
+            settings.remove("current_user_id")
+            settings.remove("pending_fcm_token")
+            settings.remove("current_fcm_token")
+            settings.remove(SETTINGS_SESSION_ID)
+            token = null
+            user = null
+            currentSessionId = null
+            clearSuspensionState()
+            uid?.let { UpdateSyncManager.clearPersistedSeqForUser(it) }
+            UpdateSyncManager.resetInMemoryOnLogout()
+            runCatching { IdentityKeyManager.clearLocalKeys() }
+            runCatching { CacheContext.clearActive() }
+        } finally {
+            // Always wipe incognito volume on any local session end (logout, delete, auth error).
+            IncognitoMode.destroy()
+        }
+    }
+
+    /**
+     * Drops in-memory auth immediately (UI thread safe). Disk/incognito wipe still needs
+     * [clearLocalSession] / [clearLocalSessionBlocking].
+     */
+    fun invalidateSessionForUi() {
         token = null
         user = null
+        currentSessionId = null
         clearSuspensionState()
-        uid?.let { UpdateSyncManager.clearPersistedSeqForUser(it) }
-        UpdateSyncManager.resetInMemoryOnLogout()
-        runCatching { IdentityKeyManager.clearLocalKeys() }
         runCatching { CacheContext.clearActive() }
     }
 
+    /**
+     * Runs [clearLocalSession] synchronously (e.g. desktop window close before process stays in tray).
+     */
+    fun clearLocalSessionBlocking() {
+        runBlocking(Dispatchers.Default) {
+            clearLocalSession()
+        }
+    }
+
+    /** GET /logout; never throws. 401/network failures are ignored so local wipe can proceed. */
+    private suspend fun requestServerLogoutIgnoringErrors(authToken: String? = null) {
+        val bearer = authToken?.trim()?.takeIf { it.isNotEmpty() } ?: token
+        runCatching {
+            http.get("${ServerConfig.apiBaseUrl}/logout") {
+                bearer?.let { bearerAuth(it) }
+            }
+        }.onFailure { e ->
+            ru.fromchat.logging.Logger.w("ApiClient", "Server logout failed (continuing local wipe)", e)
+        }
+    }
+
+    /**
+     * Best-effort server logout after local session was already cleared.
+     * Pass [authToken] snapped before wipe — [token] is already null.
+     */
+    suspend fun remoteLogoutBestEffortOnly(
+        authToken: String?,
+        timeout: Duration = 5.seconds,
+    ) {
+        val bearer = authToken?.trim()?.takeIf { it.isNotEmpty() } ?: return
+        val wasInProgress = logoutInProgress
+        logoutInProgress = true
+        try {
+            withTimeoutOrNull(timeout) {
+                requestServerLogoutIgnoringErrors(bearer)
+            }
+        } finally {
+            logoutInProgress = wasInProgress
+        }
+    }
+
+    /**
+     * Server logout + local wipe. Prefer [logoutBestEffort] when the UI must not wait.
+     * Local wipe always runs even if the server call fails.
+     */
     suspend fun logout() {
-        if (logoutInProgress) return
+        if (logoutInProgress) {
+            runCatching { clearLocalSession() }
+            return
+        }
         logoutInProgress = true
         try {
             runCatching { WebSocketManager.disconnect() }
             runCatching { unregisterFcmTokenFromServer() }
-            runCatching {
-                http.get("${ServerConfig.apiBaseUrl}/logout")
-            }.onFailure { e ->
-                ru.fromchat.logging.Logger.e("ApiClient", "Server logout failed", e)
-            }
-            clearLocalSession()
+            requestServerLogoutIgnoringErrors()
         } finally {
+            runCatching { clearLocalSession() }
             logoutInProgress = false
+        }
+    }
+
+    /**
+     * Best-effort server logout bounded by [timeout], then always [clearLocalSession].
+     * Safe to launch in the background while the window closes immediately.
+     * Local wipe always runs even if the server call fails or times out.
+     */
+    suspend fun logoutBestEffort(timeout: Duration = 5.seconds) {
+        if (logoutInProgress) {
+            runCatching { clearLocalSession() }
+            return
+        }
+        logoutInProgress = true
+        try {
+            runCatching { WebSocketManager.disconnect() }
+            withTimeoutOrNull(timeout) {
+                runCatching { unregisterFcmTokenFromServer() }
+                requestServerLogoutIgnoringErrors()
+            }
+        } catch (e: TimeoutCancellationException) {
+            ru.fromchat.logging.Logger.w("ApiClient", "logoutBestEffort timed out after $timeout", e)
+        } finally {
+            runCatching { clearLocalSession() }
+            logoutInProgress = false
+        }
+    }
+
+    /** Handle durable/ephemeral [session_ended] for this device session. */
+    fun onSessionEndedFromServer(sessionId: String?) {
+        val mine = currentSessionId
+        if (sessionId != null && mine != null && sessionId != mine) return
+        if (logoutInProgress) return
+        MainScope().launch {
+            runCatching { WebSocketManager.disconnect() }
+            runCatching { clearLocalSession() }
+            onAuthError?.invoke()
         }
     }
 

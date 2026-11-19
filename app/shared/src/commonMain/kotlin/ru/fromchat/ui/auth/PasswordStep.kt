@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -26,6 +27,7 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
 import ru.fromchat.auth_rate_limit
+import ru.fromchat.auth_incognito_login_cta
 import ru.fromchat.auth_step_password_body
 import ru.fromchat.auth_step_password_title
 import ru.fromchat.auth_wrong_password
@@ -57,6 +59,8 @@ internal fun passwordStepPage(
     username: String,
     password: String,
     onPasswordChange: (String) -> Unit,
+    incognitoFlow: Boolean,
+    hideAuthRouteSwitch: Boolean = false,
     onLoginSuccess: () -> Unit,
     onNeedsRegister: suspend (
         yandexRequired: Boolean,
@@ -74,7 +78,12 @@ internal fun passwordStepPage(
     val wrongPassword = stringResource(Res.string.auth_wrong_password)
     val rateLimit = stringResource(Res.string.auth_rate_limit)
     val unexpected = stringResource(Res.string.error_unexpected)
-    val loginLabel = stringResource(Res.string.login)
+    val loginLabel = stringResource(
+        if (incognitoFlow) Res.string.auth_incognito_login_cta else Res.string.login,
+    )
+    val heroContainerColor = colorScheme.secondaryContainer
+    val heroContentColor = colorScheme.onSecondaryContainer
+    val heroIcon = Icons.Rounded.Lock
 
     fun attemptSubmit() {
         if (busy) return
@@ -130,10 +139,10 @@ internal fun passwordStepPage(
 
     return ExpressiveStepPage(
         hero = ExpressiveHeroSpec(
-            icon = Icons.Rounded.Lock,
+            icon = heroIcon,
             polygon = MaterialShapes.Cookie7Sided.normalized(),
-            containerColor = colorScheme.secondaryContainer,
-            contentColor = colorScheme.onSecondaryContainer,
+            containerColor = heroContainerColor,
+            contentColor = heroContentColor,
         ),
         content = { imeScroll ->
             var visible by rememberSaveable { mutableStateOf(false) }
@@ -170,7 +179,12 @@ internal fun passwordStepPage(
                 shape = SettingsPasswordOutlineFieldShape,
             )
         },
-        listFooter = { ChangeServerButton() },
+        listFooter = {
+            AuthStepListFooter(
+                incognitoFlow = incognitoFlow,
+                hideAuthRouteSwitch = hideAuthRouteSwitch,
+            )
+        },
         button = {
             ActionButton(
                 onClick = ::attemptSubmit,

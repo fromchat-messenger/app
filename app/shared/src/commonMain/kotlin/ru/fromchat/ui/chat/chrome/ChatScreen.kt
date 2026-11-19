@@ -40,7 +40,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -450,7 +449,9 @@ fun ChatScreen(
     val focusManager = LocalFocusManager.current
     val profileUserId = panelState.profileUserId
     val hazeState = rememberHazeState()
-    val hazeBlurEnabled = !(panelState.isLoading && panelState.messages.isEmpty())
+    val showInitialChatLoad = panelState.isLoading && panelState.messages.isEmpty()
+    val initialLoadCoverVisible = rememberChatInitialLoadCoverVisible(showInitialChatLoad)
+    val hazeBlurEnabled = !showInitialChatLoad
     val listDetailActive = LocalConversationListDetailActive.current
     val detailContentPad =
         if (listDetailActive) ConversationDetailContentPadding else 0.dp
@@ -655,6 +656,8 @@ fun ChatScreen(
                                 type = update.type,
                                 data = update.data
                             )
+                            // Propagate to global WebSocket handlers
+                            ru.fromchat.api.local.WebSocketManager.handleGlobalMessage(wsMessage)
                             when (update.type) {
                                 "statusUpdate" -> update.data?.jsonObject?.let { data ->
                                     val userId = data["userId"]?.jsonPrimitive?.content?.toIntOrNull()
@@ -1214,15 +1217,8 @@ fun ChatScreen(
                         },
                     ),
             ) {
-                if (panelState.isLoading && panelState.messages.isEmpty()) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator()
-                    }
-                } else {
-                    Box(modifier = Modifier.fillMaxSize()) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    if (!showInitialChatLoad) {
                         LazyColumn(
                             state = listState,
                             modifier = Modifier
@@ -1472,8 +1468,9 @@ fun ChatScreen(
 
                         item { Spacer(modifier.height(floatingHeaderClearance)) }
                         }
+                    }
 
-                        if (panelState.isLoadingMore) {
+                    if (panelState.isLoadingMore) {
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.TopCenter)
@@ -1587,7 +1584,6 @@ fun ChatScreen(
                             },
                             modifier = Modifier.align(Alignment.TopCenter),
                         )
-                    }
                 }
 
                 BoxWithConstraints(
@@ -1664,6 +1660,13 @@ fun ChatScreen(
                 }
             }
         }
+
+        ChatInitialLoadCover(
+            visible = initialLoadCoverVisible,
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(20f),
+        )
 
         val fullscreenHost = LocalChatFullscreenImageController.current
         DisposableEffect(fullscreenHost) {

@@ -15,7 +15,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
-import ru.fromchat.password_length_error
+import ru.fromchat.password_policy_error
+import ru.fromchat.utils.validateNewPasswordPlaintext
 import ru.fromchat.settings_new_password
 import ru.fromchat.settings_next
 import ru.fromchat.settings_security_step_new_body
@@ -42,7 +43,7 @@ internal fun newPasswordStepPage(
     val scope = rememberCoroutineScope()
     val scheme = MaterialTheme.colorScheme
 
-    val pwdLen = stringResource(Res.string.password_length_error)
+    val policyError = stringResource(Res.string.password_policy_error)
     val nextLabel = stringResource(Res.string.settings_next)
 
     return ExpressiveStepPage(
@@ -75,8 +76,8 @@ internal fun newPasswordStepPage(
         button = {
             ActionButton(
                 onClick = {
-                    if (newPassword.length !in 5..50) {
-                        onSnackbar(pwdLen)
+                    if (validateNewPasswordPlaintext(newPassword) != null) {
+                        onSnackbar(policyError)
                         return@ActionButton
                     }
 

@@ -11,6 +11,8 @@ data class SendDmRequest(
     @SerialName("transport_ciphertext_b64") val transportCiphertextB64: String,
     @SerialName("sender_public_key_b64") val senderPublicKeyB64: String,
     @SerialName("recipient_public_key_b64") val recipientPublicKeyB64: String,
+    @SerialName("encryption_mode") val encryptionMode: String,
+    @SerialName("encryption_mode_version") val encryptionModeVersion: Int,
     @SerialName("client_message_id") val clientMessageId: String? = null,
     @SerialName("reply_to_id") val replyToId: Int? = null,
     @SerialName("transport_files") val transportFiles: List<SendDmFile> = emptyList(),

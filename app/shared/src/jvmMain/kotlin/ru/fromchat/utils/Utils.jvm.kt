@@ -13,6 +13,8 @@ actual fun DialogEdgeToEdgeEffect() {}
 
 actual val materialYouAvailable get() = false
 
+actual val expressiveStepFieldsFocusableDuringPagerMotion get() = true
+
 actual fun currentDeviceInfo(): CurrentDeviceInfo =
     CurrentDeviceInfo(
         osName = System.getProperty("os.name")?.trim()?.takeIf { it.isNotEmpty() },

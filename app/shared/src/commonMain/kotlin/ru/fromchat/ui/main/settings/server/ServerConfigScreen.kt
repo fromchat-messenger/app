@@ -2,38 +2,26 @@
 
 package ru.fromchat.ui.main.settings.server
 
-import androidx.compose.animation.ExperimentalAnimationApi
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import ru.fromchat.ui.components.ChromeBackIconButton
 import androidx.compose.material.icons.rounded.Dns
-import androidx.compose.material.icons.rounded.FlashOn
-import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -46,6 +34,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,18 +44,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import ru.fromchat.utils.navigateAndWipeBackStack
-import ru.fromchat.utils.toDp
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.blur.hazeBlur
@@ -75,24 +61,25 @@ import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import org.jetbrains.compose.resources.getString
+import kotlin.time.Duration.Companion.milliseconds
 import org.jetbrains.compose.resources.stringResource
-import ru.fromchat.Res
 import ru.fromchat.api.ApiClient
-import ru.fromchat.api.local.WebSocketManager
-import ru.fromchat.back
+import ru.fromchat.api.instance.applyServerAndNavigate
+import ru.fromchat.api.instance.ApplyServerResult
+import ru.fromchat.api.instance.persistPreAuthServerEndpoint
+import ru.fromchat.api.instance.probeServerEndpoint
+import ru.fromchat.api.instance.ServerProbeResult
+import ru.fromchat.api.instance.surfaceLastIncognitoTlsProbeFailure
 import ru.fromchat.cancel
-import ru.fromchat.confirm
+import ru.fromchat.config.ServerConfig
 import ru.fromchat.config.ServerConfigData
 import ru.fromchat.config.Settings
-import ru.fromchat.api.instance.ServerProbeResult
-import ru.fromchat.api.instance.ApplyServerResult
-import ru.fromchat.api.instance.applyServerAndNavigate
-import ru.fromchat.api.instance.probeServerEndpoint
+import ru.fromchat.config.shouldWarnPublicCleartextHttp
+import ru.fromchat.confirm
+import ru.fromchat.Res
 import ru.fromchat.save_continue
-import ru.fromchat.server_config_action_check
-import ru.fromchat.server_config_action_reset
 import ru.fromchat.server_config_action_reset_confirm_body
 import ru.fromchat.server_config_action_reset_confirm_title
 import ru.fromchat.server_config_checking
@@ -107,33 +94,31 @@ import ru.fromchat.server_config_title
 import ru.fromchat.server_config_unsupported_no_instance_id
 import ru.fromchat.server_ip_hint
 import ru.fromchat.server_ip_label
-import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.auth.AuthContentFrame
-import ru.fromchat.ui.components.CtaShape
 import ru.fromchat.ui.components.DisabledBringIntoViewSpec
 import ru.fromchat.ui.components.ExpressiveIconFrame
 import ru.fromchat.ui.components.FromChatSnackbarHost
 import ru.fromchat.ui.components.HazeActionButton
-import ru.fromchat.utils.LastAnchoredBottomArrangement
 import ru.fromchat.ui.components.LazyListFocusScrollEffect
-import ru.fromchat.ui.components.SettingsPasswordOutlineFieldShape
 import ru.fromchat.ui.components.rememberLazyListFocusScrollState
+import ru.fromchat.ui.components.SettingsPasswordOutlineFieldShape
 import ru.fromchat.ui.components.trackLazyListFocus
-import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
+import ru.fromchat.ui.security.ConnectionSecurityDialogController
+import ru.fromchat.ui.security.PublicHttpConnectionBypass
+import ru.fromchat.ui.LocalNavController
+import ru.fromchat.ui.main.settings.LocalConnectionDialogRootDismiss
 import ru.fromchat.ui.main.settings.settingsDetailShowBackButton
+import ru.fromchat.ui.main.settings.settingsDetailOverlayTopClearance
+import ru.fromchat.ui.main.settings.settingsDetailScaffoldContentWindowInsets
 import ru.fromchat.ui.main.settings.settingsDetailWindowInsets
-import ru.fromchat.ui.theme.extraStatusBars
+import ru.fromchat.ui.main.settings.SettingsStepHorizontalPadding
+import ru.fromchat.utils.LastAnchoredBottomArrangement
 
 private object ServerConfigLazyListIndices {
     const val SERVER_IP_FIELD = 2
 }
 
-@OptIn(
-    ExperimentalFoundationApi::class,
-    ExperimentalMaterial3Api::class,
-    ExperimentalMaterial3ExpressiveApi::class,
-    ExperimentalAnimationApi::class,
-)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ServerConfigScreen(
     rootNavController: NavController,
@@ -142,17 +127,20 @@ fun ServerConfigScreen(
     val scope = rememberCoroutineScope()
     val scheme = MaterialTheme.colorScheme
     val snackbarHostState = remember { SnackbarHostState() }
-    val density = LocalDensity.current
 
     var serverEndpoint by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) {
-        Settings.serverConfig.apply {
-            serverEndpoint = formatServerEndpointForInput(serverIp, apiPort)
+    val storedServerConfig by ServerConfig.serverConfig.collectAsState()
+
+    LaunchedEffect(storedServerConfig) {
+        val config = storedServerConfig ?: runCatching { Settings.readServerConfig() }.getOrNull()
+        if (config != null) {
+            serverEndpoint = formatServerEndpointForInput(config.serverIp, config.apiPort)
         }
     }
 
     var busy by remember { mutableStateOf(false) }
+    var probing by remember { mutableStateOf(false) }
     var lastProbe by remember { mutableStateOf<ServerProbeResult?>(null) }
     var lastProbedConfig by remember { mutableStateOf<ServerConfigData?>(null) }
     var showResetDialog by remember { mutableStateOf(false) }
@@ -165,7 +153,6 @@ fun ServerConfigScreen(
     val strSnackbarApiFail = stringResource(Res.string.server_config_snackbar_api_fail)
     val strSnackbarTimeout = stringResource(Res.string.server_config_snackbar_timeout)
     val strUnsupportedInstance = stringResource(Res.string.server_config_unsupported_no_instance_id)
-    val strChecking = stringResource(Res.string.server_config_checking)
     val strResetConfirmTitle = stringResource(Res.string.server_config_action_reset_confirm_title)
     val strResetConfirmBody = stringResource(Res.string.server_config_action_reset_confirm_body)
 
@@ -173,6 +160,29 @@ fun ServerConfigScreen(
     val hostOk = parsedEndpoint != null
 
     val canApply = hostOk && !busy
+
+    LaunchedEffect(serverEndpoint, hostOk) {
+        if (!hostOk) {
+            lastProbe = null
+            return@LaunchedEffect
+        }
+        delay(1_000.milliseconds)
+        probing = true
+        try {
+            val parsed = parsedEndpoint
+            val (tentative, probe) = probeServerEndpoint(
+                host = parsed.host,
+                port = parsed.port,
+                httpsPreferred = parsed.httpsPreferred,
+                schemeExplicit = parsed.schemeExplicit,
+                persistBinding = false,
+            )
+            lastProbe = probe
+            lastProbedConfig = tentative
+        } finally {
+            probing = false
+        }
+    }
 
     fun resetToDefaults() {
         serverEndpoint = "api.fromchat.ru"
@@ -184,37 +194,78 @@ fun ServerConfigScreen(
 
     fun buildTentativeFromParsed(): ParsedServerEndpoint? = parsedEndpoint
 
-    fun verifyServer() {
-        scope.launch {
-            launch { snackbarHostState.showSnackbar(strChecking) }
-            val parsed = buildTentativeFromParsed()
-            if (parsed == null) {
-                snackbarHostState.showSnackbar(strHostError)
-                return@launch
+    fun handleIncognitoProbeFailure(e: Throwable, host: String, https: Boolean): Boolean =
+        ConnectionSecurityDialogController.presentFromThrowable(e, host, https)
+
+    fun warnPublicHttpIfNeeded(config: ServerConfigData, onProceed: () -> Unit): Boolean {
+        if (shouldWarnPublicCleartextHttp(config) && !PublicHttpConnectionBypass.isAllowed(config.serverIp)) {
+            ConnectionSecurityDialogController.presentPublicHttpWarning(config.serverIp, onProceed)
+            return true
+        }
+        return false
+    }
+
+    suspend fun applySupportedServerProbe(
+        probe: ServerProbeResult.Supported,
+        tentative: ServerConfigData,
+    ) {
+        when (
+            applyServerAndNavigate(
+                probe = probe,
+                config = tentative,
+                bearer = ApiClient.token?.trim().orEmpty(),
+                onNavigateLogin = {
+                    withContext(Dispatchers.Main) {
+                        rootNavController.navigateAndWipeBackStack("auth")
+                    }
+                },
+                onNavigateChat = {
+                    withContext(Dispatchers.Main) {
+                        if (!navController.popBackStack()) {
+                            rootNavController.navigate("chat") {
+                                popUpTo("welcome") {
+                                    inclusive = true
+                                }
+                            }
+                        }
+                    }
+                },
+            )
+        ) {
+            ApplyServerResult.Applied -> Unit
+            ApplyServerResult.ServerUnreachable -> {
+                withContext(Dispatchers.Main) {
+                    snackbarHostState.showSnackbar(strSnackbarApiFail)
+                }
             }
-            val (tentative, probe) = probeServerEndpoint(
+        }
+    }
+
+    suspend fun runServerEndpointProbe(
+        parsed: ParsedServerEndpoint,
+        persistBinding: Boolean = false,
+    ): Pair<ServerConfigData, ServerProbeResult> =
+        runCatching {
+            probeServerEndpoint(
                 host = parsed.host,
                 port = parsed.port,
                 httpsPreferred = parsed.httpsPreferred,
                 schemeExplicit = parsed.schemeExplicit,
+                persistBinding = persistBinding,
             )
-            lastProbe = probe
-            lastProbedConfig = tentative
-            val msg = when (probe) {
-                is ServerProbeResult.Supported -> {
-                    if (probe.callsOk) {
-                        getString(Res.string.server_config_snackbar_ok_calls, probe.pingMs)
-                    } else {
-                        getString(Res.string.server_config_snackbar_ok_calls_skip, probe.pingMs)
-                    }
-                }
-                ServerProbeResult.Unsupported -> strUnsupportedInstance
-                ServerProbeResult.Timeout -> strSnackbarTimeout
-                ServerProbeResult.Unreachable -> strSnackbarApiFail
+        }.getOrElse { e ->
+            if (handleIncognitoProbeFailure(e, parsed.host, parsed.httpsPreferred)) {
+                val fallback = ServerConfigData(
+                    serverIp = parsed.host,
+                    apiPort = parsed.port,
+                    callsPort = parsed.port,
+                    httpsEnabled = parsed.httpsPreferred,
+                    callsEnabled = false,
+                )
+                return fallback to ServerProbeResult.Unreachable
             }
-            snackbarHostState.showSnackbar(msg)
+            throw e
         }
-    }
 
     val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedTextColor = scheme.onSurface,
@@ -244,7 +295,7 @@ fun ServerConfigScreen(
 
         Scaffold(
             modifier = Modifier.fillMaxSize(),
-            contentWindowInsets = WindowInsets.navigationBars,
+            contentWindowInsets = settingsDetailScaffoldContentWindowInsets(),
             containerColor = Color.Transparent,
             contentColor = scheme.onSurface,
             snackbarHost = { FromChatSnackbarHost(hostState = snackbarHostState) },
@@ -257,63 +308,88 @@ fun ServerConfigScreen(
                         scope.launch {
                             try {
                                 busy = true
-
-                                val parsed = buildTentativeFromParsed()
-                                if (parsed == null) {
-                                    snackbarHostState.showSnackbar(strHostError)
-                                    return@launch
-                                }
-                                val (tentative, probe) = probeServerEndpoint(
-                                    host = parsed.host,
-                                    port = parsed.port,
-                                    httpsPreferred = parsed.httpsPreferred,
-                                    schemeExplicit = parsed.schemeExplicit,
-                                )
-                                lastProbe = probe
-                                lastProbedConfig = tentative
-
-                                when (probe) {
-                                    ServerProbeResult.Unsupported -> {
-                                        snackbarHostState.showSnackbar(
-                                            strUnsupportedInstance
-                                        )
+                                withContext(Dispatchers.Default) {
+                                    val parsed = buildTentativeFromParsed()
+                                    if (parsed == null) {
+                                        withContext(Dispatchers.Main) {
+                                            snackbarHostState.showSnackbar(strHostError)
+                                        }
+                                        return@withContext
+                                    }
+                                    val endpointOnly = ServerConfigData(
+                                        serverIp = parsed.host,
+                                        apiPort = parsed.port,
+                                        callsPort = parsed.port,
+                                        httpsEnabled = parsed.httpsPreferred,
+                                        callsEnabled = false,
+                                    )
+                                    if (preAuth) {
+                                        persistPreAuthServerEndpoint(endpointOnly)
+                                    }
+                                    val (tentative, probe) = try {
+                                        runServerEndpointProbe(parsed, persistBinding = false)
+                                    } catch (e: Exception) {
+                                        withContext(Dispatchers.Main) {
+                                            snackbarHostState.showSnackbar(strSnackbarApiFail)
+                                        }
+                                        return@withContext
+                                    }
+                                    withContext(Dispatchers.Main) {
+                                        lastProbe = probe
+                                        lastProbedConfig = tentative
                                     }
 
-                                    ServerProbeResult.Timeout -> {
-                                        snackbarHostState.showSnackbar(strSnackbarTimeout)
-                                    }
-
-                                    ServerProbeResult.Unreachable -> {
-                                        snackbarHostState.showSnackbar(strSnackbarApiFail)
-                                    }
-
-                                    is ServerProbeResult.Supported -> {
-                                        when (
-                                            applyServerAndNavigate(
-                                                probe = probe,
-                                                config = tentative,
-                                                bearer = ApiClient.token?.trim().orEmpty(),
-                                                onNavigateLogin = {
-                                                    withContext(Dispatchers.Main) {
-                                                        rootNavController.navigateAndWipeBackStack("auth")
-                                                    }
-                                                },
-                                                onNavigateChat = {
-                                                    withContext(Dispatchers.Main) {
-                                                        if (!navController.popBackStack()) {
-                                                            rootNavController.navigate("chat") {
-                                                                popUpTo("welcome") {
-                                                                    inclusive = true
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                },
+                                    if (
+                                        probe == ServerProbeResult.Unreachable &&
+                                        withContext(Dispatchers.Main) {
+                                            surfaceLastIncognitoTlsProbeFailure(
+                                                parsed.host,
+                                                parsed.httpsPreferred,
                                             )
-                                        ) {
-                                            ApplyServerResult.Applied -> Unit
-                                            ApplyServerResult.ServerUnreachable -> {
+                                        }
+                                    ) {
+                                        return@withContext
+                                    }
+
+                                    if (
+                                        withContext(Dispatchers.Main) {
+                                            ConnectionSecurityDialogController.showMitmDialog ||
+                                                ConnectionSecurityDialogController.showTlsDialog ||
+                                                ConnectionSecurityDialogController.showPublicHttpDialog
+                                        }
+                                    ) {
+                                        return@withContext
+                                    }
+
+                                    when (probe) {
+                                        ServerProbeResult.Unsupported -> {
+                                            withContext(Dispatchers.Main) {
+                                                snackbarHostState.showSnackbar(strUnsupportedInstance)
+                                            }
+                                        }
+
+                                        ServerProbeResult.Timeout -> {
+                                            withContext(Dispatchers.Main) {
+                                                snackbarHostState.showSnackbar(strSnackbarTimeout)
+                                            }
+                                        }
+
+                                        ServerProbeResult.Unreachable -> {
+                                            withContext(Dispatchers.Main) {
                                                 snackbarHostState.showSnackbar(strSnackbarApiFail)
+                                            }
+                                        }
+
+                                        is ServerProbeResult.Supported -> {
+                                            val warned = withContext(Dispatchers.Main) {
+                                                warnPublicHttpIfNeeded(tentative) {
+                                                    scope.launch(Dispatchers.Default) {
+                                                        applySupportedServerProbe(probe, tentative)
+                                                    }
+                                                }
+                                            }
+                                            if (!warned) {
+                                                applySupportedServerProbe(probe, tentative)
                                             }
                                         }
                                     }
@@ -331,32 +407,32 @@ fun ServerConfigScreen(
             },
             topBar = {
                 TopAppBar(
-                        windowInsets = settingsDetailWindowInsets(),
-                        title = {},
-                        navigationIcon = {
-                            if (settingsDetailShowBackButton()) {
-                                ChromeBackIconButton(onClick = navController::navigateUp)
-                            }
+                    windowInsets = settingsDetailWindowInsets(),
+                    title = {},
+                    navigationIcon = {
+                        if (settingsDetailShowBackButton()) {
+                            ChromeBackIconButton(onClick = navController::navigateUp)
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        scrolledContainerColor = Color.Transparent,
+                    ),
+                    modifier = Modifier.hazeBlur(
+                        input = HazeInput.Backdrop(actionHazeState),
+                        style = HazeMaterials.thin().then {
+                            progressive(
+                                HazeProgressive.verticalGradient(
+                                    startIntensity = 1f,
+                                    endIntensity = 0f,
+                                ),
+                            )
                         },
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = Color.Transparent,
-                            scrolledContainerColor = Color.Transparent,
-                        ),
-                        modifier = Modifier.hazeBlur(
-                            input = HazeInput.Backdrop(actionHazeState),
-                            style = HazeMaterials.thin().then {
-                                progressive(
-                                    HazeProgressive.verticalGradient(
-                                        startIntensity = 1f,
-                                        endIntensity = 0f,
-                                    ),
-                                )
-                            },
-                        ),
-                    )
+                    ),
+                )
             }
         ) { innerPadding ->
-            val floatingHeaderClearance = WindowInsets.extraStatusBars.getTop(density).toDp(density) + 68.dp
+            val floatingHeaderClearance = settingsDetailOverlayTopClearance()
             val bottomInsetPadding = innerPadding.calculateBottomPadding()
             val serverConfigListState = rememberLazyListState()
             var listViewportBounds by remember { mutableStateOf<Rect?>(null) }
@@ -378,7 +454,7 @@ fun ServerConfigScreen(
                         .background(listBackground)
                         .hazeSource(actionHazeState)
                         .onGloballyPositioned { listViewportBounds = it.boundsInWindow() },
-                        contentPadding = PaddingValues(bottom = bottomInsetPadding),
+                        contentPadding = PaddingValues(bottom = bottomInsetPadding + 16.dp),
                         verticalArrangement = remember {
                             LastAnchoredBottomArrangement(space = 4.dp)
                         },
@@ -469,74 +545,16 @@ fun ServerConfigScreen(
                             )
                         }
 
-                        item { Spacer(Modifier.height(16.dp)) }
+                        item { Spacer(Modifier.height(12.dp)) }
 
                         item {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color.Transparent)
-                                    .padding(horizontal = SettingsStepHorizontalPadding)
-                                    .padding(top = 8.dp, bottom = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                val contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
-
-                                @Composable
-                                fun ActionButtonContent(
-                                    imageVector: ImageVector,
-                                    text: String,
-                                ) {
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Icon(
-                                            imageVector = imageVector,
-                                            contentDescription = null,
-                                            modifier = Modifier
-                                                .size(16.dp)
-                                                .clip(CtaShape),
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-
-                                        Text(text)
-                                    }
-                                }
-
-                                TextButton(
-                                    onClick = ::verifyServer,
-                                    modifier = Modifier.weight(1f),
-                                    shape = CtaShape,
-                                    colors = ButtonDefaults.textButtonColors(
-                                        containerColor = Color.Transparent,
-                                        contentColor = MaterialTheme.colorScheme.primary
-                                    ),
-                                    contentPadding = contentPadding
-                                ) {
-                                    ActionButtonContent(
-                                        imageVector = Icons.Rounded.FlashOn,
-                                        text = stringResource(Res.string.server_config_action_check),
-                                    )
-                                }
-
-                                TextButton(
-                                    onClick = { showResetDialog = true },
-                                    modifier = Modifier.weight(1f),
-                                    shape = CtaShape,
-                                    colors = ButtonDefaults.textButtonColors(
-                                        containerColor = Color.Transparent,
-                                        contentColor = MaterialTheme.colorScheme.primary
-                                    ),
-                                    contentPadding = contentPadding
-                                ) {
-                                    ActionButtonContent(
-                                        imageVector = Icons.Rounded.RestartAlt,
-                                        text = stringResource(Res.string.server_config_action_reset)
-                                    )
-                                }
-                            }
+                            ServerInstanceProbeCard(
+                                probe = lastProbe,
+                                probing = probing,
+                            )
                         }
+
+                        item { Spacer(Modifier.height(8.dp)) }
                     }
                 }
 
@@ -566,7 +584,8 @@ fun ServerConfigScreen(
         }
     }
 
-    if (preAuth) {
+    val inConnectionFlow = LocalConnectionDialogRootDismiss.current != null
+    if (preAuth && !inConnectionFlow) {
         AuthContentFrame { _ ->
             ServerConfigContent()
         }

@@ -39,9 +39,10 @@ import ru.fromchat.utils.components.ListItem
 import ru.fromchat.utils.components.ListItemPosition
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import ru.fromchat.ui.components.SpringDropdownMenuItem
+import ru.fromchat.ui.components.SpringExpandingOverflowMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -91,11 +92,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import ru.fromchat.utils.supportClipboardManagerImpl
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import ru.fromchat.Res
@@ -127,6 +130,10 @@ import ru.fromchat.chat_preview_image
 import ru.fromchat.chat_preview_image_emoji
 import ru.fromchat.chats_selected_count
 import ru.fromchat.config.ServerConfig
+import ru.fromchat.incognito.IncognitoMode
+import ru.fromchat.auth_incognito_mode_title
+import ru.fromchat.ui.auth.AUTH_INCOGNITO_ROUTE
+import ru.fromchat.incognito_chats_session_tooltip
 import ru.fromchat.notifications.LocalizedChatTitles
 import ru.fromchat.public_chat
 import ru.fromchat.search_title
@@ -143,6 +150,7 @@ import ru.fromchat.ui.chat.utils.PendingChatAttachmentDrops
 import ru.fromchat.ui.components.BackHandler
 import ru.fromchat.ui.components.BrandTitle
 import ru.fromchat.ui.components.ConnectingEllipsis
+import ru.fromchat.ui.components.HoverInfoOverlay
 import ru.fromchat.ui.components.PredictiveBackHandler
 import ru.fromchat.ui.components.SuspendedAccountSupportSheet
 import ru.fromchat.ui.components.Text
@@ -259,6 +267,7 @@ private class SearchBarCollapseController(
 
     fun nestedScrollConnection(enabled: Boolean): NestedScrollConnection =
         object : NestedScrollConnection {
+            @Suppress("UNUSED_PARAMETER")
             override fun onPreScroll(
                 available: Offset,
                 source: NestedScrollSource,
@@ -273,6 +282,7 @@ private class SearchBarCollapseController(
                 return Offset.Zero
             }
 
+            @Suppress("UNUSED_PARAMETER")
             override fun onPostScroll(
                 consumed: Offset,
                 available: Offset,
@@ -371,88 +381,131 @@ private fun ChatsNormalTopBar(
     searchCollapseProgress: Float,
     searchContentDescription: String,
     onSearchClick: () -> Unit,
+    onIncognitoOverlayLogin: () -> Unit,
+    blurEnabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    TopAppBar(
-        modifier = modifier,
-        // Shell already applies/consumes status insets in list–detail; avoid double top padding.
-        windowInsets = if (LocalMainChromeInsets.current.top > 0.dp) {
-            WindowInsets.extraStatusBars
-        } else {
-            WindowInsets(0, 0, 0, 0)
-        },
-        colors = chatsTopAppBarColors(blurReveal),
-        title = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Start,
-            ) {
-                Image(
-                    painter = painterResource(Res.drawable.logo_square),
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(RoundedCornerShape(10.dp)),
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                AnimatedContent(
-                    targetState = titleKey,
-                    modifier = Modifier.weight(1f),
-                    transitionSpec = {
-                        (slideInVertically { it / 2 } + fadeIn()) togetherWith
-                            (slideOutVertically { -it / 2 } + fadeOut())
-                    },
-                    label = "chats_title",
-                ) { key ->
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.CenterStart,
-                    ) {
-                        when (key) {
-                            "connecting", "updating" -> {
-                                val style = MaterialTheme.typography.titleLarge
-                                val color = MaterialTheme.colorScheme.onSurface
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        text = if (key == "connecting") connectingTitle else updatingTitle,
-                                        style = style,
-                                        color = color,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    ConnectingEllipsis(
-                                        fontSize = style.fontSize,
-                                        color = color,
-                                        baseStyle = style,
-                                    )
-                                }
-                            }
+    val tooltipTitle = stringResource(Res.string.auth_incognito_mode_title)
+    var logoMenuExpanded by remember { mutableStateOf(false) }
 
-                            else -> BrandTitle()
+    HoverInfoOverlay(
+        enabled = IncognitoMode.active,
+        title = tooltipTitle,
+        body = stringResource(Res.string.incognito_chats_session_tooltip),
+        blurEnabled = blurEnabled,
+        modifier = modifier,
+    ) { anchorModifier ->
+        TopAppBar(
+            modifier = Modifier.fillMaxWidth(),
+            // Shell already applies/consumes status insets in list–detail; avoid double top padding.
+            windowInsets = if (LocalMainChromeInsets.current.top > 0.dp) {
+                WindowInsets.extraStatusBars
+            } else {
+                WindowInsets(0, 0, 0, 0)
+            },
+            colors = chatsTopAppBarColors(blurReveal),
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Start,
+                ) {
+                    Image(
+                        painter = painterResource(Res.drawable.logo_square),
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(10.dp)),
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    AnimatedContent(
+                        targetState = titleKey,
+                        transitionSpec = {
+                            (slideInVertically { it / 2 } + fadeIn()) togetherWith
+                                (slideOutVertically { -it / 2 } + fadeOut())
+                        },
+                        label = "chats_title",
+                    ) { key ->
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            when (key) {
+                                "connecting", "updating" -> {
+                                    val style = MaterialTheme.typography.titleLarge
+                                    val color = MaterialTheme.colorScheme.onSurface
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = if (key == "connecting") connectingTitle else updatingTitle,
+                                            style = style,
+                                            color = color,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        ConnectingEllipsis(
+                                            fontSize = style.fontSize,
+                                            color = color,
+                                            baseStyle = style,
+                                        )
+                                    }
+                                }
+
+                                else -> BrandTitle()
+                            }
                         }
                     }
                 }
-            }
-        },
-        actions = {
-            IconButton(
-                onClick = onSearchClick,
-                modifier = Modifier.graphicsLayer {
-                    alpha = searchCollapseProgress.coerceIn(0f, 1f)
-                },
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Search,
-                    contentDescription = searchContentDescription,
-                )
-            }
-        },
-    )
+            },
+            actions = {
+                if (searchCollapseProgress > 0.01f) {
+                    IconButton(
+                        onClick = onSearchClick,
+                        modifier = Modifier.graphicsLayer {
+                            alpha = searchCollapseProgress.coerceIn(0f, 1f)
+                        },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Search,
+                            contentDescription = searchContentDescription,
+                        )
+                    }
+                }
+                if (IncognitoMode.active) {
+                    Box(
+                        modifier = anchorModifier
+                            .padding(end = 4.dp)
+                            .size(48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.VisibilityOff,
+                            contentDescription = tooltipTitle,
+                            modifier = Modifier.size(24.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                } else {
+                    SpringExpandingOverflowMenu(
+                        expanded = logoMenuExpanded,
+                        onExpandedChange = { logoMenuExpanded = it },
+                        modifier = Modifier.padding(end = 4.dp),
+                    ) {
+                        SpringDropdownMenuItem(
+                            text = { Text(stringResource(Res.string.auth_incognito_mode_title)) },
+                            leadingIcon = {
+                                Icon(Icons.Rounded.VisibilityOff, contentDescription = null)
+                            },
+                            onClick = {
+                                logoMenuExpanded = false
+                                onIncognitoOverlayLogin()
+                            },
+                        )
+                    }
+                }
+            },
+        )
+    }
 }
 
 @Composable
@@ -505,25 +558,17 @@ private fun ChatsSelectionTopBar(
                 }
             }
             if (bulkActions.canMarkRead) {
-                Box {
-                    IconButton(onClick = { overflowOpen = true }) {
-                        Icon(
-                            imageVector = Icons.Rounded.MoreVert,
-                            contentDescription = moreActionsCd,
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = overflowOpen,
-                        onDismissRequest = { overflowOpen = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(markReadLabel) },
-                            onClick = {
-                                overflowOpen = false
-                                onMarkRead()
-                            },
-                        )
-                    }
+                SpringExpandingOverflowMenu(
+                    expanded = overflowOpen,
+                    onExpandedChange = { overflowOpen = it },
+                ) {
+                    SpringDropdownMenuItem(
+                        text = { Text(markReadLabel) },
+                        onClick = {
+                            overflowOpen = false
+                            onMarkRead()
+                        },
+                    )
                 }
             }
         },
@@ -541,6 +586,7 @@ fun ChatsTab(
 ) {
     val navController =
         LocalDesktopChatsNavController.current ?: LocalNavController.current
+    val rootNavController = LocalNavController.current
     val clipboard = supportClipboardManagerImpl
     val haptic = rememberHapticFeedback()
     val scope = rememberCoroutineScope()
@@ -1106,7 +1152,8 @@ fun ChatsTab(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .height(fixedTopBarHeight),
+                    .height(fixedTopBarHeight)
+                    .zIndex(1f),
             ) {
                 ChatsTopBarHazeBackdrop(
                     hazeState = topChromeHazeState,
@@ -1123,6 +1170,12 @@ fun ChatsTab(
                         searchCollapseProgress = topBarSearchReveal,
                         searchContentDescription = searchBarHint,
                         onSearchClick = onOpenSearch,
+                        onIncognitoOverlayLogin = {
+                            rootNavController.navigate(AUTH_INCOGNITO_ROUTE) {
+                                launchSingleTop = true
+                            }
+                        },
+                        blurEnabled = isVisible,
                         modifier = Modifier.graphicsLayer { alpha = 1f - selectionProgress },
                     )
                     if (selectionMode || selectionProgress > 0f) {

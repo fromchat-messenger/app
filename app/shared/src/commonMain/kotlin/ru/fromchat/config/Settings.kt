@@ -151,7 +151,13 @@ object Settings {
         val apiPort = normalizeStoredPort(API_PORT_KEY, default = 443)
         val rawCalls = settings.getInt(CALLS_PORT_KEY, -1)
         val callsPort = if (rawCalls in 1..65535) rawCalls else DEFAULT_CALLS_PORT
-        val https = settings.getBoolean(HTTPS_ENABLED_KEY, true)
+        var https = settings.getBoolean(HTTPS_ENABLED_KEY, true)
+        if (isLoopbackServerHost(ip)) {
+            https = false
+            if (settings.getBoolean(HTTPS_ENABLED_KEY, true)) {
+                settings.putBoolean(HTTPS_ENABLED_KEY, false)
+            }
+        }
         val callsEnabled = settings.getBoolean(CALLS_ENABLED_KEY, true)
         return ServerConfigData(
             serverIp = ip,
