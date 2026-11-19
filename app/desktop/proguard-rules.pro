@@ -26,10 +26,13 @@
 -keep class * extends com.sun.jna.** { *; }
 -keep class * implements com.sun.jna.** { *; }
 
-# BouncyCastle security providers (ServiceLoader java.security.Provider).
--keep class org.bouncycastle.jce.provider.BouncyCastleProvider { *; }
--keep class org.bouncycastle.pqc.jcajce.provider.BouncyCastlePQCProvider { *; }
--dontwarn org.bouncycastle.**
+# BouncyCastle (SSH PEM, JCA providers): keep package so ASN.1 types stay on kept
+# provider method signatures (otherwise Build JAR fails with unresolved references).
+-keep class org.bouncycastle.** { *; }
+
+# JavaFX native font/glass peers (Linux CI gtk + font shaper JNI); avoid `-keep com.sun.javafx.**`.
+-keep class com.sun.glass.ui.** { *; }
+-keep class com.sun.javafx.font.** { *; }
 
 # Cryptography provider (ServiceLoader).
 -keep class dev.whyoleg.cryptography.providers.jdk.JdkCryptographyProviderContainer { *; }
@@ -66,3 +69,8 @@
 # and then aborts with "Please correct the above warnings first". The app never uses JOGL,
 # so only that JavaFX bridge is ignored (JDKs without the jmod, e.g. Temurin, are unaffected).
 -dontwarn com.jogamp.newt.javafx.**
+
+# JDK 25 + Compose Desktop: Glass/font JNI entry points reference descriptor types ProGuard
+# does not model as hard classpath deps (~40 “unresolved references” on ubuntu-latest CI).
+# Runtime is unaffected (same as v1.2.x releases); do not fail the shrinker on these notes.
+-ignorewarnings

@@ -58,6 +58,8 @@ All three tasks must succeed. A failed compile wastes ~17+ minutes of CI.
 
 **Incognito / SQLCipher on desktop:** `jvmMain` uses `sqlite-jdbc-crypt` (Willena) plus SQLDelight’s JDBC driver, which normally pulls `org.xerial:sqlite-jdbc`. Two JDBC stacks → ~300 ProGuard “duplicate program class `org.sqlite.*`” errors on CI. Exclude xerial from the SQLDelight driver and keep only `sqlite-jdbc-crypt` (see `app/shared/build.gradle.kts` `jvmMain.dependencies`).
 
+**~40 unresolved references on CI:** JDK 25 + Compose Desktop Glass/font JNI “descriptor class” notes (and BouncyCastle ASN.1 on SSH PEM). `app/desktop/proguard-rules.pro` keeps `org.bouncycastle.**`, narrow `com.sun.glass.ui` / `com.sun.javafx.font`, and uses `-ignorewarnings` so release ProGuard does not abort (verified via `exportReleaseProguardForCi`).
+
 ### 3. Version bumped vs latest tag
 
 - Determine the latest release tag: `git tag -l 'v*' --sort=-v:refname | head -1` (or empty if none).
