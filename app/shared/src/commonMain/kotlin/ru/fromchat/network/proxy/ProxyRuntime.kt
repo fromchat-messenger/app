@@ -2,6 +2,7 @@ package ru.fromchat.network.proxy
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -18,6 +19,7 @@ import ru.fromchat.network.proxy.ssh.KeyPassphraseSubmit
 import ru.fromchat.network.proxy.ssh.decryptAndExportPrivateKeyPem
 import ru.fromchat.network.proxy.ssh.isPassphraseFailure
 import ru.fromchat.network.proxy.ssh.privateKeyNeedsPassphrase
+import kotlin.concurrent.Volatile
 
 object ProxyRuntime {
     @Volatile
@@ -361,7 +363,7 @@ object ProxyRuntime {
             }
 
             val error = connectResult.exceptionOrNull()
-            val message = error?.message ?: error?.javaClass?.simpleName.orEmpty()
+            val message = error?.message ?: error?.let { it::class.simpleName }.orEmpty()
             if (
                 proxy.auth is SshKeyAuth &&
                 keyPassphrase != null &&

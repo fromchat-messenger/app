@@ -9,6 +9,7 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import ru.fromchat.api.local.AttachmentMediaLog
 import ru.fromchat.utils.settings.Settings as PlatformSettings
+import kotlin.concurrent.Volatile
 
 @Serializable
 data class TrustedTlsCertificate(
