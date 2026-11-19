@@ -261,7 +261,10 @@ kotlin {
             implementation(libs.ktor.client.cio)
             implementation(libs.ktor.client.okhttp)
             implementation(libs.multiplatform.crypto.libsodium.bindings)
-            implementation(libs.sqldelight.driver.sqlite)
+            implementation("app.cash.sqldelight:sqlite-driver:${libs.versions.sqldelight.get()}") {
+                // Single org.sqlite.* on the classpath for ProGuard (CI fails on ~300 duplicate defs).
+                exclude(group = "org.xerial", module = "sqlite-jdbc")
+            }
             implementation(libs.sqlite.jdbc.crypt)
             implementation(libs.bouncycastle.bcprov)
             implementation(libs.bouncycastle.bcpkix)

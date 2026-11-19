@@ -54,7 +54,9 @@ All three tasks must succeed. A failed compile wastes ~17+ minutes of CI.
 - `@Serializable` data classes that reference a type **without** `@Serializable` (e.g. a plain `interface Auth`) — ProGuard drops the interface and aborts with “unresolved references” / “Please correct the above warnings first”.
 - **Fix:** mark the hierarchy root `@Serializable` (e.g. `sealed interface Auth`) and/or add `-keep` rules in [`app/desktop/proguard-rules.pro`](../../app/desktop/proguard-rules.pro). Log path on failure: `app/desktop/build/compose/logs/proguardReleaseJars/`.
 
-**macOS local vs CI:** `exportReleaseProguardForCi` on a Mac with JetBrains Runtime (JBR/JCEF) may still fail with dozens of `com.sun.javafx` / `com.sun.glass` “descriptor class” warnings that **do not** appear on `ubuntu-latest` CI. Use the **Build JAR** job on GitHub as the release gate when local ProGuard only fails on Mac JBR noise after app-level fixes are in.
+**macOS local vs CI:** `exportReleaseProguardForCi` on a Mac with JetBrains Runtime (JBR/JCEF) may still fail with dozens of `com.sun.javafx` / `com.sun.glass` “descriptor class” warnings that **do not** reproduce on `ubuntu-latest` CI. Use the **Build JAR** job on GitHub as the release gate when local ProGuard only fails on Mac JBR noise after app-level fixes are in.
+
+**Incognito / SQLCipher on desktop:** `jvmMain` uses `sqlite-jdbc-crypt` (Willena) plus SQLDelight’s JDBC driver, which normally pulls `org.xerial:sqlite-jdbc`. Two JDBC stacks → ~300 ProGuard “duplicate program class `org.sqlite.*`” errors on CI. Exclude xerial from the SQLDelight driver and keep only `sqlite-jdbc-crypt` (see `app/shared/build.gradle.kts` `jvmMain.dependencies`).
 
 ### 3. Version bumped vs latest tag
 
