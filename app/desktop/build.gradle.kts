@@ -1222,7 +1222,10 @@ tasks.register("packageReleaseLinux") {
         binaries.walkTopDown()
             .filter { it.isFile && (it.extension == "deb" || it.extension == "rpm") }
             .forEach { file ->
-                if (file.extension == "deb") injectDebRuntimeDependencies(file)
+                if (file.extension == "deb") {
+                    injectDebRuntimeDependencies(file)
+                    injectLinuxGnomeScaleLauncher(file)
+                }
                 val arch = desktopReleaseArchLabel()
                 val renamed = "FromChat-$desktopVersionName-linux-$arch.${file.extension}"
                 file.copyTo(outDir.resolve(renamed), overwrite = true)
@@ -1253,6 +1256,7 @@ tasks.register("packageDevLinuxDeb") {
         checkNotNull(deb) { "packageDeb produced no .deb" }
         // Same tray fix-up as the release path; without it a fresh install has no tray host.
         injectDebRuntimeDependencies(deb)
+        injectLinuxGnomeScaleLauncher(deb)
         val outDir = desktopDistDir.get().asFile
         outDir.mkdirs()
         val renamed = outDir.resolve("FromChat-dev-linux-${desktopReleaseArchLabel()}.deb")
@@ -1274,6 +1278,78 @@ tasks.register("packageDevLinuxDeb") {
  * Best effort on purpose: a failure here must not fail the release, it only leaves the deb as
  * jpackage produced it (status quo, tray broken) instead of shipping a broken package.
  */
+private fun extractDebTarMember(archive: File, dest: File) {
+    when {
+        archive.name.endsWith(".zst") ->
+            runCommand("tar", "--zstd", "-xf", archive.absolutePath, "-C", dest.absolutePath)
+        archive.name.endsWith(".gz") ->
+            runCommand("tar", "xzf", archive.absolutePath, "-C", dest.absolutePath)
+        archive.name.endsWith(".xz") ->
+            runCommand("tar", "xJf", archive.absolutePath, "-C", dest.absolutePath)
+        else -> runCommand("tar", "xf", archive.absolutePath, "-C", dest.absolutePath)
+    }
+}
+
+private fun rebuildDebTarMember(archiveName: String, sourceDir: File, outFile: File) {
+    when {
+        archiveName.endsWith(".zst") ->
+            runCommand("tar", "--zstd", "-cf", outFile.absolutePath, "-C", sourceDir.absolutePath, ".")
+        archiveName.endsWith(".gz") ->
+            runCommand("tar", "czf", outFile.absolutePath, "-C", sourceDir.absolutePath, ".")
+        archiveName.endsWith(".xz") ->
+            runCommand("tar", "cJf", outFile.absolutePath, "-C", sourceDir.absolutePath, ".")
+        else -> runCommand("tar", "cf", outFile.absolutePath, "-C", sourceDir.absolutePath, ".")
+    }
+}
+
+/**
+ * jpackage `.desktop` files only exec the raw launcher — no GDK or `sun.java2d.uiScale`, so menu
+ * starts ignore mutter scale until [ru.fromchat.desktop.MainKt] runs (too late for some paths).
+ */
+private fun injectLinuxGnomeScaleLauncher(deb: File) {
+    val template = project.file("packaging/linux/fromchat-gnome-scale.sh")
+    if (!template.isFile) return
+    runCatching {
+        val members = readArMembers(deb.readBytes()).toMutableList()
+        val dataIndex = members.indexOfFirst { it.name.startsWith("data.tar") }
+        check(dataIndex >= 0) { "no data.tar member in ${deb.name}" }
+        val dataName = members[dataIndex].name
+        val work = Files.createTempDirectory("fromchat-deb-data").toFile()
+        try {
+            val dataTar = work.resolve(dataName)
+            dataTar.writeBytes(members[dataIndex].data)
+            val root = File(work, "data-root").apply { mkdirs() }
+            extractDebTarMember(dataTar, root)
+            val fromchatRoot = File(root, "opt/fromchat")
+            check(fromchatRoot.isDirectory) { "expected opt/fromchat in ${deb.name}" }
+            val scaleScript = File(fromchatRoot, "bin/fromchat-gnome-scale.sh")
+            scaleScript.parentFile?.mkdirs()
+            scaleScript.writeText(template.readText())
+            scaleScript.setExecutable(true, false)
+            val execLine = "Exec=/opt/fromchat/bin/fromchat-gnome-scale.sh"
+            val desktopExecRegex = Regex("(?m)^Exec=.*$")
+            root.walkTopDown()
+                .filter { it.isFile && it.extension == "desktop" && it.name.contains("fromchat", ignoreCase = true) }
+                .forEach { desktop ->
+                    desktop.writeText(desktop.readText().replace(desktopExecRegex, execLine))
+                }
+            val desktop = File(fromchatRoot, "lib")
+                .listFiles()
+                ?.firstOrNull { it.isFile && it.extension == "desktop" }
+                ?: error("no .desktop in opt/fromchat/lib")
+            val rebuilt = File(work, "rebuilt-$dataName")
+            rebuildDebTarMember(dataName, root, rebuilt)
+            members[dataIndex] = members[dataIndex].copy(data = rebuilt.readBytes())
+            deb.writeBytes(writeArMembers(members))
+            logger.lifecycle("Injected GNOME scale launcher into ${deb.name}")
+        } finally {
+            work.deleteRecursively()
+        }
+    }.onFailure {
+        logger.error("Could not inject GNOME scale launcher into ${deb.name}", it)
+    }
+}
+
 private fun injectDebRuntimeDependencies(deb: File) {
     val trayDeps = "libayatana-appindicator3-1 | libappindicator3-1, libdbus-1-3"
     runCatching {

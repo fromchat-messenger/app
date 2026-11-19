@@ -192,11 +192,18 @@ private fun usableScreenBoundsFor(point: Point): Rectangle {
 internal fun DesktopScaleDiagnostics() {
     val density = LocalDensity.current
     SideEffect {
+        val gdkScale = System.getenv("GDK_SCALE")
+        val gdkDpi = System.getenv("GDK_DPI_SCALE")
+        val device = maxOf(density.density, DesktopScale.awtScale)
         Logger.i(
             "DesktopScale",
             "compose density=${density.density} fontScale=${density.fontScale} " +
+                "awtScale=${DesktopScale.awtScale} device=$device " +
+                "gnomeLayoutMode=${DesktopScale.gnomeLayoutMode(density)} " +
+                "legacyNativeScaling=${DesktopScale.mutterNativeLegacyScaling.value} " +
+                "gnomeCommitted=${DesktopScale.gnomeDisplayScaleCommitted.value} " +
                 "awt uiScale=${System.getProperty("sun.java2d.uiScale") ?: "unset"} " +
-                "detected=${DesktopScale.factor}",
+                "gdk=${gdkScale ?: "unset"}x${gdkDpi ?: "unset"} detected=${DesktopScale.factor}",
         )
     }
 }
@@ -490,12 +497,15 @@ internal fun DesktopTrayHost(
             // Compose derived from the AWT transform — never from the override the main window
             // installs. On the X11 setups DesktopScale exists for those disagree, and the menu came
             // out at half size. Re-apply the same override here so the popup matches the app.
-            val forcedScale by DesktopScale.forcedScale.collectAsState()
+            val layoutRevision by DesktopScale.layoutRevision.collectAsState()
+            val gnomeCommitted by DesktopScale.gnomeDisplayScaleCommitted.collectAsState()
+            val legacyNative by DesktopScale.mutterNativeLegacyScaling.collectAsState()
+            @Suppress("UNUSED_VARIABLE")
+            val layoutRevisionKey = layoutRevision +
+                (if (gnomeCommitted) 2 else 0) +
+                (if (legacyNative) 4 else 0)
             CompositionLocalProvider(
-                LocalDensity provides Density(
-                    forcedScale ?: LocalDensity.current.density,
-                    LocalDensity.current.fontScale,
-                ),
+                LocalDensity provides DesktopScale.layoutDensity(LocalDensity.current),
             ) {
                 Box(
                     modifier = Modifier

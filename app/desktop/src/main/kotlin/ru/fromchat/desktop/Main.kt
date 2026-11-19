@@ -295,7 +295,8 @@ private object DesktopProtocolRegistration {
 }
 
 fun main(args: Array<String>) {
-    LinuxArm64MesaEnvironment.applyIfNeeded()
+    LinuxDesktopSessionEnvironment.applyIfNeeded()
+    abortIfRunningAsRoot()
     System.getenv("FROMCHAT_DEBUG_OUTBOUND_DELAY_MS")?.toLongOrNull()?.let { delayMs ->
         ru.fromchat.api.instance.InstanceEncryptionStore.debugOutboundDelayMs = delayMs
     }
@@ -431,11 +432,33 @@ fun main(args: Array<String>) {
         // reads as "ignores scaling" (CMP-6857, still open: JetBrains declined to change this).
         // Pre-multiplying the dp size keeps the window's pixel size consistent with the content.
         val forcedScale by DesktopScale.forcedScale.collectAsState()
-        val sizeRatio = remember(forcedScale) { DesktopScale.sizeRatio }
+        val sizeRatio = DesktopScale.sizeRatio
+        val storedWindowSize = remember { DesktopWindowPrefs.loadSize() }
+        val initialWindowSize = remember(storedWindowSize) { storedWindowSize }
         val windowState = rememberWindowState(
-            size = remember { DesktopWindowPrefs.loadSize() * sizeRatio },
+            size = initialWindowSize,
             position = remember { DesktopWindowPrefs.loadPosition() },
         )
+        LaunchedEffect(forcedScale) {
+            val forced = forcedScale ?: return@LaunchedEffect
+            fun logApply() {
+                Logger.i(
+                    "WindowPrefs",
+                    "apply desktop scale size=${windowState.size} sizeRatio=${DesktopScale.sizeRatio} " +
+                        "awtScale=${DesktopScale.awtScale} forced=$forced",
+                )
+            }
+            if (isLinuxOs()) {
+                Logger.i(
+                    "WindowPrefs",
+                    "linux density-only forced=$forced size=${windowState.size} " +
+                        "awtScale=${DesktopScale.awtScale}",
+                )
+                return@LaunchedEffect
+            }
+            windowState.size = storedWindowSize * DesktopScale.sizeRatio
+            logApply()
+        }
         // Hide until App bootstrap sets startDestination (avoids ~2s empty/white window).
         var contentReady by remember { mutableStateOf(false) }
         var windowVisible by remember { mutableStateOf(true) }
@@ -926,14 +949,16 @@ fun main(args: Array<String>) {
                     // value there would override a correct native density (a 1.0 fallback would
                     // flatten every Retina display).
                     val forcedScale by DesktopScale.forcedScale.collectAsState()
+                    val layoutRevision by DesktopScale.layoutRevision.collectAsState()
+                    val gnomeCommitted by DesktopScale.gnomeDisplayScaleCommitted.collectAsState()
+                    val legacyNative by DesktopScale.mutterNativeLegacyScaling.collectAsState()
+                    @Suppress("UNUSED_VARIABLE")
+                    val layoutRevisionKey = layoutRevision +
+                        (if (gnomeCommitted) 2 else 0) +
+                        (if (legacyNative) 4 else 0)
                     CompositionLocalProvider(
-                            // AWT and Compose disagree on Linux (AWT read Xft.dpi=192 -> 2.0 while
-                            // Compose sat at 1.0), so the value that drives layout and text is
-                            // Compose's density. null = keep whatever Compose decided.
-                            LocalDensity provides Density(
-                                forcedScale ?: LocalDensity.current.density,
-                                forcedScale?.let { LocalDensity.current.fontScale } ?: 1f,
-                            ),
+                            // GNOME legacy-scaling on/off + display preview vs commit (see [DesktopScale]).
+                            LocalDensity provides DesktopScale.layoutDensity(LocalDensity.current),
                             LocalExtraStatusBarTop provides when {
                             mac -> MacOsDefaultTitleBarTopInset
                             customFrame -> WindowsTitleBarHeight
@@ -1096,29 +1121,30 @@ private fun configureDesktopAppDataName() {
     }
 }
 
-/**
- * Skia for linux/arm64 is GLES-only, so against Mesa-run GL it must see version 3.0
- * (see the skiko-virgl patch in app/desktop/build.gradle.kts). Set before Skiko loads
- * (here and in the AppImage AppRun) and in generated desktop entries via
- * [mesaGlVersionOverridePrefix].
- */
-private object LinuxArm64MesaEnvironment {
+/** Process environment for Linux before AWT/Skiko (Mesa GL on ARM64 only; scale is Compose density). */
+private object LinuxDesktopSessionEnvironment {
     private interface LibC : Library {
         fun setenv(name: String, value: String, overwrite: Int): Int
     }
 
     private val libc: LibC? =
-        if (isLinuxOs() && System.getProperty("os.arch") == "aarch64") {
+        if (isLinuxOs()) {
             runCatching { Native.load("c", LibC::class.java) }.getOrNull()
         } else {
             null
         }
 
     fun applyIfNeeded() {
-        if (!isLinuxOs() || System.getProperty("os.arch") != "aarch64") return
+        if (!isLinuxOs()) return
+        applyMesaGlOverrideIfNeeded()
+    }
+
+    private fun applyMesaGlOverrideIfNeeded() {
+        if (System.getProperty("os.arch") != "aarch64") return
         if (!System.getenv("MESA_GL_VERSION_OVERRIDE").isNullOrBlank()) return
         libc?.setenv("MESA_GL_VERSION_OVERRIDE", "3.0", 1)
     }
+
 }
 
 private fun mesaGlVersionOverridePrefix(): String =
@@ -1127,6 +1153,9 @@ private fun mesaGlVersionOverridePrefix(): String =
     } else {
         ""
     }
+
+/** Linux HiDPI uses Compose density only; desktop Exec prefixes must not set GDK or uiScale. */
+private fun linuxDisplayScaleExecPrefix(): String = ""
 
 /**
  * GNOME/Wayland app identity for Linux.
@@ -1183,11 +1212,20 @@ private object LinuxAppIdentity {
      * Current invocation as an Exec= value. Under a jpackage app-image this is the launcher
      * binary; a dev run re-launches through the same java/classpath wrapper main.
      */
+    private fun linuxJpackageScaleWrapper(launcherPath: String): String? {
+        if (!isLinuxOs()) return null
+        val launcher = File(launcherPath)
+        if (!launcher.isFile) return null
+        val wrapper = File(launcher.parentFile, "fromchat-gnome-scale.sh")
+        return wrapper.takeIf { it.isFile }?.absolutePath
+    }
+
     private fun desktopExec(): String {
         val launcher = ProcessHandle.current().info().command().orElse("").takeIf { it.isNotBlank() }
-        val mesaEnvPrefix = mesaGlVersionOverridePrefix()
+        val linuxEnvPrefix = linuxDisplayScaleExecPrefix() + mesaGlVersionOverridePrefix()
         if (launcher != null && launcher.endsWith("bin/java").not()) {
-            return mesaEnvPrefix + desktopQuote(launcher)
+            linuxJpackageScaleWrapper(launcher)?.let { return desktopQuote(it) }
+            return linuxEnvPrefix + desktopQuote(launcher)
         }
         val javaBin = File(
             System.getProperty("java.home"),
@@ -1200,7 +1238,7 @@ private object LinuxAppIdentity {
             } else {
                 java
             }
-        }.let { exec -> mesaEnvPrefix + exec }
+        }.let { exec -> linuxEnvPrefix + exec }
     }
 
     /** Desktop spec Exec quoting: wrap in double quotes and escape backslash/quote. */

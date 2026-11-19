@@ -41,7 +41,7 @@ Conventions:
 | `adapt-to-style` | `.agents/skills/adapt-to-style/` | Style pass without behavior changes |
 | `material-3-skill` | `.agents/skills/material-3-skill/` | Material 3 Compose UI (vendor submodule) |
 | `pre-mortem` | `.agents/skills/pre-mortem/` | Stress-test plans (see skill triggers) |
-| `run-linux-prl` | `.agents/skills/run-linux-prl/` | Build/debug Linux desktop in Parallels VM |
+| `run-linux-prl` | `.agents/skills/run-linux-prl/` | Run `run-linux-prl.sh` — build/install Linux dev deb in Parallels VM |
 | `run-windows-prl` | `.agents/skills/run-windows-prl/` | Build Windows desktop in Parallels VM |
 | `run-macos-app` | `.agents/skills/run-macos-app/` | Install/run native macOS `.app` after desktop UI changes |
 | `release` | `.agents/skills/release/` | Ship via CI — follow the **`release`** skill |
