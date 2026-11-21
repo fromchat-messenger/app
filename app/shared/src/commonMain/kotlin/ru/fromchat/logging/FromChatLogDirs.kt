@@ -2,7 +2,7 @@ package ru.fromchat.logging
 
 import ru.fromchat.utils.files.PlatformFileSystem
 
-/** App-wide diagnostic logs under `cacheDir/fromchat/logs/` (not per-instance). */
+/** App-wide diagnostic logs under `{appCache}/fromchat/logs/` (not per-instance). */
 object FromChatLogDirs {
     private const val LOGS_SUBDIR = "fromchat/logs"
     const val CURRENT_LOG_FILE = "current.log"

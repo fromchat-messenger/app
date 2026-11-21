@@ -9,9 +9,8 @@ import ru.fromchat.network.proxy.ProxyRuntime
 import ru.fromchat.network.proxy.ProxyStore
 import ru.fromchat.logging.AppLogStore
 import ru.fromchat.logging.FromChatLogDirs
+import ru.fromchat.logging.IncognitoPlatformLogging
 import ru.fromchat.logging.Logger
-import ru.fromchat.utils.files.defaultAppDataRootForPlatform
-import ru.fromchat.utils.files.PlatformFileSystem
 import kotlin.concurrent.Volatile
 import ru.fromchat.security.tls.FromChatTlsHostBypass
 
@@ -39,7 +38,7 @@ object IncognitoMode {
             registerIncognitoLifecycleHooks()
             seedIncognitoSettingsFromNormalProfile()
             ProxyStore.beginIncognitoProxySession(ProxyRuntime.selection.value)
-            purgePlaintextLogsUnderAppData()
+            IncognitoPlatformLogging.resetSession()
             AppLogStore.onIncognitoSessionBoundary()
             closeMessageDatabaseForIncognitoSession()
             active = true
@@ -76,6 +75,7 @@ object IncognitoMode {
         ServerConfig.reloadFromSettings()
         ProxyRuntime.onIncognitoSessionBoundary()
         AppLogStore.onIncognitoSessionBoundary()
+        IncognitoPlatformLogging.resetSession()
         Logger.i(TAG, "destroyed incognito volume")
     }
 }
@@ -85,10 +85,3 @@ internal expect suspend fun provisionIncognitoVolumeRoot(): String
 internal expect fun destroyIncognitoVolumeRoot(rootPath: String)
 
 internal expect fun registerIncognitoLifecycleHooks()
-
-private fun purgePlaintextLogsUnderAppData() {
-    val root = defaultAppDataRootForPlatform().replace('\\', '/').trimEnd('/')
-    PlatformFileSystem.deletePlaintextAppDataPath(
-        "$root/fromchat/logs/${FromChatLogDirs.CURRENT_LOG_FILE}",
-    )
-}
