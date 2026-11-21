@@ -526,6 +526,7 @@
     <string name="settings_hub_logs_sub">Просмотр, отправка и очистка журнала</string>
     <string name="logs_empty">Записей пока нет</string>
     <string name="logs_share">Поделиться журналом</string>
+    <string name="logs_incognito_logcat">Logcat в инкогнито</string>
     <string name="logs_rotate">Ротация журнала</string>
     <string name="logs_rotate_confirm_title">Ротировать файл журнала?</string>
     <string name="logs_rotate_confirm_body">Текущий журнал будет заархивирован и начнётся новый пустой файл.</string>

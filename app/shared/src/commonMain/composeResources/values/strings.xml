@@ -558,6 +558,7 @@
     <string name="settings_hub_logs_sub">View, share, and manage app logs</string>
     <string name="logs_empty">No log entries yet</string>
     <string name="logs_share">Share logs</string>
+    <string name="logs_incognito_logcat">Incognito logcat</string>
     <string name="logs_rotate">Rotate logs</string>
     <string name="logs_rotate_confirm_title">Rotate log file?</string>
     <string name="logs_rotate_confirm_body">The current log will be archived and a new empty log file will be started.</string>

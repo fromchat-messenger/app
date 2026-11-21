@@ -90,6 +90,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -172,6 +173,7 @@ import ru.fromchat.logs_decompressing
 import ru.fromchat.logs_delete_file_confirm_body
 import ru.fromchat.logs_delete_file_confirm_title
 import ru.fromchat.logs_empty
+import ru.fromchat.logs_incognito_logcat
 import ru.fromchat.logs_level_debug
 import ru.fromchat.logs_level_error
 import ru.fromchat.logs_level_fatal
@@ -201,9 +203,11 @@ import ru.fromchat.logging.FromChatLogDirs
 import ru.fromchat.logging.LogCleanMode
 import ru.fromchat.logging.LogCleanRequest
 import ru.fromchat.logging.LogFileInfo
+import ru.fromchat.logging.IncognitoPlatformLogging
 import ru.fromchat.logging.LogShare
 import ru.fromchat.logging.LogShareCompression
 import ru.fromchat.logging.formatLogTimestamp
+import ru.fromchat.incognito.IncognitoMode
 import ru.fromchat.ui.LocalNavController
 import ru.fromchat.ui.components.BackHandler
 import ru.fromchat.ui.components.ExpressiveIconFrame
@@ -275,6 +279,17 @@ fun LogsScreen() {
     val isViewingCurrent = viewingFilePath == null
 
     var menuExpanded by remember { mutableStateOf(false) }
+    val incognitoActive = IncognitoMode.active
+    var incognitoLogcatEnabled by remember {
+        mutableStateOf(IncognitoPlatformLogging.sessionLogcatEnabled)
+    }
+    LaunchedEffect(incognitoActive) {
+        incognitoLogcatEnabled = if (incognitoActive) {
+            IncognitoPlatformLogging.sessionLogcatEnabled
+        } else {
+            false
+        }
+    }
     var showCleanSheet by remember { mutableStateOf(false) }
     var showShareSheet by remember { mutableStateOf(false) }
     var showDecompressDialog by remember { mutableStateOf(false) }
@@ -351,6 +366,7 @@ fun LogsScreen() {
     val closeSelectionCd = stringResource(Res.string.cd_close_selection)
     val copyLabel = stringResource(Res.string.action_copy)
     val shareLabel = stringResource(Res.string.logs_share)
+    val incognitoLogcatLabel = stringResource(Res.string.logs_incognito_logcat)
     val deleteLabel = stringResource(Res.string.action_delete)
 
     fun exitSearchMode() {
@@ -849,6 +865,25 @@ fun LogsScreen() {
                                                 enterSearchMode()
                                             },
                                         )
+                                        if (incognitoActive) {
+                                            SpringDropdownMenuItem(
+                                                text = { Text(incognitoLogcatLabel) },
+                                                leadingIcon = {
+                                                    Icon(Icons.Rounded.BugReport, contentDescription = null)
+                                                },
+                                                trailingIcon = {
+                                                    Switch(
+                                                        checked = incognitoLogcatEnabled,
+                                                        onCheckedChange = null,
+                                                    )
+                                                },
+                                                onClick = {
+                                                    val next = !incognitoLogcatEnabled
+                                                    incognitoLogcatEnabled = next
+                                                    IncognitoPlatformLogging.setSessionLogcatEnabled(next)
+                                                },
+                                            )
+                                        }
                                         if (isViewingCurrent) {
                                             SpringDropdownMenuItem(
                                                 text = { Text(stringResource(Res.string.logs_rotate)) },

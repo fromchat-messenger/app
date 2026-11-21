@@ -9,6 +9,7 @@ import ru.fromchat.network.proxy.ProxyRuntime
 import ru.fromchat.network.proxy.ProxyStore
 import ru.fromchat.logging.AppLogStore
 import ru.fromchat.logging.FromChatLogDirs
+import ru.fromchat.logging.IncognitoPlatformLogging
 import ru.fromchat.logging.Logger
 import kotlin.concurrent.Volatile
 import ru.fromchat.security.tls.FromChatTlsHostBypass
@@ -37,6 +38,7 @@ object IncognitoMode {
             registerIncognitoLifecycleHooks()
             seedIncognitoSettingsFromNormalProfile()
             ProxyStore.beginIncognitoProxySession(ProxyRuntime.selection.value)
+            IncognitoPlatformLogging.resetSession()
             AppLogStore.onIncognitoSessionBoundary()
             closeMessageDatabaseForIncognitoSession()
             active = true
@@ -73,6 +75,7 @@ object IncognitoMode {
         ServerConfig.reloadFromSettings()
         ProxyRuntime.onIncognitoSessionBoundary()
         AppLogStore.onIncognitoSessionBoundary()
+        IncognitoPlatformLogging.resetSession()
         Logger.i(TAG, "destroyed incognito volume")
     }
 }
