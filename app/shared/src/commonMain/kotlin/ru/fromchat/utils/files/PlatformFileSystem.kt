@@ -44,11 +44,6 @@ object PlatformFileSystem {
         expectDelete(path)
     }
 
-    /** Removes a path from the normal app-data tree (not the incognito volume). */
-    fun deletePlaintextAppDataPath(path: String) {
-        expectDelete(path)
-    }
-
     fun deleteFilesWithPrefix(dirPath: String, namePrefix: String) {
         IncognitoVolumeFileSystem.relativeKeyForAppPath(dirPath)?.let { key ->
             IncognitoVolumeFileSystem.deleteFilesWithPrefix(key, namePrefix)
