@@ -8,9 +8,7 @@ import io.ktor.client.plugins.HttpResponseValidator
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.plugins.logging.LogLevel
-import io.ktor.client.plugins.logging.Logger
 import io.ktor.client.plugins.logging.Logging
-import io.ktor.client.plugins.logging.SIMPLE
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.pingInterval
 import io.ktor.client.request.bearerAuth
@@ -116,7 +114,7 @@ internal object HttpClients {
                 json(ApiClient.json)
             }
             install(Logging) {
-                logger = Logger.SIMPLE
+                logger = FromChatKtorHttpLogger
                 level = LogLevel.INFO
             }
             install(WebSockets) {
@@ -200,7 +198,7 @@ internal object HttpClients {
                 json(ApiClient.json)
             }
             install(Logging) {
-                logger = Logger.SIMPLE
+                logger = FromChatKtorHttpLogger
                 level = LogLevel.INFO
             }
             defaultRequest {

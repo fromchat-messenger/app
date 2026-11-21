@@ -4,4 +4,6 @@
     <cache-path name="decrypted_images" path="decrypted_images/" />
     <!-- Outbound upload staging (instance uploads/) -->
     <cache-path name="fromchat" path="fromchat/" />
+    <!-- Diagnostic logs under noBackupFilesDir (PlatformFileSystem on Android) -->
+    <files-path name="no_backup_fromchat" path="../no_backup/fromchat/" />
 </paths>

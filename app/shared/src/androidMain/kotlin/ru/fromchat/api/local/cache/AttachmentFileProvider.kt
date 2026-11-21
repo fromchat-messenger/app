@@ -99,6 +99,7 @@ class AttachmentFileProvider : FileProvider() {
             "decrypted_files" -> File(ctx.cacheDir, "decrypted_files")
             "decrypted_images" -> File(ctx.cacheDir, "decrypted_images")
             "fromchat" -> File(ctx.cacheDir, "fromchat")
+            "no_backup_fromchat" -> File(ctx.noBackupFilesDir, "fromchat")
             else -> return null
         }
         val relative = segments.drop(1).joinToString("/")
