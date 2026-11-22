@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -76,6 +77,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -88,6 +90,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -163,6 +166,8 @@ import kotlin.time.TimeSource
 private const val ChatContextMenuHoldGateMs = 250L
 private val ChatsSearchBarHeight = 56.dp
 private val ChatsTopBarContentHeight = 64.dp
+/** Reserved width for [ConnectingEllipsis] beside a status title in the chats top bar. */
+private val ChatsConnectionEllipsisReserve = 20.dp
 
 private fun LazyListState.searchBarHeightPx(collapseRangePx: Float): Float {
     val collapseProgress = when (firstVisibleItemIndex) {
@@ -351,9 +356,47 @@ private fun chatsTopAppBarColors(blurReveal: Float) = TopAppBarDefaults.topAppBa
         } else {
             MaterialTheme.colorScheme.surface
         }
-        ).copy(alpha = 1f - blurReveal.coerceIn(0f, 1f)),
+        ).copy(
+            alpha = if (LocalConversationListDetailActive.current) {
+                // Pinned list chrome: keep the bar opaque so rows cannot bleed through the logo/title.
+                1f
+            } else {
+                (0.72f + 0.28f * (1f - blurReveal.coerceIn(0f, 1f))).coerceIn(0.72f, 1f)
+            },
+        ),
     scrolledContainerColor = Color.Transparent,
 )
+
+@Composable
+private fun ChatsConnectionStatusTitle(
+    title: String,
+    style: TextStyle,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    BoxWithConstraints(modifier = modifier) {
+        val titleMaxWidth = (maxWidth - ChatsConnectionEllipsisReserve).coerceAtLeast(0.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Start,
+        ) {
+            Text(
+                text = title,
+                style = style,
+                color = color,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = titleMaxWidth),
+            )
+            ConnectingEllipsis(
+                fontSize = style.fontSize,
+                color = color,
+                baseStyle = style,
+            )
+        }
+    }
+}
 
 @Composable
 private fun ChatsTopBarHazeBackdrop(
@@ -420,6 +463,9 @@ private fun ChatsNormalTopBar(
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     AnimatedContent(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clipToBounds(),
                         targetState = titleKey,
                         transitionSpec = {
                             (slideInVertically { it / 2 } + fadeIn()) togetherWith
@@ -435,23 +481,19 @@ private fun ChatsNormalTopBar(
                                 "connecting", "updating" -> {
                                     val style = MaterialTheme.typography.titleLarge
                                     val color = MaterialTheme.colorScheme.onSurface
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = if (key == "connecting") connectingTitle else updatingTitle,
-                                            style = style,
-                                            color = color,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                        ConnectingEllipsis(
-                                            fontSize = style.fontSize,
-                                            color = color,
-                                            baseStyle = style,
-                                        )
-                                    }
+                                    ChatsConnectionStatusTitle(
+                                        title = if (key == "connecting") {
+                                            connectingTitle
+                                        } else {
+                                            updatingTitle
+                                        },
+                                        style = style,
+                                        color = color,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
                                 }
 
-                                else -> BrandTitle()
+                                else -> BrandTitle(modifier = Modifier.fillMaxWidth())
                             }
                         }
                     }

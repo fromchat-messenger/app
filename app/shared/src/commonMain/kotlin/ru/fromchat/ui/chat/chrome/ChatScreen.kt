@@ -29,7 +29,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -1782,7 +1781,7 @@ private fun ChatDateSeparator(
     AnimatedVisibility(
         visible = true,
         enter = if (animateEnter) {
-            fadeIn(tween(150)) + expandVertically(expandFrom = Alignment.Bottom)
+            fadeIn(tween(150))
         } else {
             fadeIn(tween(0))
         },

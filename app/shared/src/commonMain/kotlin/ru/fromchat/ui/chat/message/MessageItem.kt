@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -235,8 +234,6 @@ private fun CenteredServiceNotice(
 ) {
     val scheme = MaterialTheme.colorScheme
     val progress = remember(messageId) { Animatable(0f) }
-    var measuredHeightPx by remember(messageId) { mutableIntStateOf(0) }
-    val density = LocalDensity.current
 
     LaunchedEffect(messageId) {
         progress.snapTo(0f)
@@ -245,9 +242,6 @@ private fun CenteredServiceNotice(
 
     val scale = 0.82f + 0.18f * progress.value
     val alpha = progress.value
-    val revealHeight =
-        if (measuredHeightPx > 0) with(density) { (measuredHeightPx * progress.value).toDp() }
-        else 0.dp
 
     Box(
         modifier = modifier
@@ -255,38 +249,18 @@ private fun CenteredServiceNotice(
             .padding(vertical = 10.dp, horizontal = 24.dp),
         contentAlignment = Alignment.Center,
     ) {
-        if (measuredHeightPx == 0) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurface,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .graphicsLayer { this.alpha = 0f }
-                    .onGloballyPositioned { measuredHeightPx = it.size.height },
-            )
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(revealHeight)
-                    .clipToBounds(),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = text,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurface,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.graphicsLayer {
-                        scaleX = scale
-                        scaleY = scale
-                        this.alpha = alpha
-                        transformOrigin = TransformOrigin.Center
-                    },
-                )
-            }
-        }
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = scheme.onSurface,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                this.alpha = alpha
+                transformOrigin = TransformOrigin.Center
+            },
+        )
     }
 }
 
